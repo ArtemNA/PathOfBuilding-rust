@@ -1,0 +1,15 @@
+[package]
+name = "pob-cli"
+description = "Command-line entry: calc <xml> --json (candidate output for the oracle harness)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+pob-golden.workspace = true
+serde_json.workspace = true
+
+[lints]
+workspace = true

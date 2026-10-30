@@ -1,0 +1,16 @@
+[package]
+name = "pob-golden"
+description = "Oracle goldens of pob-ts: snapshot reader, round4 comparator, report"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+indexmap.workspace = true
+
+[lints]
+workspace = true
