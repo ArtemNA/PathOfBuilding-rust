@@ -5,3 +5,4 @@
 /bench/.results/
 /tools/.scratch/
 *.log
+/tools/luajit-win/target/
