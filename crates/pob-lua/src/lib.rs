@@ -5,8 +5,10 @@
 
 pub mod format;
 pub mod number;
+pub mod pattern;
 pub mod string;
 pub mod tonumber;
 
 pub use format::{Arg, format, format_f, format_g, tostring, tostring_num};
+pub use pattern::{Capture, Captures, GMatch, PatternError, Repl, find, gmatch, gsub, match_};
 pub use tonumber::tonumber;

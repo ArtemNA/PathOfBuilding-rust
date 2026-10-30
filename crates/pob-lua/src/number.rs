@@ -95,3 +95,23 @@ pub fn bor(a: f64, b: f64) -> f64 {
 pub fn bnot(a: f64) -> f64 {
     f64::from(!tobit(a))
 }
+
+/// `bit.bxor(a, b)`.
+pub fn bxor(a: f64, b: f64) -> f64 {
+    f64::from(tobit(a) ^ tobit(b))
+}
+
+/// `bit.lshift(a, n)`: the shift count is `tobit(n) & 31`.
+pub fn lshift(a: f64, n: f64) -> f64 {
+    f64::from(((tobit(a) as u32) << (tobit(n) & 31)) as i32)
+}
+
+/// `bit.rshift(a, n)`: logical shift of the 32-bit pattern.
+pub fn rshift(a: f64, n: f64) -> f64 {
+    f64::from(((tobit(a) as u32) >> (tobit(n) & 31)) as i32)
+}
+
+/// `bit.arshift(a, n)`: arithmetic shift.
+pub fn arshift(a: f64, n: f64) -> f64 {
+    f64::from(tobit(a) >> (tobit(n) & 31))
+}
