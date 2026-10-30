@@ -1,0 +1,7 @@
+/target/
+# synced from pob-ts by tools/sync-data.ps1 (see data.lock)
+/data/
+# bench / probe outputs
+/bench/.results/
+/tools/.scratch/
+*.log
