@@ -1,0 +1,13 @@
+[package]
+name = "pob-calc"
+description = "Calc env: initEnv (R3), perform/defence (R4) -- CalcSetup/CalcPerform/CalcDefence ports"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+
+[lints]
+workspace = true
