@@ -1,0 +1,9 @@
+{
+  "pobSha": "ed354c2f8c42e148bc904c7508dbe851fb2cf952",
+  "converterVersion": "0.1.0",
+  "latestTreeVersion": "3_29",
+  "manifestSha256": "994fbd41821a85e3474c371f578eed91986e624e1266077f41433b56403fbf59",
+  "files": 90,
+  "bytes": 128855806,
+  "source": "pob-ts/data"
+}
