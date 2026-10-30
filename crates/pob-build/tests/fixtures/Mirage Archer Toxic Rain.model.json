@@ -1,0 +1,1555 @@
+{
+ "activeItemSet": 1,
+ "ascendClassName": "Deadeye",
+ "bandit": "None",
+ "calcsInput": {
+  "misc_buffMode": "EFFECTIVE",
+  "skill_number": 8
+ },
+ "characterLevelAutoMode": false,
+ "className": "Ranger",
+ "config": {
+  "activeConfigSet": 1,
+  "sets": [
+   {
+    "customModsList": [
+     {
+      "enabled": true,
+      "text": "",
+      "title": "Default"
+     }
+    ],
+    "id": 1,
+    "input": {
+     "bloodSandStance": "SAND",
+     "buffOnslaught": true,
+     "buffTailwind": true,
+     "conditionEnemyBlinded": true,
+     "conditionEnemyOnConsecratedGround": true,
+     "conditionFullLife": true,
+     "conditionKilledRecently": true,
+     "conditionLeeching": true,
+     "conditionMoving": true,
+     "conditionOnConsecratedGround": true,
+     "enemyAwakeningLevel": 8,
+     "enemyIsBoss": "Pinnacle",
+     "multiplierGaleForce": 10,
+     "multiplierWitheredStackCount": 10,
+     "toxicRainPodOverlap": 5,
+     "useFrenzyCharges": true
+    },
+    "placeholder": {},
+    "title": "Default"
+   }
+  ]
+ },
+ "itemOrder": [
+  17,
+  24,
+  22,
+  23,
+  25,
+  26,
+  27,
+  28,
+  29,
+  30,
+  19,
+  31,
+  32,
+  33,
+  34,
+  35,
+  1,
+  2,
+  3,
+  4,
+  5,
+  6
+ ],
+ "itemSets": [
+  {
+   "id": 1,
+   "slots": {
+    "Amulet": {
+     "active": false,
+     "itemId": 1,
+     "pbURL": ""
+    },
+    "Belt": {
+     "active": false,
+     "itemId": 35,
+     "pbURL": ""
+    },
+    "Belt Abyssal Socket 1": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Belt Abyssal Socket 2": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Belt Abyssal Socket 3": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Belt Abyssal Socket 4": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Belt Abyssal Socket 5": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Belt Abyssal Socket 6": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Body Armour": {
+     "active": false,
+     "itemId": 34,
+     "pbURL": ""
+    },
+    "Body Armour Abyssal Socket 1": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Body Armour Abyssal Socket 2": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Body Armour Abyssal Socket 3": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Body Armour Abyssal Socket 4": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Body Armour Abyssal Socket 5": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Body Armour Abyssal Socket 6": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Boots": {
+     "active": false,
+     "itemId": 19,
+     "pbURL": ""
+    },
+    "Boots Abyssal Socket 1": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Boots Abyssal Socket 2": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Boots Abyssal Socket 3": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Boots Abyssal Socket 4": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Boots Abyssal Socket 5": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Boots Abyssal Socket 6": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Flask 1": {
+     "active": true,
+     "itemId": 17,
+     "pbURL": ""
+    },
+    "Flask 2": {
+     "active": true,
+     "itemId": 32,
+     "pbURL": ""
+    },
+    "Flask 3": {
+     "active": true,
+     "itemId": 2,
+     "pbURL": ""
+    },
+    "Flask 4": {
+     "active": false,
+     "itemId": 3,
+     "pbURL": ""
+    },
+    "Flask 5": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Gloves": {
+     "active": false,
+     "itemId": 29,
+     "pbURL": ""
+    },
+    "Gloves Abyssal Socket 1": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Gloves Abyssal Socket 2": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Gloves Abyssal Socket 3": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Gloves Abyssal Socket 4": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Gloves Abyssal Socket 5": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Gloves Abyssal Socket 6": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Helmet": {
+     "active": false,
+     "itemId": 33,
+     "pbURL": ""
+    },
+    "Helmet Abyssal Socket 1": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Helmet Abyssal Socket 2": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Helmet Abyssal Socket 3": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Helmet Abyssal Socket 4": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Helmet Abyssal Socket 5": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Helmet Abyssal Socket 6": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Ring 1": {
+     "active": false,
+     "itemId": 24,
+     "pbURL": ""
+    },
+    "Ring 2": {
+     "active": false,
+     "itemId": 30,
+     "pbURL": ""
+    },
+    "Weapon 1": {
+     "active": false,
+     "itemId": 22,
+     "pbURL": ""
+    },
+    "Weapon 1 Abyssal Socket 1": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Weapon 1 Abyssal Socket 2": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Weapon 1 Abyssal Socket 3": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Weapon 1 Abyssal Socket 4": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Weapon 1 Abyssal Socket 5": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Weapon 1 Abyssal Socket 6": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Weapon 1 Swap": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Weapon 1Swap Abyssal Socket 1": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Weapon 1Swap Abyssal Socket 2": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Weapon 1Swap Abyssal Socket 3": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Weapon 1Swap Abyssal Socket 4": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Weapon 1Swap Abyssal Socket 5": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Weapon 1Swap Abyssal Socket 6": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Weapon 2": {
+     "active": false,
+     "itemId": 23,
+     "pbURL": ""
+    },
+    "Weapon 2 Abyssal Socket 1": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Weapon 2 Abyssal Socket 2": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Weapon 2 Abyssal Socket 3": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Weapon 2 Abyssal Socket 4": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Weapon 2 Abyssal Socket 5": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Weapon 2 Abyssal Socket 6": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Weapon 2 Swap": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Weapon 2Swap Abyssal Socket 1": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Weapon 2Swap Abyssal Socket 2": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Weapon 2Swap Abyssal Socket 3": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Weapon 2Swap Abyssal Socket 4": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Weapon 2Swap Abyssal Socket 5": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Weapon 2Swap Abyssal Socket 6": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    }
+   },
+   "socketIdURLs": {},
+   "useSecondWeaponSet": false
+  }
+ ],
+ "items": [
+  {
+   "id": 17,
+   "modRanges": [],
+   "raw": "\n\t\t\tRarity: UNIQUE\nWitchfire Brew\nStibnite Flask\nUnique ID: 5686991f93a2a58594a876df7586ebe70272c3d755fbac7cf825f7ddc9b022d1\nItem Level: 78\nQuality: 0\nLevelReq: 48\nImplicits: 1\nCreates a Smoke Cloud on Use\n50% increased Charges used\n39% increased Damage Over Time during Flask Effect\nGrants Level 21 Despair Curse Aura during Flask Effect\n\t\t"
+  },
+  {
+   "id": 24,
+   "modRanges": [],
+   "raw": "\n\t\t\tRarity: NORMAL\nUnset Ring\nElder Item\nSockets: G\nLevelReq: 24\nImplicits: 1\nHas 1 Socket\nCurse Enemies with Socketed Hex Curse Gem on Hit\n+107% to Chaos Damage over Time Multiplier\n40% increased Skill Effect Duration\n\t\t"
+  },
+  {
+   "id": 22,
+   "modRanges": [
+    {
+     "id": 1,
+     "range": 1
+    }
+   ],
+   "raw": "\n\t\t\tRarity: RARE\nNew Item\nThicket Bow\nShaper Item\nCrafted: true\nPrefix: {range:1}ChanceToGainFrenzyChargeOnKillUberShaper2_\nPrefix: {range:0.5}LocalIncreaseSocketedGemLevel1\nPrefix: {range:1}LocalIncreaseSocketedBowGemLevel2\nSuffix: {range:1}GlobalDamageOverTimeMultiplier2h3___\nSuffix: {range:0.5}MaximumFrenzyChargeUber1\nSuffix: {range:1}LocalIncreasedAttackSpeedRangedDoubleDamageUber2\nQuality: 20\nSockets: G-G-G-G-G-G\nLevelReq: 67\nImplicits: 2\n{range:1}(3-5)% increased Attack Speed\nSocketed Gems are Supported by Level 10 Onslaught\n+1 to Level of Socketed Gems\n+2 to Level of Socketed Bow Gems\n+35% to Damage over Time Multiplier\n12% increased Attack Speed\n+1 to Maximum Frenzy Charges\n10% chance to gain a Frenzy Charge on Kill\n6% chance to deal Double Damage\nCorrupted\n\t\t\t\n\t\t"
+  },
+  {
+   "id": 23,
+   "modRanges": [
+    {
+     "id": 1,
+     "range": 1
+    }
+   ],
+   "raw": "\n\t\t\tRarity: RARE\nNew Item\nSharktooth Arrow Quiver\nElder Item\nCrafted: true\nPrefix: {range:1}IncreasedLife9\nPrefix: {range:1}AreaOfEffectUber3_\nPrefix: {range:1}DelveShieldPhysicalDamageReductionRating1\nSuffix: {range:1}GlobalDamageOverTimeMultiplier1h3\nSuffix: {range:1}IncreasedAttackSpeed3\nSuffix: {range:1}FrenzyChargeOnHittingRareOrUniqueUber1\nQuality: 0\nLevelReq: 65\nImplicits: 1\n{tags:resource,life,attack}{range:1}+(3-4) Life gained for each Enemy hit by your Attacks\n+18% to Damage over Time Multiplier\n13% increased Attack Speed\n+99 to maximum Life\n15% increased Area of Effect\n5% additional Physical Damage Reduction\n5% chance to gain a Frenzy Charge when you Hit a Rare or Unique Enemy\n\t\t\t\n\t\t"
+  },
+  {
+   "id": 25,
+   "modRanges": [],
+   "raw": "\n\t\t\tRarity: RARE\nNew Item\nLarge Cluster Jewel\nCrafted: true\nPrefix: {range:0.5}AfflictionNotableWickedPall_\nPrefix: {range:0.5}AfflictionNotableMiseryEverlasting\nSuffix: {range:0.5}AfflictionNotableUnholyGrace_\nSuffix: None\nCluster Jewel Skill: affliction_chaos_damage\nCluster Jewel Node Count: 8\nQuality: 0\nLevelReq: 40\nImplicits: 3\n{crafted}Adds 8 Passive Skills\n{crafted}2 Added Passive Skills are Jewel Sockets\n{crafted}Added Small Passive Skills grant: 12% increased Chaos Damage\n1 Added Passive Skill is Misery Everlasting\n1 Added Passive Skill is Unholy Grace\n1 Added Passive Skill is Wicked Pall\n\t\t"
+  },
+  {
+   "id": 26,
+   "modRanges": [],
+   "raw": "\n\t\t\tRarity: RARE\nNew Item\nMedium Cluster Jewel\nCrafted: true\nPrefix: {range:0.5}AfflictionNotableBrushwithDeath\nPrefix: {range:0.5}AfflictionNotableExposureTherapy_\nSuffix: None\nSuffix: None\nCluster Jewel Skill: affliction_damage_over_time_multiplier\nCluster Jewel Node Count: 4\nQuality: 0\nLevelReq: 54\nImplicits: 3\n{crafted}Adds 4 Passive Skills\n{crafted}1 Added Passive Skill is a Jewel Socket\n{crafted}Added Small Passive Skills grant: +4% to Damage over Time Multiplier\n1 Added Passive Skill is Brush with Death\n1 Added Passive Skill is Exposure Therapy\n\t\t"
+  },
+  {
+   "id": 27,
+   "modRanges": [],
+   "raw": "\n\t\t\tRarity: RARE\nNew Item\nLarge Cluster Jewel\nCrafted: true\nPrefix: {range:0.5}AfflictionNotableWickedPall_\nPrefix: {range:0.5}AfflictionNotableMiseryEverlasting\nSuffix: {range:0.5}AfflictionNotableUnspeakableGifts\nSuffix: None\nCluster Jewel Skill: affliction_chaos_damage\nCluster Jewel Node Count: 8\nQuality: 0\nLevelReq: 60\nImplicits: 3\n{crafted}Adds 8 Passive Skills\n{crafted}2 Added Passive Skills are Jewel Sockets\n{crafted}Added Small Passive Skills grant: 12% increased Chaos Damage\n1 Added Passive Skill is Misery Everlasting\n1 Added Passive Skill is Unspeakable Gifts\n1 Added Passive Skill is Wicked Pall\n\t\t"
+  },
+  {
+   "id": 28,
+   "modRanges": [],
+   "raw": "\n\t\t\tRarity: RARE\nNew Item\nSmall Cluster Jewel\nCrafted: true\nPrefix: {range:0.5}AfflictionNotableBrushwithDeath\nPrefix: None\nSuffix: None\nSuffix: None\nCluster Jewel Skill: affliction_maximum_life\nCluster Jewel Node Count: 2\nQuality: 0\nLevelReq: 54\nImplicits: 2\n{crafted}Adds 2 Passive Skills\n{crafted}Added Small Passive Skills grant: 4% increased maximum Life\n1 Added Passive Skill is Brush with Death\n\t\t"
+  },
+  {
+   "id": 29,
+   "modRanges": [
+    {
+     "id": 1,
+     "range": 1
+    },
+    {
+     "id": 5,
+     "range": 0.5
+    },
+    {
+     "id": 6,
+     "range": 0.5
+    }
+   ],
+   "raw": "\n\t\t\tRarity: UNIQUE\nOndar's Clasp\nWrapped Mitts\nVariant: Pre 1.1.0\nVariant: Current\nSelected Variant: 2\nWrapped Mitts\nQuality: 20\nSockets: G-G-G-G\nLevelReq: 5\nImplicits: 1\n{range:1}(8-10)% increased Attack Speed\n{variant:1}20% increased Attack Speed when on Full Life\n{variant:2}30% increased Attack Speed when on Full Life\nAdds 1 to 13 Lightning Damage to Attacks\n{range:0.5}+(50-80) to Accuracy Rating\n{variant:1}{range:0.5}(10-15)% increased Movement Speed when on Low Life\n{variant:2}20% increased Movement Speed when on Low Life\nCorrupted\n\t\t\t\n\t\t\t\n\t\t\t\n\t\t",
+   "variant": 2
+  },
+  {
+   "id": 30,
+   "modRanges": [
+    {
+     "id": 1,
+     "range": 1
+    }
+   ],
+   "raw": "\n\t\t\tRarity: RARE\nNew Item\nAmethyst Ring\nElder Item\nCrafted: true\nPrefix: {range:1}IncreasedLife7\nPrefix: {range:0.5}DelveRingChaosLeech1\nPrefix: {range:0.5}DelveRingPhysicalLeech1\nSuffix: {range:1}CurseOnHitPoachersMarkNewUber2__\nSuffix: {range:1}IncreasedAttackSpeed1\nSuffix: {range:1}AllResistances5\nQuality: 0\nLevelReq: 64\nImplicits: 1\n{tags:chaos,resistance}{range:1}+(9-13)% to Chaos Resistance\nTrigger Level 12 Poacher's Mark when you Hit a Rare or Unique Enemy\n7% increased Attack Speed\n+79 to maximum Life\n+16% to all Elemental Resistances\n0.2% of Physical Damage Leeched as Life\n0.2% of Chaos Damage Leeched as Life\n\t\t\t\n\t\t"
+  },
+  {
+   "id": 19,
+   "modRanges": [
+    {
+     "id": 2,
+     "range": 1
+    },
+    {
+     "id": 3,
+     "range": 1
+    },
+    {
+     "id": 4,
+     "range": 1
+    },
+    {
+     "id": 8,
+     "range": 1
+    }
+   ],
+   "raw": "\n\t\t\tRarity: UNIQUE\nWindscream\nReinforced Greaves\nVariant: Pre 2.6.0\nVariant: Current\nSelected Variant: 2\nReinforced Greaves\nQuality: 20\nSockets: R-R-R-R\nLevelReq: 33\nImplicits: 2\n{crafted}16% increased Attack and Cast Speed if you've Killed Recently\n{range:1}(6-10)% chance to Dodge Spell Hits while moving\n{range:1}(50-80)% increased Armour\n{range:1}+(10-15)% to all Elemental Resistances\n{variant:1}10% increased Movement Speed\n{variant:2}15% increased Movement Speed\n{variant:1}10% increased Elemental Damage\n{variant:2}{range:1}(10-20)% increased Elemental Damage\nEnemies can have 1 additional Curse\nCorrupted\n\t\t\t\n\t\t\t\n\t\t\t\n\t\t\t\n\t\t",
+   "variant": 2
+  },
+  {
+   "id": 31,
+   "modRanges": [
+    {
+     "id": 1,
+     "range": 1
+    },
+    {
+     "id": 3,
+     "range": 1
+    },
+    {
+     "id": 4,
+     "range": 1
+    },
+    {
+     "id": 5,
+     "range": 1
+    }
+   ],
+   "raw": "\n\t\t\tRarity: UNIQUE\nUngil's Harmony\nTurquoise Amulet\nVariant: Pre 3.11.0\nVariant: Current\nSelected Variant: 2\nTurquoise Amulet\nLevelReq: 23\nImplicits: 1\n{range:1}(8-10)% increased Attack Speed\n{variant:1}100% increased Global Critical Strike Chance\n{variant:2}{range:1}(250-350)% increased Global Critical Strike Chance\n{tags:life}{range:1}+(30-50) to maximum Life\n{tags:mana}{range:1}+(30-50) to maximum Mana\n40% increased Stun and Block Recovery\nYour Critical Strikes do not deal extra Damage\nCorrupted\n\t\t\t\n\t\t\t\n\t\t\t\n\t\t\t\n\t\t",
+   "variant": 2
+  },
+  {
+   "id": 32,
+   "modRanges": [],
+   "raw": "\n\t\t\tRarity: MAGIC\nAlchemist's Sulphur Flask of Acceleration\nCrafted: true\nPrefix: {range:0.5}FlaskEffectReducedDuration1\nSuffix: {range:1}FlaskBuffAttackSpeedWhileHealing1\nQuality: 20\nLevelReq: 35\nImplicits: 1\n{tags:flask}Creates Consecrated Ground on Use\n12% increased Attack Speed during Flask effect\n25% increased effect\n33% reduced Duration\n\t\t"
+  },
+  {
+   "id": 33,
+   "modRanges": [
+    {
+     "id": 2,
+     "range": 1
+    },
+    {
+     "id": 3,
+     "range": 1
+    }
+   ],
+   "raw": "\n\t\t\tRarity: RARE\nNew Item\nLion Pelt\nHunter Item\nCrafted: true\nPrefix: {range:1}IncreasedLife9\nPrefix: {range:1}LocalBaseEvasionRatingAndLife3\nPrefix: {range:1}LocalIncreasedEvasionRatingPercent7\nSuffix: {range:1}EnemyChaosResistanceAuraInfluence1_\nSuffix: {range:1}LightningResist8\nSuffix: {range:1}ColdResist8\nCatalystQuality: 20\nQuality: 20\nSockets: G-G-G-G\nLevelReq: 70\nImplicits: 3\n{crafted}Toxic Rain deals 40% increased Damage\n{range:1}(4-6)% increased maximum Life\n{range:1}Regenerate (1.6-2)% of Life per second\n+95 to Evasion Rating\n100% increased Evasion Rating\n+132 to maximum Life\n+48% to Cold Resistance\n+48% to Lightning Resistance\n-9% to Chaos Resistance\nNearby Enemies have -9% to Chaos Resistance\nCorrupted\n\t\t\t\n\t\t\t\n\t\t"
+  },
+  {
+   "id": 34,
+   "modRanges": [
+    {
+     "id": 2,
+     "range": 1
+    }
+   ],
+   "raw": "\n\t\t\tRarity: RARE\nNew Item\nZodiac Leather\nCrafted: true\nPrefix: {range:1}LocalBaseEvasionRatingAndLife4\nPrefix: {range:1}IncreasedLife12\nPrefix: {range:1}LocalIncreasedEvasionRatingPercent8\nSuffix: {range:1}LightningResist8\nSuffix: {range:1}FireResist8\nSuffix: {range:1}ColdResist8\nQuality: 20\nSockets: G-G-G-G-G-G\nLevelReq: 68\nImplicits: 2\n+1% to all maximum Resistances\n{range:1}(40-50)% increased Damage\n+120 to Evasion Rating\n110% increased Evasion Rating\n+167 to maximum Life\n+48% to Fire Resistance\n+48% to Cold Resistance\n+48% to Lightning Resistance\nCorrupted\n\t\t\t\n\t\t"
+  },
+  {
+   "id": 35,
+   "modRanges": [],
+   "raw": "\n\t\t\tRarity: RARE\nNew Item\nMicro-Distillery Belt\nCrafted: true\nPrefix: {range:1}DelveJewelryChaosDamage1\nPrefix: {range:1}IncreasedLife9\nPrefix: {range:1}IncreasedPhysicalDamageReductionRating8_\nSuffix: {range:1}FireResist8\nSuffix: {range:1}ChaosResist6\nSuffix: {range:1}Strength10\nQuality: 0\nLevelReq: 68\nImplicits: 2\nFlasks applied to you have 20% increased Effect\nCan't use Flask in Fifth Slot\n+60 to Strength\n30% increased Chaos Damage\n+540 to Armour\n+99 to maximum Life\n+48% to Fire Resistance\n+35% to Chaos Resistance\n\t\t"
+  },
+  {
+   "id": 1,
+   "modRanges": [
+    {
+     "id": 2,
+     "range": 1
+    },
+    {
+     "id": 3,
+     "range": 1
+    }
+   ],
+   "raw": "\n\t\t\tRarity: RARE\nNew Item\nLapis Amulet\nElder Item\nCrafted: true\nPrefix: {range:1}DelveJewelryChaosDamage1\nPrefix: {range:1}AreaOfEffectUber3_\nPrefix: {range:1}IncreasedLife8\nSuffix: {range:1}ChaosNonAilmentDamageOverTimeMultiplierUber2\nSuffix: {range:1}IncreasedAttackSpeedAmuletUber1\nSuffix: {range:1}IncreasedAccuracyNew5_\nQuality: 0\nLevelReq: 65\nImplicits: 3\n{crafted}Allocates Corruption\n{range:1}(8-10)% increased Attack Speed\n{range:1}Malevolence has (15-20)% increased Aura Effect\n+16% to Chaos Damage over Time Multiplier\n30% increased Chaos Damage\n13% increased Attack Speed\n+480 to Accuracy Rating\n+89 to maximum Life\n15% increased Area of Effect\nCorrupted\n\t\t\t\n\t\t\t\n\t\t"
+  },
+  {
+   "id": 2,
+   "modRanges": [],
+   "raw": "\n\t\t\tRarity: MAGIC\nAlchemist's Quartz Flask of Grounding\nCrafted: true\nPrefix: {range:0.5}FlaskEffectReducedDuration1\nSuffix: {range:0.5}FlaskRemovesShock1\nQuality: 20\nLevelReq: 27\nImplicits: 0\nImmunity to Shock during Flask effect\nRemoves Shock on use\n25% increased effect\n33% reduced Duration\n\t\t"
+  },
+  {
+   "id": 3,
+   "modRanges": [
+    {
+     "id": 1,
+     "range": 0.5
+    },
+    {
+     "id": 4,
+     "range": 0.5
+    }
+   ],
+   "raw": "\n\t\t\tRarity: UNIQUE\nThe Writhing Jar\nHallowed Hybrid Flask\nQuality: 20\nLevelReq: 60\nImplicits: 0\n{range:0.5}(75-65)% reduced Amount Recovered\nInstant Recovery\n2 Enemy Writhing Worms escape the Flask when used\n{range:0.5}(20-10)% reduced Charges used\n\t\t\t\n\t\t\t\n\t\t"
+  },
+  {
+   "id": 4,
+   "modRanges": [],
+   "raw": "\n\t\t\tRarity: RARE\nNew Item\nMedium Cluster Jewel\nCrafted: true\nPrefix: {range:0.5}AfflictionNotableBrushwithDeath\nPrefix: {range:0.5}AfflictionNotableExposureTherapy_\nSuffix: None\nSuffix: None\nCluster Jewel Skill: affliction_chaos_damage_over_time_multiplier\nCluster Jewel Node Count: 6\nQuality: 0\nLevelReq: 54\nImplicits: 3\n{crafted}Adds 6 Passive Skills\n{crafted}1 Added Passive Skill is a Jewel Socket\n{crafted}Added Small Passive Skills grant: +4% to Chaos Damage over Time Multiplier\n1 Added Passive Skill is Brush with Death\n1 Added Passive Skill is Exposure Therapy\n\t\t"
+  },
+  {
+   "id": 5,
+   "modRanges": [],
+   "raw": "\n\t\t\tRarity: RARE\nNew Item\nMedium Cluster Jewel\nCrafted: true\nPrefix: {range:0.5}AfflictionNotableBrushwithDeath\nPrefix: {range:0.5}AfflictionNotableExposureTherapy_\nSuffix: None\nSuffix: None\nCluster Jewel Skill: affliction_chaos_damage_over_time_multiplier\nCluster Jewel Node Count: 5\nQuality: 0\nLevelReq: 54\nImplicits: 3\n{crafted}Adds 5 Passive Skills\n{crafted}1 Added Passive Skill is a Jewel Socket\n{crafted}Added Small Passive Skills grant: +4% to Chaos Damage over Time Multiplier\n1 Added Passive Skill is Brush with Death\n1 Added Passive Skill is Exposure Therapy\n\t\t"
+  },
+  {
+   "id": 6,
+   "modRanges": [],
+   "raw": "\n\t\t\tRarity: RARE\nNew Item\nCobalt Jewel\nCrafted: true\nPrefix: {range:1}PercentIncreasedLifeJewel\nPrefix: {range:1}ChaosDamageJewel\nSuffix: {range:1}DamageOverTimeJewel\nSuffix: {range:1}JewelChaosNonAilmentDamageOverTimeMultiplier2\nQuality: 0\nLevelReq: 0\nImplicits: 0\n12% increased Damage over Time\n+4% to Chaos Damage over Time Multiplier\n13% increased Chaos Damage\n7% increased maximum Life\n\t\t"
+  }
+ ],
+ "level": 100,
+ "mainSocketGroup": 1,
+ "pantheonMajorGod": "Arakaali",
+ "pantheonMinorGod": "Shakari",
+ "skills": {
+  "activeSkillSet": 1,
+  "defaultGemLevel": "normalMaximum",
+  "defaultGemQuality": 0,
+  "sets": [
+   {
+    "groups": [
+     {
+      "enabled": true,
+      "gems": [
+       {
+        "count": 1,
+        "enableGlobal1": true,
+        "enableGlobal2": false,
+        "enabled": true,
+        "gemId": "Metadata/Items/Gems/RainOfSpores",
+        "level": 21,
+        "nameSpec": "Toxic Rain",
+        "quality": 0,
+        "qualityId": "Default",
+        "skillId": "RainOfSpores",
+        "skillMinion": "SummonedPhantasm"
+       },
+       {
+        "count": 1,
+        "enableGlobal1": true,
+        "enableGlobal2": false,
+        "enabled": true,
+        "gemId": "Metadata/Items/Gems/SupportGemMirageArcher",
+        "level": 20,
+        "nameSpec": "Mirage Archer",
+        "quality": 0,
+        "qualityId": "Default",
+        "skillId": "SupportGemMirageArcher"
+       },
+       {
+        "count": 1,
+        "enableGlobal1": true,
+        "enableGlobal2": false,
+        "enabled": true,
+        "gemId": "Metadata/Items/Gems/SupportGemAdditionalLevel",
+        "level": 4,
+        "nameSpec": "Empower",
+        "quality": 0,
+        "qualityId": "Default",
+        "skillId": "SupportAdditionalLevel"
+       },
+       {
+        "count": 1,
+        "enableGlobal1": true,
+        "enableGlobal2": false,
+        "enabled": true,
+        "gemId": "Metadata/Items/Gems/SupportGemViciousProjectilesPlus",
+        "level": 5,
+        "nameSpec": "Awakened Vicious Projectiles",
+        "quality": 20,
+        "qualityId": "Default",
+        "skillId": "SupportViciousProjectilesPlus"
+       },
+       {
+        "count": 1,
+        "enableGlobal1": true,
+        "enableGlobal2": false,
+        "enabled": true,
+        "gemId": "Metadata/Items/Gems/SupportGemVoidManipulationPlus",
+        "level": 5,
+        "nameSpec": "Awakened Void Manipulation",
+        "quality": 20,
+        "qualityId": "Default",
+        "skillId": "SupportVoidManipulationPlus"
+       },
+       {
+        "count": 1,
+        "enableGlobal1": true,
+        "enableGlobal2": false,
+        "enabled": true,
+        "gemId": "Metadata/Items/Gems/SupportGemMeleeDamageOnFullLife",
+        "level": 21,
+        "nameSpec": "Damage on Full Life",
+        "quality": 20,
+        "qualityId": "Default",
+        "skillId": "SupportMeleeDamageOnFullLife"
+       }
+      ],
+      "includeInFullDPS": false,
+      "label": "",
+      "mainActiveSkill": 1,
+      "mainActiveSkillCalcs": 1,
+      "slot": "Weapon 1"
+     },
+     {
+      "enabled": true,
+      "gems": [
+       {
+        "count": 1,
+        "enableGlobal1": true,
+        "enableGlobal2": false,
+        "enabled": true,
+        "gemId": "Metadata/Items/Gems/SupportGemRangedAttackTotem",
+        "level": 20,
+        "nameSpec": "Ballista Totem",
+        "quality": 0,
+        "qualityId": "Default",
+        "skillId": "SupportRangedAttackTotem",
+        "skillMinion": "Clone",
+        "skillMinionSkill": 1,
+        "skillMinionSkillCalcs": 1,
+        "skillPart": 1
+       },
+       {
+        "count": 1,
+        "enableGlobal1": true,
+        "enableGlobal2": false,
+        "enabled": true,
+        "gemId": "Metadata/Items/Gems/RainOfSpores",
+        "level": 21,
+        "nameSpec": "Toxic Rain",
+        "quality": 0,
+        "qualityId": "Default",
+        "skillId": "RainOfSpores",
+        "skillMinion": "SummonedPhantasm"
+       },
+       {
+        "count": 1,
+        "enableGlobal1": true,
+        "enableGlobal2": false,
+        "enabled": true,
+        "gemId": "Metadata/Items/Gems/SupportGemChaosAttacks",
+        "level": 21,
+        "nameSpec": "Withering Touch",
+        "quality": 0,
+        "qualityId": "Default",
+        "skillId": "SupportChaosAttacks"
+       },
+       {
+        "count": 1,
+        "enableGlobal1": true,
+        "enableGlobal2": false,
+        "enabled": true,
+        "gemId": "Metadata/Items/Gems/SupportGemMultiTotem",
+        "level": 20,
+        "nameSpec": "Multiple Totems",
+        "quality": 0,
+        "qualityId": "Default",
+        "skillId": "SupportMultiTotem"
+       },
+       {
+        "count": 1,
+        "enableGlobal1": true,
+        "enableGlobal2": false,
+        "enabled": true,
+        "gemId": "Metadata/Items/Gems/SupportGemFasterAttack",
+        "level": 20,
+        "nameSpec": "Faster Attacks",
+        "quality": 0,
+        "qualityId": "Default",
+        "skillId": "SupportFasterAttack",
+        "skillPart": 1
+       },
+       {
+        "count": 1,
+        "enableGlobal1": true,
+        "enableGlobal2": false,
+        "enabled": true,
+        "gemId": "Metadata/Items/Gems/SupportGemCullingStrike",
+        "level": 20,
+        "nameSpec": "Culling Strike",
+        "quality": 0,
+        "qualityId": "Default",
+        "skillId": "SupportCullingStrike",
+        "skillPart": 1
+       }
+      ],
+      "includeInFullDPS": false,
+      "label": "",
+      "mainActiveSkill": 1,
+      "mainActiveSkillCalcs": 1,
+      "slot": "Body Armour"
+     },
+     {
+      "enabled": true,
+      "gems": [
+       {
+        "count": 1,
+        "enableGlobal1": true,
+        "enableGlobal2": false,
+        "enabled": true,
+        "gemId": "Metadata/Items/Gems/SkillGemNewPhaseRun",
+        "level": 20,
+        "nameSpec": "Phase Run",
+        "quality": 0,
+        "qualityId": "Default",
+        "skillId": "NewPhaseRun"
+       },
+       {
+        "count": 1,
+        "enableGlobal1": true,
+        "enableGlobal2": false,
+        "enabled": true,
+        "gemId": "Metadata/Items/Gems/SupportGemCastOnDamageTaken",
+        "level": 1,
+        "nameSpec": "Cast when Damage Taken",
+        "quality": 0,
+        "qualityId": "Default",
+        "skillId": "SupportCastOnDamageTaken"
+       },
+       {
+        "count": 1,
+        "enableGlobal1": true,
+        "enableGlobal2": false,
+        "enabled": true,
+        "gemId": "Metadata/Items/Gems/SupportGemIncreasedDuration",
+        "level": 20,
+        "nameSpec": "Increased Duration",
+        "quality": 0,
+        "qualityId": "Default",
+        "skillId": "SupportIncreasedDuration"
+       },
+       {
+        "count": 1,
+        "enableGlobal1": true,
+        "enableGlobal2": false,
+        "enabled": true,
+        "gemId": "Metadata/Items/Gems/SkillGemImmortalCall",
+        "level": 3,
+        "nameSpec": "Immortal Call",
+        "quality": 0,
+        "qualityId": "Default",
+        "skillId": "ImmortalCall"
+       }
+      ],
+      "includeInFullDPS": false,
+      "label": "",
+      "mainActiveSkill": 1,
+      "mainActiveSkillCalcs": 1,
+      "slot": "Boots"
+     },
+     {
+      "enabled": true,
+      "gems": [
+       {
+        "count": 1,
+        "enableGlobal1": true,
+        "enableGlobal2": false,
+        "enabled": true,
+        "gemId": "Metadata/Items/Gems/SkillGemVaalGrace",
+        "level": 20,
+        "nameSpec": "Vaal Grace",
+        "quality": 0,
+        "qualityId": "Default",
+        "skillId": "VaalGrace"
+       },
+       {
+        "count": 1,
+        "enableGlobal1": true,
+        "enableGlobal2": false,
+        "enabled": true,
+        "gemId": "Metadata/Items/Gems/SkillGemDamageOverTimeAura",
+        "level": 21,
+        "nameSpec": "Malevolence",
+        "quality": 0,
+        "qualityId": "Default",
+        "skillId": "DamageOverTimeAura",
+        "skillMinion": "Clone",
+        "skillMinionSkill": 1,
+        "skillMinionSkillCalcs": 1
+       },
+       {
+        "count": 1,
+        "enableGlobal1": true,
+        "enableGlobal2": false,
+        "enabled": true,
+        "gemId": "Metadata/Items/Gems/SkillGemClarity",
+        "level": 16,
+        "nameSpec": "Clarity",
+        "quality": 0,
+        "qualityId": "Default",
+        "skillId": "Clarity",
+        "skillMinion": "SkitterbotCold",
+        "skillPart": 1
+       },
+       {
+        "count": 1,
+        "enableGlobal1": true,
+        "enableGlobal2": false,
+        "enabled": true,
+        "gemId": "Metadata/Items/Gems/SkillGemSummonLightningGolem",
+        "level": 20,
+        "nameSpec": "Summon Lightning Golem",
+        "quality": 0,
+        "qualityId": "Default",
+        "skillId": "SummonLightningGolem",
+        "skillMinion": "SummonedLightningGolem",
+        "skillMinionSkill": 1,
+        "skillMinionSkillCalcs": 1
+       }
+      ],
+      "includeInFullDPS": false,
+      "label": "",
+      "mainActiveSkill": 1,
+      "mainActiveSkillCalcs": 1,
+      "slot": "Gloves"
+     },
+     {
+      "enabled": true,
+      "gems": [
+       {
+        "count": 1,
+        "enableGlobal1": true,
+        "enableGlobal2": false,
+        "enabled": true,
+        "gemId": "Metadata/Items/Gems/SkillGemDash",
+        "level": 20,
+        "nameSpec": "Dash",
+        "quality": 0,
+        "qualityId": "Default",
+        "skillId": "QuickDodge",
+        "skillPart": 1
+       },
+       {
+        "count": 1,
+        "enableGlobal1": true,
+        "enableGlobal2": false,
+        "enabled": true,
+        "gemId": "Metadata/Items/Gems/SupportGemSecondWind",
+        "level": 20,
+        "nameSpec": "Second Wind",
+        "quality": 0,
+        "qualityId": "Default",
+        "skillId": "SupportAdditionalCooldown"
+       }
+      ],
+      "includeInFullDPS": false,
+      "label": "",
+      "mainActiveSkill": 1,
+      "mainActiveSkillCalcs": 1,
+      "slot": "Helmet"
+     },
+     {
+      "enabled": true,
+      "gems": [
+       {
+        "count": 1,
+        "enableGlobal1": true,
+        "enableGlobal2": false,
+        "enabled": true,
+        "gemId": "Metadata/Items/Gems/SkillGemTemporalChains",
+        "level": 20,
+        "nameSpec": "Temporal Chains",
+        "quality": 0,
+        "qualityId": "Default",
+        "skillId": "TemporalChains"
+       }
+      ],
+      "includeInFullDPS": false,
+      "label": "",
+      "mainActiveSkill": 1,
+      "mainActiveSkillCalcs": 1,
+      "slot": "Ring 1"
+     },
+     {
+      "enabled": true,
+      "gems": [
+       {
+        "count": 1,
+        "enableGlobal1": true,
+        "enableGlobal2": false,
+        "enabled": true,
+        "gemId": "Metadata/Items/Gems/SkillGemPoachersMark",
+        "level": 12,
+        "nameSpec": "Poacher's Mark",
+        "quality": 0,
+        "qualityId": "Default",
+        "skillId": "PoachersMark"
+       }
+      ],
+      "includeInFullDPS": false,
+      "label": "",
+      "mainActiveSkill": 1,
+      "mainActiveSkillCalcs": 1,
+      "slot": "Ring 2",
+      "source": "Item:30:New Item, Amethyst Ring"
+     },
+     {
+      "enabled": true,
+      "gems": [
+       {
+        "count": 1,
+        "enableGlobal1": true,
+        "enableGlobal2": false,
+        "enabled": true,
+        "gemId": "Metadata/Items/Gems/RainOfSpores",
+        "level": 21,
+        "nameSpec": "Toxic Rain",
+        "quality": 0,
+        "qualityId": "Default",
+        "skillId": "RainOfSpores",
+        "skillMinion": "SummonedPhantasm"
+       },
+       {
+        "count": 1,
+        "enableGlobal1": true,
+        "enableGlobal2": false,
+        "enabled": true,
+        "gemId": "Metadata/Items/Gems/SupportGemMirageArcher",
+        "level": 20,
+        "nameSpec": "Mirage Archer",
+        "quality": 0,
+        "qualityId": "Default",
+        "skillId": "SupportGemMirageArcher"
+       },
+       {
+        "count": 1,
+        "enableGlobal1": true,
+        "enableGlobal2": false,
+        "enabled": true,
+        "gemId": "Metadata/Items/Gems/SupportGemAdditionalLevel",
+        "level": 4,
+        "nameSpec": "Empower",
+        "quality": 0,
+        "qualityId": "Default",
+        "skillId": "SupportAdditionalLevel"
+       },
+       {
+        "count": 1,
+        "enableGlobal1": true,
+        "enableGlobal2": false,
+        "enabled": true,
+        "gemId": "Metadata/Items/Gems/SupportGemViciousProjectilesPlus",
+        "level": 5,
+        "nameSpec": "Awakened Vicious Projectiles",
+        "quality": 20,
+        "qualityId": "Default",
+        "skillId": "SupportViciousProjectilesPlus"
+       },
+       {
+        "count": 1,
+        "enableGlobal1": true,
+        "enableGlobal2": false,
+        "enabled": true,
+        "gemId": "Metadata/Items/Gems/SupportGemVoidManipulationPlus",
+        "level": 5,
+        "nameSpec": "Awakened Void Manipulation",
+        "quality": 20,
+        "qualityId": "Default",
+        "skillId": "SupportVoidManipulationPlus"
+       },
+       {
+        "count": 1,
+        "enableGlobal1": true,
+        "enableGlobal2": false,
+        "enabled": true,
+        "gemId": "Metadata/Items/Gems/SupportGemMeleeDamageOnFullLife",
+        "level": 21,
+        "nameSpec": "Damage on Full Life",
+        "quality": 20,
+        "qualityId": "Default",
+        "skillId": "SupportMeleeDamageOnFullLife"
+       }
+      ],
+      "includeInFullDPS": false,
+      "label": "Mirage Archer",
+      "mainActiveSkill": 1,
+      "mainActiveSkillCalcs": 1,
+      "slot": "Weapon 1"
+     }
+    ],
+    "id": 1
+   }
+  ],
+  "showSupportGemTypes": "ALL",
+  "sortGemsByDPS": true,
+  "sortGemsByDPSField": "CombinedDPS"
+ },
+ "spectres": [],
+ "targetVersion": "3_0",
+ "tree": {
+  "activeSpec": 3,
+  "specs": [
+   {
+    "ascendClassId": 2,
+    "classId": 6,
+    "clusterHashFormatVersion": 1,
+    "jewels": {},
+    "masteryEffects": {},
+    "nodes": [
+     10829,
+     41689,
+     30110,
+     63908,
+     46896,
+     35296,
+     36221,
+     46289,
+     5823,
+     14292,
+     41119,
+     13714,
+     41891,
+     65167,
+     25260,
+     32091,
+     27788,
+     15073,
+     9877,
+     1767,
+     14914,
+     49900,
+     19144,
+     39861,
+     33989,
+     36287,
+     23616,
+     33545,
+     59220,
+     51220,
+     27276,
+     62831,
+     19858,
+     5129,
+     53013,
+     3656,
+     35283,
+     20807,
+     55867,
+     35894,
+     34763,
+     46408,
+     9206,
+     61653,
+     14804,
+     18769,
+     37191,
+     49978,
+     4973,
+     56744,
+     20812,
+     30338,
+     38190,
+     47362,
+     36858,
+     12401,
+     12412,
+     1822,
+     55485,
+     40362,
+     28658,
+     55236,
+     53213,
+     61834,
+     54307,
+     9469,
+     41989,
+     21835,
+     9864,
+     28330,
+     37663,
+     58968,
+     46578,
+     16167,
+     45272,
+     13885,
+     25058,
+     32555,
+     9355,
+     28754,
+     4502,
+     19320,
+     13219,
+     4011,
+     60735,
+     28884,
+     44103,
+     18707,
+     41518,
+     30455,
+     28574,
+     44683,
+     7112,
+     51786,
+     1461,
+     12794,
+     46277,
+     24496,
+     42583,
+     19939,
+     15542,
+     51212,
+     20546,
+     62021,
+     65034,
+     42907,
+     32947
+    ],
+    "overrides": [],
+    "secondaryAscendClassId": 0,
+    "treeVersion": "3_6",
+    "url": "\n\t\t\t\thttps://www.pathofexile.com/passive-skill-tree/AAAABAYCACpNotl1nvmktzCJ4I19tNEWvzfUoJ81kqOj_o9irH1bbIw64SaVBuc6QsLsSsibtYTFjb9cQIMJ51TIFGqM9W9NkhQJzxUOSInTUUfaO4w2h8u1SCP28NU51ElRkUfDOhNt3ahRTHaClS65Ao_6MHEwfAce2L2dqm_yz93xitQjJP2kBVVLJohuqpMf5li18j8nsNg2PWHifyski3BSEZZLeDOjD6vtP3DUrEdJE6IudvdvnhvIykoFtTH6tMVfsKZXTeM8tsgMUELyRf4Kp5uAsw==\n\t\t\t"
+   },
+   {
+    "ascendClassId": 2,
+    "classId": 2,
+    "clusterHashFormatVersion": 1,
+    "jewels": {},
+    "masteryEffects": {},
+    "nodes": [
+     7388,
+     32053,
+     40291,
+     5237,
+     2292,
+     23471,
+     21835,
+     55750,
+     13191,
+     46578,
+     46289,
+     10829,
+     63976,
+     27203,
+     41472,
+     49459,
+     16167,
+     41119,
+     13714,
+     24472,
+     42760,
+     19144,
+     32091,
+     45035,
+     28330,
+     12948,
+     10763,
+     54307,
+     49254,
+     7614,
+     30679,
+     59220,
+     9877,
+     21330,
+     22893,
+     46910,
+     15365,
+     11420,
+     47251,
+     39861,
+     1006,
+     17735,
+     56856,
+     6538,
+     21075,
+     19730,
+     35283,
+     20807,
+     30471,
+     61308,
+     16775,
+     8001,
+     1203,
+     15711,
+     6204,
+     55485,
+     28658,
+     53042,
+     8012,
+     32514,
+     25058,
+     48362,
+     14804,
+     39648,
+     31875,
+     24324,
+     32555,
+     40100,
+     49978,
+     33479,
+     48423,
+     42720,
+     4397,
+     34579,
+     12412,
+     17821,
+     38450,
+     38900,
+     38772,
+     38805,
+     59606,
+     38662,
+     27929,
+     61875,
+     8938,
+     51291,
+     49379,
+     40366,
+     20812,
+     5560,
+     65034,
+     59370,
+     885,
+     13009,
+     4011,
+     19287,
+     9355,
+     28754,
+     37690,
+     63795,
+     24496,
+     35894,
+     22266,
+     38149,
+     44103,
+     19711,
+     38995,
+     30455,
+     28574,
+     9469,
+     12794,
+     51786,
+     1461,
+     2151,
+     24050,
+     40927,
+     8566,
+     10490,
+     20010,
+     51212,
+     50041,
+     50459,
+     36287,
+     60398,
+     5823
+    ],
+    "overrides": [],
+    "secondaryAscendClassId": 0,
+    "treeVersion": "3_12",
+    "url": "\n\t\t\t\thttps://www.pathofexile.com/passive-skill-tree/AAAABAICABzcfTWdYxR1CPRbr1VL2cYzh7XytNEqTfnoakOiAMEzPyegnzWSX5inCErIfVuv626qMpQqC9QjwGYdvnfX51QmlVNSWW23PjwFLJy4k5u1A-5FRxmKUlNNEonTUUd3B-98QYcfQQSzPV8YPNi9b_LPMh9MfwJh4rzqOdSa4HyDXwR_K5ykwzqCx70npuARLYcTMHxFnZYyl_SXdJeV6NaXBm0Z8bMi6shbwOOdrlFMFbj-CufqA3Uy0Q-rS1cki3BSkzr5M1-wjDZW-pUFrEdM_5hTdvdvniT9MfrKSgW1CGdd8p_fIXYo-k4qyAzDeY2_6-4Wvw==\n\t\t\t"
+   },
+   {
+    "ascendClassId": 2,
+    "classId": 2,
+    "clusterHashFormatVersion": 1,
+    "jewels": {
+     "3109": 28,
+     "6910": 26,
+     "9797": 6,
+     "13170": 26,
+     "18436": 6,
+     "21984": 27,
+     "22748": 6,
+     "22994": 26,
+     "32763": 25,
+     "33753": 26,
+     "34483": 6,
+     "46393": 26,
+     "46882": 27,
+     "59585": 6,
+     "61305": 28,
+     "64583": 26
+    },
+    "masteryEffects": {},
+    "nodes": [
+     65875,
+     10829,
+     64583,
+     16775,
+     46896,
+     21984,
+     46289,
+     63976,
+     11497,
+     65829,
+     53086,
+     24472,
+     30338,
+     24848,
+     1729,
+     29089,
+     15073,
+     41866,
+     22618,
+     7614,
+     1006,
+     56856,
+     22748,
+     65830,
+     4973,
+     8001,
+     3656,
+     20807,
+     46408,
+     9206,
+     60440,
+     930,
+     5129,
+     23912,
+     59606,
+     2094,
+     9786,
+     32710,
+     33753,
+     59837,
+     4573,
+     23334,
+     65808,
+     66832,
+     59585,
+     13170,
+     65824,
+     54142,
+     51881,
+     65894,
+     24050,
+     42583,
+     19939,
+     62021,
+     9535,
+     22266,
+     65817,
+     66841,
+     34483,
+     36221,
+     61306,
+     5823,
+     18436,
+     65895,
+     13714,
+     65167,
+     94,
+     2185,
+     28330,
+     65872,
+     49605,
+     28012,
+     2872,
+     32763,
+     39665,
+     9797,
+     46910,
+     3309,
+     19144,
+     33479,
+     65888,
+     65826,
+     36687,
+     19858,
+     60942,
+     55485,
+     9864,
+     53042,
+     46344,
+     65811,
+     50459,
+     66835,
+     65881,
+     5408,
+     66905,
+     22852,
+     21033,
+     65034,
+     39821,
+     66899,
+     65834,
+     13885,
+     22893,
+     6910,
+     66896,
+     46578,
+     4502,
+     8012,
+     54307,
+     60803,
+     6250,
+     7112,
+     14674,
+     12412,
+     38995,
+     6542,
+     65890,
+     16167,
+     59252,
+     39938,
+     1461,
+     54868,
+     5443,
+     22535,
+     65898,
+     6797,
+     36287,
+     51212,
+     238,
+     23169,
+     13191,
+     38149,
+     63139
+    ],
+    "overrides": [],
+    "secondaryAscendClassId": 0,
+    "treeVersion": "3_13",
+    "url": "\n\t\t\t\thttps://www.pathofexile.com/passive-skill-tree/AAAABAICACpN_EdBh7cwVeC00fnoLOnPXl-YdoJhEAbBcaE64aOKWFodvgPuWNwTbR9BDkhRR7VII_bsGAOiFAldaOjWCC4mOn_Gg9npvRHdWybowTNy037KqV3ypldN4_JFJT9W-oazjX3veha_SAQ1kv6PAF4IiW6qwcVtbAs4f_ua8SZFtz4M7UrIgsePT02S7g7YvSaIzzK1CBUgWURSKf4Km402PVltGv618hGWH0zUI-2DGGobyDlSMHyYUxmOPyfndJwCBbXWVBVDWAcajY2_yAwA7lqBM4eVBfaj\n\t\t\t"
+   }
+  ]
+ },
+ "unknownSections": [
+  "Import",
+  "Notes",
+  "TreeView"
+ ],
+ "viewMode": "TREE"
+}

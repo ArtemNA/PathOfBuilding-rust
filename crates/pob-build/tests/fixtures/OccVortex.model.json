@@ -1,0 +1,1027 @@
+{
+ "activeItemSet": 1,
+ "ascendClassName": "Occultist",
+ "bandit": "None",
+ "calcsInput": {
+  "misc_buffMode": "EFFECTIVE",
+  "skill_number": 5
+ },
+ "characterLevelAutoMode": false,
+ "className": "Witch",
+ "config": {
+  "activeConfigSet": 1,
+  "sets": [
+   {
+    "customModsList": [
+     {
+      "enabled": true,
+      "text": "",
+      "title": "Default"
+     }
+    ],
+    "id": 1,
+    "input": {
+     "EEIgnoreHitDamage": true,
+     "brandAttachedToEnemy": true,
+     "buffFortification": true,
+     "conditionCritRecently": true,
+     "conditionEnemyBleeding": true,
+     "conditionEnemyChilled": true,
+     "conditionEnemyIgnited": true,
+     "enemyConditionHitByLightningDamage": true,
+     "enemyIsBoss": "Pinnacle",
+     "useEnduranceCharges": true
+    },
+    "placeholder": {},
+    "title": "Default"
+   }
+  ]
+ },
+ "itemOrder": [
+  1,
+  2,
+  3,
+  4,
+  5,
+  6,
+  7,
+  9,
+  10,
+  11,
+  12,
+  13,
+  14,
+  15,
+  16,
+  17,
+  18,
+  19
+ ],
+ "itemSets": [
+  {
+   "id": 1,
+   "slots": {
+    "Amulet": {
+     "active": false,
+     "itemId": 2,
+     "pbURL": ""
+    },
+    "Belt": {
+     "active": false,
+     "itemId": 4,
+     "pbURL": ""
+    },
+    "Belt Abyssal Socket 1": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Belt Abyssal Socket 2": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Belt Abyssal Socket 3": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Belt Abyssal Socket 4": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Belt Abyssal Socket 5": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Belt Abyssal Socket 6": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Body Armour": {
+     "active": false,
+     "itemId": 10,
+     "pbURL": ""
+    },
+    "Body Armour Abyssal Socket 1": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Body Armour Abyssal Socket 2": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Body Armour Abyssal Socket 3": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Body Armour Abyssal Socket 4": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Body Armour Abyssal Socket 5": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Body Armour Abyssal Socket 6": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Boots": {
+     "active": false,
+     "itemId": 9,
+     "pbURL": ""
+    },
+    "Boots Abyssal Socket 1": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Boots Abyssal Socket 2": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Boots Abyssal Socket 3": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Boots Abyssal Socket 4": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Boots Abyssal Socket 5": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Boots Abyssal Socket 6": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Flask 1": {
+     "active": true,
+     "itemId": 15,
+     "pbURL": ""
+    },
+    "Flask 2": {
+     "active": true,
+     "itemId": 13,
+     "pbURL": ""
+    },
+    "Flask 3": {
+     "active": true,
+     "itemId": 14,
+     "pbURL": ""
+    },
+    "Flask 4": {
+     "active": true,
+     "itemId": 12,
+     "pbURL": ""
+    },
+    "Flask 5": {
+     "active": true,
+     "itemId": 16,
+     "pbURL": ""
+    },
+    "Gloves": {
+     "active": false,
+     "itemId": 7,
+     "pbURL": ""
+    },
+    "Gloves Abyssal Socket 1": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Gloves Abyssal Socket 2": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Gloves Abyssal Socket 3": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Gloves Abyssal Socket 4": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Gloves Abyssal Socket 5": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Gloves Abyssal Socket 6": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Helmet": {
+     "active": false,
+     "itemId": 11,
+     "pbURL": ""
+    },
+    "Helmet Abyssal Socket 1": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Helmet Abyssal Socket 2": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Helmet Abyssal Socket 3": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Helmet Abyssal Socket 4": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Helmet Abyssal Socket 5": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Helmet Abyssal Socket 6": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Ring 1": {
+     "active": false,
+     "itemId": 5,
+     "pbURL": ""
+    },
+    "Ring 2": {
+     "active": false,
+     "itemId": 6,
+     "pbURL": ""
+    },
+    "Weapon 1": {
+     "active": false,
+     "itemId": 3,
+     "pbURL": ""
+    },
+    "Weapon 1 Abyssal Socket 1": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Weapon 1 Abyssal Socket 2": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Weapon 1 Abyssal Socket 3": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Weapon 1 Abyssal Socket 4": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Weapon 1 Abyssal Socket 5": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Weapon 1 Abyssal Socket 6": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Weapon 1 Swap": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Weapon 1Swap Abyssal Socket 1": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Weapon 1Swap Abyssal Socket 2": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Weapon 1Swap Abyssal Socket 3": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Weapon 1Swap Abyssal Socket 4": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Weapon 1Swap Abyssal Socket 5": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Weapon 1Swap Abyssal Socket 6": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Weapon 2": {
+     "active": false,
+     "itemId": 1,
+     "pbURL": ""
+    },
+    "Weapon 2 Abyssal Socket 1": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Weapon 2 Abyssal Socket 2": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Weapon 2 Abyssal Socket 3": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Weapon 2 Abyssal Socket 4": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Weapon 2 Abyssal Socket 5": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Weapon 2 Abyssal Socket 6": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Weapon 2 Swap": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Weapon 2Swap Abyssal Socket 1": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Weapon 2Swap Abyssal Socket 2": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Weapon 2Swap Abyssal Socket 3": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Weapon 2Swap Abyssal Socket 4": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Weapon 2Swap Abyssal Socket 5": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Weapon 2Swap Abyssal Socket 6": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    }
+   },
+   "socketIdURLs": {},
+   "useSecondWeaponSet": false
+  }
+ ],
+ "items": [
+  {
+   "id": 1,
+   "modRanges": [],
+   "raw": "\n\t\t\tRarity: RARE\nLoath Sanctuary\nVaal Spirit Shield\nUnique ID: fc24691eb70b5a54708e71b8142ebbbc86143ec938445222927b525295777c27\nItem Level: 83\nQuality: 0\nSockets: B-B-B\nLevelReq: 70\nImplicits: 1\n9% increased Spell Damage\n+54 to Intelligence\n30% increased Energy Shield\n+87 to maximum Life\n+1 to Level of all Cold Spell Skill Gems\n+11% to all Elemental Resistances\n+43% to Cold Resistance\nCorrupted\n\t\t"
+  },
+  {
+   "id": 2,
+   "modRanges": [],
+   "raw": "\n\t\t\tRarity: RARE\nApocalypse Noose\nCitrine Amulet\nUnique ID: f6eb3e5726a37508693267904e020215c25f9267e1fe4df45f2455e2220808c9\nItem Level: 83\nLevelReq: 59\nImplicits: 2\n{crafted}Allocates Prodigal Perfection\n+16 to Strength and Dexterity\n+43 to Strength\n+44 to maximum Energy Shield\n+9% to all Elemental Resistances\n+11% to Fire Resistance\n{crafted}+46 to maximum Life\n\t\t"
+  },
+  {
+   "id": 3,
+   "modRanges": [],
+   "raw": "\n\t\t\tRarity: RARE\nMaelstrom Cry\nImbued Wand\nUnique ID: ced098a69068af80586640953702e39c51e8ab027e80b7b3a9097b446b93cc06\nItem Level: 71\nQuality: 0\nSockets: B-B-B\nLevelReq: 70\nImplicits: 1\n37% increased Spell Damage\n+9% to Damage over Time Multiplier\nAdds 8 to 12 Fire Damage to Spells\n5% increased Cast Speed\n+1 to Level of all Cold Spell Skill Gems\n+6 Life gained on Kill\n{crafted}+19% to Cold Damage over Time Multiplier\n\t\t"
+  },
+  {
+   "id": 4,
+   "modRanges": [],
+   "raw": "\n\t\t\tRarity: RARE\nKraken Snare\nStudded Belt\nUnique ID: 2165cbcab4ec4a110e9cbec3c6d71e96767fdc39acf5849465e0623b95fb4032\nItem Level: 75\nLevelReq: 64\nImplicits: 1\n23% increased Stun Duration on Enemies\n+317 to Armour\n+46 to maximum Energy Shield\n+92 to maximum Life\n+29% to Chaos Resistance\n{crafted}+14% to Lightning and Chaos Resistances\n\t\t"
+  },
+  {
+   "id": 5,
+   "modRanges": [],
+   "raw": "\n\t\t\tRarity: RARE\nHate Band\nPaua Ring\nUnique ID: 46e05e600e119a447a18a720e9e49cf1132316c9125b7ad434971194b11d7182\nItem Level: 72\nLevelReq: 64\nImplicits: 1\n+29 to maximum Mana\n+14 to all Attributes\n+68 to Evasion Rating\n+31 to maximum Energy Shield\n+78 to maximum Life\n+41% to Lightning Resistance\n{crafted}+13% to Fire and Chaos Resistances\n\t\t"
+  },
+  {
+   "id": 6,
+   "modRanges": [],
+   "raw": "\n\t\t\tRarity: RARE\nGloom Hold\nCoral Ring\nUnique ID: efc86ac7b5df717bfdbaea47dd45f77c40526efae46a3900b62c776bb4d6e160\nItem Level: 63\nLevelReq: 64\nImplicits: 1\n+30 to maximum Life\n+7 to maximum Energy Shield\n+78 to maximum Life\nRegenerate 13.4 Life per second\n+23 to maximum Mana\n+23% to Cold Resistance\n{crafted}+15% to Fire and Chaos Resistances\n\t\t"
+  },
+  {
+   "id": 7,
+   "modRanges": [],
+   "raw": "\n\t\t\tRarity: RARE\nWoe Caress\nFingerless Silk Gloves\nUnique ID: 281a01ce242357b1e05cc57bfbee1cbb543a49f582b2aa4b4b432efcb4506270\nItem Level: 78\nQuality: 0\nSockets: R-G-B-B\nLevelReq: 70\nImplicits: 1\n16% increased Spell Damage\nAdds 1 to 23 Lightning Damage to Attacks\n+92 to maximum Life\n+24% to Fire Resistance\n+2 Life gained for each Enemy hit by your Attacks\n{crafted}+15% to Fire and Chaos Resistances\n\t\t"
+  },
+  {
+   "id": 9,
+   "modRanges": [],
+   "raw": "\n\t\t\tRarity: RARE\nInvasion Road\nHydrascale Boots\nUnique ID: 7fca9e5aeb030c8de363c489795235118fa08ffd60e0b0805509be8864893d09\nItem Level: 80\nQuality: 20\nSockets: G-R-R-G\nLevelReq: 70\nImplicits: 0\n+11 to Dexterity\n47% increased Armour and Evasion\n+88 to maximum Life\n+27% to Chaos Resistance\n30% increased Movement Speed\n{crafted}+15% to Fire and Chaos Resistances\n\t\t"
+  },
+  {
+   "id": 10,
+   "modRanges": [],
+   "raw": "\n\t\t\tRarity: RARE\nGale Ward\nQuilted Jacket\nUnique ID: dafc394c025c87f7df806c8c92c938c8125b923c3db138e39f82e8503e932a50\nItem Level: 61\nQuality: 20\nSockets: G-B-G-B-B-B\nLevelReq: 72\nImplicits: 0\n32% reduced Attribute Requirements\n+124 to maximum Life\n+58 to maximum Mana\n+33% to Cold Resistance\n+40% to Lightning Resistance\nReflects 10 Physical Damage to Melee Attackers\n\t\t"
+  },
+  {
+   "id": 11,
+   "modRanges": [],
+   "raw": "\n\t\t\tRarity: UNIQUE\nHeretic's Veil\nDeicide Mask\nUnique ID: 9441019ae9c688a0c2be333c1c14d036ee380552ff7b1aa9302da663729aa481\nItem Level: 70\nQuality: 20\nSockets: R-B-G-B\nLevelReq: 67\nImplicits: 1\n{crafted}24% increased Earthquake Area of Effect\n+1 to Level of Socketed Curse Gems\nSocketed Gems are Supported by Level 22 Blasphemy\nSocketed Curse Gems have 12% reduced Mana Reservation\n110% increased Evasion and Energy Shield\n+44 to maximum Energy Shield\n\t\t"
+  },
+  {
+   "id": 12,
+   "modRanges": [],
+   "raw": "\n\t\t\tRarity: MAGIC\nPerpetual Quicksilver Flask of Staunching\nUnique ID: eaed046cc0971c1090c2146e62ef5b9443b8cbab6b7adceaf0a5e6d5dea722c7\nItem Level: 3\nQuality: 0\nLevelReq: 6\nImplicits: 0\n31% increased Charge Recovery\nImmunity to Bleeding during Flask effect\nRemoves Bleeding on use\n\t\t"
+  },
+  {
+   "id": 13,
+   "modRanges": [],
+   "raw": "\n\t\t\tRarity: MAGIC\nChemist's Granite Flask of Heat\nUnique ID: 9267e88908433221dd05de9fcc775d17d157db91cd8333aa36bca2cd2d7bdaa5\nItem Level: 54\nQuality: 20\nLevelReq: 27\nImplicits: 0\n21% reduced Charges used\nImmunity to Freeze and Chill during Flask effect\nRemoves Freeze and Chill on use\n\t\t"
+  },
+  {
+   "id": 14,
+   "modRanges": [],
+   "raw": "\n\t\t\tRarity: MAGIC\nPerpetual Silver Flask of Curing\nUnique ID: d5deeb09581ef0ce0d16f4a50014148dde90a9290c5de94d113bfcb3133f7293\nItem Level: 31\nQuality: 0\nLevelReq: 22\nImplicits: 0\n25% increased Charge Recovery\nImmune to Poison during Flask Effect\nRemoves Poison on use\n\t\t"
+  },
+  {
+   "id": 15,
+   "modRanges": [],
+   "raw": "\n\t\t\tRarity: MAGIC\nBubbling Eternal Life Flask of Acceleration\nUnique ID: 2d887378e1162109008ca16d742df9828074f9901adfd8ccd69503c1aa36d391\nItem Level: 65\nQuality: 0\nLevelReq: 65\nImplicits: 0\n50% reduced Amount Recovered\n135% increased Recovery rate\n50% of Recovery applied Instantly\n11% increased Attack Speed during Flask effect\n\t\t"
+  },
+  {
+   "id": 16,
+   "modRanges": [],
+   "raw": "\n\t\t\tRarity: MAGIC\nEnduring Divine Mana Flask of Warding\nUnique ID: 02765758e562eb2fad64ec7f02e23d8a2d911bed4a7c72d38e17ec0cc8b20253\nItem Level: 73\nQuality: 20\nLevelReq: 60\nImplicits: 0\n30% reduced Amount Recovered\nImmune to Curses during Flask effect\nRemoves Curses on use\n30% reduced Duration\nFlask Effect is not removed at Full Mana\nFlask Effect does not Queue\n\t\t"
+  },
+  {
+   "id": 17,
+   "modRanges": [],
+   "raw": "\n\t\t\tRarity: RARE\nCataclysm Stone\nCobalt Jewel\nUnique ID: 949f96690b56595beceb512b5d9977d4fffd742690bc631defc0187caa6d8640\nItem Level: 72\nImplicits: 0\n+4% to Cold Damage over Time Multiplier\n7% increased maximum Life\n3% reduced Mana Cost of Skills\n\t\t"
+  },
+  {
+   "id": 18,
+   "modRanges": [],
+   "raw": "\n\t\t\tRarity: RARE\nPandemonium Joy\nViridian Jewel\nUnique ID: 8ff6536191b464f5299f5cb13f9dd5c072df47205015bd9970562bfbd2a6ec00\nItem Level: 71\nImplicits: 1\n1% of Damage taken Recouped as Mana\n+3% to Cold Damage over Time Multiplier\n6% increased maximum Life\n13% increased Mana Regeneration Rate\n+10% to all Elemental Resistances\n\t\t"
+  },
+  {
+   "id": 19,
+   "modRanges": [],
+   "raw": "\n\t\t\tRarity: RARE\nHonour Vessel\nCobalt Jewel\nUnique ID: effce7692e503b9cb919ee1cc722ce729e5a4ef09b6c309c8722b736f9cc7b1a\nItem Level: 68\nImplicits: 0\n+4% to Cold Damage over Time Multiplier\n5% increased Cast Speed with Lightning Skills\n5% increased maximum Life\n\t\t"
+  }
+ ],
+ "level": 99,
+ "mainSocketGroup": 5,
+ "pantheonMajorGod": "None",
+ "pantheonMinorGod": "None",
+ "skills": {
+  "activeSkillSet": 1,
+  "defaultGemLevel": "normalMaximum",
+  "defaultGemQuality": 0,
+  "sets": [
+   {
+    "groups": [
+     {
+      "enabled": true,
+      "gems": [
+       {
+        "count": 1,
+        "enableGlobal1": true,
+        "enableGlobal2": true,
+        "enabled": true,
+        "gemId": "Metadata/Items/Gems/SkillGemFlameDash",
+        "level": 20,
+        "nameSpec": "Flame Dash",
+        "quality": 20,
+        "qualityId": "Default",
+        "skillId": "FlameDash"
+       },
+       {
+        "count": 1,
+        "enableGlobal1": true,
+        "enableGlobal2": true,
+        "enabled": true,
+        "gemId": "Metadata/Items/Gems/SupportGemIncreasedAreaOfEffect",
+        "level": 20,
+        "nameSpec": "Increased Area of Effect",
+        "quality": 20,
+        "qualityId": "Default",
+        "skillId": "SupportIncreasedAreaOfEffect"
+       },
+       {
+        "count": 1,
+        "enableGlobal1": true,
+        "enableGlobal2": true,
+        "enabled": true,
+        "gemId": "Metadata/Items/Gems/SkillGemClarity",
+        "level": 5,
+        "nameSpec": "Clarity",
+        "quality": 0,
+        "qualityId": "Default",
+        "skillId": "Clarity"
+       }
+      ],
+      "includeInFullDPS": false,
+      "mainActiveSkill": 1,
+      "mainActiveSkillCalcs": 1,
+      "slot": "Weapon 2"
+     },
+     {
+      "enabled": true,
+      "gems": [
+       {
+        "count": 1,
+        "enableGlobal1": true,
+        "enableGlobal2": true,
+        "enabled": true,
+        "gemId": "Metadata/Items/Gems/SkillGemStormBrand",
+        "level": 20,
+        "nameSpec": "Storm Brand",
+        "quality": 0,
+        "qualityId": "Default",
+        "skillId": "ConduitSigil"
+       },
+       {
+        "count": 1,
+        "enableGlobal1": true,
+        "enableGlobal2": true,
+        "enabled": true,
+        "gemId": "Metadata/Items/Gems/SupportGemIncreasedCriticalStrikes",
+        "level": 20,
+        "nameSpec": "Increased Critical Strikes",
+        "quality": 0,
+        "qualityId": "Default",
+        "skillId": "SupportIncreasedCriticalStrikes"
+       },
+       {
+        "count": 1,
+        "enableGlobal1": true,
+        "enableGlobal2": true,
+        "enabled": true,
+        "gemId": "Metadata/Items/Gems/SkillGemColdSnap",
+        "level": 20,
+        "nameSpec": "Cold Snap",
+        "quality": 0,
+        "qualityId": "Default",
+        "skillId": "ColdSnap"
+       }
+      ],
+      "includeInFullDPS": false,
+      "mainActiveSkill": 1,
+      "mainActiveSkillCalcs": 1,
+      "slot": "Weapon 1"
+     },
+     {
+      "enabled": true,
+      "gems": [
+       {
+        "count": 1,
+        "enableGlobal1": true,
+        "enableGlobal2": true,
+        "enabled": true,
+        "gemId": "Metadata/Items/Gems/SkillGemEnduringCry",
+        "level": 20,
+        "nameSpec": "Enduring Cry",
+        "quality": 20,
+        "qualityId": "Default",
+        "skillId": "EnduringCry"
+       },
+       {
+        "count": 1,
+        "enableGlobal1": true,
+        "enableGlobal2": true,
+        "enabled": true,
+        "gemId": "Metadata/Items/Gems/SupportGemSecondWind",
+        "level": 20,
+        "nameSpec": "Second Wind",
+        "quality": 0,
+        "qualityId": "Default",
+        "skillId": "SupportAdditionalCooldown"
+       },
+       {
+        "count": 1,
+        "enableGlobal1": true,
+        "enableGlobal2": true,
+        "enabled": true,
+        "gemId": "Metadata/Items/Gems/SkillGemFrostBomb",
+        "level": 20,
+        "nameSpec": "Frost Bomb",
+        "quality": 20,
+        "qualityId": "Default",
+        "skillId": "FrostBomb"
+       },
+       {
+        "count": 1,
+        "enableGlobal1": true,
+        "enableGlobal2": true,
+        "enabled": true,
+        "gemId": "Metadata/Items/Gems/SupportGemArcaneSurge",
+        "level": 2,
+        "nameSpec": "Arcane Surge",
+        "quality": 20,
+        "qualityId": "Default",
+        "skillId": "SupportArcaneSurge"
+       }
+      ],
+      "includeInFullDPS": false,
+      "mainActiveSkill": 1,
+      "mainActiveSkillCalcs": 1,
+      "slot": "Gloves"
+     },
+     {
+      "enabled": true,
+      "gems": [
+       {
+        "count": 1,
+        "enableGlobal1": true,
+        "enableGlobal2": true,
+        "enabled": true,
+        "gemId": "Metadata/Items/Gems/SkillGemShieldCharge",
+        "level": 20,
+        "nameSpec": "Shield Charge",
+        "quality": 0,
+        "qualityId": "Default",
+        "skillId": "NewShieldCharge"
+       },
+       {
+        "count": 1,
+        "enableGlobal1": true,
+        "enableGlobal2": true,
+        "enabled": true,
+        "gemId": "Metadata/Items/Gems/SupportGemFortify",
+        "level": 20,
+        "nameSpec": "Fortify",
+        "quality": 0,
+        "qualityId": "Default",
+        "skillId": "SupportFortify"
+       },
+       {
+        "count": 1,
+        "enableGlobal1": true,
+        "enableGlobal2": true,
+        "enabled": true,
+        "gemId": "Metadata/Items/Gems/SupportGemFasterAttack",
+        "level": 20,
+        "nameSpec": "Faster Attacks",
+        "quality": 0,
+        "qualityId": "Default",
+        "skillId": "SupportFasterAttack"
+       }
+      ],
+      "includeInFullDPS": false,
+      "mainActiveSkill": 1,
+      "mainActiveSkillCalcs": 1,
+      "slot": "Boots"
+     },
+     {
+      "enabled": true,
+      "gems": [
+       {
+        "count": 1,
+        "enableGlobal1": true,
+        "enableGlobal2": true,
+        "enabled": true,
+        "gemId": "Metadata/Items/Gems/SupportGemDamageAgainstChilled",
+        "level": 20,
+        "nameSpec": "Hypothermia",
+        "quality": 10,
+        "qualityId": "Default",
+        "skillId": "SupportDamageAgainstChilled"
+       },
+       {
+        "count": 1,
+        "enableGlobal1": true,
+        "enableGlobal2": true,
+        "enabled": true,
+        "gemId": "Metadata/Items/Gems/SupportGemControlledDestruction",
+        "level": 20,
+        "nameSpec": "Controlled Destruction",
+        "quality": 20,
+        "qualityId": "Default",
+        "skillId": "SupportControlledDestruction"
+       },
+       {
+        "count": 1,
+        "enableGlobal1": true,
+        "enableGlobal2": true,
+        "enabled": true,
+        "gemId": "Metadata/Items/Gems/SupportGemRapidDecay",
+        "level": 20,
+        "nameSpec": "Swift Affliction",
+        "quality": 0,
+        "qualityId": "Default",
+        "skillId": "SupportRapidDecay"
+       },
+       {
+        "count": 1,
+        "enableGlobal1": true,
+        "enableGlobal2": true,
+        "enabled": true,
+        "gemId": "Metadata/Items/Gems/SupportGemEfficacy",
+        "level": 20,
+        "nameSpec": "Efficacy",
+        "quality": 20,
+        "qualityId": "Default",
+        "skillId": "SupportEfficacy"
+       },
+       {
+        "count": 1,
+        "enableGlobal1": true,
+        "enableGlobal2": true,
+        "enabled": true,
+        "gemId": "Metadata/Items/Gems/SupportGemConcentratedEffect",
+        "level": 21,
+        "nameSpec": "Concentrated Effect",
+        "quality": 0,
+        "qualityId": "Default",
+        "skillId": "SupportConcentratedEffect"
+       },
+       {
+        "count": 1,
+        "enableGlobal1": true,
+        "enableGlobal2": true,
+        "enabled": true,
+        "gemId": "Metadata/Items/Gems/SkillGemFrostBoltNova",
+        "level": 21,
+        "nameSpec": "Vortex",
+        "quality": 0,
+        "qualityId": "Default",
+        "skillId": "FrostBoltNova"
+       }
+      ],
+      "includeInFullDPS": false,
+      "mainActiveSkill": 1,
+      "mainActiveSkillCalcs": 1,
+      "slot": "Body Armour"
+     },
+     {
+      "enabled": true,
+      "gems": [
+       {
+        "count": 1,
+        "enableGlobal1": true,
+        "enableGlobal2": true,
+        "enabled": true,
+        "gemId": "Metadata/Items/Gems/SkillGemFleshAndStone",
+        "level": 20,
+        "nameSpec": "Flesh and Stone",
+        "quality": 0,
+        "qualityId": "Default",
+        "skillId": "BloodSandArmour"
+       },
+       {
+        "count": 1,
+        "enableGlobal1": true,
+        "enableGlobal2": true,
+        "enabled": true,
+        "gemId": "Metadata/Items/Gems/SupportGemAdditionalXP",
+        "level": 3,
+        "nameSpec": "Enlighten",
+        "quality": 20,
+        "qualityId": "Default",
+        "skillId": "SupportAdditionalXP"
+       },
+       {
+        "count": 1,
+        "enableGlobal1": true,
+        "enableGlobal2": true,
+        "enabled": true,
+        "gemId": "Metadata/Items/Gems/SkillGemTemporalChains",
+        "level": 20,
+        "nameSpec": "Temporal Chains",
+        "quality": 0,
+        "qualityId": "Default",
+        "skillId": "TemporalChains"
+       },
+       {
+        "count": 1,
+        "enableGlobal1": true,
+        "enableGlobal2": true,
+        "enabled": true,
+        "gemId": "Metadata/Items/Gems/SkillGemEnfeeble",
+        "level": 20,
+        "nameSpec": "Enfeeble",
+        "quality": 0,
+        "qualityId": "Default",
+        "skillId": "Enfeeble"
+       }
+      ],
+      "includeInFullDPS": false,
+      "mainActiveSkill": 1,
+      "mainActiveSkillCalcs": 1,
+      "slot": "Helmet"
+     }
+    ],
+    "id": 1
+   }
+  ],
+  "showSupportGemTypes": "ALL",
+  "sortGemsByDPS": true,
+  "sortGemsByDPSField": "CombinedDPS"
+ },
+ "spectres": [],
+ "targetVersion": "3_0",
+ "tree": {
+  "activeSpec": 1,
+  "specs": [
+   {
+    "ascendClassId": 1,
+    "classId": 3,
+    "clusterHashFormatVersion": 1,
+    "jewels": {
+     "36634": 17,
+     "41263": 19,
+     "61419": 18
+    },
+    "masteryEffects": {},
+    "nodes": [
+     7388,
+     4184,
+     40644,
+     2292,
+     46896,
+     44955,
+     48362,
+     61308,
+     32345,
+     30338,
+     49254,
+     39085,
+     15073,
+     36774,
+     8948,
+     47251,
+     61320,
+     21575,
+     61419,
+     41263,
+     4973,
+     8001,
+     1203,
+     15711,
+     21835,
+     35894,
+     58198,
+     46408,
+     18769,
+     37127,
+     17018,
+     55247,
+     38190,
+     5129,
+     48778,
+     17821,
+     32710,
+     38900,
+     6712,
+     33435,
+     1031,
+     41989,
+     3452,
+     47630,
+     4397,
+     13009,
+     11162,
+     25058,
+     15365,
+     21170,
+     24050,
+     21075,
+     42583,
+     19939,
+     18378,
+     33296,
+     60398,
+     37671,
+     17579,
+     42686,
+     8833,
+     27203,
+     41472,
+     13714,
+     61653,
+     27659,
+     1767,
+     46910,
+     19501,
+     11420,
+     12536,
+     33479,
+     61471,
+     54694,
+     53732,
+     31875,
+     22088,
+     9864,
+     19635,
+     18865,
+     26866,
+     36858,
+     36412,
+     1822,
+     36634,
+     42760,
+     38805,
+     53456,
+     21958,
+     33755,
+     62021,
+     36226,
+     44799,
+     15064,
+     43242,
+     10490,
+     56186,
+     3656,
+     4367,
+     14936,
+     22090,
+     44184,
+     65167,
+     5972,
+     65034,
+     4502,
+     63976,
+     36949,
+     63799,
+     27096,
+     27929,
+     31984,
+     57264,
+     38995,
+     21330,
+     53279,
+     54447,
+     55332,
+     21934,
+     39648,
+     21460,
+     17735,
+     40705,
+     10031,
+     22473,
+     32417,
+     51212,
+     16775,
+     40609,
+     9877,
+     31344,
+     55485
+    ],
+    "overrides": [],
+    "secondaryAscendClassId": 0,
+    "treeVersion": "3_13",
+    "url": "\n\t\t\t\thttps://www.pathofexile.com/passive-skill-tree/AAAABAMBABzcEFiexAj0tzCvm7zq73x-WXaCwGaYrTrhj6Yi9LiT74hUR-_roS8TbR9BBLM9X1VLjDbjVrVISVGRB0J618-VLhQJvopFnX_Gl_QaOIKbBAekBQ18ug4RLTLRK5ph4jwFUrJd8lJTpldN44IQ6-6TJ0Srpr4igWpDogA1kvDVbAsG57c-TC0snDD4gsfwH9Wm0eR8g1ZIJohMs0mxaPKP-o48Bx6PGqcIl5XQ0FXGg9vyRY2Crv862KjqKPrbeg5IEQ86WFZKrJj-jxdU_goRlvnokFX5N2nYbRl88N-wmFNTUtAf2CRVrprgU9RFR58BJy9XyX6hyAxBh56hJpV6cNi9\n\t\t\t"
+   }
+  ]
+ },
+ "unknownSections": [
+  "Import",
+  "Notes",
+  "TreeView"
+ ],
+ "viewMode": "CALCS"
+}

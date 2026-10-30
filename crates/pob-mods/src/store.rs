@@ -13,7 +13,7 @@ use pob_lua::number::{max2, min2, modf, round, tobit};
 
 use crate::data;
 use crate::matching::{Query, compare_mod_params, mod_high_precision, mod_matches};
-use crate::types::{Actor, ActorRef, Mod, ModCfg, ModType};
+use crate::types::{ActorLink, ActorRef, Mod, ModCfg, ModType};
 use crate::value::{LuaError, LuaResult, Str, Table, Value, arith, check_num, err_bad_arg, err_compare, err_op};
 
 pub type StoreRef = Rc<RefCell<ModStore>>;
@@ -50,8 +50,9 @@ pub enum StoreKind {
 pub struct ModStore {
     /// Lua keeps `parent or false`; `None` is the same test (L12).
     pub parent: Option<StoreRef>,
-    /// ModStore.lua:42: with a parent this IS the parent's actor table, shared.
-    pub actor: ActorRef,
+    /// ModStore.lua:42: with a parent this IS the parent's actor table, shared. Weak (R3-ARCH §2.2): read it with
+    /// `actor()`, relink it with `set_actor`.
+    actor: ActorLink,
     pub multipliers: IndexMap<Str, f64>,
     pub conditions: IndexMap<Str, bool>,
     pub kind: StoreKind,
@@ -111,9 +112,7 @@ fn lua_lt(a: &Value, b: &Value, site: &str) -> LuaResult<bool> {
 impl ModStore {
     fn new(parent: Option<StoreRef>, kind: StoreKind) -> StoreRef {
         // ModStore.lua:42 `self.actor = parent and parent.actor or { }`
-        let actor = parent
-            .as_ref()
-            .map_or_else(|| Rc::new(RefCell::new(Actor::default())), |p| p.borrow().actor.clone());
+        let actor = parent.as_ref().map_or_else(ActorLink::fresh, |p| p.borrow().actor.clone());
         Rc::new(RefCell::new(ModStore {
             parent,
             actor,
@@ -121,6 +120,17 @@ impl ModStore {
             conditions: IndexMap::new(),
             kind,
         }))
+    }
+
+    /// `self.actor` (ModStore.lua:42), the table every EvalMod/GetStat read goes through.
+    pub fn actor(&self) -> ActorRef {
+        self.actor.get()
+    }
+
+    /// Lua `store.actor = actor` (CalcSetup: `modDB.actor = env.player`): this store only -- children made before keep the
+    /// table they shared, exactly like the Lua field. The store does not keep `actor` alive (R3-ARCH §2.2).
+    pub fn set_actor(&mut self, actor: &ActorRef) {
+        self.actor = ActorLink::to(actor);
     }
 
     /// `new("ModDB"):ModDB(parent)` (ModDB.lua:23).
@@ -737,7 +747,8 @@ impl ModStore {
 
     /// ModStore.lua:317-345 -- the same block twice, for mana (:320) and life (:334).
     fn reserved_percent(&self, cfg: Option<&ModCfg>, key: &str, base_key: &str, total_name: &str, line: u32) -> LuaResult<f64> {
-        let actor = self.actor.borrow();
+        let actor_rc = self.actor();
+        let actor = actor_rc.borrow();
         let output = actor
             .output
             .as_ref()
@@ -786,7 +797,8 @@ impl ModStore {
                 .reserved_percent(cfg, "Life", "LifeReservedBase", "totalLife", 334)
                 .map(Value::Num);
         }
-        let actor = self.actor.borrow();
+        let actor_rc = self.actor();
+        let actor = actor_rc.borrow();
         let output = actor.output.as_ref();
         if stat == "ManaUnreserved" {
             let site = format!("{MS}:347");

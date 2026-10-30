@@ -224,7 +224,8 @@ impl ModStore {
     /// ModStore.lua:48-54 `getActor(self, actorType)`. Deviation (R2.2, accepted): a non-string type answers nil (Lua reads
     /// `self.actor[x]` with that key) -- unreachable in data, every actor field is a string.
     fn get_actor(&self, actor_type: &Value) -> Option<ActorRef> {
-        let actor = self.actor.borrow();
+        let actor_rc = self.actor();
+        let actor = actor_rc.borrow();
         let key = actor_type.as_str()?;
         if key == "player" {
             // `a.player or (a.parent and a.parent.player) or (a.enemy and a.enemy.player)`
@@ -718,7 +719,8 @@ impl ModStore {
     /// the weapon itself added must not fail the mod, so it is skipped; one the weapon did NOT add returns.
     fn condition_passes(&self, tag: &Tag, cfg: Option<&ModCfg>) -> LuaResult<bool> {
         let all_one_h = {
-            let actor = self.actor.borrow();
+            let actor_rc = self.actor();
+            let actor = actor_rc.borrow();
             let pick = |w: &Option<Rc<crate::value::Table>>| w.as_ref().filter(|t| t.get("countsAsAll1H").truthy()).cloned();
             pick(&actor.weapon_data1).or_else(|| pick(&actor.weapon_data2))
         };
@@ -805,7 +807,8 @@ impl ModStore {
             return Err(err_op(&site(693), "index", Some("field 'itemSlot'"), raw_slot));
         };
         let item_slot = normalize_item_slot(raw_slot);
-        let actor = self.actor.borrow();
+        let actor_rc = self.actor();
+        let actor = actor_rc.borrow();
         let cfg_item = cfg.and_then(|c| c.item.clone());
         let all_slots = tag.raw("allSlots").truthy();
         let items: Items = if all_slots {
@@ -906,7 +909,8 @@ impl ModStore {
 
     /// ModStore.lua:925-957 -- any monster tag of the minion, compared case-insensitively.
     fn monster_tag_passes(&self, tag: &Tag) -> LuaResult<bool> {
-        let actor = self.actor.borrow();
+        let actor_rc = self.actor();
+        let actor = actor_rc.borrow();
         let Some(Some(monster_tags)) = &actor.minion_data else {
             return Ok(false);
         };

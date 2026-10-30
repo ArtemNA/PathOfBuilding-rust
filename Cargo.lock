@@ -43,10 +43,36 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cf8baf1c55e62ffcace7a9f06f4bd9cd3f0c4beb022d3b367256b91b87513d98"
 
 [[package]]
+name = "pob-build"
+version = "0.1.0"
+dependencies = [
+ "indexmap",
+ "pob-data",
+ "pob-golden",
+ "pob-lua",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "pob-calc"
+version = "0.1.0"
+
+[[package]]
 name = "pob-cli"
 version = "0.1.0"
 dependencies = [
  "pob-golden",
+ "serde_json",
+]
+
+[[package]]
+name = "pob-data"
+version = "0.1.0"
+dependencies = [
+ "indexmap",
+ "pob-mods",
+ "serde",
  "serde_json",
 ]
 
@@ -73,6 +99,14 @@ dependencies = [
  "indexmap",
  "pob-lua",
  "serde_json",
+]
+
+[[package]]
+name = "pob-parser"
+version = "0.1.0"
+dependencies = [
+ "pob-data",
+ "pob-mods",
 ]
 
 [[package]]

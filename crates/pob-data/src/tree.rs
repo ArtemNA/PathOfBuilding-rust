@@ -1,0 +1,235 @@
+//! `TreeData/<ver>/tree.lua` as the converter snapshotted it -- the raw table `PassiveTreeClass:PassiveTree` copies onto
+//! itself (D12: nothing transformed). pob-ts `src/data/tree.ts`. Shapes depend on the version (D16): `groups` is an array up
+//! to 3_17 and an object from 3_18; `classes` is an array (index = classId) from 3.10 and an object `"0".."6"` before;
+//! modern trees keep `nodes["root"]` (without `skill`), legacy ones a top-level `root`. Access goes through `LuaTable`.
+//!
+//! Only the fields the calc reads are typed; UI-only keys (sprites, assets, flavour) are skipped on load.
+
+use std::collections::HashMap;
+use std::fmt;
+use std::sync::{Mutex, OnceLock};
+
+use serde::Deserialize;
+use serde::de::{self, Deserializer, Visitor};
+use serde_json::Value as Json;
+
+use crate::DataError;
+use crate::wire::{LuaTable, OrderedMap};
+
+/// A node reference in `in`/`out`/`group.nodes`: a number in legacy trees, a string id in modern ones.
+#[derive(Clone, Debug, PartialEq)]
+pub enum NodeRef {
+    Num(f64),
+    Str(String),
+}
+
+impl<'de> Deserialize<'de> for NodeRef {
+    fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        struct V_;
+        impl<'de> Visitor<'de> for V_ {
+            type Value = NodeRef;
+            fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+                f.write_str("a node id (number or string)")
+            }
+            fn visit_f64<E: de::Error>(self, v: f64) -> Result<NodeRef, E> {
+                Ok(NodeRef::Num(v))
+            }
+            fn visit_i64<E: de::Error>(self, v: i64) -> Result<NodeRef, E> {
+                Ok(NodeRef::Num(v as f64))
+            }
+            fn visit_u64<E: de::Error>(self, v: u64) -> Result<NodeRef, E> {
+                Ok(NodeRef::Num(v as f64))
+            }
+            fn visit_str<E: de::Error>(self, v: &str) -> Result<NodeRef, E> {
+                Ok(NodeRef::Str(v.to_owned()))
+            }
+        }
+        d.deserialize_any(V_)
+    }
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct TreeAscendancy {
+    /// Modern trees only; legacy ascendancies have `name`/`displayName`.
+    pub id: Option<String>,
+    pub name: String,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct TreeClass {
+    pub name: String,
+    pub base_str: Option<f64>,
+    pub base_dex: Option<f64>,
+    pub base_int: Option<f64>,
+    /// Modern (>= 3.10); PassiveTree.lua:179 migrates it onto `classes`.
+    pub ascendancies: Option<Vec<TreeAscendancy>>,
+    /// Legacy (< 3.10): already the migrated name.
+    pub classes: Option<LuaTable<TreeAscendancy>>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TreeGroup {
+    pub x: f64,
+    pub y: f64,
+    /// Modern; legacy uses `n`/`oo`.
+    pub orbits: Option<Vec<f64>>,
+    pub nodes: Option<Vec<NodeRef>>,
+    pub n: Option<LuaTable<f64>>,
+    pub oo: Option<LuaTable<bool>>,
+    pub is_proxy: Option<bool>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct TreeExpansionJewel {
+    pub index: Option<f64>,
+    pub parent: Option<String>,
+    pub proxy: Option<String>,
+    pub size: Option<f64>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TreeMasteryEffect {
+    pub effect: f64,
+    pub stats: Vec<String>,
+    pub reminder_text: Option<Vec<String>>,
+}
+
+/// A node as the JSON holds it -- modern field names and the legacy abbreviations side by side.
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TreeNode {
+    // modern (>= 3.10)
+    pub skill: Option<f64>,
+    pub name: Option<String>,
+    pub stats: Option<Vec<String>>,
+    pub group: Option<f64>,
+    pub orbit: Option<f64>,
+    pub orbit_index: Option<f64>,
+    pub granted_passive_points: Option<f64>,
+    // legacy (< 3.10)
+    pub id: Option<f64>,
+    pub dn: Option<String>,
+    pub sd: Option<Vec<String>>,
+    pub g: Option<f64>,
+    pub o: Option<f64>,
+    pub oidx: Option<f64>,
+    pub ks: Option<bool>,
+    pub m: Option<bool>,
+    #[serde(rename = "not")]
+    pub not_: Option<bool>,
+    pub spc: Option<LuaTable<f64>>,
+    pub passive_points_granted: Option<f64>,
+    pub sa: Option<f64>,
+    pub da: Option<f64>,
+    pub ia: Option<f64>,
+    // common
+    #[serde(rename = "in")]
+    pub in_: Option<LuaTable<NodeRef>>,
+    pub out: Option<LuaTable<NodeRef>>,
+    pub icon: Option<String>,
+    pub is_notable: Option<bool>,
+    pub is_keystone: Option<bool>,
+    pub is_mastery: Option<bool>,
+    pub is_jewel_socket: Option<bool>,
+    pub is_multiple_choice: Option<bool>,
+    pub is_multiple_choice_option: Option<bool>,
+    pub is_ascendancy_start: Option<bool>,
+    pub is_blighted: Option<bool>,
+    pub is_bloodline: Option<bool>,
+    pub is_proxy: Option<bool>,
+    pub ascendancy_name: Option<String>,
+    pub class_start_index: Option<f64>,
+    pub granted_strength: Option<f64>,
+    pub granted_dexterity: Option<f64>,
+    pub granted_intelligence: Option<f64>,
+    pub reminder_text: Option<Vec<String>>,
+    pub mastery_effects: Option<Vec<TreeMasteryEffect>>,
+    pub active_effect_image: Option<String>,
+    pub expansion_jewel: Option<TreeExpansionJewel>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TreeConstants {
+    pub orbit_radii: Option<Vec<f64>>,
+    pub skills_per_orbit: Option<Vec<f64>>,
+    #[serde(rename = "PSSCentreInnerRadius")]
+    pub pss_centre_inner_radius: Option<f64>,
+    pub classes: Option<OrderedMap<f64>>,
+    pub character_attributes: Option<OrderedMap<f64>>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct TreeJson {
+    pub tree: Option<String>,
+    pub classes: LuaTable<TreeClass>,
+    pub groups: LuaTable<TreeGroup>,
+    /// Keyed by node id (string). Modern trees include `"root"`.
+    pub nodes: OrderedMap<TreeNode>,
+    /// Legacy trees keep `root` beside `nodes`.
+    pub root: Option<TreeNode>,
+    pub constants: TreeConstants,
+    #[serde(rename = "jewelSlots")]
+    pub jewel_slots: Option<Vec<f64>>,
+    pub min_x: Option<f64>,
+    pub min_y: Option<f64>,
+    pub max_x: Option<f64>,
+    pub max_y: Option<f64>,
+    pub alternate_ascendancies: Option<Json>,
+    pub points: Option<Json>,
+}
+
+impl TreeJson {
+    /// `tree.classes[classId]` -- array index for modern trees (0-based classId, D16), object key for legacy.
+    pub fn class(&self, class_id: i64) -> Option<&TreeClass> {
+        match &self.classes {
+            LuaTable::Array(v) => usize::try_from(class_id).ok().and_then(|i| v.get(i)),
+            LuaTable::Object(m) => m.get(class_id.to_string().as_str()),
+        }
+    }
+}
+
+/// The trees committed under `data/tree/` (golden versions + latest); the other 37 live in `data/tree/_ondemand/`.
+pub const COMMITTED_TREE_VERSIONS: [&str; 4] = ["3_6", "3_12", "3_13", "3_29"];
+
+/// `treeVersions[ver].num` (GameVersions.lua) for the committed versions -- the number decides the migration branch
+/// (`>= 3.10`), so it is data, not a parse of the name ("3_6" is 3.06). Same table as pob-ts `TREE_VERSION_NUM`.
+pub fn tree_version_num(version: &str) -> Result<f64, DataError> {
+    Ok(match version {
+        "3_6" => 3.06,
+        "3_12" => 3.12,
+        "3_13" => 3.13,
+        "3_29" => 3.29,
+        _ => {
+            return Err(DataError(format!(
+                "unknown tree version '{version}' (have: {}); add it to tree_version_num",
+                COMMITTED_TREE_VERSIONS.join(", ")
+            )));
+        }
+    })
+}
+
+/// `data/tree/<ver>.json`, else `data/tree/_ondemand/<ver>.json` for the other versions of the manifest, parsed once per
+/// version. W4: a missing tree is an error naming the version, never a nil cascade.
+pub fn load_tree(version: &str) -> Result<&'static TreeJson, DataError> {
+    static CACHE: OnceLock<Mutex<HashMap<String, &'static TreeJson>>> = OnceLock::new();
+    let cache = CACHE.get_or_init(|| Mutex::new(HashMap::new()));
+    if let Some(t) = cache.lock().expect("tree cache").get(version) {
+        return Ok(t);
+    }
+    if version.is_empty() || !version.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_') {
+        return Err(DataError(format!("invalid tree version '{version}'")));
+    }
+    let rel = if COMMITTED_TREE_VERSIONS.contains(&version) {
+        format!("tree/{version}.json")
+    } else {
+        format!("tree/_ondemand/{version}.json")
+    };
+    let tree: TreeJson = crate::read_json(&rel).map_err(|e| DataError(format!("passive tree data for version '{version}': {e}")))?;
+    let leaked: &'static TreeJson = Box::leak(Box::new(tree));
+    // Two threads may race to parse the same version; the first insert wins, the loser's copy stays leaked (bounded by
+    // the number of versions).
+    Ok(*cache.lock().expect("tree cache").entry(version.to_owned()).or_insert(leaked))
+}

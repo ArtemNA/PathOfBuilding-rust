@@ -2,7 +2,7 @@
 //! item and the query configuration -- only the fields `ModStore`/`EvalMod` actually read.
 
 use std::cell::{Cell, RefCell};
-use std::rc::Rc;
+use std::rc::{Rc, Weak};
 
 use indexmap::IndexMap;
 
@@ -351,6 +351,50 @@ pub struct ModCfg {
 
 pub type ActorRef = Rc<RefCell<Actor>>;
 
+/// `store.actor` (ModStore.lua:42 `self.actor = parent and parent.actor or { }`), held WEAKLY (R3-ARCH §2.2): the actor graph
+/// of a calc (`env.player.modDB` -> store -> `store.actor` -> player) is a cycle in Lua; in Rust the owner of the actors
+/// (`Env`) holds them strongly, `actor.mod_db` holds the store strongly and the store points back through this `Weak`, so
+/// dropping the owner frees everything.
+///
+/// The `{ }` a parentless store makes for itself has no other owner, so the store keeps that one alive (`own`); a child
+/// store shares its parent's link (the same table, ModStore.lua:42). `ModStore::set_actor` (Lua `modDB.actor = actor`)
+/// switches the link to an actor owned elsewhere and drops `own`. An actor reached through `own` must not point back at
+/// the store (`actor.mod_db`): that would rebuild the cycle -- such actors belong to their owner, linked via `set_actor`.
+#[derive(Clone)]
+pub struct ActorLink {
+    /// Only keeps the parentless store's own `{ }` alive; never read.
+    #[allow(dead_code)]
+    own: Option<ActorRef>,
+    weak: Weak<RefCell<Actor>>,
+}
+
+impl ActorLink {
+    /// The fresh `{ }` of a parentless store.
+    pub fn fresh() -> ActorLink {
+        let own = Rc::new(RefCell::new(Actor::default()));
+        ActorLink {
+            weak: Rc::downgrade(&own),
+            own: Some(own),
+        }
+    }
+
+    /// A link to an actor owned elsewhere (`modDB.actor = actor`).
+    pub fn to(actor: &ActorRef) -> ActorLink {
+        ActorLink {
+            own: None,
+            weak: Rc::downgrade(actor),
+        }
+    }
+
+    /// The actor table. Panics when its owner is gone: a store queried after its `Env` was dropped is a bug of the caller
+    /// (Lua cannot get there -- the table lives as long as anything references it).
+    pub fn get(&self) -> ActorRef {
+        self.weak
+            .upgrade()
+            .expect("ModStore.actor: the actor was dropped while its store is still in use (R3-ARCH §2.2)")
+    }
+}
+
 /// `store.actor` (§8): what EvalMod/GetStat read. `actors` is `actor[name]` for any other key (`parent`, `enemy`,
 /// `player`, ...), which `getActor` (ModStore.lua:48) indexes; each such actor carries its own `modDB`.
 #[derive(Default)]
@@ -366,4 +410,46 @@ pub struct Actor {
     /// ModStore.lua:352 reads `self.actor["ManaEfficiency"]` off the actor itself.
     pub mana_efficiency: Option<f64>,
     pub actors: IndexMap<Str, ActorRef>,
+}
+
+#[cfg(test)]
+mod tests {
+    use std::cell::RefCell;
+    use std::rc::Rc;
+
+    use super::Actor;
+    use crate::store::ModStore;
+
+    /// R3-ARCH §2.2: `actor.mod_db` (strong) -> store -> `store.actor` (weak) is no cycle -- dropping the owner frees both.
+    #[test]
+    fn actor_graph_frees_on_drop() {
+        let db = ModStore::new_db(None);
+        let player = Rc::new(RefCell::new(Actor {
+            mod_db: Some(db.clone()),
+            ..Actor::default()
+        }));
+        db.borrow_mut().set_actor(&player);
+        let child = ModStore::new_list(Some(db.clone()));
+        assert!(
+            Rc::ptr_eq(&child.borrow().actor(), &player),
+            "a child shares its parent's actor table"
+        );
+        let (weak_player, weak_db) = (Rc::downgrade(&player), Rc::downgrade(&db));
+        drop((db, child));
+        assert!(weak_db.upgrade().is_some(), "the actor still owns its modDB");
+        drop(player);
+        assert!(
+            weak_player.upgrade().is_none() && weak_db.upgrade().is_none(),
+            "no cycle left behind"
+        );
+    }
+
+    /// A parentless store keeps its own `{ }` (ModStore.lua:42), and its children see the same table.
+    #[test]
+    fn fresh_actor_is_owned_and_shared() {
+        let db = ModStore::new_db(None);
+        let child = ModStore::new_db(Some(db.clone()));
+        db.borrow().actor().borrow_mut().mana_efficiency = Some(5.0);
+        assert_eq!(child.borrow().actor().borrow().mana_efficiency, Some(5.0));
+    }
 }

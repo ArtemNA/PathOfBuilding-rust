@@ -1,0 +1,617 @@
+{
+ "activeItemSet": 1,
+ "ascendClassName": "Berserker",
+ "bandit": "None",
+ "calcsInput": {
+  "misc_buffMode": "EFFECTIVE",
+  "skill_number": 2
+ },
+ "characterLevelAutoMode": false,
+ "className": "Marauder",
+ "config": {
+  "activeConfigSet": 1,
+  "sets": [
+   {
+    "customModsList": [
+     {
+      "enabled": true,
+      "text": "",
+      "title": "Default"
+     }
+    ],
+    "id": 1,
+    "input": {
+     "conditionLeeching": true
+    },
+    "placeholder": {},
+    "title": "Default"
+   }
+  ]
+ },
+ "itemOrder": [
+  1,
+  2,
+  3
+ ],
+ "itemSets": [
+  {
+   "id": 1,
+   "slots": {
+    "Amulet": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Belt": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Belt Abyssal Socket 1": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Belt Abyssal Socket 2": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Belt Abyssal Socket 3": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Belt Abyssal Socket 4": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Belt Abyssal Socket 5": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Belt Abyssal Socket 6": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Body Armour": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Body Armour Abyssal Socket 1": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Body Armour Abyssal Socket 2": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Body Armour Abyssal Socket 3": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Body Armour Abyssal Socket 4": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Body Armour Abyssal Socket 5": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Body Armour Abyssal Socket 6": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Boots": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Boots Abyssal Socket 1": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Boots Abyssal Socket 2": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Boots Abyssal Socket 3": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Boots Abyssal Socket 4": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Boots Abyssal Socket 5": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Boots Abyssal Socket 6": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Flask 1": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Flask 2": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Flask 3": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Flask 4": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Flask 5": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Gloves": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Gloves Abyssal Socket 1": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Gloves Abyssal Socket 2": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Gloves Abyssal Socket 3": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Gloves Abyssal Socket 4": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Gloves Abyssal Socket 5": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Gloves Abyssal Socket 6": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Helmet": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Helmet Abyssal Socket 1": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Helmet Abyssal Socket 2": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Helmet Abyssal Socket 3": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Helmet Abyssal Socket 4": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Helmet Abyssal Socket 5": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Helmet Abyssal Socket 6": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Ring 1": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Ring 2": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Weapon 1": {
+     "active": false,
+     "itemId": 1,
+     "pbURL": ""
+    },
+    "Weapon 1 Abyssal Socket 1": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Weapon 1 Abyssal Socket 2": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Weapon 1 Abyssal Socket 3": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Weapon 1 Abyssal Socket 4": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Weapon 1 Abyssal Socket 5": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Weapon 1 Abyssal Socket 6": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Weapon 1 Swap": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Weapon 1Swap Abyssal Socket 1": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Weapon 1Swap Abyssal Socket 2": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Weapon 1Swap Abyssal Socket 3": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Weapon 1Swap Abyssal Socket 4": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Weapon 1Swap Abyssal Socket 5": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Weapon 1Swap Abyssal Socket 6": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Weapon 2": {
+     "active": false,
+     "itemId": 3,
+     "pbURL": ""
+    },
+    "Weapon 2 Abyssal Socket 1": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Weapon 2 Abyssal Socket 2": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Weapon 2 Abyssal Socket 3": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Weapon 2 Abyssal Socket 4": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Weapon 2 Abyssal Socket 5": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Weapon 2 Abyssal Socket 6": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Weapon 2 Swap": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Weapon 2Swap Abyssal Socket 1": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Weapon 2Swap Abyssal Socket 2": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Weapon 2Swap Abyssal Socket 3": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Weapon 2Swap Abyssal Socket 4": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Weapon 2Swap Abyssal Socket 5": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    },
+    "Weapon 2Swap Abyssal Socket 6": {
+     "active": false,
+     "itemId": 0,
+     "pbURL": ""
+    }
+   },
+   "socketIdURLs": {},
+   "useSecondWeaponSet": false
+  }
+ ],
+ "items": [
+  {
+   "id": 1,
+   "modRanges": [
+    {
+     "id": 3,
+     "range": 0.5
+    },
+    {
+     "id": 4,
+     "range": 0.5
+    },
+    {
+     "id": 5,
+     "range": 0.5
+    },
+    {
+     "id": 6,
+     "range": 0.5
+    }
+   ],
+   "raw": "\n\t\t\tRarity: UNIQUE\nThe Saviour\nLegion Sword\nQuality: 20\nSockets: R-R-R\nLevelReq: 62\nImplicits: 1\n40% increased Global Accuracy Rating\nTriggers Level 20 Reflection when Equipped\n{range:0.5}(40-50)% increased Physical Damage\n{range:0.5}Adds (16-22) to (40-45) Physical Damage\n{range:0.5}(8-12)% increased Attack Speed\n{range:0.5}(8-12)% increased Critical Strike Chance\n\t\t\t\n\t\t\t\n\t\t\t\n\t\t\t\n\t\t"
+  },
+  {
+   "id": 2,
+   "modRanges": [
+    {
+     "id": 2,
+     "range": 0.5
+    }
+   ],
+   "raw": "\n\t\t\tRarity: UNIQUE\nActum\nButcher Axe\nLeague: Heist\nQuality: 20\nLevelReq: 63\nImplicits: 0\nHas no Sockets\n{range:0.5}(200-250)% increased Physical Damage\nYou have no Intelligence\n{range:0.5}Critical Strike Chance is (20-30)% for Hits with this Weapon\n\t\t\t\n\t\t"
+  },
+  {
+   "id": 3,
+   "modRanges": [
+    {
+     "id": 3,
+     "range": 1
+    },
+    {
+     "id": 4,
+     "range": 0.5
+    },
+    {
+     "id": 5,
+     "range": 0.5
+    },
+    {
+     "id": 6,
+     "range": 0.5
+    }
+   ],
+   "raw": "\n\t\t\tRarity: UNIQUE\nThe Saviour\nLegion Sword\nQuality: 20\nSockets: R-R-R\nLevelReq: 62\nImplicits: 1\n40% increased Global Accuracy Rating\nTriggers Level 20 Reflection when Equipped\n{range:1}(40-50)% increased Physical Damage\n{range:0.5}Adds (16-22) to (40-45) Physical Damage\n{range:0.5}(8-12)% increased Attack Speed\n{range:0.5}(8-12)% increased Critical Strike Chance\n\t\t\t\n\t\t\t\n\t\t\t\n\t\t\t\n\t\t"
+  }
+ ],
+ "level": 1,
+ "mainSocketGroup": 3,
+ "pantheonMajorGod": "None",
+ "pantheonMinorGod": "None",
+ "skills": {
+  "activeSkillSet": 1,
+  "defaultGemLevel": "normalMaximum",
+  "defaultGemQuality": 0,
+  "sets": [
+   {
+    "groups": [
+     {
+      "enabled": true,
+      "gems": [
+       {
+        "count": 1,
+        "enableGlobal1": true,
+        "enableGlobal2": false,
+        "enabled": true,
+        "gemId": "Metadata/Items/Gems/SkillGemDoubleStrike",
+        "level": 20,
+        "nameSpec": "Double Strike",
+        "quality": 12,
+        "qualityId": "Default",
+        "skillId": "DoubleStrike",
+        "skillMinion": "SummonedPhantasm",
+        "skillMinionItemSet": 1,
+        "skillMinionSkill": 1,
+        "skillMinionSkillCalcs": 1,
+        "skillPart": 1,
+        "skillStageCount": 1
+       },
+       {
+        "count": 1,
+        "enableGlobal1": true,
+        "enableGlobal2": false,
+        "enabled": false,
+        "gemId": "Metadata/Items/Gems/SkillGemCyclone",
+        "level": 20,
+        "nameSpec": "Cyclone",
+        "quality": 0,
+        "qualityId": "Default",
+        "skillId": "Cyclone",
+        "skillMinion": "SkitterbotCold",
+        "skillPart": 1,
+        "skillStageCountCalcs": 4
+       }
+      ],
+      "includeInFullDPS": false,
+      "label": "",
+      "mainActiveSkill": 1,
+      "mainActiveSkillCalcs": 1,
+      "slot": "Weapon 1"
+     },
+     {
+      "enabled": false,
+      "gems": [
+       {
+        "count": 1,
+        "enableGlobal1": true,
+        "enableGlobal2": false,
+        "enabled": true,
+        "gemId": "Metadata/Items/Gems/SkillGemDualStrike",
+        "level": 20,
+        "nameSpec": "Dual Strike",
+        "quality": 0,
+        "qualityId": "Default",
+        "skillId": "DualStrike"
+       }
+      ],
+      "includeInFullDPS": false,
+      "label": "",
+      "mainActiveSkill": 1,
+      "mainActiveSkillCalcs": 1
+     },
+     {
+      "enabled": true,
+      "gems": [
+       {
+        "count": 1,
+        "enableGlobal1": true,
+        "enableGlobal2": false,
+        "enabled": true,
+        "level": 20,
+        "nameSpec": "Reflection",
+        "quality": 0,
+        "qualityId": "Default",
+        "skillId": "UniqueMirageWarriors"
+       }
+      ],
+      "includeInFullDPS": false,
+      "label": "",
+      "mainActiveSkill": 1,
+      "mainActiveSkillCalcs": 1,
+      "slot": "Weapon 1",
+      "source": "Item:1:The Saviour, Legion Sword"
+     },
+     {
+      "enabled": true,
+      "gems": [
+       {
+        "count": 1,
+        "enableGlobal1": true,
+        "enableGlobal2": false,
+        "enabled": true,
+        "level": 20,
+        "nameSpec": "Reflection",
+        "quality": 0,
+        "qualityId": "Default",
+        "skillId": "UniqueMirageWarriors"
+       }
+      ],
+      "includeInFullDPS": false,
+      "label": "",
+      "mainActiveSkill": 1,
+      "mainActiveSkillCalcs": 1,
+      "slot": "Weapon 2",
+      "source": "Item:3:The Saviour, Legion Sword"
+     }
+    ],
+    "id": 1
+   }
+  ],
+  "showSupportGemTypes": "ALL",
+  "sortGemsByDPS": true,
+  "sortGemsByDPSField": "CombinedDPS"
+ },
+ "spectres": [],
+ "targetVersion": "3_0",
+ "tree": {
+  "activeSpec": 1,
+  "specs": [
+   {
+    "ascendClassId": 2,
+    "classId": 1,
+    "clusterHashFormatVersion": 1,
+    "jewels": {},
+    "masteryEffects": {},
+    "nodes": [
+     30335,
+     33988,
+     47175,
+     32480,
+     29294,
+     40535,
+     58449,
+     31628
+    ],
+    "overrides": [],
+    "secondaryAscendClassId": 0,
+    "treeVersion": "3_13",
+    "url": "\n\t\t\t\thttps://www.pathofexile.com/passive-skill-tree/AAAABAECAHZ_hMR-4J5X5FF7jA==\n\t\t\t"
+   }
+  ]
+ },
+ "unknownSections": [
+  "Import",
+  "Notes",
+  "TreeView"
+ ],
+ "viewMode": "TREE"
+}

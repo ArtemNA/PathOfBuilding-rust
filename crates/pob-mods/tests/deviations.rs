@@ -56,7 +56,8 @@ fn mana_unreserved_nan_without_mana_is_nil() {
     let db = ModStore::new_db(None);
     {
         let s = db.borrow();
-        let mut a = s.actor.borrow_mut();
+        let actor = s.actor();
+        let mut a = actor.borrow_mut();
         a.output = Some([(Str::from("ManaUnreserved"), f64::NAN)].into_iter().collect());
     }
     assert!(db.borrow().get_stat("ManaUnreserved", None).unwrap().is_nil());

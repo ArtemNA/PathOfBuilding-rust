@@ -431,7 +431,7 @@ fn build_store(spec: &J, stores: &IndexMap<String, StoreRef>) -> StoreRef {
             }
         }
         if !spec["actor"].is_null() {
-            let actor = s.actor.clone();
+            let actor = s.actor();
             apply_actor(&mut actor.borrow_mut(), &spec["actor"], stores);
         }
         if let Some(mods) = spec["mods"].as_array() {
@@ -558,7 +558,7 @@ pub struct Built {
 impl Drop for Built {
     fn drop(&mut self) {
         for s in self.stores.values() {
-            s.borrow().actor.borrow_mut().actors.clear();
+            s.borrow().actor().borrow_mut().actors.clear();
         }
     }
 }

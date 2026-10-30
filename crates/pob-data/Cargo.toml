@@ -1,0 +1,17 @@
+[package]
+name = "pob-data"
+description = "serde models and lazy loaders of the converted PoB data (data/*.json) the calc needs, with the data.lock check"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+pob-mods = { path = "../pob-mods" }
+serde.workspace = true
+serde_json.workspace = true
+indexmap.workspace = true
+
+[lints]
+workspace = true
