@@ -127,11 +127,16 @@ impl TagKind {
 /// later reads of `tag.div`, Dump/`ser`, `formatTag` (and so `compareModParams`/`MergeMod`). `div` is the only field the
 /// core ever writes, so it lives in a shared cell next to the immutable table: cloning a `Tag` shares the cell (the same
 /// Lua object -- shallow copies such as `copyTable(mod, true)`, `AddList`), `deep_copy` (Lua `copyTable`) makes a new one.
+///
+/// The one field calc code writes into a tag is the second cell, `warcryPowerBonus` (CalcPerform.lua:2382
+/// `warcryBuff[1].warcryPowerBonus = ...`, R6-ARCH §6): the warcry buff mod's first tag is the data's own table (`mergeLevelMod`
+/// copies the mod with `copyTable(mod, true)`), so the write is seen by every mod sharing that tag object -- the same model as `div`.
 #[derive(Clone, Debug)]
 pub struct Tag {
     table: Rc<Table>,
     kind: TagKind,
     div: Rc<RefCell<Option<Value>>>,
+    warcry_power_bonus: Rc<RefCell<Option<Value>>>,
 }
 
 impl Tag {
@@ -145,6 +150,7 @@ impl Tag {
             table,
             kind,
             div: Rc::new(RefCell::new(None)),
+            warcry_power_bonus: Rc::new(RefCell::new(None)),
         }
     }
 
@@ -159,17 +165,29 @@ impl Tag {
 
     /// `tag.<key>` as Lua reads it now, including a `div` written by EvalMod.
     pub fn get(&self, key: &str) -> Value {
-        if key == "div"
-            && let Some(v) = &*self.div.borrow()
+        if let Some(cell) = self.cell(key)
+            && let Some(v) = &*cell.borrow()
         {
             return v.clone();
         }
         self.table.get(key).clone()
     }
 
+    /// The shared cell behind a writable field (`div`, `warcryPowerBonus`).
+    fn cell(&self, key: &str) -> Option<&Rc<RefCell<Option<Value>>>> {
+        match key {
+            "div" => Some(&self.div),
+            "warcryPowerBonus" => Some(&self.warcry_power_bonus),
+            _ => None,
+        }
+    }
+
     /// `tag.<key>` for any key but `div` (the only field the core writes), by reference.
     pub(crate) fn raw(&self, key: &str) -> &Value {
-        debug_assert!(key != "div", "tag.div is mutable: read it with Tag::get");
+        debug_assert!(
+            key != "div" && key != "warcryPowerBonus",
+            "tag.{key} is mutable: read it with Tag::get"
+        );
         self.table.get(key)
     }
 
@@ -178,24 +196,34 @@ impl Tag {
         *self.div.borrow_mut() = Some(v);
     }
 
-    /// The tag as a Lua table right now (with a written `div`): what Dump/`ser` and `formatTag` see.
-    pub fn table(&self) -> Rc<Table> {
-        match &*self.div.borrow() {
-            None => self.table.clone(),
-            Some(v) => {
-                let mut t = (*self.table).clone();
-                t.hash.insert(Rc::from("div"), v.clone());
-                Rc::new(t)
-            }
-        }
+    /// CalcPerform.lua:2382 `warcryBuff[1].warcryPowerBonus = v` -- seen by every holder of this tag object (the data's statMap
+    /// mod included, as in LuaJIT, where the field outlives the perform pass).
+    pub fn set_warcry_power_bonus(&self, v: Value) {
+        *self.warcry_power_bonus.borrow_mut() = Some(v);
     }
 
-    /// Lua `copyTable(tag)`: a new table object carrying the current fields (a written `div` included).
+    /// The tag as a Lua table right now (with a written `div` / `warcryPowerBonus`): what Dump/`ser` and `formatTag` see.
+    pub fn table(&self) -> Rc<Table> {
+        let (div, wpb) = (self.div.borrow(), self.warcry_power_bonus.borrow());
+        if div.is_none() && wpb.is_none() {
+            return self.table.clone();
+        }
+        let mut t = (*self.table).clone();
+        for (k, v) in [("div", &*div), ("warcryPowerBonus", &*wpb)] {
+            if let Some(v) = v {
+                t.hash.insert(Rc::from(k), v.clone());
+            }
+        }
+        Rc::new(t)
+    }
+
+    /// Lua `copyTable(tag)`: a new table object carrying the current fields (a written `div` / `warcryPowerBonus` included).
     pub fn deep_copy(&self) -> Tag {
         Tag {
             table: self.table(),
             kind: self.kind,
             div: Rc::new(RefCell::new(None)),
+            warcry_power_bonus: Rc::new(RefCell::new(None)),
         }
     }
 }
@@ -442,6 +470,42 @@ mod tests {
             weak_player.upgrade().is_none() && weak_db.upgrade().is_none(),
             "no cycle left behind"
         );
+    }
+
+    /// CalcPerform.lua:2382 writes `warcryPowerBonus` into the shared tag object: every clone (`copyTable(mod, true)`, `AddList`)
+    /// sees it -- `get`, `formatTag` -- while a `copyTable` taken before the write does not, and one taken after carries the value.
+    #[test]
+    fn warcry_power_bonus_is_written_into_the_shared_tag() {
+        use crate::matching::format_tag;
+        use crate::value::{Str, Table, Value};
+        let t = super::Tag::new(Table {
+            hash: [
+                (Str::from("type"), Value::str("GlobalEffect")),
+                (Str::from("effectType"), Value::str("Warcry")),
+                (Str::from("div"), Value::Num(5.0)),
+            ]
+            .into_iter()
+            .collect(),
+            ..Table::default()
+        });
+        let shared = t.clone();
+        let before = t.deep_copy();
+        t.set_warcry_power_bonus(Value::Num(4.0));
+        assert_eq!(shared.get("warcryPowerBonus").as_num(), Some(4.0));
+        assert_eq!(shared.get("div").as_num(), Some(5.0));
+        assert_eq!(format_tag(&shared), "type=GlobalEffect/div=5/effectType=Warcry/warcryPowerBonus=4");
+        assert!(
+            before.get("warcryPowerBonus").is_nil(),
+            "a copyTable taken before the write has its own table"
+        );
+        let after = t.deep_copy();
+        t.set_warcry_power_bonus(Value::Num(6.0));
+        assert_eq!(
+            after.get("warcryPowerBonus").as_num(),
+            Some(4.0),
+            "a copyTable keeps the value it copied"
+        );
+        assert_eq!(shared.get("warcryPowerBonus").as_num(), Some(6.0));
     }
 
     /// A parentless store keeps its own `{ }` (ModStore.lua:42), and its children see the same table.

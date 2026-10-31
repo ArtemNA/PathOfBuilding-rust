@@ -9,7 +9,9 @@
 //!
 //! The checkpoints are taken through `perform_with`'s hook (`Checkpoint`), not a copy of perform. R6.6: CP2 -- after the first
 //! `doActorLifeManaReservation(env.player)` (:2092; attributes/pools :1943-1966 and the per-skill reservation loop :1978-2090) -- is gated
-//! the same way. CP3/CP4 (later phases, R6.7+) are counted for information only (`PERFORM_CP_VERBOSE=1` prints them).
+//! the same way. R6.7: CP3 -- the entry of `calcs.defenceForConditionals` (:3484; heralds/auras :2164, buffs/debuffs/curses/guards
+//! :2193-3377, Choir/extra auras/keystones/Dancing Dervish :3394-3482) -- too, with ONE proven class pinned by name ([`TABLE_OUTPUT`]).
+//! CP4 (R6.8) is counted for information only (`PERFORM_CP_VERBOSE=1` prints it).
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::rc::Rc;
@@ -122,8 +124,25 @@ fn diff_actor(who: &str, lj: &Json, rust: &Json) -> Vec<String> {
     out
 }
 
+/// Proven class `output-table-value` (R6-ARCH §6, R6.6): CalcPerform.lua:2156 `output["Req"..attr.."Item"] = out.source` stores the
+/// requirement-source TABLE in `output`; Rust's `Output` holds numbers/strings/booleans only (the key never reaches `getStats`). Pinned: a
+/// difference on such a key is allowed only when LuaJIT has a table and Rust nothing; any other difference on it fails.
+const TABLE_OUTPUT: [&str; 4] = ["ReqStrItem", "ReqDexItem", "ReqIntItem", "ReqOmniItem"];
+
+/// Removes the pinned `output-table-value` differences of a checkpoint (`player.output.Req<Attr>Item: lj {table} rust null`); returns
+/// how many.
+fn strip_table_output(d: &mut Vec<String>) -> usize {
+    let before = d.len();
+    d.retain(|x| {
+        !TABLE_OUTPUT
+            .iter()
+            .any(|k| x.starts_with(&format!("player.output.{k}: lj {{")) && x.ends_with(" rust null"))
+    });
+    before - d.len()
+}
+
 #[test]
-fn cp1_cp2_equal_luajit_on_six_goldens() {
+fn cp1_cp2_cp3_equal_luajit_on_six_goldens() {
     let mut all_bad = Vec::new();
     let mut later: BTreeMap<String, usize> = BTreeMap::new();
     for g in GOLDEN_BUILDS {
@@ -140,9 +159,10 @@ fn cp1_cp2_equal_luajit_on_six_goldens() {
             };
             let mut d = diff_actor("player", &w["player"], &r["player"]);
             d.extend(diff_actor("enemy", &w["enemy"], &r["enemy"]));
-            if cp == "CP1" || cp == "CP2" {
+            if cp == "CP1" || cp == "CP2" || cp == "CP3" {
+                let pinned = strip_table_output(&mut d);
                 println!(
-                    "{}: {cp} player {} mods / {} conditions / {} multipliers / {} output, enemy {} mods / {} conditions / {} multipliers -- differences {}",
+                    "{}: {cp} player {} mods / {} conditions / {} multipliers / {} output, enemy {} mods / {} conditions / {} multipliers -- differences {}, pinned output-table-value {pinned}",
                     g.name,
                     r["player"]["modCount"].as_str().unwrap(),
                     r["player"]["conditions"].as_object().unwrap().len(),
@@ -164,19 +184,24 @@ fn cp1_cp2_equal_luajit_on_six_goldens() {
             }
         }
     }
-    println!("later checkpoints (information, R6.7+): differences {later:#?}");
-    assert!(all_bad.is_empty(), "CP1/CP2 != LuaJIT ({}):\n{}", all_bad.len(), all_bad.join("\n"));
+    println!("later checkpoints (information, R6.8+): differences {later:#?}");
+    assert!(
+        all_bad.is_empty(),
+        "CP1/CP2/CP3 != LuaJIT ({}):\n{}",
+        all_bad.len(),
+        all_bad.join("\n")
+    );
 }
 
-/// `cargo test --release -p pob-calc --test perform_cp perf -- --ignored --nocapture`: wall time of `perform` from its entry to CP1, to CP2 and to
-/// CP4 (median of 50 runs after a warm-up, a fresh `initEnv` per run) -- the Rust side of `tools/.scratch/perf-skills.json` (LuaJIT
+/// `cargo test --release -p pob-calc --test perform_cp perf -- --ignored --nocapture`: wall time of `perform` from its entry to CP1, to CP2, to
+/// CP3 and to CP4 (median of 50 runs after a warm-up, a fresh `initEnv` per run) -- the Rust side of `tools/.scratch/perf-skills.json` (LuaJIT
 /// perform -> CP4).
 #[test]
 #[ignore = "timing; not a check"]
 fn perf_perform_to_checkpoints() {
     for g in GOLDEN_BUILDS {
         let text = std::fs::read_to_string(g.xml_path()).expect("xml");
-        let (mut cp1, mut cp2, mut cp4) = (Vec::new(), Vec::new(), Vec::new());
+        let (mut cp1, mut cp2, mut cp3, mut cp4) = (Vec::new(), Vec::new(), Vec::new(), Vec::new());
         for run in 0..51 {
             let model = pob_build::load_build_xml(&text).expect("xml parses");
             let opts = InitEnvOptions {
@@ -185,17 +210,18 @@ fn perf_perform_to_checkpoints() {
             };
             let mut env = init_env_with(Rc::new(model), opts, true).expect("initEnv");
             let t0 = std::time::Instant::now();
-            let (mut t1, mut t2, mut t4) = (None, None, None);
+            let (mut t1, mut t2, mut t3, mut t4) = (None, None, None, None);
             let mut hook = |cp: Checkpoint, _: &Env, _: &ActorState, _: &ActorState| match cp {
                 Checkpoint::Cp1 => t1 = Some(t0.elapsed()),
                 Checkpoint::Cp2 => t2 = Some(t0.elapsed()),
+                Checkpoint::Cp3 => t3 = Some(t0.elapsed()),
                 Checkpoint::Cp4 => t4 = Some(t0.elapsed()),
-                _ => {}
             };
             let _ = perform_with(&mut env, Some(pob_calc::defence), Some(pob_calc::estimations), Some(&mut hook));
             if run > 0 {
                 cp1.push(t1.unwrap().as_secs_f64() * 1000.0);
                 cp2.push(t2.unwrap().as_secs_f64() * 1000.0);
+                cp3.push(t3.unwrap().as_secs_f64() * 1000.0);
                 cp4.push(t4.unwrap().as_secs_f64() * 1000.0);
             }
         }
@@ -204,10 +230,11 @@ fn perf_perform_to_checkpoints() {
             v[v.len() / 2]
         };
         println!(
-            "{}: perform -> CP1 {:.3} ms, perform -> CP2 {:.3} ms, perform -> CP4 {:.3} ms (median of {})",
+            "{}: perform -> CP1 {:.3} ms, perform -> CP2 {:.3} ms, perform -> CP3 {:.3} ms, perform -> CP4 {:.3} ms (median of {})",
             g.name,
             med(&mut cp1),
             med(&mut cp2),
+            med(&mut cp3),
             med(&mut cp4),
             cp1.len()
         );

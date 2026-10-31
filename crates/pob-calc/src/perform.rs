@@ -19,7 +19,10 @@
 //! `calcs.defence` and `calcs.buildDefenceEstimations` are parameters ([`PhaseFn`], as in pob-ts): R4.3/R4.4 plug them in.
 //! The R6 checkpoints of the LuaJIT probe (`tools/lua-corpus/export-skills.ts`) are a hook ([`Checkpoint`], [`perform_with`]).
 
+mod buffs;
+mod curses;
 mod flasks;
+mod guards;
 mod reservation;
 mod skills_loop;
 
@@ -2038,6 +2041,41 @@ fn get_converted_mod_tags(m: &Mod, multiplier: f64) -> Vec<Tag> {
 
 // --- CalcPerform.lua:1286-3792 `calcs.perform` --------------------------------------------------------------------------
 
+/// :3395-3410 Foulborn Choir of the Storm: `calcs.resistances` on a temporary actor whose modDB is a child of the player's (the conversion
+/// mods it adds stay off the player's modDB) and whose `output` is the player's output table, then life/mana and the reservations again.
+///
+/// The temporary actor (`modDB`, `output`, `activeSkillList`, `enemy`, `player = itself`) is a mod-core [`Actor`]; its `output` is a copy of
+/// the player's at entry -- the writes `calcs.resistances` makes go to the player's [`Output`] (the shared Lua table), but EvalMod reads made
+/// THROUGH the temporary actor inside `calcs.resistances` (a `PerStat`/`StatThreshold` tag on a resistance mod) would see the entry values.
+/// No golden and no synthetic case reaches this branch (`ManaIncreasedByOvercappedLightningRes` is a Foulborn amulet).
+fn choir_of_the_storm(mod_db: &StoreRef, player_actor: &ActorRef, player: &mut ActorState) {
+    let temp_db = ModStore::new_db(Some(mod_db.clone()));
+    let (output, active_skill_list, enemy) = {
+        let p = player_actor.borrow();
+        (p.output.clone(), p.active_skill_list.clone(), p.actors.get("enemy").cloned())
+    };
+    let temp = Rc::new(std::cell::RefCell::new(Actor {
+        mod_db: Some(temp_db.clone()),
+        output,
+        active_skill_list,
+        ..Actor::default()
+    }));
+    {
+        let mut t = temp.borrow_mut();
+        if let Some(e) = enemy {
+            t.actors.insert(Rc::from("enemy"), e);
+        }
+        t.actors.insert(Rc::from("player"), temp.clone());
+    }
+    temp_db.borrow_mut().set_actor(&temp);
+    crate::defence::resistances(&temp_db, &mut player.output);
+    // `tempResistActor.player = tempResistActor` is a cycle: break it (Lua's GC would collect the table).
+    temp.borrow_mut().actors.clear();
+    // :3408-3409 the reservations again, with the mana from the overcapped lightning resistance.
+    do_actor_life_mana(mod_db, &mut player.output);
+    do_actor_life_mana_reservation(mod_db, player, true);
+}
+
 /// `calcs.perform(env)` up to `calcs.defence(env, env.player)` and `buildDefenceEstimations` -- passed in; `None` records
 /// the call site as unimplemented (pob-ts `perform(env, defence?, estimations?)`).
 pub fn perform(env: &mut Env, defence: Option<PhaseFn>, estimations: Option<PhaseFn>) -> PerformState {
@@ -2435,23 +2473,32 @@ pub fn perform_with(
     // --- :2191 charges --------------------------------------------------------------------------------------------------
     do_actor_charges(env, Who::Player, &mut player, &party);
 
-    // --- :2193-3341 buffs / debuffs / curses / guards -------------------------------------------------------------------
+    // --- :2193-3376 buffs / debuffs / curses / guards -------------------------------------------------------------------
     match flask_state.as_ref() {
         Some((fx, _)) => {
-            skip(env, "2193-3120 combine buffs/debuffs/auras, alternate charges (R6.7)");
+            // :2193-2995 combine buffs/debuffs/curses/guards ([`buffs`]).
+            let mut combined = buffs::combine(env);
             // :3118-3122 the recovery half of the flasks (`mergeFlasks(env.flasks, true, nonUniqueFlasksApplyToMinion)`).
             if env.mode_combat {
                 flasks::merge_flasks(env, fx, true, fx.non_unique_flasks_apply_to_minion);
             }
-            skip(env, "3124-3341 curses/guards/links (R6.8)");
+            // :3124-3141 alternate charges; :3143-3316 extra curses, curse limit, slots ([`curses`]).
+            buffs::alternate_charges(env);
+            curses::extra_curses(env, &mut combined.curses);
+            let slots = curses::curse_slots(env, &mut player.output, &combined.curses);
+            // :3317-3376 guards, then apply everything ([`guards`]).
+            guards::guard_slots(env, &combined.guards, &mut combined.buffs, &mut player.output);
+            guards::apply(env, &combined.buffs, &combined.debuffs, &slots);
         }
-        None => skip(env, "2193-3341 buffs/debuffs/curses/guards/links/auras (needs the skill phase, P5)"),
+        None => {
+            skip(env, "2193-3341 buffs/debuffs/curses/guards/links/auras (needs the skill phase, P5)");
+            // :3341 -- the one line of the guard block that does not depend on a guard being there.
+            let guard = cond(&mod_db, "AffectedByGuardSkill");
+            player.output.set_bool("GuardSkillActive", guard.unwrap_or(false));
+            // :3344-3359 `buffs`/`minionBuffs`/`debuffs` are all empty on this path. :3361 `#curseSlots` runs regardless.
+            set_mult(&mod_db, "CurseOnEnemy", 0.0);
+        }
     }
-    // :3341 -- the one line of the guard block that does not depend on a guard being there.
-    let guard = cond(&mod_db, "AffectedByGuardSkill");
-    player.output.set_bool("GuardSkillActive", guard.unwrap_or(false));
-    // :3344-3359 `buffs`/`minionBuffs`/`debuffs` are all empty (the buff phase is R6.7). :3361 `#curseSlots` runs regardless.
-    set_mult(&mod_db, "CurseOnEnemy", 0.0);
     // :3378-3381 guaranteed chills (after the buffs, so chilling areas benefit from active buff modifiers).
     if let Some(st) = &env.skills {
         let chill = rules()
@@ -2498,11 +2545,15 @@ pub fn perform_with(
 
     // --- :3395-3416 Foulborn Choir of the Storm, Hallowing Flame --------------------------------------------------------
     if flag(&mod_db, &["ManaIncreasedByOvercappedLightningRes"]) {
-        // Needs `calcs.resistances` on a temporary actor (CalcDefence.lua:512-650, R4.3).
-        skip(
-            env,
-            "3394-3410 ManaIncreasedByOvercappedLightningRes (needs calcs.resistances, P4.4b)",
-        );
+        if skills_on {
+            choir_of_the_storm(&mod_db, &player_actor, &mut player);
+        } else {
+            // Needs `calcs.resistances` on a temporary actor (CalcDefence.lua:512-650, R4.3).
+            skip(
+                env,
+                "3394-3410 ManaIncreasedByOvercappedLightningRes (needs calcs.resistances, P4.4b)",
+            );
+        }
     }
     // :3411-3415 Hallowing Flame (skills off: recorded, as pob-ts does).
     let player_ms = player_main_skill(env, 3411);

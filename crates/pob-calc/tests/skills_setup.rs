@@ -558,8 +558,9 @@ fn canon(j: &Json) -> String {
 /// the same objects). The write happens in every perform pass (branch `not CannotShareWarcryBuffs`) before both reads of that pass (:2398,
 /// :2411); the reads :3090/:3099 are the party warcries (partyTab, not ported, empty). So the value left by the previous perform of the
 /// LuaJIT process (the load ran MAIN and CALCS before the probe's initEnv) never changes a result -- it is only visible in a dump of the
-/// state after initEnv. Rust's run is the first (fresh data: no such field). Modelling the write (a shared tag cell, like `div`, R4) is
-/// R6.7. The pin: LuaJIT's mod with that one field removed must equal Rust's mod (the comparison that follows); every place is listed by
+/// state after initEnv. Rust's run is the first (fresh data: no such field). R6.7 models the write (`Tag::set_warcry_power_bonus`, a shared
+/// tag cell like `div`, R4): a thread that already ran perform has the field in its data too, as LuaJIT does -- this test runs no perform,
+/// so the class stays as measured. The pin: LuaJIT's mod with that one field removed must equal Rust's mod (the comparison that follows); every place is listed by
 /// name in [`STALE_PINS`] -- any other difference or another count fails.
 const STALE: &str = "stale-perform-tag";
 const STALE_PINS: [&str; 1] = ["OccVortex, activeSkills[4] Enduring Cry, buffList[1].modList[0]"];

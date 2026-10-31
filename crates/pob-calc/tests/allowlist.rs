@@ -104,9 +104,10 @@ fn allowlist_is_the_measured_set() {
     );
     // R4.5: 289 / 246 (ModCache only); R5.4 (ParseMode::Full): 333 / 208; R5.5a (cluster subgraphs): 353 / 188;
     // R5.5b (radius jewels): 354 / 187; R5.5c (timeless jewels): 377 / 164; R6.3 (skills in initEnv, gem requirements): 381 / 160;
-    // R6.5 (skills + flasks in perform, CP1 = LuaJIT): 411 / 142; R6.6 (reservations, CP2 = LuaJIT; ReqIntString -> SYNTH_EXCLUDED): 414 / 139
-    assert_eq!(ALLOWLIST.len(), 414, "pinned size of the measured allowlist");
-    assert_eq!(EXCLUDED.len(), 139, "pinned size of the measured exclusions");
+    // R6.5 (skills + flasks in perform, CP1 = LuaJIT): 411 / 142; R6.6 (reservations, CP2 = LuaJIT; ReqIntString -> SYNTH_EXCLUDED): 414 / 139;
+    // R6.7 (buffs/debuffs/curses/guards, CP3 = LuaJIT): 542 / 14
+    assert_eq!(ALLOWLIST.len(), 542, "pinned size of the measured allowlist");
+    assert_eq!(EXCLUDED.len(), 14, "pinned size of the measured exclusions");
 }
 
 #[test]
@@ -123,6 +124,10 @@ fn every_excluded_key_names_a_root_cause() {
         assert!(!causes.contains(&"cluster"), "{k}: cluster is closed since R5.5a/R5.6: {reason}");
         // R6.6 closed `reservation` (CP2 = LuaJIT on every golden)
         assert!(!causes.contains(&"reservation"), "{k}: reservation is closed since R6.6: {reason}");
+        // R6.7 closed `buffs`, `curses`, `guards` and `skills` (CP3 = LuaJIT on every golden)
+        for closed in ["buffs", "curses", "guards", "skills"] {
+            assert!(!causes.contains(&closed), "{k}: {closed} is closed since R6.7: {reason}");
+        }
         for c in causes {
             *tally.get_mut(c).unwrap() += 1;
         }
