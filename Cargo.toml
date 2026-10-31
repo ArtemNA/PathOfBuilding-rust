@@ -17,6 +17,8 @@ pob-golden = { path = "crates/pob-golden" }
 pob-data = { path = "crates/pob-data" }
 pob-parser = { path = "crates/pob-parser" }
 pob-build = { path = "crates/pob-build" }
+pob-tree = { path = "crates/pob-tree" }
+pob-items = { path = "crates/pob-items" }
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

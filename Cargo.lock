@@ -86,6 +86,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "pob-items"
+version = "0.1.0"
+dependencies = [
+ "indexmap",
+ "pob-build",
+ "pob-data",
+ "pob-golden",
+ "pob-lua",
+ "pob-mods",
+ "pob-parser",
+ "serde_json",
+]
+
+[[package]]
 name = "pob-lua"
 version = "0.1.0"
 dependencies = [
@@ -107,6 +121,20 @@ version = "0.1.0"
 dependencies = [
  "pob-data",
  "pob-mods",
+]
+
+[[package]]
+name = "pob-tree"
+version = "0.1.0"
+dependencies = [
+ "indexmap",
+ "pob-build",
+ "pob-data",
+ "pob-golden",
+ "pob-lua",
+ "pob-mods",
+ "pob-parser",
+ "serde_json",
 ]
 
 [[package]]
