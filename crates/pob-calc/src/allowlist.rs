@@ -50,7 +50,11 @@
 //! ALLOWLIST -- every key whose reason named `buffs`/`curses`/`guards`/`skills` (`RageEffect` included) but the three below (`ReqIntString`
 //! stays in [`SYNTH_EXCLUDED`]); 3 newly emitted keys are ALLOWLIST (`EnemyCurseLimit`, `OnlySharedGuard`, `sharedGuardAbsorb`); none left
 //! ALLOWLIST. The three still failing (`EHPSurvivalTime`, `ManaRecoupRecoveryAvg`, `enemySkillTime`, OccVortex only) were re-rooted by
-//! measurement to `ailments` ([`CHILL`]); no reason names `buffs`/`curses`/`guards`/`skills` any more.
+//! measurement to `ailments` (the enemy Chill of CalcPerform.lua:3497-3620 on OccVortex); no reason names `buffs`/`curses`/`guards`/`skills` any more.
+//! R6.8 re-measured with the non-damaging ailments, chill/shock multipliers, exposures, consecrated ground and ally life pools
+//! (CalcPerform.lua:3497-3790; CP4 = LuaJIT on all six goldens): the 3 `ailments` keys moved from EXCLUDED to ALLOWLIST (`EHPSurvivalTime`,
+//! `ManaRecoupRecoveryAvg`, `enemySkillTime` -- the OccVortex enemy Chill -19% action speed is now applied); 10 newly emitted keys are
+//! ALLOWLIST (`Current`/`Maximum` x `Brittle`/`Chill`/`Sap`/`Scorch`/`Shock`); none left ALLOWLIST; no reason names `ailments` any more.
 
 use indexmap::IndexMap;
 
@@ -112,16 +116,10 @@ pub const SYNTH_EXCLUDED: &[&str] = &["ReqIntString"];
 /// with the output of a nested `calcs.perform` on a CALCULATOR env (CalcMirages.lua:52/:157, `buildBreakdown` false) -- R7.
 const MIRAGE_BREAKDOWN: &str = "offence: Dual Savior -- calcs.mirages (CalcMirages.lua:157) replaces the output with a CALCULATOR perform (no breakdown, no flask breakdown keys); ok on the other 5";
 
-/// R6.7 measured (R-L5): on OccVortex LuaJIT CP4 has the enemy Chill (`-19|Chill|ActionSpeed|INC|...Condition/var=Chilled`, plus
-/// `Multiplier:ChillEffect` 19) that Rust does not -- the non-damaging ailments of CalcPerform.lua:3497-3620 (R6.8). `enemySkillTime` Rust
-/// 0.8434 = 0.7 / (1 - 0.17) (Temporal Chains only) vs golden 1.09375 = 0.7 / (1 - 0.17 - 0.19); `EHPSurvivalTime` (= hits x
-/// enemySkillTime, CalcDefence.lua:2966) and `ManaRecoupRecoveryAvg` (divides by EHPSurvivalTime, :3013) follow; ok on the other 5.
-const CHILL: &str = "ailments: OccVortex -- enemy Chill -19% action speed (CalcPerform.lua:3497-3620, R6.8) -> enemySkillTime -> EHPSurvivalTime -> recoup average; ok on the other 5";
-
-/// 542 keys, sorted (byte order): `ok` on every golden that emits them, on none `mismatch` or `extra` (R5.4: measured
+/// 555 keys, sorted (byte order): `ok` on every golden that emits them, on none `mismatch` or `extra` (R5.4: measured
 /// with `ParseMode::Full`, the default; R5.5a re-measured with the cluster-jewel subgraphs: +20; R5.5b radius jewels: +1;
 /// R5.5c timeless jewels: +23; R6.3 gem requirements: +4; R6.5 skills + flasks in perform: +30; R6.6 reservations: +4, `ReqIntString` -1;
-/// R6.7 buffs/curses/guards: +128).
+/// R6.7 buffs/curses/guards: +128; R6.8 ailments/exposures/ally life: +13).
 pub const ALLOWLIST: &[&str] = &[
     "AbsorptionCharges",
     "AbsorptionChargesMax",
@@ -267,6 +265,11 @@ pub const ALLOWLIST: &[&str] = &[
     "CrabBarriers",
     "CrabBarriersMax",
     "CritExtraDamageReduction",
+    "CurrentBrittle",
+    "CurrentChill",
+    "CurrentSap",
+    "CurrentScorch",
+    "CurrentShock",
     "CurseAvoidChance",
     "CurseEffectOnSelf",
     "DamageReductionMax",
@@ -275,6 +278,7 @@ pub const ALLOWLIST: &[&str] = &[
     "DebuffExpirationRate",
     "Devotion",
     "Dex",
+    "EHPSurvivalTime",
     "EffectiveAttackDodgeChance",
     "EffectiveAverageBlockChance",
     "EffectiveBlockChance",
@@ -458,6 +462,7 @@ pub const ALLOWLIST: &[&str] = &[
     "ManaDegen",
     "ManaOnBlock",
     "ManaRecoup",
+    "ManaRecoupRecoveryAvg",
     "ManaRecoupRecoveryMax",
     "ManaRecovery",
     "ManaRecoveryRateMod",
@@ -477,8 +482,13 @@ pub const ALLOWLIST: &[&str] = &[
     "MaxLifeLeechRatePercent",
     "MaxManaLeechInstance",
     "MaxManaLeechRate",
+    "MaximumBrittle",
+    "MaximumChill",
     "MaximumFortification",
     "MaximumRage",
+    "MaximumSap",
+    "MaximumScorch",
+    "MaximumShock",
     "MeleeEvadeChance",
     "MeleeEvasion",
     "MeleeNotHitChance",
@@ -648,6 +658,7 @@ pub const ALLOWLIST: &[&str] = &[
     "WitherEffectOnSelf",
     "anyRecoup",
     "ehpSectionAnySpecificTypes",
+    "enemySkillTime",
     "noSplitEvade",
     "preventedLifeLoss",
     "preventedLifeLossBelowHalf",
@@ -667,12 +678,9 @@ pub const ALLOWLIST: &[&str] = &[
     "totalTakenHit",
 ];
 
-/// 14 keys the engine writes that fail on at least one golden (or, [`SYNTH_EXCLUDED`], on a synthetic LuaJIT input), each with its root
+/// 11 keys the engine writes that fail on at least one golden (or, [`SYNTH_EXCLUDED`], on a synthetic LuaJIT input), each with its root
 /// cause (pob-ts vocabulary).
 pub const EXCLUDED: &[(&str, &str)] = &[
-    ("EHPSurvivalTime", CHILL),
-    ("ManaRecoupRecoveryAvg", CHILL),
-    ("enemySkillTime", CHILL),
     ("ReqDexString", REQ_STRING),
     ("ReqIntString", REQ_STRING),
     ("ReqStrString", REQ_STRING),

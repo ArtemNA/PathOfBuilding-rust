@@ -19,6 +19,8 @@
 //! `calcs.defence` and `calcs.buildDefenceEstimations` are parameters ([`PhaseFn`], as in pob-ts): R4.3/R4.4 plug them in.
 //! The R6 checkpoints of the LuaJIT probe (`tools/lua-corpus/export-skills.ts`) are a hook ([`Checkpoint`], [`perform_with`]).
 
+mod ailments;
+mod ally;
 mod buffs;
 mod curses;
 mod flasks;
@@ -68,6 +70,8 @@ pub struct ActorState {
     pub str_dmg_bonus: Option<f64>,
     /// `actor.appliedEnemyModifiers`: the nested `value.mod` objects already copied to the enemy, by identity.
     applied_enemy_modifiers: Option<Vec<Rc<Mod>>>,
+    /// `env.player.allyLifeList` (:3669); nil on the enemy.
+    pub(crate) ally_life_list: Option<ally::AllyLifeList>,
 }
 
 impl ActorState {
@@ -82,6 +86,7 @@ impl ActorState {
             uncancellable_mana_reservation: None,
             str_dmg_bonus: None,
             applied_enemy_modifiers: None,
+            ally_life_list: None,
         }
     }
 }
@@ -2250,9 +2255,9 @@ pub fn perform_with(
         Some(pob_build::ConfigValue::Bool(false)) => None,
         other => other.cloned(),
     };
-    let only_minion = match summoned_override {
+    let only_minion = match &summoned_override {
         None => summoned_minions == 1.0, // `(nil or summonedMinions) == 1`
-        Some(pob_build::ConfigValue::Num(v)) => v == 1.0,
+        Some(pob_build::ConfigValue::Num(v)) => *v == 1.0,
         Some(_) => false, // a string/true is never `== 1`
     };
     set_cond(&mod_db, "OnlyMinion", only_minion);
@@ -2666,15 +2671,25 @@ pub fn perform_with(
     do_actor_charges(env, Who::Player, &mut player, &party);
     do_actor_misc(env, Who::Player, &mut player, &party);
 
-    // --- :3497-3665 ailments / exposures / consecrated ground / enemy conditions ----------------------------------------
-    skip(
-        env,
-        "3497-3620 non-damaging ailments, exposures, consecrated ground, enemy ailment config (P5)",
-    );
+    // --- :3497-3622 non-damaging ailments, chill/shock multipliers ([`ailments`]) ---------------------------------------
+    if skills_on {
+        ailments::ailments(env, &mut player.output, loop_out.has_guaranteed_bonechill);
+    } else {
+        skip(
+            env,
+            "3497-3620 non-damaging ailments, exposures, consecrated ground, enemy ailment config (P5)",
+        );
+    }
     do_actor_charges(env, Who::Enemy, &mut enemy, &party);
     do_actor_misc(env, Who::Enemy, &mut enemy, &party);
-    skip(env, "3627-3665 exposures / Elemental Equilibrium (P5)");
-    skip(env, "3667-3789 ally life pools (Vaal Rejuvenation Totem, spectres; P5)");
+    // --- :3627-3665 exposures / Elemental Equilibrium / consecrated ground; :3667-3790 ally life pools ([`ally`]) --------
+    if skills_on {
+        ailments::exposures_consecrated(env);
+        ally::ally_life(env, &mut player, summoned_override.as_ref());
+    } else {
+        skip(env, "3627-3665 exposures / Elemental Equilibrium (P5)");
+        skip(env, "3667-3789 ally life pools (Vaal Rejuvenation Totem, spectres; P5)");
+    }
 
     let mut state = PerformState {
         player,

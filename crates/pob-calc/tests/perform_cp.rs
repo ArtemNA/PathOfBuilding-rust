@@ -11,7 +11,8 @@
 //! `doActorLifeManaReservation(env.player)` (:2092; attributes/pools :1943-1966 and the per-skill reservation loop :1978-2090) -- is gated
 //! the same way. R6.7: CP3 -- the entry of `calcs.defenceForConditionals` (:3484; heralds/auras :2164, buffs/debuffs/curses/guards
 //! :2193-3377, Choir/extra auras/keystones/Dancing Dervish :3394-3482) -- too, with ONE proven class pinned by name ([`TABLE_OUTPUT`]).
-//! CP4 (R6.8) is counted for information only (`PERFORM_CP_VERBOSE=1` prints it).
+//! R6.8: CP4 -- the entry of `calcs.defence` (:3792; misc buffs :3489, non-damaging ailments and chill/shock multipliers :3497-3622, the
+//! enemy's charges/misc :3625-3626, exposures/consecrated ground :3627-3665, ally life pools :3667-3790) -- the same way, the same pin.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::rc::Rc;
@@ -142,9 +143,8 @@ fn strip_table_output(d: &mut Vec<String>) -> usize {
 }
 
 #[test]
-fn cp1_cp2_cp3_equal_luajit_on_six_goldens() {
+fn cp1_cp2_cp3_cp4_equal_luajit_on_six_goldens() {
     let mut all_bad = Vec::new();
-    let mut later: BTreeMap<String, usize> = BTreeMap::new();
     for g in GOLDEN_BUILDS {
         let lj = fixture(g.name);
         let cps = run(g.name);
@@ -159,35 +159,25 @@ fn cp1_cp2_cp3_equal_luajit_on_six_goldens() {
             };
             let mut d = diff_actor("player", &w["player"], &r["player"]);
             d.extend(diff_actor("enemy", &w["enemy"], &r["enemy"]));
-            if cp == "CP1" || cp == "CP2" || cp == "CP3" {
-                let pinned = strip_table_output(&mut d);
-                println!(
-                    "{}: {cp} player {} mods / {} conditions / {} multipliers / {} output, enemy {} mods / {} conditions / {} multipliers -- differences {}, pinned output-table-value {pinned}",
-                    g.name,
-                    r["player"]["modCount"].as_str().unwrap(),
-                    r["player"]["conditions"].as_object().unwrap().len(),
-                    r["player"]["multipliers"].as_object().unwrap().len(),
-                    r["player"]["output"].as_object().unwrap().len(),
-                    r["enemy"]["modCount"].as_str().unwrap(),
-                    r["enemy"]["conditions"].as_object().unwrap().len(),
-                    r["enemy"]["multipliers"].as_object().unwrap().len(),
-                    d.len()
-                );
-                all_bad.extend(d.into_iter().map(|x| format!("{}: {cp} {x}", g.name)));
-            } else {
-                if std::env::var_os("PERFORM_CP_VERBOSE").is_some() {
-                    for x in &d {
-                        println!("  {}: {cp} {x}", g.name);
-                    }
-                }
-                *later.entry(format!("{}: {cp}", g.name)).or_default() += d.len();
-            }
+            let pinned = strip_table_output(&mut d);
+            println!(
+                "{}: {cp} player {} mods / {} conditions / {} multipliers / {} output, enemy {} mods / {} conditions / {} multipliers -- differences {}, pinned output-table-value {pinned}",
+                g.name,
+                r["player"]["modCount"].as_str().unwrap(),
+                r["player"]["conditions"].as_object().unwrap().len(),
+                r["player"]["multipliers"].as_object().unwrap().len(),
+                r["player"]["output"].as_object().unwrap().len(),
+                r["enemy"]["modCount"].as_str().unwrap(),
+                r["enemy"]["conditions"].as_object().unwrap().len(),
+                r["enemy"]["multipliers"].as_object().unwrap().len(),
+                d.len()
+            );
+            all_bad.extend(d.into_iter().map(|x| format!("{}: {cp} {x}", g.name)));
         }
     }
-    println!("later checkpoints (information, R6.8+): differences {later:#?}");
     assert!(
         all_bad.is_empty(),
-        "CP1/CP2/CP3 != LuaJIT ({}):\n{}",
+        "CP1/CP2/CP3/CP4 != LuaJIT ({}):\n{}",
         all_bad.len(),
         all_bad.join("\n")
     );

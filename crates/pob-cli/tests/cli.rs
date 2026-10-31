@@ -35,7 +35,7 @@ fn calc_file_json_has_meta_and_allowlisted_stats() {
     let parsed = CandidateOutput::from_json(std::str::from_utf8(&out.stdout).unwrap()).unwrap();
     assert_eq!(
         parsed.stats.len(),
-        490,
+        502,
         "Dual Savior: every ALLOWLIST key it emits (= oracle ok count)"
     );
     assert!(
@@ -43,15 +43,22 @@ fn calc_file_json_has_meta_and_allowlisted_stats() {
         "stats are filtered by ALLOWLIST"
     );
     assert!(parsed.meta.is_some());
-    // R6.7: the buff phase runs (no R6.7 note is left); the next phase (R6.8, ailments) is the first one still recorded.
+    // R6.7: the buff phase runs (no R6.7 note is left). R6.8: the ailment / exposure / ally life phases run too; the next phase (R7,
+    // triggers / mirages / offence) is the first one still recorded.
     assert!(!parsed.unimplemented.iter().any(|u| u.contains("not handed to perform yet")));
     assert!(!parsed.unimplemented.iter().any(|u| u.contains("per-skill reservation loop")));
     assert!(!parsed.unimplemented.iter().any(|u| u.contains("(R6.7)") || u.contains("3124-3341")));
     assert!(
+        !parsed
+            .unimplemented
+            .iter()
+            .any(|u| u.contains("3497-3620") || u.contains("3627-3665") || u.contains("3667-3789"))
+    );
+    assert!(
         parsed
             .unimplemented
             .iter()
-            .any(|u| u == "CalcPerform.lua:3497-3620 non-damaging ailments, exposures, consecrated ground, enemy ailment config (P5)")
+            .any(|u| u == "CalcPerform.lua:3797-3801 triggers / mirages / offence (P5)")
     );
 }
 
@@ -95,16 +102,18 @@ fn experimental_env_disables_the_filter() {
 /// R6.6 (per-skill reservations, CP2 = LuaJIT; allowlist 411 -> 414: +4 `Mana(Un)Reserved*`, -1 `ReqIntString` on synthetic evidence): 372/371,
 /// 382/381, 382/381, 393/392, 383/382, 397/396 (the same `npm run oracle`).
 /// R6.7 (buffs/debuffs/curses/guards, CP3 = LuaJIT; allowlist 414 -> 542): 490/489, 500/499, 500/499, 514/513, 501/500, 522/521.
+/// R6.8 (ailments/exposures/ally life, CP4 = LuaJIT; allowlist 542 -> 555: +10 `Current*`/`Maximum*` ailments, +3 former `ailments` keys):
+/// 502/501, 512/511, 512/511, 526/525, 513/512, 535/534.
 /// O9: `VaalArcticArmourMitigation` is `ok`, not `exact` (golden `+0`, Rust `-0`) -- hence exact = ok - 1.
 #[test]
 fn cli_stats_against_goldens() {
     let pinned: [(&str, usize, usize); 6] = [
-        ("Dual Savior", 490, 489),
-        ("Dual Wield Cospris CoC", 500, 499),
-        ("Dual Wield Cospris CoC - Lethal Pride", 500, 499),
-        ("Generals Perforate Zerker", 514, 513),
-        ("Mirage Archer Toxic Rain", 501, 500),
-        ("OccVortex", 522, 521),
+        ("Dual Savior", 502, 501),
+        ("Dual Wield Cospris CoC", 512, 511),
+        ("Dual Wield Cospris CoC - Lethal Pride", 512, 511),
+        ("Generals Perforate Zerker", 526, 525),
+        ("Mirage Archer Toxic Rain", 513, 512),
+        ("OccVortex", 535, 534),
     ];
     let mut got = Vec::new();
     for (g, (name, _, _)) in GOLDEN_BUILDS.iter().zip(pinned) {
