@@ -5,27 +5,41 @@
 //! (KNOWLEDGE/R4-ARCH.md, CALC-ARCH §8); line numbers from `grep -n` on upstream `ed354c2f8`, 2026-10-31.
 //!
 //! The phase order IS the mod insertion order and the insertion order is the summation order (MINEFIELD L10): nothing here
-//! is reordered. `env.player.activeSkillList` is empty and `env.player.mainSkill` is the CALC-ARCH §8 stub (no skill
-//! flags, no skill types, empty parentless `skillModList`, `skillCfg = { skillName = "" }`), so every branch that reads a
-//! skill flag is dead and is written as such; every branch of upstream this slice knowingly skips is recorded in
-//! `env.unimplemented` with the same text pob-ts records (so the perform-only fixture compares them as content).
+//! is reordered.
+//!
+//! Two paths (R6-ARCH §2 p. 5), told apart by `env.skills`:
+//!  * skills on (R6.5, the default): `env.player.activeSkillList` / `mainSkill` are the skills initEnv built (R6.3/R6.4); :1296 gives
+//!    every skill its perform-time child `skillModList` ([`Env::skill_mod_lists`]); the skill loop (:1334-1512, [`skills_loop`]) and
+//!    the flask/tincture phase (:1513-1942, [`flasks`]) run. Every read of `actor.mainSkill` goes through [`MainSkill`].
+//!  * skills off (the "= pob-ts" gates): `mainSkill` is the CALC-ARCH §8 stub (no skill flags, no skill types, empty parentless
+//!    `skillModList`, `skillCfg = { skillName = "" }`) -- [`MainSkill`] answers "no" for every flag -- and every branch of upstream
+//!    this path knowingly skips is recorded in `env.unimplemented` with the same text pob-ts records (so the perform-only fixture
+//!    compares them as content).
 //!
 //! `calcs.defence` and `calcs.buildDefenceEstimations` are parameters ([`PhaseFn`], as in pob-ts): R4.3/R4.4 plug them in.
+//! The R6 checkpoints of the LuaJIT probe (`tools/lua-corpus/export-skills.ts`) are a hook ([`Checkpoint`], [`perform_with`]).
+
+mod flasks;
+mod skills_loop;
 
 use std::rc::Rc;
 
 use indexmap::IndexMap;
 use pob_data::globals::globals;
 use pob_data::rules::rules;
+use pob_data::skill_stat_map::MalformedMod;
+use pob_data::skills::SkillTypeSet;
 use pob_items::{DataTable, Item};
 use pob_lua::number::{max2, min2, round};
 use pob_lua::tostring_num;
 use pob_mods::{Actor, ActorRef, Mod, ModCfg, ModStore, ModType, StoreKind, StoreRef, Table, Tag, Value, create_mod};
 
+use crate::active_skill::ActiveSkill;
 use crate::calc_lib;
 use crate::env::{CalcActor, Env};
 use crate::output::Output;
 use crate::setup::{keyword_flag, list_mods, merge_keystones, misc, mod_flag, n, new_mod, ok, s, tag};
+use crate::skills::SkillsState;
 
 /// Which of `env`'s two actors a helper works on (`actor == env.player` upstream).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -99,6 +113,130 @@ pub type PhaseFn = fn(&mut Env, &mut PerformState, Who);
 
 /// The stub phase for the perform-only fixture: does nothing, records nothing (pob-ts `noop`).
 pub fn noop_phase(_: &mut Env, _: &mut PerformState, _: Who) {}
+
+/// The perform checkpoints of the R6.1 LuaJIT probe (`tools/lua-corpus/export-skills.ts`, CalcPerform.lua @ ed354c2f8).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Checkpoint {
+    /// After the first top-level `doActorLifeMana(env.player)` -- the one at the end of `doActorAttribsConditions` (:546), called from
+    /// :1944: the state after the skill loop and the flasks.
+    Cp1,
+    /// After the first `doActorLifeManaReservation(env.player)` (:2092).
+    Cp2,
+    /// Entry of `calcs.defenceForConditionals(env, env.player)` (:3484).
+    Cp3,
+    /// Entry of `calcs.defence(env, env.player)` (:3792).
+    Cp4,
+}
+
+/// Called at each [`Checkpoint`] with the env and the player's / enemy's perform state (`actor.output`).
+pub type CheckpointHook<'a> = &'a mut dyn FnMut(Checkpoint, &Env, &ActorState, &ActorState);
+
+// --- `actor.mainSkill` -----------------------------------------------------------------------------------------------------
+
+/// What perform reads of `actor.mainSkill`: the real `env.player.mainSkill` (skills on) or the CALC-ARCH §8 stub (skills off: no
+/// flags, no types, `skillCfg = { skillName = "" }`, an empty parentless list that is also its own `baseSkillModList`).
+pub(crate) struct MainSkill {
+    /// `mainSkill.skillModList` (perform's child list, :1296).
+    pub list: StoreRef,
+    /// `mainSkill.baseSkillModList`.
+    pub base: StoreRef,
+    /// `mainSkill.skillCfg`.
+    pub cfg: ModCfg,
+    flags: IndexMap<String, bool>,
+    types: SkillTypeSet,
+    /// `mainSkill.skillData.triggered` is truthy.
+    pub triggered: bool,
+    /// The malformed data mods of the skill list (R6.4): a query of the list that reaches their name raises.
+    malformed: Vec<MalformedMod>,
+    /// `mainSkill.minion` is set.
+    pub has_minion: bool,
+}
+
+impl MainSkill {
+    /// `mainSkill.skillFlags[k]` truthy.
+    pub fn flag(&self, k: &str) -> bool {
+        self.flags.get(k).copied().unwrap_or(false)
+    }
+
+    /// `mainSkill.skillTypes[SkillType[name]]`.
+    pub fn has_type(&self, name: &str) -> bool {
+        self.types.contains(&skill_type_u32(name))
+    }
+
+    /// A query of `skillModList`/`baseSkillModList` by these names: the malformed mods' LuaJIT error first.
+    pub fn guard(&self, names: &[&str]) {
+        skill_guard(&self.malformed, names);
+    }
+}
+
+/// `SkillType[name]` as the set key.
+fn skill_type_u32(name: &str) -> u32 {
+    *globals().skill_type.get(name).unwrap_or_else(|| panic!("SkillType.{name} is nil")) as u32
+}
+
+/// A skill-list query that reaches a malformed mod's name raises its LuaJIT error (R6.4, `skill_modlist` module doc).
+pub(crate) fn skill_guard(malformed: &[MalformedMod], names: &[&str]) {
+    if let Some(m) = malformed.iter().find(|m| names.contains(&&*m.name)) {
+        panic!("{}", m.query_error());
+    }
+}
+
+/// `activeSkill.skillCfg` as a ModStore cfg.
+pub(crate) fn skill_cfg_of(st: &SkillsState, sk: &ActiveSkill) -> ModCfg {
+    sk.skill_cfg
+        .as_ref()
+        .unwrap_or_else(|| panic!("Modules/CalcPerform.lua: activeSkill.skillCfg is nil (buildActiveSkillModList not run)"))
+        .mod_cfg(&st.skills, &sk.skill_types, None)
+}
+
+/// `activeSkill.skillModList` after CalcPerform.lua:1296 (perform's child of `baseSkillModList`); before perform -- the base list.
+pub(crate) fn skill_list_of(env: &Env, i: usize) -> StoreRef {
+    match env.skill_mod_lists.get(i) {
+        Some(l) => l.clone(),
+        None => env.skills.as_ref().expect("skills on").active_skill_list[i]
+            .skill_mod_list
+            .clone()
+            .unwrap_or_else(|| panic!("Modules/CalcPerform.lua: activeSkill.skillModList is nil")),
+    }
+}
+
+/// `actor.mainSkill` -- `None` where upstream's field is nil (the enemy).
+pub(crate) fn main_skill(env: &Env, who: Who) -> Option<MainSkill> {
+    if who == Who::Player
+        && let Some(st) = &env.skills
+    {
+        let i = st
+            .main_skill
+            .unwrap_or_else(|| panic!("Modules/CalcPerform.lua: attempt to index field 'mainSkill' (a nil value)"));
+        let sk = &st.active_skill_list[i];
+        return Some(MainSkill {
+            list: skill_list_of(env, i),
+            base: sk.skill_mod_list.clone().expect("baseSkillModList"),
+            cfg: skill_cfg_of(st, sk),
+            flags: sk.skill_flags.clone(),
+            types: sk.skill_types.clone(),
+            triggered: sk.skill_data.get("triggered").is_some_and(Value::truthy),
+            malformed: sk.malformed_mods.clone(),
+            has_minion: sk.minion.is_some(),
+        });
+    }
+    actor_of(env, who).borrow().main_skill.as_ref().map(|ms| MainSkill {
+        list: ms.skill_mod_list.clone(),
+        base: ms.skill_mod_list.clone(),
+        cfg: stub_skill_cfg(),
+        flags: IndexMap::new(),
+        types: SkillTypeSet::new(),
+        triggered: false,
+        malformed: Vec::new(),
+        has_minion: false,
+    })
+}
+
+/// `env.player.mainSkill` -- upstream indexes it unconditionally.
+fn player_main_skill(env: &Env, line: u32) -> MainSkill {
+    main_skill(env, Who::Player)
+        .unwrap_or_else(|| panic!("Modules/CalcPerform.lua:{line}: attempt to index field 'mainSkill' (a nil value)"))
+}
 
 // --- small readers / writers (Lua errors stay errors, L18) -------------------------------------------------------------
 
@@ -222,17 +360,6 @@ fn enemy_db_of(env: &Env, who: Who) -> StoreRef {
         Who::Player => env.enemy_db.clone(),
         Who::Enemy => env.mod_db.clone(),
     }
-}
-
-/// `env.player.mainSkill.skillModList` -- upstream indexes the main skill unconditionally.
-fn main_skill_mod_list(env: &Env) -> StoreRef {
-    env.player
-        .borrow()
-        .main_skill
-        .as_ref()
-        .unwrap_or_else(|| panic!("Modules/CalcPerform.lua: attempt to index field 'mainSkill' (a nil value)"))
-        .skill_mod_list
-        .clone()
 }
 
 /// A `DataTable` as the mod core's table (`actor.weaponData1/2` is ONE Lua table seen by perform and by EvalMod).
@@ -471,10 +598,53 @@ fn do_actor_attribs_conditions(env: &mut Env, who: Who, st: &mut ActorState) {
 
     // --- :249-380 combat conditions + shrines ---------------------------------------------------------------------------
     if env.mode_combat {
-        // :249-295 read `actor.mainSkill.skillData.triggered` / `.skillFlags.*` / `.skillTypes[...]`: the stub has none,
-        // so AttackedRecently/CastSpellRecently/UsedMovementSkillRecently/.../TriggeredTrapsRecently are never set.
-        // :296-305 `A or (B and not C) or D` -- `and` binds tighter than `or`.
-        let player_cfg = stub_skill_cfg();
+        // :245-285 `actor.mainSkill.skillData.triggered` / `.skillFlags.*` / `.skillTypes[...]` (the stub answers "no" to all).
+        let ms =
+            main_skill(env, who).unwrap_or_else(|| panic!("Modules/CalcPerform.lua:245: attempt to index field 'mainSkill' (a nil value)"));
+        let cond_true = |k: &str| set_cond(&db, k, true);
+        if !ms.triggered && !ms.flag("trap") && !ms.flag("mine") && !ms.flag("totem") {
+            if ms.flag("attack") {
+                cond_true("AttackedRecently");
+            } else if ms.flag("spell") {
+                cond_true("CastSpellRecently");
+            }
+            if ms.has_type("Movement") {
+                cond_true("UsedMovementSkillRecently");
+            }
+            if ms.flag("minion") && !ms.flag("permanentMinion") {
+                cond_true("UsedMinionSkillRecently");
+            }
+            if ms.has_type("Vaal") {
+                cond_true("UsedVaalSkillRecently");
+            }
+            if ms.has_type("Channel") {
+                cond_true("Channelling");
+            }
+        }
+        if ms.flag("hit") && !ms.flag("trap") && !ms.flag("mine") && !ms.flag("totem") {
+            cond_true("HitRecently");
+            if ms.flag("spell") {
+                cond_true("HitSpellRecently");
+            }
+        }
+        if ms.flag("totem") {
+            cond_true("HaveTotem");
+            cond_true("SummonedTotemRecently");
+            if ms.flag("hit") {
+                cond_true("TotemsHitRecently");
+                if ms.flag("spell") {
+                    cond_true("TotemsSpellHitRecently");
+                }
+            }
+        }
+        if ms.flag("mine") {
+            cond_true("DetonatedMinesRecently");
+        }
+        if ms.flag("trap") {
+            cond_true("TriggeredTrapsRecently");
+        }
+        // :286-294 `A or (B and not C) or D` -- `and` binds tighter than `or`; C reads `env.player.mainSkill.skillCfg`.
+        let player_cfg = player_main_skill(env, 286).cfg;
         let crit_alt = flag(&db, &["CritAlwaysAltAilments"]) && !flag_cfg(&db, Some(&player_cfg), &["NeverCrit"]);
         if base(&db, &["EnemyScorchChance"]) > 0.0 || crit_alt || flag(&db, &["IgniteCanScorch"]) {
             set_cond(&db, "CanInflictScorch", true);
@@ -487,13 +657,13 @@ fn do_actor_attribs_conditions(env: &mut Env, who: Who, st: &mut ActorState) {
         }
         shrines(&db);
     }
-    // --- :381-391 exposure; the stub's skillModList is empty, so only modDB can trip these ------------------------------
+    // --- :398-407 exposure: `env.player.mainSkill.skillModList:Sum("BASE", env.player.mainSkill.skillCfg, ...)` -----------
     if env.mode_effective {
-        let sml = main_skill_mod_list(env);
-        let cfg = stub_skill_cfg();
+        let ms = player_main_skill(env, 399);
         for element in ["Fire", "Cold", "Lightning"] {
             let name = format!("{element}ExposureChance");
-            if sum(&sml, ModType::Base, Some(&cfg), &[&name]) > 0.0 || base(&db, &[&name]) > 0.0 {
+            ms.guard(&[&name]);
+            if sum(&ms.list, ModType::Base, Some(&ms.cfg), &[&name]) > 0.0 || base(&db, &[&name]) > 0.0 {
                 set_cond(&db, &format!("CanApply{element}Exposure"), true);
             }
         }
@@ -872,9 +1042,11 @@ fn do_actor_misc(env: &mut Env, who: Who, st: &mut ActorState, party: &PartyStub
     let fl = |name: &str| flag(&db, &[name]);
 
     if env.mode_combat {
-        // :646 `env.player.mainSkill.baseSkillModList:Flag(nil, "Cruelty")` -- the stub has no baseSkillModList (built by
-        // createActiveSkill, P5); its empty skillModList answers the same "no".
-        if flag(&main_skill_mod_list(env), &["Cruelty"]) {
+        // :646 `env.player.mainSkill.baseSkillModList:Flag(nil, "Cruelty")` (the stub has no baseSkillModList; its empty
+        // skillModList answers the same "no").
+        let player_ms = player_main_skill(env, 646);
+        player_ms.guard(&["Cruelty"]);
+        if flag(&player_ms.base, &["Cruelty"]) {
             let v = or_override(override_(&db, &["Cruelty"]), 40.0, "Modules/CalcPerform.lua:647");
             set_mult(&db, "Cruelty", v);
         }
@@ -896,8 +1068,11 @@ fn do_actor_misc(env: &mut Env, who: Who, st: &mut ActorState, party: &PartyStub
         }
         if fl("Fortified") || base(&db, &["Multiplier:Fortification"]) > 0.0 {
             // :660-661 `actor.mainSkill and actor.mainSkill.skillModList or actor.modDB`
-            let (skill_mod_list, skill_cfg) = match &actor_of(env, who).borrow().main_skill {
-                Some(ms) => (ms.skill_mod_list.clone(), Some(stub_skill_cfg())),
+            let (skill_mod_list, skill_cfg) = match main_skill(env, who) {
+                Some(ms) => {
+                    ms.guard(&["FortifyDuration"]);
+                    (ms.list, Some(ms.cfg))
+                }
                 None => (db.clone(), None),
             };
             let max_stacks = max2(
@@ -1014,7 +1189,13 @@ fn do_actor_misc(env: &mut Env, who: Who, st: &mut ActorState, party: &PartyStub
                 }
             }
         }
-        // :743 `actor.mainSkill.skillFlags.selfCast` -- never set on the stub.
+        // :735-739 Fanaticism -- `actor.mainSkill and actor.mainSkill.skillFlags.selfCast` (never set on the stub).
+        if fl("Fanaticism") && main_skill(env, who).is_some_and(|ms| ms.flag("selfCast")) {
+            let effect = (75.0 * (1.0 + inc(&db, &["BuffEffectOnSelf"]) / 100.0)).floor();
+            nm(&db, "Speed", More, effect, "Fanaticism", mod_flag("Cast"), 0, vec![]);
+            nm(&db, "Cost", More, -effect, "Fanaticism", mod_flag("Cast"), 0, vec![]);
+            nm(&db, "AreaOfEffect", Inc, effect, "Fanaticism", mod_flag("Cast"), 0, vec![]);
+        }
         if fl("Condition:CanGainSpiritInfusion") {
             let global_effect = || {
                 tag(&[
@@ -1337,16 +1518,12 @@ fn party_output(_party: &PartyStub, _key: &str) -> Option<f64> {
 fn elusive(env: &Env, who: Who, db: &StoreRef, st: &mut ActorState) {
     let max_skill_inc = or_num(max_(db, Some(&crate::setup::cfg_source("Skill")), &["ElusiveEffect"]), 0.0);
     let mut inc_ = inc(db, &["ElusiveEffect", "BuffEffectOnSelf"]);
-    // :822 `actor.mainSkill.skillModList:Flag(nil, "SupportedByNightblade")` -- the stub's list is empty; the enemy has no
-    // mainSkill, so an Elusive enemy is Lua's index error.
-    let sml = actor_of(env, who)
-        .borrow()
-        .main_skill
-        .as_ref()
-        .unwrap_or_else(|| panic!("Modules/CalcPerform.lua:822: attempt to index field 'mainSkill' (a nil value)"))
-        .skill_mod_list
-        .clone();
-    if flag(&sml, &["SupportedByNightblade"]) {
+    // :815 `actor.mainSkill.skillModList:Flag(nil, "SupportedByNightblade")` -- the enemy has no mainSkill, so an Elusive enemy
+    // is Lua's index error.
+    let ms =
+        main_skill(env, who).unwrap_or_else(|| panic!("Modules/CalcPerform.lua:815: attempt to index field 'mainSkill' (a nil value)"));
+    ms.guard(&["SupportedByNightblade"]);
+    if flag(&ms.list, &["SupportedByNightblade"]) {
         inc_ += inc(db, &["NightbladeSupportedElusiveEffect"]);
     }
     inc_ += max_skill_inc;
@@ -1862,18 +2039,33 @@ fn get_converted_mod_tags(m: &Mod, multiplier: f64) -> Vec<Tag> {
 
 /// `calcs.perform(env)` up to `calcs.defence(env, env.player)` and `buildDefenceEstimations` -- passed in; `None` records
 /// the call site as unimplemented (pob-ts `perform(env, defence?, estimations?)`).
-#[allow(clippy::too_many_lines)]
 pub fn perform(env: &mut Env, defence: Option<PhaseFn>, estimations: Option<PhaseFn>) -> PerformState {
+    perform_with(env, defence, estimations, None)
+}
+
+/// [`perform`] with a [`CheckpointHook`] called at the R6 checkpoints (the hook only observes; the computation is the same).
+#[allow(clippy::too_many_lines)]
+pub fn perform_with(
+    env: &mut Env,
+    defence: Option<PhaseFn>,
+    estimations: Option<PhaseFn>,
+    mut hook: Option<CheckpointHook<'_>>,
+) -> PerformState {
     let mod_db = env.mod_db.clone();
     let enemy_db = env.enemy_db.clone();
     let skip = |env: &mut Env, what: &str| env.unimplemented.push(format!("CalcPerform.lua:{what}"));
+    let skills_on = env.skills.is_some();
 
     // --- :1290-1292 merge keystone modifiers ----------------------------------------------------------------------------
     env.keystones_added = IndexMap::new();
     merge_keystones(env, &mod_db);
 
-    // :1294-1303 minion skills -- activeSkillList is empty.
-    skip(env, "1294-1303 minion skills (createMinionSkills; needs the skill phase, P5)");
+    // :1294-1303 every skill gets a fresh child `skillModList` of its `baseSkillModList`; minions are R7.
+    if skills_on {
+        skills_loop::child_skill_lists(env);
+    } else {
+        skip(env, "1294-1303 minion skills (createMinionSkills; needs the skill phase, P5)");
+    }
 
     // :1305-1306
     let player_actor = env.player.borrow().actor.clone();
@@ -1906,7 +2098,14 @@ pub fn perform(env: &mut Env, defence: Option<PhaseFn>, estimations: Option<Phas
     } else {
         None
     };
-    // :1316 `env.minion = env.player.mainSkill.minion` -- the stub has no minion.
+    // :1316 `env.minion = env.player.mainSkill.minion` -- the minion actor (`initMinionModDB`, its modDB, every `if env.minion` branch
+    // below) is R7: perform runs as if `env.minion` were nil and records it (the stub has no minion).
+    if player_main_skill(env, 1316).has_minion {
+        skip(
+            env,
+            "1316-1320 env.minion = mainSkill.minion: initMinionModDB and every env.minion branch (R7)",
+        );
+    }
     if env.aegis_mod_list.is_some() {
         let mut p = env.player.borrow_mut();
         p.item_list.shift_remove("Weapon 2");
@@ -1988,25 +2187,32 @@ pub fn perform(env: &mut Env, defence: Option<PhaseFn>, estimations: Option<Phas
     player.output.set_num("WarcryPower", wp);
     set_mult(&mod_db, "WarcryPower", wp);
 
-    // :1350-1354
+    // :1350-1354 (`applyEnemyModifiers(env.minion, true)` -- env.minion is nil, see :1316)
     apply_enemy_modifiers(&mod_db, &enemy_db, &mut player, true);
     let mut enemy = enemy;
     apply_enemy_modifiers(&enemy_db, &mod_db, &mut enemy, true);
 
-    // :1356-1489 the activeSkillList loop -- brands, totems, minion counts, warcries, triggers.
-    skip(
-        env,
-        "1358-1496 activeSkillList loop (brands/totems/minion counts/warcries/triggers; P5)",
-    );
+    // :1334-1489 the activeSkillList loop -- brands, totems, hexes, ailments, minion counts, warcries, triggers.
+    let loop_out = if skills_on {
+        skills_loop::skills_loop(env, &mut player.output)
+    } else {
+        skip(
+            env,
+            "1358-1496 activeSkillList loop (brands/totems/minion counts/warcries/triggers; P5)",
+        );
+        skills_loop::LoopOut::default()
+    };
+    let summoned_minions = loop_out.summoned_minions;
 
-    // :1491-1506 `minionCounts` is empty, so `summonedMinions` is 0. Companionship needs exactly one minion.
+    // :1500-1503 Companionship only works while exactly one Minion is summoned.
     let summoned_override = match env.config.input.get("multiplierSummonedMinion") {
-        // `x ~= 0 and x or nil`
+        // `x ~= 0 and x or nil` (`false` is not 0, but `false and ...` is false, so `or nil`)
         Some(pob_build::ConfigValue::Num(v)) if *v == 0.0 => None,
+        Some(pob_build::ConfigValue::Bool(false)) => None,
         other => other.cloned(),
     };
     let only_minion = match summoned_override {
-        None | Some(pob_build::ConfigValue::Bool(false)) => false, // `(nil or 0) == 1`
+        None => summoned_minions == 1.0, // `(nil or summonedMinions) == 1`
         Some(pob_build::ConfigValue::Num(v)) => v == 1.0,
         Some(_) => false, // a string/true is never `== 1`
     };
@@ -2020,40 +2226,60 @@ pub fn perform(env: &mut Env, defence: Option<PhaseFn>, estimations: Option<Phas
     let v = if lrme > 0.0 { lrme + inc(&mod_db, &["LootRarity"]) } else { 0.0 };
     player.output.set_num("LootRarityMagicEnemies", v);
 
-    // :1514-1522 the breakdown module: `breakdown` is built (MAIN, CalcSetup.lua:500) but only read below at :2157.
+    // :1514-1522 the breakdown module: `breakdown` is built (MAIN, CalcSetup.lua:500); the flask/tincture breakdown below and :2157
+    // read it.
     let breakdown = env.build_breakdown;
-    // :1524-1935 ConvertArmourESToLife, Mageblood, flasks and tinctures.
-    skip(env, "1524-1935 ConvertArmourESToLife / Mageblood / flask + tincture merging (P5)");
-    if env.mode_combat {
-        // :1937 `mergeFlasks(env.flasks, false, true)`: with an EMPTY flask set it writes nothing (CalcPerform.lua:
-        // 1773-1848); a non-empty set is real work we skip. The tincture skip (`mergeTinctures`, :2094-2096, also a no-op
-        // when empty) is recorded here, next to it, as pob-ts does.
-        if !env.flasks.is_empty() {
-            let mut names: Vec<String> = env
-                .flasks
-                .iter()
-                .map(|i| i.base_name.clone().unwrap_or_else(|| i.name.clone()))
-                .collect();
-            names.sort();
-            let what = format!("1937 mergeFlasks with {} active flasks: {}", env.flasks.len(), names.join(", "));
-            skip(env, &what);
+    let mut flask_state = None;
+    if skills_on {
+        // :1524-1942 ConvertArmourESToLife, damage -> aura effect, minion life -> player, Mageblood, flasks, tinctures.
+        flasks::conversions(env);
+        flasks::mageblood(env);
+        let fx = flasks::flask_ctx(env, &mut player.output, breakdown);
+        let tx = flasks::tincture_ctx(env, &mut player.output, breakdown);
+        if env.mode_combat {
+            // :1937 `mergeFlasks(env.flasks, false, true)`
+            flasks::merge_flasks(env, &fx, false, true);
+            // :1940 merge keystones again, to catch any that were added by flasks.
+            merge_keystones(env, &mod_db);
         }
-        if !env.tinctures.is_empty() {
-            let mut names: Vec<String> = env
-                .tinctures
-                .iter()
-                .map(|i| i.base_name.clone().unwrap_or_else(|| i.name.clone()))
-                .collect();
-            names.sort();
-            let what = format!("2094 mergeTinctures with {} tinctures: {}", env.tinctures.len(), names.join(", "));
-            skip(env, &what);
+        flask_state = Some((fx, tx));
+    } else {
+        skip(env, "1524-1935 ConvertArmourESToLife / Mageblood / flask + tincture merging (P5)");
+        if env.mode_combat {
+            // :1937 `mergeFlasks(env.flasks, false, true)`: with an EMPTY flask set it writes nothing (CalcPerform.lua:
+            // 1773-1848); a non-empty set is real work we skip. The tincture skip (`mergeTinctures`, :2094-2096, also a no-op
+            // when empty) is recorded here, next to it, as pob-ts does.
+            if !env.flasks.is_empty() {
+                let mut names: Vec<String> = env
+                    .flasks
+                    .iter()
+                    .map(|i| i.base_name.clone().unwrap_or_else(|| i.name.clone()))
+                    .collect();
+                names.sort();
+                let what = format!("1937 mergeFlasks with {} active flasks: {}", env.flasks.len(), names.join(", "));
+                skip(env, &what);
+            }
+            if !env.tinctures.is_empty() {
+                let mut names: Vec<String> = env
+                    .tinctures
+                    .iter()
+                    .map(|i| i.base_name.clone().unwrap_or_else(|| i.name.clone()))
+                    .collect();
+                names.sort();
+                let what = format!("2094 mergeTinctures with {} tinctures: {}", env.tinctures.len(), names.join(", "));
+                skip(env, &what);
+            }
+            // :1940 merge keystones again, to catch any that were added by flasks.
+            merge_keystones(env, &mod_db);
         }
-        // :1940 merge keystones again, to catch any that were added by flasks.
-        merge_keystones(env, &mod_db);
     }
 
     // --- :1944-1945 attributes and life/mana pools ----------------------------------------------------------------------
     do_actor_attribs_conditions(env, Who::Player, &mut player);
+    // CP1: `doActorAttribsConditions` ends with the first `doActorLifeMana(env.player)` (:546).
+    if let Some(h) = hook.as_mut() {
+        h(Checkpoint::Cp1, env, &player, &enemy);
+    }
     do_actor_life_mana(&mod_db, &mut player.output);
 
     // --- :1967-2092 reservations ----------------------------------------------------------------------------------------
@@ -2063,9 +2289,22 @@ pub fn perform(env: &mut Env, defence: Option<PhaseFn>, estimations: Option<Phas
     player.reserved_mana_percent = Some(0.0);
     player.uncancellable_life_reservation = Some(base(&mod_db, &["ExtraLifeReserved"]));
     player.uncancellable_mana_reservation = Some(base(&mod_db, &["ExtraManaReserved"]));
-    skip(env, "1978-2089 per-skill reservation loop (activeSkillList is empty; P5)");
+    if skills_on {
+        skip(env, "1978-2089 per-skill reservation loop (R6.6)");
+    } else {
+        skip(env, "1978-2089 per-skill reservation loop (activeSkillList is empty; P5)");
+    }
     let add_aura = !flag(&mod_db, &["ManaIncreasedByOvercappedLightningRes"]);
     do_actor_life_mana_reservation(&mod_db, &mut player, add_aura);
+    if let Some(h) = hook.as_mut() {
+        h(Checkpoint::Cp2, env, &player, &enemy);
+    }
+    // :2094-2096 `mergeTinctures(env.tinctures)` (skills off: recorded with the flask skip above).
+    if env.mode_combat
+        && let Some((_, tx)) = flask_state.as_mut()
+    {
+        flasks::merge_tinctures(env, tx, &player.output);
+    }
 
     // --- :2099-2162 attribute requirements ------------------------------------------------------------------------------
     {
@@ -2128,7 +2367,33 @@ pub fn perform(env: &mut Env, defence: Option<PhaseFn>, estimations: Option<Phas
         }
     }
 
-    // --- :2165-2178 heralds and auras affecting self: `activeSkillList` is empty, nothing counts --------------------------
+    // --- :2164-2178 heralds and auras affecting self (the stub path's `activeSkillList` is empty: nothing counts) -------------
+    if env.mode_buffs
+        && let Some(st) = &env.skills
+    {
+        let mut herald_list: Vec<&str> = Vec::new();
+        let mut aura_list: Vec<&str> = Vec::new();
+        let has = |sk: &ActiveSkill, t: &str| sk.skill_types.contains(&skill_type_u32(t));
+        for sk in &st.active_skill_list {
+            let name = sk
+                .skill_cfg
+                .as_ref()
+                .map(|c| c.skill_name.as_str())
+                .unwrap_or_else(|| panic!("Modules/CalcPerform.lua:2169: attempt to index field 'skillCfg' (a nil value)"));
+            if has(sk, "Herald") && !herald_list.contains(&name) {
+                herald_list.push(name);
+                bump_mult(&mod_db, "Herald", 1.0);
+                set_cond(&mod_db, "AffectedByHerald", true);
+            } else if has(sk, "Aura")
+                && !has(sk, "AuraAffectsEnemies")
+                && !sk.skill_data.get("auraCannotAffectSelf").is_some_and(Value::truthy)
+                && !aura_list.contains(&name)
+            {
+                aura_list.push(name);
+                bump_mult(&mod_db, "AuraAffectingSelf", 1.0);
+            }
+        }
+    }
 
     // --- :2180-2188 ManaAppliesToShockEffect (Lightning Mastery) --------------------------------------------------------
     if flag(&mod_db, &["ManaAppliesToShockEffect"]) {
@@ -2155,13 +2420,38 @@ pub fn perform(env: &mut Env, defence: Option<PhaseFn>, estimations: Option<Phas
     do_actor_charges(env, Who::Player, &mut player, &party);
 
     // --- :2193-3341 buffs / debuffs / curses / guards -------------------------------------------------------------------
-    skip(env, "2193-3341 buffs/debuffs/curses/guards/links/auras (needs the skill phase, P5)");
+    match flask_state.as_ref() {
+        Some((fx, _)) => {
+            skip(env, "2193-3120 combine buffs/debuffs/auras, alternate charges (R6.7)");
+            // :3118-3122 the recovery half of the flasks (`mergeFlasks(env.flasks, true, nonUniqueFlasksApplyToMinion)`).
+            if env.mode_combat {
+                flasks::merge_flasks(env, fx, true, fx.non_unique_flasks_apply_to_minion);
+            }
+            skip(env, "3124-3341 curses/guards/links (R6.8)");
+        }
+        None => skip(env, "2193-3341 buffs/debuffs/curses/guards/links/auras (needs the skill phase, P5)"),
+    }
     // :3341 -- the one line of the guard block that does not depend on a guard being there.
     let guard = cond(&mod_db, "AffectedByGuardSkill");
     player.output.set_bool("GuardSkillActive", guard.unwrap_or(false));
-    // :3344-3359 `buffs`/`minionBuffs`/`debuffs` are all empty. :3361 `#curseSlots` runs regardless.
+    // :3344-3359 `buffs`/`minionBuffs`/`debuffs` are all empty (the buff phase is R6.7). :3361 `#curseSlots` runs regardless.
     set_mult(&mod_db, "CurseOnEnemy", 0.0);
-    // :3378-3381 guaranteed chills -- the list is empty.
+    // :3378-3381 guaranteed chills (after the buffs, so chilling areas benefit from active buff modifiers).
+    if let Some(st) = &env.skills {
+        let chill = rules()
+            .non_damaging_ailment
+            .get("Chill")
+            .and_then(|a| a.default)
+            .unwrap_or_else(|| panic!("Modules/CalcPerform.lua:3379: data.nonDamagingAilment.Chill.default is nil"));
+        for &i in &loop_out.guaranteed_chill_skills {
+            let sk = &st.active_skill_list[i];
+            let sml = skill_list_of(env, i);
+            skill_guard(&sk.malformed_mods, &["EnemyChillEffect"]);
+            let effect = chill * ok(calc_lib::mod_(&sml.borrow(), Some(&skill_cfg_of(st, sk)), &["EnemyChillEffect"]));
+            let name = st.skills.effects[sk.active_effect.borrow().granted_effect].name.clone();
+            nm(&mod_db, "ChillOverride", ModType::Base, effect, &name, 0, 0, vec![]);
+        }
+    }
 
     // --- :3387-3392 impale stacks on the enemy --------------------------------------------------------------------------
     let max_impale = base(&mod_db, &["ImpaleStacksMax"]) * (1.0 + base(&mod_db, &["ImpaleAdditionalDurationChance"]) / 100.0);
@@ -2198,8 +2488,39 @@ pub fn perform(env: &mut Env, defence: Option<PhaseFn>, estimations: Option<Phas
             "3394-3410 ManaIncreasedByOvercappedLightningRes (needs calcs.resistances, P4.4b)",
         );
     }
-    if flag_cfg(&mod_db, Some(&stub_skill_cfg()), &["Condition:CanInflictHallowingFlame"]) {
-        skip(env, "3412-3415 Hallowing Flame ExtraAura");
+    // :3411-3415 Hallowing Flame (skills off: recorded, as pob-ts does).
+    let player_ms = player_main_skill(env, 3411);
+    if flag_cfg(&mod_db, Some(&player_ms.cfg), &["Condition:CanInflictHallowingFlame"]) {
+        if skills_on {
+            let magnitude = or_override(
+                override_(&mod_db, &["HallowingFlameMagnitude"]),
+                inc(&mod_db, &["HallowingFlameMagnitude"]),
+                "Modules/CalcPerform.lua:3412",
+            );
+            let val = (25.0 * (1.0 + magnitude / 100.0)).floor();
+            let m = create_mod(
+                "PhysicalDamageGainAsFire",
+                Some(ModType::Base),
+                n(val),
+                Some("Hallowing Flame"),
+                0,
+                0,
+                vec![
+                    tag(&[
+                        ("type", s("GlobalEffect")),
+                        ("effectType", s("Global")),
+                        ("unscalable", Value::Bool(true)),
+                    ]),
+                    tag(&[("type", s("ActorCondition")), ("actor", s("enemy")), ("var", s("HallowingFlame"))]),
+                    tag(&[("type", s("Multiplier")), ("var", s("HallowingFlame")), ("actor", s("enemy"))]),
+                ],
+            );
+            let mut t = Table::default();
+            t.hash.insert(Rc::from("mod"), Value::Mod(Rc::new(m)));
+            new_mod(&mod_db, "ExtraAura", ModType::List, Value::table(t), None, 0, 0, vec![]);
+        } else {
+            skip(env, "3412-3415 Hallowing Flame ExtraAura");
+        }
     }
 
     // --- :3418-3460 extra auras -----------------------------------------------------------------------------------------
@@ -2217,8 +2538,24 @@ pub fn perform(env: &mut Env, defence: Option<PhaseFn>, estimations: Option<Phas
                 bump_mult(&mod_db, "BuffOnSelf", 1.0);
             }
         }
-        // :3433-3459 `fromAllies or not SelfAurasCannotAffectAllies` -> the minion copy (no minion) and the totem copy
-        // (`mainSkill.skillFlags.totem`, never set on the stub): nothing to do.
+        // :3433-3459 `fromAllies or not SelfAurasCannotAffectAllies` -> the minion copy (env.minion is nil, :1316) and the totem
+        // copy (`env.player.mainSkill.skillFlags.totem`, never set on the stub).
+        if value.get("fromAllies").truthy() || !flag(&mod_db, &["SelfAurasCannotAffectAllies"]) {
+            let src = &mod_list[0];
+            let name: &str = &src.name;
+            let blacklisted = name == "Speed" || name == "CritMultiplier" || name == "CritChance";
+            if player_ms.flag("totem") && !blacklisted {
+                // `copyTable(value.mod)`; `name:gsub("Condition:", "Condition:Totem")` (a pattern: `:` is literal)
+                let mut totem_mod = src.deep_copy();
+                let renamed = name.replace("Condition:", "Condition:Totem");
+                totem_mod.name = if renamed == name {
+                    Rc::from(format!("Totem{name}").as_str())
+                } else {
+                    Rc::from(renamed.as_str())
+                };
+                mod_db.borrow_mut().add_mod(Rc::new(totem_mod));
+            }
+        }
     }
     // :3462-3467 `AffectedByAuraMod`: upstream iterates `affectedByAura`, an undeclared GLOBAL (nil), so `pairs(nil)`
     // throws the moment the build has such a mod (D20, upstream bug).
@@ -2253,6 +2590,9 @@ pub fn perform(env: &mut Env, defence: Option<PhaseFn>, estimations: Option<Phas
     }
 
     // --- :3484 prerequisites for conditionals ---------------------------------------------------------------------------
+    if let Some(h) = hook.as_mut() {
+        h(Checkpoint::Cp3, env, &player, &enemy);
+    }
     defence_for_conditionals(env, Who::Player, &mut player);
 
     // --- :3490-3491 misc buffs / modifiers ------------------------------------------------------------------------------
@@ -2277,6 +2617,9 @@ pub fn perform(env: &mut Env, defence: Option<PhaseFn>, estimations: Option<Phas
     };
 
     // --- :3792 defence, then the offence tail ---------------------------------------------------------------------------
+    if let Some(h) = hook.as_mut() {
+        h(Checkpoint::Cp4, env, &state.player, &state.enemy);
+    }
     match defence {
         Some(def) => {
             def(env, &mut state, Who::Player);

@@ -33,7 +33,8 @@ pub struct CalcActor {
     pub weapon_data2: DataTable,
     pub enemy: Weak<RefCell<CalcActor>>,
     pub player: Weak<RefCell<CalcActor>>,
-    /// CALC-ARCH §8: the stub `createActiveSkill` would otherwise build (CalcSetup.lua:1928-1940, "default Melee").
+    /// CALC-ARCH §8: the stub `createActiveSkill` would otherwise build (CalcSetup.lua:1928-1940, "default Melee") -- the pre-R6 path
+    /// only; with the skill phase on, perform reads `env.skills` (`crate::perform::MainSkill`) and this is `None`.
     pub main_skill: Option<MainSkillStub>,
     /// `actor.activeSkillList` -- the skill phase is P5, always empty here.
     pub active_skill_list: Vec<MainSkillStub>,
@@ -187,6 +188,10 @@ pub struct Env {
     /// The skill phase (R6.3, `CalculateOptions.skills`): `build.skillsTab`, `env.player.activeSkillList`, `mainSkill`. `None` = the
     /// pre-R6 path (no skills; perform's stub main skill only).
     pub skills: Option<crate::skills::SkillsState>,
+    /// `activeSkill.skillModList` after CalcPerform.lua:1296 (perform gives every skill a fresh child ModList of its `baseSkillModList`),
+    /// aligned with `skills.active_skill_list`; [`crate::active_skill::ActiveSkill::skill_mod_list`] stays the `baseSkillModList`.
+    /// Empty before perform and on the pre-R6 path.
+    pub skill_mod_lists: Vec<StoreRef>,
 
     /// Every upstream branch this port knowingly skips, as `"<File.lua>:<line> <what>"` (RUST-ARCH §5).
     pub unimplemented: Vec<String>,

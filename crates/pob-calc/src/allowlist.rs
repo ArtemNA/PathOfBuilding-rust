@@ -34,13 +34,21 @@
 //! R6.3 re-measured with the skill phase of initEnv (socket groups, supports, active skills, `requirementsTableGems`; no
 //! `buildActiveSkillModList` yet): 4 keys moved from EXCLUDED to ALLOWLIST (`ReqDex`, `ReqInt`, `ReqIntString`, `ReqStr`), none left
 //! ALLOWLIST, none newly emitted; `ReqDexString`/`ReqStrString` stay EXCLUDED with a new reason ([`REQ_STRING`]).
+//! R6.5 re-measured with the skills handed to perform (the skill loop CalcPerform.lua:1334-1512, ConvertArmourESToLife, Mageblood, the
+//! flasks :1513-1942; CP1 = LuaJIT on all six goldens): 26 keys moved from EXCLUDED to ALLOWLIST -- resistances (`Fire*`/`Chaos*`, incl.
+//! `FireResistTakenHitMulti`, `ChaosResistTakenHitMulti`, `ChaosTakenDotMult`), `Evasion`/`MeleeEvasion`/`ProjectileEvasion`/
+//! `LowestOfArmourAndEvasion`, `SpellSuppressionChance`/`EffectiveSpellSuppressionChance`/`ConfiguredDamageChance` and the seven
+//! `*AvoidChance`: their missing input was the FLASK mods (Ruby/Amethyst/Quartz/Granite/... flasks), not the auras the pob-ts attribution
+//! named; 4 newly emitted keys are ALLOWLIST (`ActiveGolemLimit`, `ActiveTotemLimit`, `HexDoomLimit`, `TotemsSummoned`); none left
+//! ALLOWLIST; 8 newly emitted keys are EXCLUDED with the new root `offence` ([`MIRAGE_BREAKDOWN`]).
 
 use indexmap::IndexMap;
 
 use crate::output::StatValue;
 
-/// pob-ts `ROOT_CAUSES`: every `EXCLUDED` reason names at least one of these literally.
-pub const ROOT_CAUSES: [&str; 11] = [
+/// pob-ts `ROOT_CAUSES`: every `EXCLUDED` reason names at least one of these literally. `offence` (R6-ARCH §1, R6.5) is the R7 root:
+/// triggers / mirages / offence / minion actors (CalcPerform.lua:3797-3809, Calcs.lua buildActiveSkill).
+pub const ROOT_CAUSES: [&str; 12] = [
     "item-miss",
     "cluster",
     "tree-jewel",
@@ -52,6 +60,7 @@ pub const ROOT_CAUSES: [&str; 11] = [
     "curses",
     "flasks",
     "ailments",
+    "offence",
 ];
 
 /// The root causes a reason names, in `ROOT_CAUSES` order.
@@ -76,11 +85,9 @@ pub fn filter_stats(stats: &IndexMap<String, StatValue>) -> IndexMap<String, Sta
 // R5.4: `item-miss` is closed (the real parser answers every item line, `ParseMode::Full`) -- no reason names it; the
 // keys it alone explained moved to ALLOWLIST by measurement.
 const DEFENCES: &str = "buffs: defence auras (Determination, Grace, Vaal Grace)";
-const SUPPRESS: &str = "buffs: Vaal Grace (aura, skill/buff phase) grants spell suppression and evade -- R5.6: only Mirage mismatches, Rust 0 vs golden 14 with the initEnv modDB = LuaJIT";
 const EST_TAKEN: &str = "estimation input: DamageTaken INC/MORE (skills + buffs)";
 const EST_EVADE: &str = "estimation input: Melee/ProjectileEvadeChance (buffs)";
 const EST_NOT_HIT: &str = "estimation input: avoid-all/evade/dodge chances (flasks + buffs)";
-const AVOID: &str = "flasks + buffs: ailment/curse immunity from flasks, pantheons and the buff phase";
 const EST_HIT: &str = "estimation input: resistances, Armour, taken-damage and DamageTaken mods (buffs)";
 const EST_DOT_EHP: &str =
     "estimation input: total pools and DoT multipliers (buffs; R5.5c: also fails on Cospris, which has no timeless jewel)";
@@ -89,11 +96,8 @@ const EST_ENEMY_MULT: &str = "estimation input: enemyDB Damage INC/MORE from cur
 const EST_POOL: &str = "estimation input: Life pools and EnergyShieldRecoveryCap (buffs; R5.5c: Life itself is ok, the mismatch is also on Cospris without a timeless jewel)";
 const EST_MAX_HIT: &str = "estimation input: hit pools, resist multipliers, armour, enemy damage (buffs + curses + guards)";
 const EST_RECOUP: &str = "estimation input: recoupable damage taken and hit-simulation pools (buffs)";
-const RESISTS: &str = "buffs: Purity auras";
-const EST_RES: &str = "estimation input: resistances (buffs)";
 const EST_DOT: &str = "estimation input: resistances over time and DamageTaken INC/MORE (buffs + skills)";
 const EST_HIT_POOL: &str = "estimation input: MoM hit pools, EnergyShieldRecoveryCap, ward/aegis/guard pools (buffs + guards; R5.5c: also fails on Cospris, which has no timeless jewel)";
-const EST_DAMAGE_CHANCE: &str = "estimation input: EffectiveSpellSuppressionChance (buffs: Vaal Grace on Mirage, see SUPPRESS)";
 const CURSE: &str = "buffs: curse effect on self from pantheon mods and the buff phase";
 const EST_SURVIVAL: &str = "estimation input: TotalNumberOfHits and enemySkillTime (buffs + curses + ailments)";
 const MOVE: &str = "flasks + buffs: Quicksilver, Onslaught, Tailwind move MovementSpeed";
@@ -117,15 +121,21 @@ const RAGE: &str = "skills + buffs: RageEffect INC is added after initEnv (the L
 const EST_EHP: &str = "estimation input: NumberOfMitigatedDamagingHits and ConfiguredNotHitChance (flasks + buffs)";
 const EST_SKILL_TIME: &str = "estimation input: enemy action speed from Temporal Chains and Chill (curses + ailments)";
 const EST_GUARD: &str = "estimation input: GuardAbsorbRate (guards)";
+/// R6.5: the flask/tincture breakdown keys (CalcPerform.lua:1626-1633, :1858-1859, written because MAIN builds the breakdown) are `ok` on
+/// 5/6 goldens and `extra` on Dual Savior only: its main skill is The Saviour, and `calcs.mirages` (:3798) replaces `env.player.output`
+/// with the output of a nested `calcs.perform` on a CALCULATOR env (CalcMirages.lua:52/:157, `buildBreakdown` false) -- R7.
+const MIRAGE_BREAKDOWN: &str = "offence: Dual Savior -- calcs.mirages (CalcMirages.lua:157) replaces the output with a CALCULATOR perform (no breakdown, no flask breakdown keys); ok on the other 5";
 
-/// 377 keys, sorted (byte order): `ok` on every golden that emits them, on none `mismatch` or `extra` (R5.4: measured
+/// 411 keys, sorted (byte order): `ok` on every golden that emits them, on none `mismatch` or `extra` (R5.4: measured
 /// with `ParseMode::Full`, the default; R5.5a re-measured with the cluster-jewel subgraphs: +20; R5.5b radius jewels: +1;
-/// R5.5c timeless jewels: +23).
+/// R5.5c timeless jewels: +23; R6.3 gem requirements: +4; R6.5 skills + flasks in perform: +30).
 pub const ALLOWLIST: &[&str] = &[
     "AbsorptionCharges",
     "AbsorptionChargesMax",
     "AbsorptionChargesMin",
     "ActionSpeedMod",
+    "ActiveGolemLimit",
+    "ActiveTotemLimit",
     "AfflictionCharges",
     "AfflictionChargesMax",
     "AfflictionChargesMin",
@@ -159,6 +169,7 @@ pub const ALLOWLIST: &[&str] = &[
     "BaseLightningDamageReductionWhenHit",
     "BasePhysicalDamageReduction",
     "BasePhysicalDamageReductionWhenHit",
+    "BleedAvoidChance",
     "BlindAvoidChance",
     "BlindEffectMod",
     "BlitzCharges",
@@ -191,9 +202,15 @@ pub const ALLOWLIST: &[&str] = &[
     "ChaosManaRecoup",
     "ChaosMindOverMatter",
     "ChaosMoMHitPool",
+    "ChaosResist",
     "ChaosResistOver75",
     "ChaosResistOverCap",
+    "ChaosResistOverTime",
+    "ChaosResistTakenHitMulti",
+    "ChaosResistTotal",
+    "ChaosTakenDotMult",
     "ChaostakenFlat",
+    "ChillAvoidChance",
     "ColdAegis",
     "ColdAegisDisplay",
     "ColdDamageReduction",
@@ -215,10 +232,12 @@ pub const ALLOWLIST: &[&str] = &[
     "ColdResistTakenHitMulti",
     "ColdResistTotal",
     "ColdtakenFlat",
+    "ConfiguredDamageChance",
     "CorruptedBloodImmunity",
     "CrabBarriers",
     "CrabBarriersMax",
     "CritExtraDamageReduction",
+    "CurseAvoidChance",
     "DamageReductionMax",
     "DamageTakenOnBlock",
     "DebuffExpirationModifier",
@@ -232,6 +251,7 @@ pub const ALLOWLIST: &[&str] = &[
     "EffectiveSpellBlockChance",
     "EffectiveSpellDodgeChance",
     "EffectiveSpellProjectileBlockChance",
+    "EffectiveSpellSuppressionChance",
     "ElusiveEffectMod",
     "EnduranceCharges",
     "EnduranceChargesDuration",
@@ -257,6 +277,7 @@ pub const ALLOWLIST: &[&str] = &[
     "EnergyShieldRegenInc",
     "EnergyShieldRegenPercent",
     "EnergyShieldRegenRecovery",
+    "Evasion",
     "EvasionOnBody Armour",
     "EvasionOnBoots",
     "EvasionOnGloves",
@@ -277,11 +298,18 @@ pub const ALLOWLIST: &[&str] = &[
     "FireManaRecoup",
     "FireMindOverMatter",
     "FireMoMHitPool",
+    "FireResist",
+    "FireResistOver75",
+    "FireResistOverCap",
+    "FireResistOverTime",
+    "FireResistTakenHitMulti",
+    "FireResistTotal",
     "FiretakenFlat",
     "FortificationEffect",
     "FortificationStacks",
     "FortificationStacksOver20",
     "FortifyDuration",
+    "FreezeAvoidChance",
     "FrenzyCharges",
     "FrenzyChargesDuration",
     "FrenzyChargesMax",
@@ -294,6 +322,7 @@ pub const ALLOWLIST: &[&str] = &[
     "Gear:Evasion",
     "Gear:Ward",
     "GhostShrouds",
+    "HexDoomLimit",
     "IgniteAvoidChance",
     "ImpaleAvoidChance",
     "InherentRageLoss",
@@ -347,6 +376,7 @@ pub const ALLOWLIST: &[&str] = &[
     "LootRarityMagicEnemies",
     "LowLifePercentage",
     "LowestAttribute",
+    "LowestOfArmourAndEvasion",
     "LowestOfMaximumLifeAndMaximumMana",
     "Mana",
     "ManaCancellableReservation",
@@ -363,9 +393,11 @@ pub const ALLOWLIST: &[&str] = &[
     "MaxManaLeechRate",
     "MaximumFortification",
     "MaximumRage",
+    "MeleeEvasion",
     "MinimumBypass",
     "MinimumFortification",
     "MinionAllyDamageMitigation",
+    "MissingChaosResist",
     "MissingColdResist",
     "MissingFireResist",
     "MissingLightningResist",
@@ -388,11 +420,13 @@ pub const ALLOWLIST: &[&str] = &[
     "PhysicalResist",
     "PhysicalResistTakenHitMulti",
     "PhysicaltakenFlat",
+    "PoisonAvoidChance",
     "PowerCharges",
     "PowerChargesDuration",
     "PowerChargesMax",
     "PowerChargesMin",
     "ProjectileBlockChance",
+    "ProjectileEvasion",
     "RadianceSentinelAllyDamageMitigation",
     "Rage",
     "RageDegen",
@@ -432,7 +466,9 @@ pub const ALLOWLIST: &[&str] = &[
     "SelfShockDuration",
     "SelfShockEffect",
     "ShieldBlockChance",
+    "ShockAvoidChance",
     "ShowBlockEffect",
+    "SilenceAvoidChance",
     "SiphoningCharges",
     "SiphoningChargesMax",
     "SoulLinkMitigation",
@@ -450,6 +486,7 @@ pub const ALLOWLIST: &[&str] = &[
     "SpellNotHitChance",
     "SpellProjectileBlockChance",
     "SpellProjectileNotHitChance",
+    "SpellSuppressionChance",
     "SpellSuppressionChanceOverCap",
     "SpellSuppressionEffect",
     "SpiritCharges",
@@ -480,6 +517,7 @@ pub const ALLOWLIST: &[&str] = &[
     "TotemLightningResist",
     "TotemLightningResistOverCap",
     "TotemLightningResistTotal",
+    "TotemsSummoned",
     "UntypedNotHitChance",
     "VaalArcticArmourLife",
     "VaalArcticArmourMitigation",
@@ -505,18 +543,12 @@ pub const ALLOWLIST: &[&str] = &[
     "totalEnemyDamageIn",
 ];
 
-/// 164 keys the engine writes that fail on at least one golden, each with its root cause (pob-ts vocabulary).
+/// 142 keys the engine writes that fail on at least one golden, each with its root cause (pob-ts vocabulary).
 pub const EXCLUDED: &[(&str, &str)] = &[
     ("Armour", DEFENCES),
     ("EnergyShield", DEFENCES),
     ("EnergyShieldRecharge", DEFENCES),
     ("EnergyShieldRecoveryCap", DEFENCES),
-    ("Evasion", DEFENCES),
-    ("LowestOfArmourAndEvasion", DEFENCES),
-    ("MeleeEvasion", DEFENCES),
-    ("ProjectileEvasion", DEFENCES),
-    ("EffectiveSpellSuppressionChance", SUPPRESS),
-    ("SpellSuppressionChance", SUPPRESS),
     ("AttackTakenHitMult", EST_TAKEN),
     ("ChaosAfterReductionTakenHitMulti", EST_TAKEN),
     ("ChaosAttackTakenHitMult", EST_TAKEN),
@@ -545,13 +577,6 @@ pub const EXCLUDED: &[(&str, &str)] = &[
     ("ConfiguredNotHitChance", EST_NOT_HIT),
     ("MeleeNotHitChance", EST_NOT_HIT),
     ("ProjectileNotHitChance", EST_NOT_HIT),
-    ("BleedAvoidChance", AVOID),
-    ("ChillAvoidChance", AVOID),
-    ("CurseAvoidChance", AVOID),
-    ("FreezeAvoidChance", AVOID),
-    ("PoisonAvoidChance", AVOID),
-    ("ShockAvoidChance", AVOID),
-    ("SilenceAvoidChance", AVOID),
     ("ChaosBaseTakenHitMult", EST_HIT),
     ("ChaosTakenHit", EST_HIT),
     ("ChaosTakenHitMult", EST_HIT),
@@ -609,18 +634,6 @@ pub const EXCLUDED: &[(&str, &str)] = &[
     ("ManaRecoupRecoveryMax", EST_RECOUP),
     ("PhysicalRecoupableDamageTaken", EST_RECOUP),
     ("TotalManaRecoupRecovery", EST_RECOUP),
-    ("ChaosResist", RESISTS),
-    ("ChaosResistOverTime", RESISTS),
-    ("ChaosResistTotal", RESISTS),
-    ("FireResist", RESISTS),
-    ("FireResistOver75", RESISTS),
-    ("FireResistOverCap", RESISTS),
-    ("FireResistOverTime", RESISTS),
-    ("FireResistTotal", RESISTS),
-    ("MissingChaosResist", RESISTS),
-    ("ChaosResistTakenHitMulti", EST_RES),
-    ("FireResistTakenHitMulti", EST_RES),
-    ("ChaosTakenDotMult", EST_DOT),
     ("ColdTakenDotMult", EST_DOT),
     ("FireTakenDotMult", EST_DOT),
     ("LightningTakenDotMult", EST_DOT),
@@ -630,7 +643,6 @@ pub const EXCLUDED: &[(&str, &str)] = &[
     ("FireTotalHitPool", EST_HIT_POOL),
     ("LightningTotalHitPool", EST_HIT_POOL),
     ("PhysicalTotalHitPool", EST_HIT_POOL),
-    ("ConfiguredDamageChance", EST_DAMAGE_CHANCE),
     ("CurseEffectOnSelf", CURSE),
     ("EHPSurvivalTime", EST_SURVIVAL),
     ("EffectiveMovementSpeedMod", MOVE),
@@ -667,4 +679,12 @@ pub const EXCLUDED: &[(&str, &str)] = &[
     ("enemySkillTime", EST_SKILL_TIME),
     ("sharedGuardAbsorbRate", EST_GUARD),
     ("RageEffect", RAGE),
+    ("FlaskChargeGen", MIRAGE_BREAKDOWN),
+    ("FlaskChargeOnCritChance", MIRAGE_BREAKDOWN),
+    ("FlaskEffect", MIRAGE_BREAKDOWN),
+    ("LifeFlaskChargeGen", MIRAGE_BREAKDOWN),
+    ("ManaFlaskChargeGen", MIRAGE_BREAKDOWN),
+    ("TinctureEffect", MIRAGE_BREAKDOWN),
+    ("TinctureLimit", MIRAGE_BREAKDOWN),
+    ("UtilityFlaskChargeGen", MIRAGE_BREAKDOWN),
 ];

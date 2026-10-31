@@ -570,6 +570,7 @@ pub fn init_env_with(build: Rc<BuildModel>, opts: InitEnvOptions, skills: bool) 
         ordered_slots: Vec::new(),
         items: IndexMap::new(),
         skills: None,
+        skill_mod_lists: Vec::new(),
         unimplemented: Vec::new(),
         spec,
     };
@@ -1760,20 +1761,20 @@ pub fn init_env_with(build: Rc<BuildModel>, opts: InitEnvOptions, skills: bool) 
             crate::skill_modlist::build_all(&mut st, &inp).map_err(InitEnvError)?
         };
         env.unimplemented.extend(more);
-        env.unimplemented.push(format!(
-            "CalcPerform.lua:1296-1512 the {} built active skills are not handed to perform yet (R6.5): perform keeps the stub main skill",
-            st.active_skill_list.len()
-        ));
         env.skills = Some(st);
     }
 
-    // (18d) the main skill perform reads (CALC-ARCH §8 stub: `skillModList` is buildActiveSkillModList's, R6.4).
+    // (18d) the main skill perform reads: with the skill phase, `env.skills` (R6.5); without it, the CALC-ARCH §8 stub.
     {
         let mut p = player.borrow_mut();
-        p.main_skill = Some(MainSkillStub {
-            skill_mod_list: ModStore::new_list(None),
-            granted_effect_name: "Melee",
-        });
+        p.main_skill = if env.skills.is_some() {
+            None
+        } else {
+            Some(MainSkillStub {
+                skill_mod_list: ModStore::new_list(None),
+                granted_effect_name: "Melee",
+            })
+        };
         p.active_skill_list = Vec::new();
     }
 

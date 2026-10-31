@@ -33,7 +33,7 @@ pub use calculate::{CalcError, CalculateOptions, CalculateResult, Timings, calcu
 pub use defence::{armour_reduction, armour_reduction_f, defence, hit_chance};
 pub use estimations::estimations;
 pub use output::{OutValue, Output, StatValue, output_to_stats};
-pub use perform::{ActorState, PerformState, PhaseFn, Who, finish_output, noop_phase, perform};
+pub use perform::{ActorState, Checkpoint, CheckpointHook, PerformState, PhaseFn, Who, finish_output, noop_phase, perform, perform_with};
 
 pub use env::{CalcActor, Env, GrantedSkill, MainSkillStub, RadiusFunc, RadiusJewel, ReqEntry, Slot};
 pub use init_env::{InitEnvError, InitEnvOptions, init_env, init_env_with, item_options, parse_items};
