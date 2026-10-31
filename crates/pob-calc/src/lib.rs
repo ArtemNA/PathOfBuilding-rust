@@ -11,6 +11,7 @@
 
 #![forbid(unsafe_code)]
 
+pub mod allowlist;
 pub mod calc_lib;
 pub mod calculate;
 pub mod defence;
@@ -22,6 +23,7 @@ pub mod perform;
 pub mod pools;
 pub mod setup;
 
+pub use allowlist::{ALLOWLIST, EXCLUDED, filter_stats, is_allowed};
 pub use calculate::{CalcError, CalculateOptions, CalculateResult, Timings, calculate, calculate_file, calculate_with};
 pub use defence::{armour_reduction, armour_reduction_f, defence, hit_chance};
 pub use estimations::estimations;

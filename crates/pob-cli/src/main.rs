@@ -1,7 +1,11 @@
 use std::io::Read;
+use std::path::PathBuf;
 use std::process::ExitCode;
 
-const USAGE: &str = "usage: pob-cli calc <path.xml | -> [--json]\n  '-' reads the build XML (UTF-8) from stdin";
+const USAGE: &str = "usage: pob-cli calc <path.xml | -> [--json]\n  \
+     '-' reads the build XML (UTF-8) from stdin; POB_EXPERIMENTAL=1 disables the stats allowlist\n       \
+     pob-cli bench <path.xml | golden name | all> [--runs N]\n  \
+     median [min-max] ms of the full calculate_file over N runs (default 10, one untimed warm-up)";
 
 fn fail(msg: &str) -> ExitCode {
     eprintln!("pob-cli: {msg}");
@@ -28,19 +32,22 @@ fn main() -> ExitCode {
     match args.first().map(String::as_str) {
         None => {
             eprintln!("{USAGE}");
-            return ExitCode::from(2);
+            ExitCode::from(2)
         }
         Some("--help" | "-h") => {
             println!("{USAGE}");
-            return ExitCode::SUCCESS;
+            ExitCode::SUCCESS
         }
-        Some("calc") => {}
-        Some(other) => return fail(&format!("unknown command '{other}'\n{USAGE}")),
+        Some("calc") => run_calc(&args[1..]),
+        Some("bench") => run_bench(&args[1..]),
+        Some(other) => fail(&format!("unknown command '{other}'\n{USAGE}")),
     }
+}
 
+fn run_calc(args: &[String]) -> ExitCode {
     let mut json = false;
     let mut input: Option<&str> = None;
-    for a in &args[1..] {
+    for a in args {
         match a.as_str() {
             "--json" => json = true,
             "--help" | "-h" => {
@@ -74,6 +81,63 @@ fn main() -> ExitCode {
         println!("stats: {} keys, unimplemented: {}", out.stats.len(), out.unimplemented.len());
         for u in &out.unimplemented {
             println!("  - {u}");
+        }
+    }
+    ExitCode::SUCCESS
+}
+
+fn fmt_row(name: &str, v: &[f64]) -> String {
+    let (med, min, max) = pob_cli::median_min_max(v);
+    format!("{name} {med:.2} [{min:.2}-{max:.2}]")
+}
+
+fn run_bench(args: &[String]) -> ExitCode {
+    let mut runs = 10usize;
+    let mut target: Option<&str> = None;
+    let mut it = args.iter();
+    while let Some(a) = it.next() {
+        match a.as_str() {
+            "--runs" => match it.next().and_then(|n| n.parse::<usize>().ok()).filter(|n| *n > 0) {
+                Some(n) => runs = n,
+                None => return fail("--runs needs a positive integer"),
+            },
+            "--help" | "-h" => {
+                println!("{USAGE}");
+                return ExitCode::SUCCESS;
+            }
+            flag if flag.starts_with('-') => return fail(&format!("unknown flag '{flag}'\n{USAGE}")),
+            t => {
+                if target.replace(t).is_some() {
+                    return fail("more than one target given");
+                }
+            }
+        }
+    }
+    let Some(target) = target else {
+        return fail(&format!("bench: missing target\n{USAGE}"));
+    };
+    let jobs: Vec<(String, PathBuf)> = if target == "all" {
+        pob_golden::GOLDEN_BUILDS
+            .iter()
+            .map(|g| (g.name.to_owned(), g.xml_path()))
+            .collect()
+    } else if let Some(g) = pob_golden::find_golden(target) {
+        vec![(g.name.to_owned(), g.xml_path())]
+    } else {
+        vec![(target.to_owned(), PathBuf::from(target))]
+    };
+    println!("full calculate_file, {runs} runs (+1 warm-up), ms: median [min-max]");
+    for (name, path) in jobs {
+        match pob_cli::bench(&path, runs) {
+            Ok(r) => println!(
+                "{name}: {} | {} | {} | {} | {}",
+                fmt_row("total", &r.total),
+                fmt_row("load", &r.load),
+                fmt_row("initEnv", &r.init_env),
+                fmt_row("perform", &r.perform),
+                fmt_row("estimate", &r.estimate),
+            ),
+            Err(e) => return fail(&e),
         }
     }
     ExitCode::SUCCESS

@@ -23,14 +23,104 @@ fn run_stdin(args: &[&str], input: &[u8]) -> Output {
 }
 
 #[test]
-fn calc_file_json_has_meta_and_no_stats() {
-    let out = Command::new(BIN).arg("calc").arg(dual_savior_xml()).arg("--json").output().unwrap();
+fn calc_file_json_has_meta_and_allowlisted_stats() {
+    let out = Command::new(BIN)
+        .arg("calc")
+        .arg(dual_savior_xml())
+        .arg("--json")
+        .env_remove("POB_EXPERIMENTAL")
+        .output()
+        .unwrap();
     assert_eq!(out.status.code(), Some(0));
     let parsed = CandidateOutput::from_json(std::str::from_utf8(&out.stdout).unwrap()).unwrap();
-    assert!(parsed.stats.is_empty());
+    assert_eq!(
+        parsed.stats.len(),
+        266,
+        "Dual Savior: every ALLOWLIST key it emits (= oracle ok count)"
+    );
+    assert!(
+        parsed.stats.keys().all(|k| pob_calc::is_allowed(k)),
+        "stats are filtered by ALLOWLIST"
+    );
     assert!(parsed.meta.is_some());
-    assert!(parsed.unimplemented.iter().any(|u| u == pob_cli::ENGINE_UNIMPLEMENTED));
     assert!(parsed.unimplemented.iter().any(|u| u.starts_with("CalcSetup.lua:1453-1946 skills")));
+}
+
+/// `POB_EXPERIMENTAL=1`: the raw output, a strict superset of the filtered one (pob-ts `candidate.test.ts`).
+#[test]
+fn experimental_env_disables_the_filter() {
+    let run = |experimental: bool| {
+        let mut cmd = Command::new(BIN);
+        cmd.arg("calc").arg(dual_savior_xml()).arg("--json").env_remove("POB_EXPERIMENTAL");
+        if experimental {
+            cmd.env("POB_EXPERIMENTAL", "1");
+        }
+        let out = cmd.output().unwrap();
+        assert_eq!(out.status.code(), Some(0));
+        CandidateOutput::from_json(std::str::from_utf8(&out.stdout).unwrap()).unwrap()
+    };
+    let (filtered, raw) = (run(false), run(true));
+    assert!(raw.stats.len() > filtered.stats.len());
+    assert!(filtered.stats.keys().all(|k| raw.stats.contains_key(k)));
+    assert!(!raw.stats.contains_key("_meta") && !filtered.stats.contains_key("_meta"));
+    // The raw run holds exactly the ALLOWLIST ∪ EXCLUDED keys (535 on Dual Savior is a subset; all of them are classified).
+    assert!(
+        raw.stats
+            .keys()
+            .all(|k| pob_calc::is_allowed(k) || pob_calc::EXCLUDED.iter().any(|(e, _)| e == k))
+    );
+}
+
+/// R4-ARCH gate (в) at the CLI boundary: for each golden, `pob-cli calc --json` stats against `snapshot.stats` (exact doubles, O8).
+/// Pinned `ok` / `exact` = the pob-ts candidate run on the same goldens (measured 2026-10-31: 266/265, 268/267, 268/267, 274/273, 269/268, 285/284; not the 492/.. of the task card)
+/// O9: `VaalArcticArmourMitigation` is `ok`, not `exact` (golden `+0`, Rust `-0`) -- hence exact = ok - 1.
+#[test]
+fn cli_stats_against_goldens() {
+    let pinned: [(&str, usize, usize); 6] = [
+        ("Dual Savior", 266, 265),
+        ("Dual Wield Cospris CoC", 268, 267),
+        ("Dual Wield Cospris CoC - Lethal Pride", 268, 267),
+        ("Generals Perforate Zerker", 274, 273),
+        ("Mirage Archer Toxic Rain", 269, 268),
+        ("OccVortex", 285, 284),
+    ];
+    for (g, (name, ok, exact)) in GOLDEN_BUILDS.iter().zip(pinned) {
+        assert_eq!(g.name, name);
+        let snap = g.load_snapshot().unwrap();
+        let out = Command::new(BIN)
+            .arg("calc")
+            .arg(g.xml_path())
+            .arg("--json")
+            .env_remove("POB_EXPERIMENTAL")
+            .output()
+            .unwrap();
+        assert_eq!(out.status.code(), Some(0), "{name}");
+        let cand = CandidateOutput::from_json(std::str::from_utf8(&out.stdout).unwrap()).unwrap();
+        let report = compare_stats(&snap.stats, &cand.stats, &[]);
+        println!("{name}: {}", pob_golden::summary_line(&report, false));
+        assert_eq!((report.mismatch, report.extra), (0, 0), "{name}: mismatch/extra");
+        assert_eq!((report.ok, report.exact), (ok, exact), "{name}: ok/exact");
+        assert!(is_parity(&report, false), "{name}");
+    }
+}
+
+/// The bench entry runs and prints one row per build.
+#[test]
+fn bench_prints_a_row() {
+    let out = Command::new(BIN).args(["bench", "Dual Savior", "--runs", "2"]).output().unwrap();
+    assert_eq!(out.status.code(), Some(0));
+    let text = String::from_utf8_lossy(&out.stdout);
+    assert!(text.contains("Dual Savior: total "), "{text}");
+    assert_eq!(Command::new(BIN).args(["bench"]).output().unwrap().status.code(), Some(2));
+    assert_eq!(
+        Command::new(BIN)
+            .args(["bench", "x", "--runs", "0"])
+            .output()
+            .unwrap()
+            .status
+            .code(),
+        Some(2)
+    );
 }
 
 #[test]
@@ -65,15 +155,6 @@ fn usage_and_unknown_args() {
         Command::new(BIN).args(["calc", "-", "--bogus"]).output().unwrap().status.code(),
         Some(2)
     );
-}
-
-#[test]
-fn dual_savior_all_unimplemented_but_non_strict_parity() {
-    let golden = find_golden("Dual Savior").unwrap().load_snapshot().unwrap();
-    let output = pob_cli::calc(&pob_build::read_build_file(dual_savior_xml()).unwrap()).unwrap();
-    let report = compare_stats(&golden.stats, &output.stats, &[]);
-    assert_eq!(report.unimplemented, 632);
-    assert!(is_parity(&report, false));
 }
 
 /// R3-ARCH §3 (c): `meta` against `_meta` of the six goldens (`compare_meta`, field by field, O7).
