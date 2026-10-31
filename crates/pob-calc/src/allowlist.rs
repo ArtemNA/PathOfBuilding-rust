@@ -19,8 +19,8 @@
 //! `item-miss` any more (it stays in `ROOT_CAUSES`, the pob-ts vocabulary).
 //! R5.5a re-measured with the cluster-jewel subgraphs built (`PostLoad`, `ParseMode::Full`): 20 keys moved from EXCLUDED
 //! to ALLOWLIST (resistances, Dex/Int, Mana, mana leech), none left ALLOWLIST, no key newly emitted. The remaining reasons
-//! that name `cluster` are the pob-ts attribution; the env no longer differs from LuaJIT by any cluster mod (env gate
-//! (c): class `cluster` 0), so their real cause is one of the others they name.
+//! that named `cluster` were the pob-ts attribution; the env no longer differs from LuaJIT by any cluster mod (env gate
+//! (c): class `cluster` 0), so their real cause is one of the others they name (rewritten in R5.6, below).
 //! R5.5b re-measured with the radius jewels (`nodesInRadius`, `radiusJewelList`, `ParseMode::Full`): one key moved from
 //! EXCLUDED to ALLOWLIST (`Spec:EnergyShieldInc` -- Energy From Within), none left ALLOWLIST, none newly emitted. Env class
 //! `tree-jewel` is now only the Lethal Pride conquest (timeless, R5.5c); a reason naming `tree-jewel` means that.
@@ -28,6 +28,9 @@
 //! ALLOWLIST (Life and the pools built on it, Str/attributes, `Spec:LifeInc`, life leech, StunThreshold), none left ALLOWLIST,
 //! none newly emitted; env class `tree-jewel` is 0 on every golden, so no reason names `tree-jewel` any more (the four that
 //! did fail on goldens without a timeless jewel as well -- rewritten to their other causes).
+//! R5.6: the initEnv modDB/enemyDB in `ParseMode::Full` = LuaJIT on all six goldens (env gate, every class 0), so no
+//! reason names `cluster` any more; the two that named only `cluster` were measured: spell suppression / damage chance
+//! mismatch only on Mirage Archer (Rust 0 vs golden 14) -- Vaal Grace, an aura of the buff phase.
 
 use indexmap::IndexMap;
 
@@ -69,44 +72,44 @@ pub fn filter_stats(stats: &IndexMap<String, StatValue>) -> IndexMap<String, Sta
 
 // R5.4: `item-miss` is closed (the real parser answers every item line, `ParseMode::Full`) -- no reason names it; the
 // keys it alone explained moved to ALLOWLIST by measurement.
-const DEFENCES: &str = "buffs + cluster: defence auras plus missing cluster defence mods";
-const SUPPRESS: &str = "cluster: suppression and dodge from cluster-jewel subgraphs not yet reproduced (D16)";
+const DEFENCES: &str = "buffs: defence auras (Determination, Grace, Vaal Grace)";
+const SUPPRESS: &str = "buffs: Vaal Grace (aura, skill/buff phase) grants spell suppression and evade -- R5.6: only Mirage mismatches, Rust 0 vs golden 14 with the initEnv modDB = LuaJIT";
 const EST_TAKEN: &str = "estimation input: DamageTaken INC/MORE (skills + buffs)";
-const EST_EVADE: &str = "estimation input: Melee/ProjectileEvadeChance (buffs + cluster)";
-const EST_NOT_HIT: &str = "estimation input: avoid-all/evade/dodge chances (flasks + buffs + cluster)";
+const EST_EVADE: &str = "estimation input: Melee/ProjectileEvadeChance (buffs)";
+const EST_NOT_HIT: &str = "estimation input: avoid-all/evade/dodge chances (flasks + buffs)";
 const AVOID: &str = "flasks + buffs: ailment/curse immunity from flasks, pantheons and the buff phase";
-const EST_HIT: &str = "estimation input: resistances, Armour, taken-damage and DamageTaken mods (buffs + cluster)";
+const EST_HIT: &str = "estimation input: resistances, Armour, taken-damage and DamageTaken mods (buffs)";
 const EST_DOT_EHP: &str =
-    "estimation input: total pools and DoT multipliers (buffs + cluster; R5.5c: also fails on Cospris, which has no timeless jewel)";
-const EST_ENEMY: &str = "estimation input: EnemyCritEffect and enemy Damage INC/MORE (buffs + cluster + curses)";
+    "estimation input: total pools and DoT multipliers (buffs; R5.5c: also fails on Cospris, which has no timeless jewel)";
+const EST_ENEMY: &str = "estimation input: EnemyCritEffect and enemy Damage INC/MORE (buffs + curses)";
 const EST_ENEMY_MULT: &str = "estimation input: enemyDB Damage INC/MORE from curses";
-const EST_POOL: &str = "estimation input: Life pools and EnergyShieldRecoveryCap (cluster + buffs; R5.5c: Life itself is ok, the mismatch is also on Cospris without a timeless jewel)";
-const EST_MAX_HIT: &str = "estimation input: hit pools, resist multipliers, armour, enemy damage (buffs + curses + guards + cluster)";
-const EST_RECOUP: &str = "estimation input: recoupable damage taken and hit-simulation pools (buffs + cluster)";
-const RESISTS: &str = "buffs + cluster: Purity auras plus missing cluster resistance mods";
-const EST_RES: &str = "estimation input: resistances (buffs + cluster)";
-const EST_DOT: &str = "estimation input: resistances over time and DamageTaken INC/MORE (buffs + cluster + skills)";
-const EST_HIT_POOL: &str = "estimation input: MoM hit pools, EnergyShieldRecoveryCap, ward/aegis/guard pools (buffs + cluster + guards; R5.5c: also fails on Cospris, which has no timeless jewel)";
-const EST_DAMAGE_CHANCE: &str = "estimation input: EffectiveSpellSuppressionChance (cluster)";
+const EST_POOL: &str = "estimation input: Life pools and EnergyShieldRecoveryCap (buffs; R5.5c: Life itself is ok, the mismatch is also on Cospris without a timeless jewel)";
+const EST_MAX_HIT: &str = "estimation input: hit pools, resist multipliers, armour, enemy damage (buffs + curses + guards)";
+const EST_RECOUP: &str = "estimation input: recoupable damage taken and hit-simulation pools (buffs)";
+const RESISTS: &str = "buffs: Purity auras";
+const EST_RES: &str = "estimation input: resistances (buffs)";
+const EST_DOT: &str = "estimation input: resistances over time and DamageTaken INC/MORE (buffs + skills)";
+const EST_HIT_POOL: &str = "estimation input: MoM hit pools, EnergyShieldRecoveryCap, ward/aegis/guard pools (buffs + guards; R5.5c: also fails on Cospris, which has no timeless jewel)";
+const EST_DAMAGE_CHANCE: &str = "estimation input: EffectiveSpellSuppressionChance (buffs: Vaal Grace on Mirage, see SUPPRESS)";
 const CURSE: &str = "buffs: curse effect on self from pantheon mods and the buff phase";
-const EST_SURVIVAL: &str = "estimation input: TotalNumberOfHits and enemySkillTime (buffs + curses + ailments + cluster)";
+const EST_SURVIVAL: &str = "estimation input: TotalNumberOfHits and enemySkillTime (buffs + curses + ailments)";
 const MOVE: &str = "flasks + buffs: Quicksilver, Onslaught, Tailwind move MovementSpeed";
-const EST_CRIT: &str = "estimation input: ConfiguredEvadeChance (buffs + cluster)";
-const EVADE: &str = "buffs + cluster: evade chance follows Evasion and enemy accuracy changed by the buff phase";
+const EST_CRIT: &str = "estimation input: ConfiguredEvadeChance (buffs)";
+const EVADE: &str = "buffs: evade chance follows Evasion and enemy accuracy changed by the buff phase";
 const GUARDS: &str = "guards: guard-skill block (CalcPerform.lua:3300-3341) needs the skill phase";
-const REGEN: &str = "buffs + cluster: Vitality/Clarity plus missing regeneration mods";
+const REGEN: &str = "buffs: Vitality/Clarity";
 const RESERVE: &str = "reservation: per-skill reservation loop (CalcPerform.lua:1978-2089) has no active skills yet";
-const LEECH: &str = "buffs + cluster: leech cap is a percentage of an undercounted pool";
-const EST_HITS: &str = "estimation input: taken hits and drained pools (buffs + cluster)";
-const EST_MITIGATED: &str = "estimation input: hit-simulation inputs and block/suppression mitigation (buffs + cluster)";
-const EST_ARMOUR: &str = "estimation input: Armour (buffs + cluster)";
+const LEECH: &str = "buffs: leech cap is a percentage of an undercounted pool";
+const EST_HITS: &str = "estimation input: taken hits and drained pools (buffs)";
+const EST_MITIGATED: &str = "estimation input: hit-simulation inputs and block/suppression mitigation (buffs)";
+const EST_ARMOUR: &str = "estimation input: Armour (buffs)";
 const GEMS: &str = "gems: requirementsTable gem half needs the skill phase (P5); Req*String also differs by R8 (no breakdown)";
-const EST_STUN: &str = "estimation input: StunAvoidChance (cluster + buffs; R5.5c: Life and StunThreshold are ok on every golden, StunAvoidChance still mismatches on both Cospris builds)";
+const EST_STUN: &str = "estimation input: StunAvoidChance (buffs; R5.5c: Life and StunThreshold are ok on every golden, StunAvoidChance still mismatches on both Cospris builds)";
 const EST_SELF_STUN: &str =
-    "estimation input: SelfStunChance = enemy hit damage taken (totalTakenHit: skills + buffs) over StunThreshold (cluster + buffs)";
+    "estimation input: SelfStunChance = enemy hit damage taken (totalTakenHit: skills + buffs) over StunThreshold (buffs)";
 const RAGE: &str = "skills + buffs: RageEffect INC is added after initEnv (the LuaJIT initEnv modDB has no RageEffect mod; golden 39 = \
      floor(25 x 1.56)); Rage itself is emitted since R5.4 (Tree:32251 CanGainRage now parsed)";
-const EST_EHP: &str = "estimation input: NumberOfMitigatedDamagingHits and ConfiguredNotHitChance (flasks + buffs + cluster)";
+const EST_EHP: &str = "estimation input: NumberOfMitigatedDamagingHits and ConfiguredNotHitChance (flasks + buffs)";
 const EST_SKILL_TIME: &str = "estimation input: enemy action speed from Temporal Chains and Chill (curses + ailments)";
 const EST_GUARD: &str = "estimation input: GuardAbsorbRate (guards)";
 

@@ -111,6 +111,8 @@ fn every_excluded_key_names_a_root_cause() {
         assert!(!causes.contains(&"item-miss"), "{k}: item-miss is closed since R5.4: {reason}");
         // R5.5c closed `tree-jewel` (env class 0 on every golden, the Lethal Pride conquest = LuaJIT)
         assert!(!causes.contains(&"tree-jewel"), "{k}: tree-jewel is closed since R5.5c: {reason}");
+        // R5.6 closed `cluster` (env Full = LuaJIT on every golden, every class 0)
+        assert!(!causes.contains(&"cluster"), "{k}: cluster is closed since R5.5a/R5.6: {reason}");
         for c in causes {
             *tally.get_mut(c).unwrap() += 1;
         }
