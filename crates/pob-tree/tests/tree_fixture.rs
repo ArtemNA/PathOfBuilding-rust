@@ -3,7 +3,8 @@
 //!   (a) the Rust dump in the shape of the TS half of pob-ts `test/tree/spec.test.ts` (`tsTree`) = the pob-ts dump, exactly;
 //!   (b) Rust <-> LuaJIT dump classified exactly as pob-ts classifies it (export-env.ts `selfTreeGlobal`/`selfTree`):
 //!       cluster ids (>= 65536) / expansion sockets, node-miss (a ModCache miss on the node), tree-jewel (Lethal Pride, inside
-//!       socket 61834's radius), keystoneMap legion keys (LuaJIT-only) -- per-build counts pinned, unclassified 0.
+//!       socket 61834's radius), keystoneMap legion keys (LuaJIT-only; R5.5c: each one is in `tree.legion().keystone_map`
+//!       with LuaJIT's mods) -- per-build counts pinned, unclassified 0.
 //! (a)/(b) run in `ParseMode::CacheOnly` (pob-ts). R5.4 (c): (b) in `ParseMode::Full` -- `node-miss` 0 (every node line
 //! answered by the real parser equals LuaJIT), keystoneMap ModCache-miss 0, the rest pinned as in (b).
 //! These specs never see the build's items, so `PostLoad` (cluster graphs) does not run and the cluster classes stay as
@@ -235,7 +236,13 @@ fn classify_global(tree: &PassiveTree, rust: &Json, lj: &Json) -> (usize, usize,
     let (mut legion, mut cache_miss, mut same) = (0, 0, 0);
     for (dn, mods) in lj["keystones"].as_object().unwrap() {
         match tree.keystone_map.get(dn) {
-            None => legion += 1,
+            None => {
+                // R5.5c: a legacy legion keystone (PassiveTree.lua:737-739) -- in the tree's legion map, with LuaJIT's mods.
+                let lk = tree.legion().unwrap().keystone_map.get(dn).copied();
+                let ours = lk.map(|i| fmt_list(&tree.legion().unwrap().nodes[i].stats.mod_list.mods));
+                assert_eq!(ours.as_ref(), Some(mods), "legion keystone {dn}");
+                legion += 1;
+            }
             Some(_) if &rust["keystones"][dn] == mods => same += 1,
             Some(&i) if uncached(tree, tree.nodes[i].id) => cache_miss += 1,
             Some(_) => panic!("keystone {dn}: mods differ, unexplained"),

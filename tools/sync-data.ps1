@@ -1,8 +1,13 @@
 #requires -Version 7
 # Mirror pob-ts/data into <repo>/data (manifest.files + manifest.json), verify sha256, write data.lock.
-# Usage: tools/sync-data.ps1 [-Source <path>] [-Check]
+# R5.5c: also copy the timeless-jewel LUTs (PathOfBuilding/src/Data/TimelessJewelData/*.zip, *.zip.partN -- binary RFC1950
+# zlib streams, W6) verbatim into <repo>/data/timeless-luts/; the PoB checkout must be at the manifest's pobSha; the sha256 of
+# every LUT file goes into data.lock (`timelessLuts`). pob-data inflates them lazily (flate2); the PoB checkout is never read
+# at run time.
+# Usage: tools/sync-data.ps1 [-Source <path>] [-PobRoot <path>] [-Check]
 param(
     [string]$Source,
+    [string]$PobRoot,
     [switch]$Check
 )
 $ErrorActionPreference = 'Stop'
@@ -10,9 +15,17 @@ $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 $dest = Join-Path $root 'data'
 $lockPath = Join-Path $root 'data.lock'
+$lutRel = 'timeless-luts'
+$lutDest = Join-Path $dest $lutRel
 if (-not $Source) {
     $Source = if ($env:POB_TS_ROOT) { Join-Path $env:POB_TS_ROOT 'data' } else { 'C:\pob-work\pob-ts\data' }
 }
+if (-not $PobRoot) {
+    $PobRoot = if ($env:POB_ROOT) { $env:POB_ROOT } else { 'C:\pob-work\project_15\PathOfBuilding' }
+}
+$lutSrc = Join-Path $PobRoot 'src\Data\TimelessJewelData'
+# `<stem>.zip` or `<stem>.zip.part<N>` -- what DataJewelFileLoader.lua reads.
+function Test-LutName([string]$n) { $n -match '^[A-Za-z]+\.zip(\.part\d+)?$' }
 
 function Get-Sha([string]$p) { (Get-FileHash -LiteralPath $p -Algorithm SHA256).Hash.ToLowerInvariant() }
 function Get-RelFiles([string]$dir) {
@@ -50,9 +63,10 @@ if (-not $Check) {
             $copied++
         }
     }
-    # Remove files not in manifest.
+    # Remove files not in manifest (the LUT directory is handled below).
     $allowed = [System.Collections.Generic.HashSet[string]]::new([string[]](@($entries.file) + 'manifest.json'))
     foreach ($rel in Get-RelFiles $dest) {
+        if ($rel.StartsWith("$lutRel/")) { continue }
         if (-not $allowed.Contains($rel)) {
             Remove-Item -LiteralPath (Join-Path $dest $rel.Replace('/', '\')) -Force
             $removed++
@@ -61,7 +75,43 @@ if (-not $Check) {
     # Remove empty directories.
     Get-ChildItem -LiteralPath $dest -Recurse -Directory | Sort-Object { $_.FullName.Length } -Descending |
         Where-Object { -not (Get-ChildItem -LiteralPath $_.FullName -Force) } | Remove-Item -Force
+
+    # Timeless-jewel LUTs from the PoB checkout at the manifest's pobSha.
+    $pobHead = (& git -C $PobRoot rev-parse HEAD 2>$null)
+    if ($LASTEXITCODE -ne 0 -or -not $pobHead) { $problems.Add("PoB checkout not readable: $PobRoot") }
+    elseif ($pobHead.Trim() -ne $manifest.pobSha) { $problems.Add("PoB checkout $PobRoot is at $($pobHead.Trim()), manifest pobSha is $($manifest.pobSha)") }
+    elseif (-not (Test-Path -LiteralPath $lutSrc)) { $problems.Add("missing LUT source dir: $lutSrc") }
+    else {
+        New-Item -ItemType Directory -Force -Path $lutDest | Out-Null
+        $lutNames = @(Get-ChildItem -LiteralPath $lutSrc -File | Where-Object { Test-LutName $_.Name } | ForEach-Object { $_.Name })
+        foreach ($n in $lutNames) {
+            $s = Join-Path $lutSrc $n
+            $d = Join-Path $lutDest $n
+            $need = $true
+            if (Test-Path -LiteralPath $d) {
+                $si = Get-Item -LiteralPath $s; $di = Get-Item -LiteralPath $d
+                if ($si.Length -eq $di.Length -and (Get-Sha $s) -eq (Get-Sha $d)) { $need = $false }
+            }
+            if ($need) { Copy-Item -LiteralPath $s -Destination $d -Force; $copied++ }
+        }
+        $lutSet = [System.Collections.Generic.HashSet[string]]::new([string[]]$lutNames)
+        foreach ($f in Get-ChildItem -LiteralPath $lutDest -File) {
+            if (-not $lutSet.Contains($f.Name)) { Remove-Item -LiteralPath $f.FullName -Force; $removed++ }
+        }
+    }
 }
+
+# LUT files present in data/timeless-luts (name -> sha256), sorted by name (ordinal).
+$lutFiles = [ordered]@{}
+$lutBytes = [long]0
+if (Test-Path -LiteralPath $lutDest) {
+    foreach ($f in (Get-ChildItem -LiteralPath $lutDest -File | Sort-Object -Property Name -CaseSensitive:$false -Culture '')) {
+        if (-not (Test-LutName $f.Name)) { $problems.Add("unexpected file in $lutRel/: $($f.Name)"); continue }
+        $lutFiles[$f.Name] = Get-Sha $f.FullName
+        $lutBytes += $f.Length
+    }
+}
+if ($lutFiles.Count -eq 0) { $problems.Add("no timeless LUT files in $lutRel/") }
 
 # Verification (both modes).
 $totalBytes = [long]0
@@ -75,6 +125,7 @@ foreach ($e in $entries) {
 }
 $allowed2 = [System.Collections.Generic.HashSet[string]]::new([string[]](@($entries.file) + 'manifest.json'))
 foreach ($rel in Get-RelFiles $dest) {
+    if ($rel.StartsWith("$lutRel/")) { continue }
     if (-not $allowed2.Contains($rel)) { $problems.Add("extra file not in manifest: $rel") }
 }
 
@@ -87,6 +138,16 @@ if ($Check) {
         if ($lock.manifestSha256 -ne $manifestSha) { $problems.Add("data.lock manifestSha256 mismatch ($($lock.manifestSha256) vs $manifestSha)") }
         if ($lock.pobSha -ne $manifest.pobSha) { $problems.Add("data.lock pobSha mismatch ($($lock.pobSha) vs $($manifest.pobSha))") }
         if ($lock.files -ne $entries.Count) { $problems.Add("data.lock files mismatch ($($lock.files) vs $($entries.Count))") }
+        if (-not $lock.timelessLuts) { $problems.Add('data.lock has no timelessLuts section') }
+        else {
+            $locked = $lock.timelessLuts.files.PSObject.Properties
+            foreach ($p in $locked) {
+                if (-not $lutFiles.Contains($p.Name)) { $problems.Add("missing LUT: $lutRel/$($p.Name)") }
+                elseif ($lutFiles[$p.Name] -ne $p.Value) { $problems.Add("sha256 mismatch: $lutRel/$($p.Name)") }
+            }
+            $lockedNames = [System.Collections.Generic.HashSet[string]]::new([string[]]@($locked | ForEach-Object { $_.Name }))
+            foreach ($n in $lutFiles.Keys) { if (-not $lockedNames.Contains($n)) { $problems.Add("LUT not in data.lock: $lutRel/$n") } }
+        }
     }
 }
 
@@ -99,8 +160,13 @@ if ($problems.Count -eq 0 -and -not $Check) {
         files             = $entries.Count
         bytes             = $totalBytes
         source            = 'pob-ts/data'
+        timelessLuts      = [ordered]@{
+            source = 'PathOfBuilding/src/Data/TimelessJewelData'
+            bytes  = $lutBytes
+            files  = $lutFiles
+        }
     }
-    $json = (($lock | ConvertTo-Json -Depth 3) -replace "\r\n", "`n").TrimEnd("`n") + "`n"
+    $json = (($lock | ConvertTo-Json -Depth 4) -replace "\r\n", "`n").TrimEnd("`n") + "`n"
     [IO.File]::WriteAllText($lockPath, $json, [Text.UTF8Encoding]::new($false))
 }
 
@@ -111,4 +177,5 @@ if ($problems.Count -gt 0) {
     exit 1
 }
 Write-Output "data: $($entries.Count) files, $totalBytes bytes, pobSha $($manifest.pobSha.Substring(0, 9)), OK"
+Write-Output "timeless LUTs: $($lutFiles.Count) files, $lutBytes bytes, OK"
 exit 0

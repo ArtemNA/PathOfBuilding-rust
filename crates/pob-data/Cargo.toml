@@ -12,6 +12,7 @@ pob-mods = { path = "../pob-mods" }
 serde.workspace = true
 serde_json.workspace = true
 indexmap.workspace = true
+flate2 = "1"
 
 [lints]
 workspace = true

@@ -96,9 +96,9 @@ fn allowlist_is_the_measured_set() {
         seen.len()
     );
     // R4.5: 289 / 246 (ModCache only); R5.4 (ParseMode::Full): 333 / 208; R5.5a (cluster subgraphs): 353 / 188;
-    // R5.5b (radius jewels): 354 / 187
-    assert_eq!(ALLOWLIST.len(), 354, "pinned size of the measured allowlist");
-    assert_eq!(EXCLUDED.len(), 187, "pinned size of the measured exclusions");
+    // R5.5b (radius jewels): 354 / 187; R5.5c (timeless jewels): 377 / 164
+    assert_eq!(ALLOWLIST.len(), 377, "pinned size of the measured allowlist");
+    assert_eq!(EXCLUDED.len(), 164, "pinned size of the measured exclusions");
 }
 
 #[test]
@@ -109,6 +109,8 @@ fn every_excluded_key_names_a_root_cause() {
         assert!(!causes.is_empty(), "{k}: reason names no root cause: {reason}");
         // R5.4 closed `item-miss` (the real parser answers every item line): a key still excluded has another root
         assert!(!causes.contains(&"item-miss"), "{k}: item-miss is closed since R5.4: {reason}");
+        // R5.5c closed `tree-jewel` (env class 0 on every golden, the Lethal Pride conquest = LuaJIT)
+        assert!(!causes.contains(&"tree-jewel"), "{k}: tree-jewel is closed since R5.5c: {reason}");
         for c in causes {
             *tally.get_mut(c).unwrap() += 1;
         }

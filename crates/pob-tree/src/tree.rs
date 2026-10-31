@@ -213,6 +213,8 @@ pub struct PassiveTree {
     pub max_jewel_radius: f64,
     /// `node.nodesInRadius` of every socket and keystone, by node id (PassiveTree.lua:654-711, `crate::radius`).
     pub(crate) nodes_in_radius: HashMap<u32, crate::radius::NodesInRadius>,
+    /// `self.legion` (PassiveTree.lua:79 + :723-787), processed on first use (`crate::timeless`).
+    pub(crate) legion: std::cell::OnceCell<Result<crate::timeless::Legion, TreeError>>,
     /// Upstream branches this crate does not port; read by reports, never by the calc.
     pub unimplemented: Vec<String>,
 }
@@ -269,6 +271,8 @@ pub(crate) fn node_ref_id(r: &NodeRef) -> Option<u32> {
 /// The parts of `ProcessStats` that only need the holder's identity.
 pub(crate) struct StatHolder<'a> {
     pub id: f64,
+    /// A legion node's string id (`"Tree:" .. node.id` with `id = "vaal_keystone_1"`, PassiveTree.lua:751); `id` is unused then.
+    pub str_id: Option<&'a str>,
     pub ty: Option<NodeType>,
     pub dn: &'a str,
 }
@@ -360,7 +364,8 @@ pub(crate) fn process_stats(holder: &StatHolder<'_>, sd: &mut Vec<String>, stats
         }
     }
     // :860-869 -- one list from every recognised line, sourced to this node. `#node.mods` = len (no holes).
-    let source = format!("Tree:{}", tostring_num(holder.id));
+    let id_text = holder.str_id.map_or_else(|| tostring_num(holder.id), str::to_owned);
+    let source = format!("Tree:{id_text}");
     for idx in start_index..=stats.mods.len() {
         let Some(entry) = stats.mods[idx - 1].as_mut() else {
             continue;
@@ -382,7 +387,7 @@ pub(crate) fn process_stats(holder: &StatHolder<'_>, sd: &mut Vec<String>, stats
             "Keystone",
             Some(ModType::List),
             Value::str(holder.dn),
-            Some(&format!("Tree{}", tostring_num(holder.id))),
+            Some(&format!("Tree{id_text}")),
             0,
             0,
             Vec::new(),
@@ -450,12 +455,13 @@ impl PassiveTree {
             jewel_radius: Vec::new(),
             max_jewel_radius: 0.0,
             nodes_in_radius: HashMap::new(),
+            legion: std::cell::OnceCell::new(),
             unimplemented: vec![
-                "PassiveTree.lua:79-80 legion/tattoo passives (P5)".into(),
+                "PassiveTree.lua:80 tattoo passives (P5); legion passives (:79, :726-756) are built on first use".into(),
                 "PassiveTree.lua:131-172 alternate_ascendancies / secondaryAscendNameMap (P5)".into(),
                 "PassiveTree.lua:232-500 assets, sprites, node overlays (display only)".into(),
                 "PassiveTree.lua:623-640 connector polygons (display only)".into(),
-                "PassiveTree.lua:723-787 legion additions / tattoo nodes (P5)".into(),
+                "PassiveTree.lua:758-786 tattoo nodes (P5); legion sprites (:746-751) are display only".into(),
                 "PassiveTree.lua:790 buildTreeDependentUniques (P5)".into(),
             ],
         };
@@ -681,6 +687,7 @@ impl PassiveTree {
                     };
                     let holder = StatHolder {
                         id: entry.id,
+                        str_id: None,
                         ty: None,
                         dn: "",
                     };
@@ -795,6 +802,7 @@ impl PassiveTree {
         }
         let holder = StatHolder {
             id: f64::from(node.id),
+            str_id: None,
             ty: Some(node.ty),
             dn: &node.dn,
         };

@@ -62,14 +62,19 @@ pub struct SpecNode {
     pub connected_to_start: bool,
     /// Set by AddMasteryEffectOptionsToNode upstream (display only, P5) -- never true here.
     pub all_mastery_options: bool,
+    /// `node.conqueredBy` (PassiveSpec.lua:1110-1200): the timeless jewel's `jewelData.conqueredBy` (one shared table).
+    pub conquered_by: Option<Rc<crate::timeless::ConqueredBy>>,
+    /// `ReplaceNode(node, legionNode)` (:1697): dn/sd/name/mods/modKey/modList/keystoneMod now come from the legion node.
+    pub(crate) replaced: Option<Rc<crate::timeless::LegionNode>>,
     /// Own `sd`: the `masteryEffects[effect].sd` table (identity is what ReplaceNode compares, :1699).
-    own_sd_effect: Option<u64>,
-    own_sd: Option<Vec<String>>,
-    /// Own `mods`/`modKey`/`modList` written by `ProcessStats` on this node.
-    own_stats: Option<NodeStats>,
+    pub(crate) own_sd_effect: Option<u64>,
+    /// Own `sd`: a mastery effect's, or the table `NodeAdditionOrReplacementFromString` made (:2469/:2473).
+    pub(crate) own_sd: Option<Vec<String>>,
+    /// Own `mods`/`modKey`/`modList` written by `ProcessStats` on this node, or by a timeless addition/class-start reconnect.
+    pub(crate) own_stats: Option<NodeStats>,
     own_unknown: Option<bool>,
     own_extra: Option<bool>,
-    own_reminder_text: Option<Vec<String>>,
+    pub(crate) own_reminder_text: Option<Vec<String>>,
 }
 
 impl SpecNode {
@@ -94,6 +99,8 @@ impl SpecNode {
             visited: false,
             connected_to_start: false,
             all_mastery_options: false,
+            conquered_by: None,
+            replaced: None,
             own_sd_effect: None,
             own_sd: None,
             own_stats: None,
@@ -122,11 +129,18 @@ impl SpecNode {
     }
 
     pub fn dn(&self) -> &str {
-        &self.tree_node().dn
+        match &self.replaced {
+            Some(l) => &l.dn,
+            None => &self.tree_node().dn,
+        }
     }
 
+    /// `node.name` -- a legion node has none (ReplaceNode :1704 copies the nil).
     pub fn name(&self) -> Option<&str> {
-        self.tree_node().name.as_deref()
+        match &self.replaced {
+            Some(_) => None,
+            None => self.tree_node().name.as_deref(),
+        }
     }
 
     pub fn ascendancy_name(&self) -> Option<&str> {
@@ -134,11 +148,24 @@ impl SpecNode {
     }
 
     pub fn sd(&self) -> &[String] {
-        self.own_sd.as_deref().unwrap_or(&self.tree_node().sd)
+        match (&self.own_sd, &self.replaced) {
+            (Some(sd), _) => sd,
+            (None, Some(l)) => &l.sd,
+            (None, None) => &self.tree_node().sd,
+        }
     }
 
-    fn stats(&self) -> &NodeStats {
-        self.own_stats.as_ref().unwrap_or(&self.tree_node().stats)
+    pub(crate) fn stats(&self) -> &NodeStats {
+        match (&self.own_stats, &self.replaced) {
+            (Some(st), _) => st,
+            (None, Some(l)) => &l.stats,
+            (None, None) => &self.tree_node().stats,
+        }
+    }
+
+    /// `node.modKey`.
+    pub fn mod_key_str(&self) -> &str {
+        &self.stats().mod_key
     }
 
     pub fn mod_list(&self) -> &ModList {
@@ -153,7 +180,7 @@ impl SpecNode {
         &self.stats().mod_key
     }
 
-    /// Never written on a spec node in this subset (only a Keystone gets one, and only masteries are re-processed).
+    /// The tree's, or a legion keystone's after ReplaceNode (:1713).
     pub fn keystone_mod(&self) -> Option<&Rc<pob_mods::Mod>> {
         self.stats().keystone_mod.as_ref()
     }
@@ -167,9 +194,10 @@ impl SpecNode {
     }
 
     pub fn reminder_text(&self) -> Option<&[String]> {
-        match &self.own_reminder_text {
-            Some(v) => Some(v),
-            None => self.tree_node().reminder_text.as_deref(),
+        match (&self.own_reminder_text, &self.replaced) {
+            (Some(v), _) => Some(v),
+            (None, Some(_)) => None,
+            (None, None) => self.tree_node().reminder_text.as_deref(),
         }
     }
 
@@ -195,10 +223,9 @@ impl pob_parser::helpers::JewelNode for SpecNode {
     fn node_type(&self) -> &str {
         self.ty().as_str()
     }
-    /// `node.conqueredBy` -- written by the timeless-jewel half of BuildAllDependsAndPaths (PassiveSpec.lua:1176-1190),
-    /// R5.5c; nil until then.
+    /// `node.conqueredBy` -- written by the timeless-jewel half of BuildAllDependsAndPaths (PassiveSpec.lua:1110-1200).
     fn conquered_by(&self) -> bool {
-        false
+        self.conquered_by.is_some()
     }
     fn sum_base(&self, stat: &str) -> Result<f64, pob_mods::LuaError> {
         let st = pob_mods::ModStore::new_list(None);
@@ -248,6 +275,9 @@ pub struct PassiveSpec {
     pub allocated_mastery_type_count: u32,
     pub allocated_mastery_types: IndexMap<String, u32>,
     pub alloc_order: AllocOrder,
+    /// What BuildAllDependsAndPaths reads off `self.build.itemsTab.items[itemId]` for the jewels (`crate::timeless`): set by
+    /// the caller once the items are parsed (pob-calc `post_load_spec`); empty = no items (a spec loaded without its build).
+    pub(crate) jewel_items: Vec<(f64, Rc<crate::timeless::SpecJewel>)>,
     pub unimplemented: Vec<String>,
 }
 
@@ -285,6 +315,7 @@ impl PassiveSpec {
             allocated_mastery_type_count: 0,
             allocated_mastery_types: IndexMap::new(),
             alloc_order: AllocOrder::IdAsc,
+            jewel_items: Vec::new(),
             unimplemented: Vec::new(),
         };
         s.init();
@@ -311,7 +342,7 @@ impl PassiveSpec {
     fn init(&mut self) {
         self.unimplemented.extend(
             [
-                "PassiveSpec.lua:1111-1409 timeless/abyss/tattoo node replacement (P5)",
+                "PassiveSpec.lua:1212-1220 tattoo node replacement (hashOverrides, P5); abyss conquests (:1110-1127, :1253-1268) are an explicit error",
                 "PassiveSpec.lua:1444 AddMasteryEffectOptionsToNode (unallocated mastery display, P5)",
                 "PassiveSpec.lua:1520-1560 Intuitive Leap-like dependency bookkeeping (P5)",
                 "PassiveSpec.lua:1591-1695 node paths / pathDist (tree editing only, P5)",
@@ -437,8 +468,7 @@ impl PassiveSpec {
             })?;
             self.alloc(i);
         }
-        self.build_all_depends_and_paths();
-        Ok(())
+        self.build_all_depends_and_paths()
     }
 
     /// :630-663 -- a no-op without `alternate_ascendancies` (every tree <= 3.21, so every 3.13 golden).
@@ -491,20 +521,21 @@ impl PassiveSpec {
                 self.alloc(i);
             }
         }
-        self.build_all_depends_and_paths();
-        Ok(())
+        self.build_all_depends_and_paths()
     }
 
     /// :1697-1720 `ReplaceNode(old, treeNode)` -- see the module comment: dropping the own fields IS assigning the tree's.
     fn replace_node(&mut self, i: usize) {
         let node = &mut self.nodes[i];
-        // `if old.sd == newNode.sd then return 1 end` -- table identity.
-        if node.own_sd_effect.is_none() {
+        // `if old.sd == newNode.sd then return 1 end` -- table identity: the node still holds the tree's `sd` unless a mastery
+        // effect, a legion node or a timeless addition gave it another table.
+        if node.own_sd.is_none() && node.replaced.is_none() {
             return;
         }
         node.own_sd_effect = None;
         node.own_sd = None;
         node.own_stats = None;
+        node.replaced = None;
         // `newNode.reminderText or wipeTable(old.reminderText)` -- wipeTable returns an (own) empty table.
         node.own_reminder_text = if node.tree_node().reminder_text.is_some() {
             None
@@ -533,10 +564,13 @@ impl PassiveSpec {
         list
     }
 
-    /// :1092-1600, the R3 subset: reset dependencies, restore nodes from the tree, apply mastery selections and the four
-    /// counters, then prune every allocated node with no path to a start node.
-    pub fn build_all_depends_and_paths(&mut self) {
+    /// :1092-1600, the R3 subset: reset dependencies, restore nodes from the tree, the timeless-jewel conquests (R5.5c,
+    /// `crate::timeless`), apply mastery selections and the four counters, then prune every allocated node with no path to a
+    /// start node. Errors: what upstream raises in the conquest half (and its unported abyss branch).
+    pub fn build_all_depends_and_paths(&mut self) -> Result<(), TreeError> {
         let mut visited: Vec<usize> = Vec::new();
+        // :1110-1140 -- the abyss conquests (an error, out of scope) and the radius jewels of `self.jewels`.
+        let radius_jewels = self.gather_radius_jewels()?;
 
         // :1141-1209 -- one pass over every node (ascending id, then the subgraph nodes, D13).
         for i in 0..self.nodes.len() {
@@ -559,11 +593,19 @@ impl PassiveSpec {
             n.intuitive_leap_likes_affecting.clear();
             // `isUnallocatedMastery` is never true without AddMasteryEffectOptionsToNode (P5).
             self.replace_node(i);
+            // :1167 `node.conqueredBy = abyssConquests[id]` (nil -- see gather_radius_jewels), then :1169-1203.
+            self.nodes[i].conquered_by = self.radius_conquest(i, &radius_jewels);
             if self.nodes[i].alloc {
                 self.nodes[i].depends.push(i); // :1207 "All nodes depend on themselves"
             }
         }
         self.check_node_links = false;
+        // :1210-1407 -- tattoos are P5; the conquered nodes are replaced or get their additions.
+        for i in 0..self.nodes.len() {
+            if self.nodes[i].conquered_by.is_some() && self.nodes[i].ty() != NodeType::Socket {
+                self.conquer_node(i)?;
+            }
+        }
 
         // :1409-1466 -- mastery effects and the allocation counters.
         self.allocated_mastery_count = 0;
@@ -674,6 +716,7 @@ impl PassiveSpec {
                 }
             }
         }
+        Ok(())
     }
 
     /// :1416-1425 for one allocated mastery: `node.sd = effect.sd`, the reminder text, `ProcessStats(node)`.
@@ -690,6 +733,7 @@ impl PassiveSpec {
         let mut stats = NodeStats::default();
         let holder = StatHolder {
             id: f64::from(node.id),
+            str_id: None,
             ty: Some(node.ty()),
             dn: node.dn(),
         };

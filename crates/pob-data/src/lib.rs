@@ -24,6 +24,7 @@ pub mod pantheons;
 pub mod patches;
 pub mod rules;
 pub mod sha256;
+pub mod timeless;
 pub mod tree;
 pub mod wire;
 

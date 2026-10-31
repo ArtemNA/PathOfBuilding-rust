@@ -24,6 +24,10 @@
 //! R5.5b re-measured with the radius jewels (`nodesInRadius`, `radiusJewelList`, `ParseMode::Full`): one key moved from
 //! EXCLUDED to ALLOWLIST (`Spec:EnergyShieldInc` -- Energy From Within), none left ALLOWLIST, none newly emitted. Env class
 //! `tree-jewel` is now only the Lethal Pride conquest (timeless, R5.5c); a reason naming `tree-jewel` means that.
+//! R5.5c re-measured with the timeless conquest (LUT, legion passives, `ParseMode::Full`): 23 keys moved from EXCLUDED to
+//! ALLOWLIST (Life and the pools built on it, Str/attributes, `Spec:LifeInc`, life leech, StunThreshold), none left ALLOWLIST,
+//! none newly emitted; env class `tree-jewel` is 0 on every golden, so no reason names `tree-jewel` any more (the four that
+//! did fail on goldens without a timeless jewel as well -- rewritten to their other causes).
 
 use indexmap::IndexMap;
 
@@ -72,26 +76,24 @@ const EST_EVADE: &str = "estimation input: Melee/ProjectileEvadeChance (buffs + 
 const EST_NOT_HIT: &str = "estimation input: avoid-all/evade/dodge chances (flasks + buffs + cluster)";
 const AVOID: &str = "flasks + buffs: ailment/curse immunity from flasks, pantheons and the buff phase";
 const EST_HIT: &str = "estimation input: resistances, Armour, taken-damage and DamageTaken mods (buffs + cluster)";
-const EST_DOT_EHP: &str = "estimation input: total pools and DoT multipliers (buffs + cluster + tree-jewel)";
+const EST_DOT_EHP: &str =
+    "estimation input: total pools and DoT multipliers (buffs + cluster; R5.5c: also fails on Cospris, which has no timeless jewel)";
 const EST_ENEMY: &str = "estimation input: EnemyCritEffect and enemy Damage INC/MORE (buffs + cluster + curses)";
 const EST_ENEMY_MULT: &str = "estimation input: enemyDB Damage INC/MORE from curses";
-const EST_POOL: &str = "estimation input: Life pools and EnergyShieldRecoveryCap (cluster + tree-jewel + buffs)";
+const EST_POOL: &str = "estimation input: Life pools and EnergyShieldRecoveryCap (cluster + buffs; R5.5c: Life itself is ok, the mismatch is also on Cospris without a timeless jewel)";
 const EST_MAX_HIT: &str = "estimation input: hit pools, resist multipliers, armour, enemy damage (buffs + curses + guards + cluster)";
 const EST_RECOUP: &str = "estimation input: recoupable damage taken and hit-simulation pools (buffs + cluster)";
 const RESISTS: &str = "buffs + cluster: Purity auras plus missing cluster resistance mods";
 const EST_RES: &str = "estimation input: resistances (buffs + cluster)";
 const EST_DOT: &str = "estimation input: resistances over time and DamageTaken INC/MORE (buffs + cluster + skills)";
-const EST_HIT_POOL: &str =
-    "estimation input: MoM hit pools, EnergyShieldRecoveryCap, ward/aegis/guard pools (buffs + cluster + tree-jewel + guards)";
+const EST_HIT_POOL: &str = "estimation input: MoM hit pools, EnergyShieldRecoveryCap, ward/aegis/guard pools (buffs + cluster + guards; R5.5c: also fails on Cospris, which has no timeless jewel)";
 const EST_DAMAGE_CHANCE: &str = "estimation input: EffectiveSpellSuppressionChance (cluster)";
 const CURSE: &str = "buffs: curse effect on self from pantheon mods and the buff phase";
-const ATTR: &str = "cluster: attributes follow cluster-jewel subgraphs (D16)";
 const EST_SURVIVAL: &str = "estimation input: TotalNumberOfHits and enemySkillTime (buffs + curses + ailments + cluster)";
 const MOVE: &str = "flasks + buffs: Quicksilver, Onslaught, Tailwind move MovementSpeed";
 const EST_CRIT: &str = "estimation input: ConfiguredEvadeChance (buffs + cluster)";
 const EVADE: &str = "buffs + cluster: evade chance follows Evasion and enemy accuracy changed by the buff phase";
 const GUARDS: &str = "guards: guard-skill block (CalcPerform.lua:3300-3341) needs the skill phase";
-const POOLS: &str = "cluster + tree-jewel + buffs: life/mana pool follows cluster mods, radius/timeless jewels, life/mana auras";
 const REGEN: &str = "buffs + cluster: Vitality/Clarity plus missing regeneration mods";
 const RESERVE: &str = "reservation: per-skill reservation loop (CalcPerform.lua:1978-2089) has no active skills yet";
 const LEECH: &str = "buffs + cluster: leech cap is a percentage of an undercounted pool";
@@ -99,18 +101,18 @@ const EST_HITS: &str = "estimation input: taken hits and drained pools (buffs + 
 const EST_MITIGATED: &str = "estimation input: hit-simulation inputs and block/suppression mitigation (buffs + cluster)";
 const EST_ARMOUR: &str = "estimation input: Armour (buffs + cluster)";
 const GEMS: &str = "gems: requirementsTable gem half needs the skill phase (P5); Req*String also differs by R8 (no breakdown)";
-const EST_STUN: &str = "estimation input: StunThreshold/StunAvoidChance follow Life/EnergyShield (cluster + tree-jewel + buffs; mismatch exactly where Life does)";
+const EST_STUN: &str = "estimation input: StunAvoidChance (cluster + buffs; R5.5c: Life and StunThreshold are ok on every golden, StunAvoidChance still mismatches on both Cospris builds)";
 const EST_SELF_STUN: &str =
     "estimation input: SelfStunChance = enemy hit damage taken (totalTakenHit: skills + buffs) over StunThreshold (cluster + buffs)";
 const RAGE: &str = "skills + buffs: RageEffect INC is added after initEnv (the LuaJIT initEnv modDB has no RageEffect mod; golden 39 = \
      floor(25 x 1.56)); Rage itself is emitted since R5.4 (Tree:32251 CanGainRage now parsed)";
-const SPEC: &str = "tree-jewel: tree-sourced INC follows the Lethal Pride conquest (timeless, R5.5c; mismatch on that golden only)";
 const EST_EHP: &str = "estimation input: NumberOfMitigatedDamagingHits and ConfiguredNotHitChance (flasks + buffs + cluster)";
 const EST_SKILL_TIME: &str = "estimation input: enemy action speed from Temporal Chains and Chill (curses + ailments)";
 const EST_GUARD: &str = "estimation input: GuardAbsorbRate (guards)";
 
-/// 354 keys, sorted (byte order): `ok` on every golden that emits them, on none `mismatch` or `extra` (R5.4: measured
-/// with `ParseMode::Full`, the default; R5.5a re-measured with the cluster-jewel subgraphs: +20; R5.5b radius jewels: +1).
+/// 377 keys, sorted (byte order): `ok` on every golden that emits them, on none `mismatch` or `extra` (R5.4: measured
+/// with `ParseMode::Full`, the default; R5.5a re-measured with the cluster-jewel subgraphs: +20; R5.5b radius jewels: +1;
+/// R5.5c timeless jewels: +23).
 pub const ALLOWLIST: &[&str] = &[
     "AbsorptionCharges",
     "AbsorptionChargesMax",
@@ -177,8 +179,10 @@ pub const ALLOWLIST: &[&str] = &[
     "ChaosEnergyShieldRecoup",
     "ChaosGuardAbsorbRate",
     "ChaosLifeRecoup",
+    "ChaosManaEffectiveLife",
     "ChaosManaRecoup",
     "ChaosMindOverMatter",
+    "ChaosMoMHitPool",
     "ChaosResistOver75",
     "ChaosResistOverCap",
     "ChaostakenFlat",
@@ -192,8 +196,10 @@ pub const ALLOWLIST: &[&str] = &[
     "ColdEnergyShieldRecoup",
     "ColdGuardAbsorbRate",
     "ColdLifeRecoup",
+    "ColdManaEffectiveLife",
     "ColdManaRecoup",
     "ColdMindOverMatter",
+    "ColdMoMHitPool",
     "ColdResist",
     "ColdResistOver75",
     "ColdResistOverCap",
@@ -259,8 +265,10 @@ pub const ALLOWLIST: &[&str] = &[
     "FireEnergyShieldRecoup",
     "FireGuardAbsorbRate",
     "FireLifeRecoup",
+    "FireManaEffectiveLife",
     "FireManaRecoup",
     "FireMindOverMatter",
+    "FireMoMHitPool",
     "FiretakenFlat",
     "FortificationEffect",
     "FortificationStacks",
@@ -286,19 +294,23 @@ pub const ALLOWLIST: &[&str] = &[
     "InspirationChargesMax",
     "Int",
     "InterruptStunAvoidChance",
+    "Life",
     "LifeCancellableReservation",
     "LifeDegen",
+    "LifeHitPool",
     "LifeOnBlock",
     "LifeOnSuppress",
     "LifeRecoup",
     "LifeRecoupRecoveryAvg",
     "LifeRecoupRecoveryMax",
+    "LifeRecoverable",
     "LifeRecovery",
     "LifeRecoveryRateMod",
     "LifeRegenInc",
     "LifeReserved",
     "LifeReservedPercent",
     "LifeUncancellableReservation",
+    "LifeUnreserved",
     "LifeUnreservedPercent",
     "LightRadiusInc",
     "LightRadiusMod",
@@ -312,8 +324,10 @@ pub const ALLOWLIST: &[&str] = &[
     "LightningEnergyShieldRecoup",
     "LightningGuardAbsorbRate",
     "LightningLifeRecoup",
+    "LightningManaEffectiveLife",
     "LightningManaRecoup",
     "LightningMindOverMatter",
+    "LightningMoMHitPool",
     "LightningResist",
     "LightningResistOver75",
     "LightningResistOverCap",
@@ -324,6 +338,7 @@ pub const ALLOWLIST: &[&str] = &[
     "LootQuantityNormalEnemies",
     "LootRarityMagicEnemies",
     "LowLifePercentage",
+    "LowestAttribute",
     "LowestOfMaximumLifeAndMaximumMana",
     "Mana",
     "ManaCancellableReservation",
@@ -333,6 +348,8 @@ pub const ALLOWLIST: &[&str] = &[
     "ManaRecovery",
     "ManaRecoveryRateMod",
     "ManaUncancellableReservation",
+    "MaxLifeLeechInstance",
+    "MaxLifeLeechRate",
     "MaxLifeLeechRatePercent",
     "MaxManaLeechInstance",
     "MaxManaLeechRate",
@@ -356,8 +373,10 @@ pub const ALLOWLIST: &[&str] = &[
     "PhysicalEnergyShieldRecoup",
     "PhysicalGuardAbsorbRate",
     "PhysicalLifeRecoup",
+    "PhysicalManaEffectiveLife",
     "PhysicalManaRecoup",
     "PhysicalMindOverMatter",
+    "PhysicalMoMHitPool",
     "PhysicalResist",
     "PhysicalResistTakenHitMulti",
     "PhysicaltakenFlat",
@@ -408,6 +427,7 @@ pub const ALLOWLIST: &[&str] = &[
     "Spec:ArmourInc",
     "Spec:EnergyShieldInc",
     "Spec:EvasionInc",
+    "Spec:LifeInc",
     "Spec:ManaInc",
     "SpectreAllyDamageMitigation",
     "SpellBlockChance",
@@ -425,7 +445,10 @@ pub const ALLOWLIST: &[&str] = &[
     "SpiritInfusions",
     "SpiritInfusionsMax",
     "StoneGolemAllyDamageMitigation",
+    "Str",
     "StunDuration",
+    "StunThreshold",
+    "TotalAttr",
     "TotalCharges",
     "TotalEnergyShieldPseudoRecoup",
     "TotalEnergyShieldRecoupRecovery",
@@ -462,13 +485,15 @@ pub const ALLOWLIST: &[&str] = &[
     "preventedLifeLossTotal",
     "sharedAegis",
     "sharedElementalAegis",
+    "sharedManaEffectiveLife",
     "sharedMindOverMatter",
+    "sharedMoMHitPool",
     "showDebuffExpirationModifier",
     "specificTypeAvoidance",
     "totalEnemyDamageIn",
 ];
 
-/// 208 keys the engine writes that fail on at least one golden, each with its root cause (pob-ts vocabulary).
+/// 164 keys the engine writes that fail on at least one golden, each with its root cause (pob-ts vocabulary).
 pub const EXCLUDED: &[(&str, &str)] = &[
     ("Armour", DEFENCES),
     ("EnergyShield", DEFENCES),
@@ -553,25 +578,11 @@ pub const EXCLUDED: &[(&str, &str)] = &[
     ("FireEnemyDamageMult", EST_ENEMY_MULT),
     ("LightningEnemyDamageMult", EST_ENEMY_MULT),
     ("PhysicalEnemyDamageMult", EST_ENEMY_MULT),
-    ("ChaosManaEffectiveLife", EST_POOL),
-    ("ChaosMoMHitPool", EST_POOL),
     ("ChaosTotalPool", EST_POOL),
-    ("ColdManaEffectiveLife", EST_POOL),
-    ("ColdMoMHitPool", EST_POOL),
     ("ColdTotalPool", EST_POOL),
-    ("FireManaEffectiveLife", EST_POOL),
-    ("FireMoMHitPool", EST_POOL),
     ("FireTotalPool", EST_POOL),
-    ("LifeHitPool", EST_POOL),
-    ("LifeRecoverable", EST_POOL),
-    ("LightningManaEffectiveLife", EST_POOL),
-    ("LightningMoMHitPool", EST_POOL),
     ("LightningTotalPool", EST_POOL),
-    ("PhysicalManaEffectiveLife", EST_POOL),
-    ("PhysicalMoMHitPool", EST_POOL),
     ("PhysicalTotalPool", EST_POOL),
-    ("sharedManaEffectiveLife", EST_POOL),
-    ("sharedMoMHitPool", EST_POOL),
     ("ChaosMaximumHitTaken", EST_MAX_HIT),
     ("ColdMaximumHitTaken", EST_MAX_HIT),
     ("FireMaximumHitTaken", EST_MAX_HIT),
@@ -609,9 +620,6 @@ pub const EXCLUDED: &[(&str, &str)] = &[
     ("PhysicalTotalHitPool", EST_HIT_POOL),
     ("ConfiguredDamageChance", EST_DAMAGE_CHANCE),
     ("CurseEffectOnSelf", CURSE),
-    ("LowestAttribute", ATTR),
-    ("Str", ATTR),
-    ("TotalAttr", ATTR),
     ("EHPSurvivalTime", EST_SURVIVAL),
     ("EffectiveMovementSpeedMod", MOVE),
     ("MovementSpeedMod", MOVE),
@@ -621,8 +629,6 @@ pub const EXCLUDED: &[(&str, &str)] = &[
     ("MeleeEvadeChance", EVADE),
     ("ProjectileEvadeChance", EVADE),
     ("GuardSkillActive", GUARDS),
-    ("Life", POOLS),
-    ("LifeUnreserved", POOLS),
     ("LifeRegen", REGEN),
     ("LifeRegenPercent", REGEN),
     ("LifeRegenRecovery", REGEN),
@@ -636,8 +642,6 @@ pub const EXCLUDED: &[(&str, &str)] = &[
     ("ManaUnreservedPercent", RESERVE),
     ("MaxEnergyShieldLeechInstance", LEECH),
     ("MaxEnergyShieldLeechRate", LEECH),
-    ("MaxLifeLeechInstance", LEECH),
-    ("MaxLifeLeechRate", LEECH),
     ("NumberOfDamagingHits", EST_HITS),
     ("NumberOfMitigatedDamagingHits", EST_MITIGATED),
     ("PhysicalDamageReduction", EST_ARMOUR),
@@ -650,8 +654,6 @@ pub const EXCLUDED: &[(&str, &str)] = &[
     ("ReqStrString", GEMS),
     ("SelfStunChance", EST_SELF_STUN),
     ("StunAvoidChance", EST_STUN),
-    ("StunThreshold", EST_STUN),
-    ("Spec:LifeInc", SPEC),
     ("TotalEHP", EST_EHP),
     ("TotalNumberOfHits", EST_EHP),
     ("enemySkillTime", EST_SKILL_TIME),

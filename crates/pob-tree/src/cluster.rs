@@ -261,7 +261,7 @@ impl PassiveSpec {
         }
 
         // Rebuild paths to account for new/removed nodes
-        self.build_all_depends_and_paths();
+        self.build_all_depends_and_paths()?;
         // :1877 `searchStrCached` -- the tree viewer's search cache (UI).
         self.end_legacy_cluster_hash_conversion();
         Ok(())
@@ -459,6 +459,7 @@ impl PassiveSpec {
         }
         let holder = StatHolder {
             id: f64::from(node.id),
+            str_id: None,
             ty: Some(node.ty),
             dn: &node.dn,
         };

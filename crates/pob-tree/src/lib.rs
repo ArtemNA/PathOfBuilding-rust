@@ -7,21 +7,27 @@
 //!
 //! Jewel radii (`nodesInRadius`, R5.5b) are in [`radius`]; the radius-jewel passes themselves run in pob-calc (CalcSetup).
 //!
-//! Not ported (explicit `unimplemented` lists on `PassiveTree`/`PassiveSpec`): timeless/abyss jewels, tattoos,
-//! paths/`pathDist`, URL specs, legion/tattoo passives, alternate ascendancies, display-only assets.
+//! Timeless jewels (legion passives, LUT conquests, R5.5c) are in [`timeless`]; the caller hands the spec the jewels' item data
+//! ([`PassiveSpec::set_jewel_items`]) before `PostLoad`.
+//!
+//! Not ported (explicit `unimplemented` lists on `PassiveTree`/`PassiveSpec`): abyss jewels, tattoos,
+//! paths/`pathDist`, URL specs, tattoo passives, alternate ascendancies, display-only assets.
 
 #![forbid(unsafe_code)]
 
 pub mod cluster;
+pub mod lj_table;
 pub mod modtools;
 pub mod radius;
 pub mod spec;
+pub mod timeless;
 pub mod tree;
 
 pub use cluster::{ClusterJewel, JewelLookup};
 pub use pob_parser::ParseMode;
 pub use radius::{NodesInRadius, RadiusInfo, set_jewel_radii};
 pub use spec::{AllocNodeCounts, AllocOrder, PassiveSpec, SpecNode};
+pub use timeless::{ConqueredBy, ConquerorId, Legion, LegionNode, SpecJewel};
 pub use tree::{
     AscendClass, AscendEntry, MasteryEffect, NodeModLine, NodeStats, NodeType, PassiveTree, TreeClass, TreeError, TreeGroup, TreeNode,
     calc_orbit_angles, load_passive_tree, load_passive_tree_mode,

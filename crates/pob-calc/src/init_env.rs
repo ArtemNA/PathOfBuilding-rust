@@ -17,7 +17,7 @@ use pob_data::rules::rules;
 use pob_items::{DataTable, Item, ItemOptions, NumKey};
 use pob_lua::number::{max2, min2};
 use pob_mods::{Actor, Mod, ModStore, ModType, StoreRef, Value};
-use pob_tree::{ClusterJewel, PassiveSpec, TreeError};
+use pob_tree::{ClusterJewel, ConqueredBy, PassiveSpec, SpecJewel, TreeError};
 
 use crate::calc_lib;
 use crate::env::{CalcActor, Env, GrantedSkill, MainSkillStub, RadiusFunc, RadiusJewel, ReqEntry, Slot};
@@ -217,9 +217,36 @@ pub fn cluster_jewel_of(item: &Item) -> Option<ClusterJewel> {
     })
 }
 
+/// What BuildAllDependsAndPaths reads off a socketed item (PassiveSpec.lua:1110-1203): `item.id`, `jewelRadiusIndex`,
+/// `jewelData` and its `limitDisabled`/`conqueredBy`.
+pub fn spec_jewel_of(item: &Item) -> Result<SpecJewel, TreeError> {
+    let jd = item.jewel_data.as_ref();
+    Ok(SpecJewel {
+        id: item.id,
+        jewel_radius_index: item.jewel_radius_index,
+        has_jewel_data: jd.is_some(),
+        limit_disabled: jd.is_some_and(|d| d.get("limitDisabled").truthy()),
+        conquered_by: match jd {
+            Some(d) => ConqueredBy::from_value(&d.get("conqueredBy"))?.map(Rc::new),
+            None => None,
+        },
+    })
+}
+
 /// `spec:PostLoad()` (PassiveSpec.lua:251, run by Build.lua:680 once the items tab has loaded): the cluster-jewel subgraphs
 /// of the spec, built from the build's items.
 pub fn post_load_spec(spec: &mut PassiveSpec, items: &IndexMap<u64, Rc<Item>>) -> Result<(), TreeError> {
+    // The items tab is loaded before the tree (Build.lua:655-677), so BuildAllDependsAndPaths sees the jewels' conquests.
+    let mut jewels = Vec::new();
+    for &(_, item_id) in &spec.jewels.0 {
+        if item_id < 0.0 || item_id.fract() != 0.0 || jewels.iter().any(|(id, _)| *id == item_id) {
+            continue;
+        }
+        if let Some(item) = items.get(&(item_id as u64)) {
+            jewels.push((item_id, Rc::new(spec_jewel_of(item)?)));
+        }
+    }
+    spec.set_jewel_items(jewels);
     let lookup = |item_id: f64| -> Option<Rc<ClusterJewel>> {
         if item_id < 0.0 || item_id.fract() != 0.0 {
             return None;

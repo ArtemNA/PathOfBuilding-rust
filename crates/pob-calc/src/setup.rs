@@ -593,15 +593,16 @@ pub(crate) fn merge_keystones(env: &mut Env, db: &StoreRef) {
         let Some(value) = e.value.as_str().map(str::to_owned) else {
             continue;
         };
-        let keystone = env.spec.tree.keystone_map.get(&value).copied();
         if env.keystones_added.get(&value).copied().unwrap_or(false) {
             continue;
         }
-        let Some(k_idx) = keystone else { continue };
+        // `env.spec.tree.keystoneMap[value]` -- the tree's keystones, then the legacy legion ones (PassiveTree.lua:737-739).
+        let Some(mods) = env.spec.tree.keystone_mods(&value).map(<[_]>::to_vec) else {
+            continue;
+        };
         env.keystones_added.insert(value.clone(), true);
         let source = e.mod_.source.clone();
         let from_tree = source.as_deref().is_some_and(|src| !pob_lua::string::lower(src).contains("tree"));
-        let mods = env.spec.tree.nodes[k_idx].stats.mod_list.mods.clone();
         for m in mods {
             if from_tree {
                 let mut c = m.deep_copy();

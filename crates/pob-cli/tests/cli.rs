@@ -35,7 +35,7 @@ fn calc_file_json_has_meta_and_allowlisted_stats() {
     let parsed = CandidateOutput::from_json(std::str::from_utf8(&out.stdout).unwrap()).unwrap();
     assert_eq!(
         parsed.stats.len(),
-        317,
+        340,
         "Dual Savior: every ALLOWLIST key it emits (= oracle ok count)"
     );
     assert!(
@@ -77,18 +77,21 @@ fn experimental_env_disables_the_filter() {
 /// numbers `npm run oracle -- <golden> --cand tools/oracle-adapter/candidate.ts` prints. R5.5a (cluster-jewel subgraphs,
 /// allowlist re-measured 333 -> 353): 316/315, 323/322, 323/322, 334/333, 322/321, 340/339 (the same `npm run oracle`).
 /// R5.5b (radius jewels, allowlist 353 -> 354, `Spec:EnergyShieldInc`): 317/316, 324/323, 324/323, 335/334, 323/322, 341/340.
+/// R5.5c (timeless jewels, allowlist 354 -> 377): 340/339, 347/346, 347/346, 358/357, 346/345, 364/363 -- +23 on every golden
+/// (the 23 keys failed only on Lethal Pride before).
 /// O9: `VaalArcticArmourMitigation` is `ok`, not `exact` (golden `+0`, Rust `-0`) -- hence exact = ok - 1.
 #[test]
 fn cli_stats_against_goldens() {
     let pinned: [(&str, usize, usize); 6] = [
-        ("Dual Savior", 317, 316),
-        ("Dual Wield Cospris CoC", 324, 323),
-        ("Dual Wield Cospris CoC - Lethal Pride", 324, 323),
-        ("Generals Perforate Zerker", 335, 334),
-        ("Mirage Archer Toxic Rain", 323, 322),
-        ("OccVortex", 341, 340),
+        ("Dual Savior", 340, 339),
+        ("Dual Wield Cospris CoC", 347, 346),
+        ("Dual Wield Cospris CoC - Lethal Pride", 347, 346),
+        ("Generals Perforate Zerker", 358, 357),
+        ("Mirage Archer Toxic Rain", 346, 345),
+        ("OccVortex", 364, 363),
     ];
-    for (g, (name, ok, exact)) in GOLDEN_BUILDS.iter().zip(pinned) {
+    let mut got = Vec::new();
+    for (g, (name, _, _)) in GOLDEN_BUILDS.iter().zip(pinned) {
         assert_eq!(g.name, name);
         let snap = g.load_snapshot().unwrap();
         let out = Command::new(BIN)
@@ -103,9 +106,10 @@ fn cli_stats_against_goldens() {
         let report = compare_stats(&snap.stats, &cand.stats, &[]);
         println!("{name}: {}", pob_golden::summary_line(&report, false));
         assert_eq!((report.mismatch, report.extra), (0, 0), "{name}: mismatch/extra");
-        assert_eq!((report.ok, report.exact), (ok, exact), "{name}: ok/exact");
         assert!(is_parity(&report, false), "{name}");
+        got.push((name, report.ok, report.exact));
     }
+    assert_eq!(got, pinned, "ok/exact per golden");
 }
 
 /// The bench entry runs and prints one row per build.

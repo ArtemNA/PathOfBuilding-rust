@@ -4,8 +4,8 @@
 //!
 //! Exact: the allocated set (no LuaJIT-only ids >= 65536, no LuaJIT-only expansion sockets -- the `cluster ids` /
 //! `expansion` classes of `pob-tree/tests/tree_fixture.rs` are 0), every allocated node's type/dn/keystone mod, the
-//! counters, `#spec.nodes`. Mods: identical, except the nodes the Lethal Pride conquest rewrites (radius index 3 of
-//! socket 61834 -- R5.5c), counted as `tree-jewel` and pinned.
+//! counters, `#spec.nodes`. Mods: identical -- since R5.5c also the nodes the Lethal Pride conquest rewrites (radius index 3 of
+//! socket 61834); a `tree-jewel` class (a difference inside that radius) is counted and pinned at 0.
 
 use std::collections::BTreeSet;
 use std::rc::Rc;
@@ -64,11 +64,12 @@ struct Counts {
 
 #[test]
 fn cluster_graphs_equal_luajit_tree() {
-    // (generated ids, expansion sockets, mods identical, tree-jewel) -- R5.5a measured.
+    // (generated ids, expansion sockets, mods identical, tree-jewel) -- R5.5a measured; R5.5c: the Lethal Pride conquest
+    // (17 nodes) = LuaJIT, tree-jewel 0.
     let pinned: [(&str, [usize; 4]); 6] = [
         ("Dual Savior", [0, 0, 8, 0]),
         ("Dual Wield Cospris CoC", [16, 6, 120, 0]),
-        ("Dual Wield Cospris CoC - Lethal Pride", [16, 6, 103, 17]),
+        ("Dual Wield Cospris CoC - Lethal Pride", [16, 6, 120, 0]),
         ("Generals Perforate Zerker", [21, 8, 126, 0]),
         ("Mirage Archer Toxic Rain", [10, 4, 117, 0]),
         ("OccVortex", [0, 0, 132, 0]),
