@@ -31,6 +31,8 @@ fn opts() -> CalculateOptions {
         estimations: Some(noop_phase),
         // R5.4: the "= pob-ts" gate reads mod lines like pob-ts
         parse_mode: pob_calc::ParseMode::CacheOnly,
+        // R6.3: the "= pob-ts" gates run without the skill phase (pob-ts has none)
+        skills: false,
     }
 }
 
@@ -225,6 +227,8 @@ fn perf_defence() {
         defence: Some(timed_defence),
         estimations: Some(noop_phase),
         parse_mode: pob_calc::ParseMode::CacheOnly,
+        // R6.3: the "= pob-ts" gates run without the skill phase (pob-ts has none)
+        skills: false,
     };
     for g in GOLDEN_BUILDS {
         let _ = run_with(g.name, o);

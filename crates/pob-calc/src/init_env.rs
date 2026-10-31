@@ -25,6 +25,8 @@ use crate::setup::{
     apply_soul_mod, base, build_mod_list_for_node_list, cc, cfg_source, cond, cond_neg, init_mod_db, keyword_flag, list_mods, lua_gsub,
     merge_db, merge_keystones, misc, mod_flag, mult, n, new_mod, ok, s, tag, temp_list, title_case_rarity,
 };
+use crate::skills::{GrantedSkillExtra, SkillsState};
+use crate::skills_tab::{ByRef, ExplodeSource};
 
 /// What a caller may hand `init_env` instead of letting it build them (the oracle tests parse items themselves to record
 /// ModCache misses per item).
@@ -458,9 +460,16 @@ fn new_actor(mod_db: &StoreRef, level: f64) -> Rc<RefCell<CalcActor>> {
 
 // --- the entry point ----------------------------------------------------------------------------------------------
 
-/// `calcs.initEnv(build, "MAIN")` -- CalcSetup.lua:475-1975, phases (1)-(19) of CALC-ARCH §7.
-#[allow(clippy::too_many_lines)]
+/// `calcs.initEnv(build, "MAIN")` WITHOUT the skill phase -- the pre-R6 path its callers (the "= pob-ts" gates, the R3/R5 env gates,
+/// `examples/bench_env.rs`) pin. The skill phase: [`init_env_with`] / `CalculateOptions::skills` (default on).
 pub fn init_env(build: Rc<BuildModel>, opts: InitEnvOptions) -> Result<Env, InitEnvError> {
+    init_env_with(build, opts, false)
+}
+
+/// `calcs.initEnv(build, "MAIN")` -- CalcSetup.lua:475-1975, phases (1)-(19) of CALC-ARCH §7; `skills` = the skill phase (R6.3,
+/// R6-ARCH §2 p. 5: socketedGems, the granted-skill merge, supports, active skills, the main skill, `requirementsTableGems`).
+#[allow(clippy::too_many_lines)]
+pub fn init_env_with(build: Rc<BuildModel>, opts: InitEnvOptions, skills: bool) -> Result<Env, InitEnvError> {
     // --- (1) env + the three ModDBs + the actors (:490-547) ---------------------------------------------------------
     let mut spec = match opts.spec {
         Some(s) => s,
@@ -540,6 +549,8 @@ pub fn init_env(build: Rc<BuildModel>, opts: InitEnvOptions) -> Result<Env, Init
         granted_skills: Vec::new(),
         granted_skills_nodes: Vec::new(),
         granted_skills_items: Vec::new(),
+        granted_skills_extra: Vec::new(),
+        granted_skills_items_extra: Vec::new(),
         explode_sources: Vec::new(),
         item_warnings: IndexMap::new(),
         flasks: Vec::new(),
@@ -558,6 +569,7 @@ pub fn init_env(build: Rc<BuildModel>, opts: InitEnvOptions) -> Result<Env, Init
         jewel_limit_disabled: Vec::new(),
         ordered_slots: Vec::new(),
         items: IndexMap::new(),
+        skills: None,
         unimplemented: Vec::new(),
         spec,
     };
@@ -911,6 +923,11 @@ pub fn init_env(build: Rc<BuildModel>, opts: InitEnvOptions) -> Result<Env, Init
     let item_set = active_item_set(&build);
     env.ordered_slots = build_ordered_slots(&env.spec, item_set);
     env.items = parsed_items;
+    // `build.skillsTab` as the first BuildOutput finds it: SkillsTab:Load + UpdateSocketGroups (Build.lua:691), R6.2/R6.3.
+    if skills {
+        env.skills =
+            Some(SkillsState::load(&build, &env.ordered_slots, &env.items).map_err(|e| InitEnvError(format!("SkillsTab:Load: {e}")))?);
+    }
     let use_second_weapon_set = item_set.use_second_weapon_set;
     let mut items: IndexMap<String, Rc<Item>> = IndexMap::new();
     let mut jewel_limits: IndexMap<String, f64> = IndexMap::new();
@@ -945,8 +962,18 @@ pub fn init_env(build: Rc<BuildModel>, opts: InitEnvOptions) -> Result<Env, Init
         }
         let item = env.item(slot.sel_item_id).cloned();
         if let Some(item) = &item {
-            // :824-832 -- `data.skills[skillId]` is P5, so `nameSpec` stays unset.
+            // :824-832 `grantedSkill.nameSpec = skillData and skillData.name or nil` (looked up only on the skill path).
             for skill in &item.granted_skills {
+                let name_spec = match &env.skills {
+                    Some(st) => skill.skill_id.as_str().and_then(|id| st.skills.get(id)).map(|ge| ge.name.clone()),
+                    None => None,
+                };
+                env.granted_skills_items_extra.push(GrantedSkillExtra {
+                    name_spec,
+                    no_supports: skill.no_supports.clone(),
+                    triggered: skill.triggered.clone(),
+                    trigger_chance: skill.trigger_chance.clone(),
+                });
                 env.granted_skills_items.push(GrantedSkill {
                     skill_id: skill.skill_id.clone(),
                     level: skill.level.clone(),
@@ -959,7 +986,7 @@ pub fn init_env(build: Rc<BuildModel>, opts: InitEnvOptions) -> Result<Env, Init
             if let Some(bml) = &item.base_mod_list
                 && ok(temp_list(bml).borrow().flag(None, &["CanExplode"])) == Some(true)
             {
-                env.explode_sources.push(item.clone());
+                env.explode_sources.push(ExplodeSource::Item(ByRef(item.clone())));
             }
         }
         // :838-843 weapon-set filter, then " Swap" is stripped off the NAME (not off the slot).
@@ -1204,6 +1231,7 @@ pub fn init_env(build: Rc<BuildModel>, opts: InitEnvOptions) -> Result<Env, Init
             source: "Item",
             source_item: Some(item.clone()),
             source_slot: Some(slot_name.clone()),
+            source_gem: None,
             str_: item.requirements.str_mod,
             dex: item.requirements.dex_mod,
             int: item.requirements.int_mod,
@@ -1404,12 +1432,13 @@ pub fn init_env(build: Rc<BuildModel>, opts: InitEnvOptions) -> Result<Env, Init
                 );
             }
 
-            // :1318-1345 socket counts. `socketedGems` is filled from the socket groups of THIS slot whose gems carry
-            // `gem.gemData` -- gem resolution is P5, so it is always empty: `Socketed*GemsIn*` are 0 and every socket
-            // counts as empty (the `gems` class of the oracle comparison, excluded by name).
+            // :1308-1356 socket counts. `socketedGems` is filled from the socket groups of THIS slot whose gems carry
+            // `gem.gemData` (R6.3); without the skill phase it is empty: `Socketed*GemsIn*` are 0 and every socket counts as
+            // empty (the `gems` class of the "= pob-ts" comparisons, excluded by name).
+            let socketed_gems = env.skills.as_ref().map(|st| st.socketed_gems(&slot_name)).unwrap_or_default();
             let mut empty = [0.0f64; 4]; // R, G, B, W
             let mut slot_gem_sockets_count = 0.0;
-            let socketed_gems_len = 0.0;
+            let socketed_gems_len = socketed_gems.len() as f64;
             for (index, socket) in item.sockets.iter().enumerate() {
                 // `for i, socket in ipairs(item.sockets)`; abyssal sockets ("A") are not gem sockets.
                 let ci = match socket.color.as_str() {
@@ -1424,13 +1453,23 @@ pub fn init_env(build: Rc<BuildModel>, opts: InitEnvOptions) -> Result<Env, Init
                     empty[ci] += 1.0;
                 }
             }
+            // :1332-1343 only gems that fit in the item's sockets contribute to the colour multipliers
+            let mut socketed_colours = [0.0f64; 3]; // R, G, B
+            for g in socketed_gems.iter().take(min2(slot_gem_sockets_count, socketed_gems_len) as usize) {
+                let tag = |t: &str| g.tags.get(t).copied().unwrap_or(false);
+                for (i, t) in ["strength", "dexterity", "intelligence"].iter().enumerate() {
+                    if tag(t) {
+                        socketed_colours[i] += 1.0;
+                    }
+                }
+            }
             set_mult(
                 &item_mod_db,
                 &format!("SocketedGemsIn{slot_name}"),
                 min2(slot_gem_sockets_count, socketed_gems_len),
             );
-            for colour in ["Red", "Green", "Blue"] {
-                set_mult(&item_mod_db, &format!("Socketed{colour}GemsIn{slot_name}"), 0.0);
+            for (i, colour) in ["Red", "Green", "Blue"].iter().enumerate() {
+                set_mult(&item_mod_db, &format!("Socketed{colour}GemsIn{slot_name}"), socketed_colours[i]);
             }
             set_mult(
                 &item_mod_db,
@@ -1441,10 +1480,19 @@ pub fn init_env(build: Rc<BuildModel>, opts: InitEnvOptions) -> Result<Env, Init
             bump_mult(&item_mod_db, "EmptyGreenSocketsInAnySlot", empty[1]);
             bump_mult(&item_mod_db, "EmptyBlueSocketsInAnySlot", empty[2]);
             bump_mult(&item_mod_db, "EmptyWhiteSocketsInAnySlot", empty[3]);
+            // :1351-1355 warn if socketed gems over socket limit
+            if socketed_gems_len > slot_gem_sockets_count {
+                env.item_warnings
+                    .entry("socketLimitWarning".into())
+                    .or_default()
+                    .push(slot_name.clone());
+            }
         }
     }
-    env.unimplemented
-        .push("CalcSetup.lua:1318 socketedGems needs gem.gemData (P5): Socketed*/Empty*Socket* multipliers".into());
+    if env.skills.is_none() {
+        env.unimplemented
+            .push("CalcSetup.lua:1318 socketedGems needs gem.gemData (skills off): Socketed*/Empty*Socket* multipliers".into());
+    }
 
     // :1364-1367 -- the config overrides, `or` so a 0 still wins (L4).
     for (colour, key) in [
@@ -1531,14 +1579,10 @@ pub fn init_env(build: Rc<BuildModel>, opts: InitEnvOptions) -> Result<Env, Init
     {
         let (node_mod_list, node_explode) = build_mod_list_for_node_list(&mut env, true);
         mod_db.borrow_mut().add_list(&list_mods(&node_mod_list));
-        // `env.explodeSources = tableConcat(explodeSources, env.explodeSources)` -- nodes first. A node only gets
-        // `CanExplode` through a radius jewel (R5.5b); none of the goldens has one, so the node half stays unported here.
-        if !node_explode.is_empty() {
-            env.unimplemented.push(format!(
-                "CalcSetup.lua:1424 {} node explode sources (typed as items downstream)",
-                node_explode.len()
-            ));
-        }
+        // `env.explodeSources = tableConcat(explodeSources, env.explodeSources)` -- nodes first.
+        let mut all: Vec<ExplodeSource> = node_explode.into_iter().map(ExplodeSource::Node).collect();
+        all.append(&mut env.explode_sources);
+        env.explode_sources = all;
     }
 
     // --- (16) ExtraJewelFunc (:1426-1437) ------------------------------------------------------------------------------
@@ -1566,10 +1610,19 @@ pub fn init_env(build: Rc<BuildModel>, opts: InitEnvOptions) -> Result<Env, Init
         .chain(env.granted_skills_items.iter())
         .cloned()
         .collect();
+    env.granted_skills_extra = std::iter::repeat_n(GrantedSkillExtra::default(), env.granted_skills_nodes.len())
+        .chain(env.granted_skills_items_extra.iter().cloned())
+        .collect();
 
-    // --- (18) the skill phase (:1453-1946); only the three pieces below are needed here ----------------------------------
-    env.unimplemented
-        .push("CalcSetup.lua:1453-1946 skills: socket groups, supports, createActiveSkill, buildActiveSkillModList (P5)".into());
+    // --- (18) the skill phase (:1453-1970) ------------------------------------------------------------------------------
+    // (18-) the merge of the granted skills (:1448-1563, R6.3)
+    if let Some(st) = env.skills.as_mut() {
+        st.merge_granted(&env.granted_skills, &env.granted_skills_extra, &env.explode_sources)
+            .map_err(InitEnvError)?;
+    } else {
+        env.unimplemented
+            .push("CalcSetup.lua:1453-1946 skills: socket groups, supports, createActiveSkill, buildActiveSkillModList (P5)".into());
+    }
 
     // (18a) weapon data (:1565-1581)
     let weapon1 = player.borrow().item_list.get("Weapon 1").cloned();
@@ -1628,12 +1681,52 @@ pub fn init_env(build: Rc<BuildModel>, opts: InitEnvOptions) -> Result<Env, Init
         p.weapon_data2 = weapon_data2;
     }
 
-    // (18b) the main socket group (:1587-1590). `#socketGroupList` is the XML's own group count: the granted-skill groups
-    // the skill phase would append (:1461-1490) are P5.
-    let groups = active_skill_groups(&build).len() as f64;
-    env.main_socket_group = min2(max2(groups, 1.0), build.main_socket_group);
+    // (18b) the main socket group (:1587-1590). Without the skill phase `#socketGroupList` is the XML's own group count (the
+    // granted-skill groups are not appended).
+    if let Some(st) = env.skills.as_mut() {
+        env.main_socket_group = crate::skills::main_socket_group(st);
+    } else {
+        let groups = active_skill_groups(&build).len() as f64;
+        env.main_socket_group = min2(max2(groups, 1.0), build.main_socket_group);
+    }
 
-    // (18c) the default main skill (:1928-1940) -- the stub of CALC-ARCH §8.
+    // (18c) supports, active skills, the main skill (:1593-1940, R6.3)
+    if let Some(mut st) = env.skills.take() {
+        let affected_by_energy_blade = mod_db.borrow().conditions.get("AffectedByEnergyBlade").copied().unwrap_or(false);
+        let out = {
+            let p = player.borrow();
+            let view =
+                |d: &DataTable| -> (Option<String>, bool) { (d.get("type").as_str().map(str::to_owned), d.get("countsAsAll1H").truthy()) };
+            let (t1, a1) = view(&p.weapon_data1);
+            let (t2, a2) = view(&p.weapon_data2);
+            let inp = crate::skills::SetupInputs {
+                build: &build,
+                mod_db: &mod_db,
+                ordered_slots: &env.ordered_slots,
+                item_list: &p.item_list,
+                weapon1: crate::calc_tools::WeaponView {
+                    ty: t1.as_deref(),
+                    counts_as_all_1h: a1,
+                },
+                weapon2: crate::calc_tools::WeaponView {
+                    ty: t2.as_deref(),
+                    counts_as_all_1h: a2,
+                },
+                main_socket_group: env.main_socket_group,
+                affected_by_energy_blade,
+            };
+            crate::skills::setup_skills(&mut st, &inp).map_err(InitEnvError)?
+        };
+        env.requirements_table_gems = out.requirements_table_gems;
+        env.unimplemented.extend(out.unimplemented);
+        env.unimplemented.push(format!(
+            "CalcSetup.lua:1941-1945 buildActiveSkillModList for {} active skills (R6.4): perform keeps the stub main skill",
+            st.active_skill_list.len()
+        ));
+        env.skills = Some(st);
+    }
+
+    // (18d) the main skill perform reads (CALC-ARCH §8 stub: `skillModList` is buildActiveSkillModList's, R6.4).
     {
         let mut p = player.borrow_mut();
         p.main_skill = Some(MainSkillStub {
@@ -1650,8 +1743,10 @@ pub fn init_env(build: Rc<BuildModel>, opts: InitEnvOptions) -> Result<Env, Init
         .chain(env.requirements_table_gems.iter())
         .cloned()
         .collect();
-    env.unimplemented
-        .push("CalcSetup.lua:1972 requirementsTableGems (gem requirements need data.gems, P5)".into());
+    if env.skills.is_none() {
+        env.unimplemented
+            .push("CalcSetup.lua:1972 requirementsTableGems (gem requirements need data.gems, P5)".into());
+    }
 
     Ok(env)
 }

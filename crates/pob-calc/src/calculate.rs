@@ -15,7 +15,7 @@ use indexmap::IndexMap;
 use pob_build::ConfigModLists;
 
 use crate::env::Env;
-use crate::init_env::{InitEnvOptions, init_env};
+use crate::init_env::{InitEnvOptions, init_env_with};
 use crate::output::{StatValue, output_to_stats};
 use crate::perform::{PerformState, PhaseFn, finish_output, perform};
 use crate::{EnvMeta, meta_of};
@@ -30,6 +30,9 @@ pub struct CalculateOptions {
     /// How mod lines are read (R5.4 decision 1): `Full` = the desktop (ModCache, else the real ModParser) -- the default;
     /// `CacheOnly` = pob-ts (the R3/R4 "Rust = pob-ts" gates).
     pub parse_mode: pob_parser::ParseMode,
+    /// The skill phase of initEnv (R6.3, R6-ARCH §2 p. 5): `true` (default) = CalcSetup.lua's skills; `false` = the pre-R6 path (the
+    /// "= pob-ts" gates pin it).
+    pub skills: bool,
 }
 
 impl Default for CalculateOptions {
@@ -38,6 +41,7 @@ impl Default for CalculateOptions {
             defence: Some(crate::defence::defence),
             estimations: Some(crate::estimations::estimations),
             parse_mode: pob_parser::ParseMode::Full,
+            skills: true,
         }
     }
 }
@@ -108,7 +112,7 @@ pub fn calculate_with(xml: &str, opts: CalculateOptions) -> Result<CalculateResu
         parse_mode: opts.parse_mode,
         ..InitEnvOptions::default()
     };
-    let mut env = init_env(Rc::new(model), env_opts).map_err(|e| CalcError(format!("initEnv: {e}")))?;
+    let mut env = init_env_with(Rc::new(model), env_opts, opts.skills).map_err(|e| CalcError(format!("initEnv: {e}")))?;
     let init_env_ms = ms(t1);
 
     let t2 = Instant::now();

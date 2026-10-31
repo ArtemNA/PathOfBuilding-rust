@@ -154,6 +154,26 @@ pub fn can_granted_effect_support_active_skill(
     imbued_support: bool,
     applies_to_granted_skills: bool,
 ) -> Result<bool, LuaError> {
+    can_granted_effect_support_active_skill_ext(
+        ge,
+        active,
+        imbued_support,
+        applies_to_granted_skills,
+        ge.from_item,
+        active.granted_effect.from_item,
+    )
+}
+
+/// [`can_granted_effect_support_active_skill`] with `grantedEffect.fromItem` / `activeGrantedEffect.fromItem` given: CalcSetup.lua:1633-1634
+/// writes `fromItem = true` onto the (shared, immutable here) data of item extra supports (R6.3).
+pub fn can_granted_effect_support_active_skill_ext(
+    ge: &GrantedEffect,
+    active: &ActiveSkillView<'_>,
+    imbued_support: bool,
+    applies_to_granted_skills: bool,
+    ge_from_item: bool,
+    act_from_item: bool,
+) -> Result<bool, LuaError> {
     let act = active.granted_effect;
     if act.cannot_be_supported {
         return Ok(false);
@@ -162,9 +182,9 @@ pub fn can_granted_effect_support_active_skill(
         return Ok(false);
     }
     if !applies_to_granted_skills
-        && ge.from_item
+        && ge_from_item
         && ge.support
-        && (act.from_item || act.mod_source.as_bytes().starts_with(b"Item") || active.src_instance_from_item)
+        && (act_from_item || act.mod_source.as_bytes().starts_with(b"Item") || active.src_instance_from_item)
     {
         return Ok(false);
     }

@@ -29,6 +29,8 @@ fn run(name: &str) -> CalculateResult {
     // R5.4: the "= pob-ts" gate reads mod lines like pob-ts
     let o = CalculateOptions {
         parse_mode: pob_calc::ParseMode::CacheOnly,
+        // R6.3: the "= pob-ts" gate runs without the skill phase (pob-ts has none)
+        skills: false,
         ..CalculateOptions::default()
     };
     calculate_file(g.xml_path(), o).unwrap_or_else(|e| panic!("{name}: {e}"))

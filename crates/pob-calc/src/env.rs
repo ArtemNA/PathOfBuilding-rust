@@ -93,6 +93,8 @@ pub struct ReqEntry {
     pub source: &'static str,
     pub source_item: Option<Rc<Item>>,
     pub source_slot: Option<String>,
+    /// `sourceGem` of a gem entry (:1847-1853) -- (group, gem) indices into `socketGroupList` (0-based).
+    pub source_gem: Option<(usize, usize)>,
     pub str_: Option<f64>,
     pub dex: Option<f64>,
     pub int: Option<f64>,
@@ -150,7 +152,12 @@ pub struct Env {
     pub granted_skills: Vec<GrantedSkill>,
     pub granted_skills_nodes: Vec<GrantedSkill>,
     pub granted_skills_items: Vec<GrantedSkill>,
-    pub explode_sources: Vec<Rc<Item>>,
+    /// What CalcSetup reads of `env.grantedSkills[i]` beyond [`GrantedSkill`] (`nameSpec`, `noSupports`, `triggered`, `triggerChance`),
+    /// aligned with `granted_skills` / `granted_skills_items`.
+    pub granted_skills_extra: Vec<crate::skills::GrantedSkillExtra>,
+    pub granted_skills_items_extra: Vec<crate::skills::GrantedSkillExtra>,
+    /// `env.explodeSources`: the nodes' (`buildModListForNodeList`), then the items' (:1423 `tableConcat`).
+    pub explode_sources: Vec<crate::skills_tab::ExplodeSource>,
     pub item_warnings: IndexMap<String, Vec<String>>,
     pub flasks: Vec<Rc<Item>>,
     pub tinctures: Vec<Rc<Item>>,
@@ -176,6 +183,10 @@ pub struct Env {
     pub ordered_slots: Vec<Slot>,
     /// `build.itemsTab.items` -- every `<Item>` whose base resolved, by id, in XML order.
     pub items: IndexMap<u64, Rc<Item>>,
+
+    /// The skill phase (R6.3, `CalculateOptions.skills`): `build.skillsTab`, `env.player.activeSkillList`, `mainSkill`. `None` = the
+    /// pre-R6 path (no skills; perform's stub main skill only).
+    pub skills: Option<crate::skills::SkillsState>,
 
     /// Every upstream branch this port knowingly skips, as `"<File.lua>:<line> <what>"` (RUST-ARCH §5).
     pub unimplemented: Vec<String>,

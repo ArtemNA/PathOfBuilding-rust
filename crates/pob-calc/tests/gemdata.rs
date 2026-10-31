@@ -662,9 +662,9 @@ fn gem_dump(g: &GemInstance) -> Json {
     put("level", num(g.level));
     put("quality", num(g.quality));
     put("enabled", b(g.enabled));
-    put("enableGlobal1", b(g.enable_global1));
-    put("enableGlobal2", b(g.enable_global2));
-    put("count", num(Some(g.count)));
+    put("enableGlobal1", g.enable_global1.map(|v| v.to_string()));
+    put("enableGlobal2", g.enable_global2.map(|v| v.to_string()));
+    put("count", num(g.count));
     put("skillPart", num(g.skill_part));
     put("skillPartCalcs", num(g.skill_part_calcs));
     put("skillStageCount", num(g.skill_stage_count));
@@ -714,8 +714,8 @@ fn tab_dump(t: &SkillsTab, character_level: f64) -> Json {
                     put("label", g.label.clone());
                     put("slot", g.slot.clone());
                     put("source", g.source.clone());
-                    put("mainActiveSkill", Some(n17(g.main_active_skill)));
-                    put("mainActiveSkillCalcs", Some(n17(g.main_active_skill_calcs)));
+                    put("mainActiveSkill", g.main_active_skill.map(n17));
+                    put("mainActiveSkillCalcs", g.main_active_skill_calcs.map(n17));
                     put("imbuedSupport", g.imbued_support.clone());
                     let mut keys: Vec<String> = m.keys().cloned().chain(["gemList".to_owned()]).collect();
                     keys.sort_by(|a, b| a.as_bytes().cmp(b.as_bytes()));

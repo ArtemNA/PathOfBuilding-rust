@@ -11,6 +11,7 @@
 
 #![forbid(unsafe_code)]
 
+pub mod active_skill;
 pub mod allowlist;
 pub mod calc_lib;
 pub mod calc_tools;
@@ -23,6 +24,7 @@ pub mod output;
 pub mod perform;
 pub mod pools;
 pub mod setup;
+pub mod skills;
 pub mod skills_tab;
 
 pub use allowlist::{ALLOWLIST, EXCLUDED, filter_stats, is_allowed};
@@ -33,7 +35,7 @@ pub use output::{OutValue, Output, StatValue, output_to_stats};
 pub use perform::{ActorState, PerformState, PhaseFn, Who, finish_output, noop_phase, perform};
 
 pub use env::{CalcActor, Env, GrantedSkill, MainSkillStub, RadiusFunc, RadiusJewel, ReqEntry, Slot};
-pub use init_env::{InitEnvError, InitEnvOptions, init_env, item_options, parse_items};
+pub use init_env::{InitEnvError, InitEnvOptions, init_env, init_env_with, item_options, parse_items};
 pub use pob_parser::ParseMode;
 pub use skills_tab::{
     GemInstance, SkillSet, SkillsTab, SocketGroup, find_skill_gem, load_skills_tab, process_gem_level, process_socket_group,
@@ -42,10 +44,9 @@ pub use skills_tab::{
 /// `getStats()._meta` (boot.lua:806-816) of a built env -- pob-ts `metaOf` (`src/calc/output.ts`).
 ///
 /// `alloc_nodes` is `#build.spec.allocNodes`, which on a cluster-jewel build also holds the nodes `BuildClusterJewelGraphs`
-/// generates and the expansion sockets it puts back (D16; built in `ParseMode::Full` since R5.5a). One field cannot match
-/// upstream before the skill phase and is reported as it is, not faked: `socket_groups` is
-/// `#build.skillsTab.socketGroupList`, which upstream also counts the groups the skill phase appends for item/tree-granted
-/// skills (CalcSetup.lua:1461-1490).
+/// generates and the expansion sockets it puts back (D16; built in `ParseMode::Full` since R5.5a). `socket_groups` is
+/// `#build.skillsTab.socketGroupList` after the skill phase appended the item/tree-granted groups (CalcSetup.lua:1448-1563, R6.3);
+/// without the skill phase (`CalculateOptions.skills = false`) it is the XML's own count.
 #[derive(Clone, Debug, PartialEq)]
 pub struct EnvMeta {
     pub alloc_nodes: usize,
@@ -61,7 +62,10 @@ pub fn meta_of(env: &Env) -> EnvMeta {
     EnvMeta {
         alloc_nodes: env.spec.alloc_nodes.len(),
         items: env.items.len(),
-        socket_groups: pob_build::active_skill_groups(&env.build).len(),
+        socket_groups: match &env.skills {
+            Some(st) => st.tab.socket_group_list().len(),
+            None => pob_build::active_skill_groups(&env.build).len(),
+        },
         main_socket_group: env.main_socket_group,
         tree_version: env.spec.tree_version.clone(),
         class_name: env.spec.cur_class_name.clone(),

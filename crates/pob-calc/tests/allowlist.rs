@@ -96,9 +96,9 @@ fn allowlist_is_the_measured_set() {
         seen.len()
     );
     // R4.5: 289 / 246 (ModCache only); R5.4 (ParseMode::Full): 333 / 208; R5.5a (cluster subgraphs): 353 / 188;
-    // R5.5b (radius jewels): 354 / 187; R5.5c (timeless jewels): 377 / 164
-    assert_eq!(ALLOWLIST.len(), 377, "pinned size of the measured allowlist");
-    assert_eq!(EXCLUDED.len(), 164, "pinned size of the measured exclusions");
+    // R5.5b (radius jewels): 354 / 187; R5.5c (timeless jewels): 377 / 164; R6.3 (skills in initEnv, gem requirements): 381 / 160
+    assert_eq!(ALLOWLIST.len(), 381, "pinned size of the measured allowlist");
+    assert_eq!(EXCLUDED.len(), 160, "pinned size of the measured exclusions");
 }
 
 #[test]

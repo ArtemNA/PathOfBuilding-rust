@@ -14,7 +14,12 @@ use indexmap::IndexMap;
 use pob_build::{GemModel, SkillsModel, SocketGroupModel, sanitise_text};
 use pob_data::gems::{GemEntry, gems};
 use pob_data::skills::{GrantedEffect, Skills};
+use pob_items::Item;
 use pob_lua::{Repl, gsub, match_};
+use std::rc::Rc;
+
+use crate::active_skill::EffectRef;
+use crate::env::Slot;
 
 use crate::calc_tools::{GemLevelTarget, LuaError, get_gem_stat_requirement, validate_gem_level};
 
@@ -27,9 +32,12 @@ pub struct GemInstance {
     pub level: Option<f64>,
     pub quality: Option<f64>,
     pub enabled: bool,
-    pub enable_global1: bool,
-    pub enable_global2: bool,
-    pub count: f64,
+    /// nil on an explode gem CalcSetup creates (CalcSetup.lua:1535-1542).
+    pub enable_global1: Option<bool>,
+    /// nil on a gem CalcSetup creates for a granted skill (CalcSetup.lua:1486-1491).
+    pub enable_global2: Option<bool>,
+    /// nil on a gem CalcSetup creates.
+    pub count: Option<f64>,
     pub skill_part: Option<f64>,
     pub skill_part_calcs: Option<f64>,
     pub skill_stage_count: Option<f64>,
@@ -57,6 +65,50 @@ pub struct GemInstance {
     pub new: Option<bool>,
     /// Set by CalcSetup for granted triggered skills; never by the load.
     pub triggered: bool,
+    // --- set by `UpdateSocketGroups` (SkillsTab.lua:1237-1272) and CalcSetup (R6.3)
+    pub matches_socket: Option<bool>,
+    pub from_item: Option<bool>,
+    pub no_supports: Option<bool>,
+    pub trigger_chance: Option<f64>,
+    pub explode_source: Option<ExplodeSource>,
+    /// `gemInstance.displayEffect` / `.supportEffect` (MAIN mode, CalcSetup.lua:1672-1673, :1693-1694, :1786).
+    pub display_effect: Option<EffectRef>,
+    pub support_effect: Option<EffectRef>,
+    /// `gemInstance.reqOverride = effect.req` (CalcSetup.lua:1702, :1776).
+    pub req_override: Option<f64>,
+}
+
+/// A Lua table reference compared by identity (`==` on tables).
+#[derive(Debug)]
+pub struct ByRef<T>(pub Rc<T>);
+
+impl<T> Clone for ByRef<T> {
+    fn clone(&self) -> Self {
+        ByRef(self.0.clone())
+    }
+}
+
+impl<T> PartialEq for ByRef<T> {
+    fn eq(&self, o: &Self) -> bool {
+        Rc::ptr_eq(&self.0, &o.0)
+    }
+}
+
+/// One `env.explodeSources` entry: a tree node (`buildModListForNode`'s second value) or an item (CalcSetup.lua:837-839).
+#[derive(Clone, Debug, PartialEq)]
+pub enum ExplodeSource {
+    Node(u32),
+    Item(ByRef<Item>),
+}
+
+impl ExplodeSource {
+    /// `explodeSource.modSource or explodeSource.id` (CalcSetup.lua:1526) -- a tree node has no `modSource`.
+    pub fn key(&self) -> String {
+        match self {
+            ExplodeSource::Node(id) => format!("node:{id}"),
+            ExplodeSource::Item(i) => format!("item:{}", i.0.mod_source.as_deref().unwrap_or("")),
+        }
+    }
 }
 
 /// One `socketGroup`.
@@ -69,10 +121,22 @@ pub struct SocketGroup {
     pub label: Option<String>,
     pub slot: Option<String>,
     pub source: Option<String>,
-    pub main_active_skill: f64,
-    pub main_active_skill_calcs: f64,
+    /// nil on a group CalcSetup creates, until it is the main group (CalcSetup.lua:1883).
+    pub main_active_skill: Option<f64>,
+    pub main_active_skill_calcs: Option<f64>,
     pub imbued_support: Option<String>,
     pub gem_list: Vec<GemInstance>,
+    // --- set by CalcSetup (R6.3)
+    pub source_item: Option<ByRef<Item>>,
+    pub source_node: Option<u32>,
+    pub no_supports: Option<bool>,
+    pub explode_sources: Option<Vec<ExplodeSource>>,
+    pub slot_enabled: Option<bool>,
+    pub display_label: Option<String>,
+    /// `group.displaySkillList` -- indices into `env.player.activeSkillList` (0-based).
+    pub display_skill_list: Option<Vec<usize>>,
+    /// `group.displayGemList` -- (group, gem) indices into `socketGroupList` (0-based).
+    pub display_gem_list: Option<Vec<(usize, usize)>>,
 }
 
 /// `skillSets[id]`.
@@ -93,6 +157,32 @@ pub struct SkillsTab {
     pub active_skill_set_id: f64,
     /// `imbuedSupportBySlot[slot] = grantedEffect` (effect id), in insertion order.
     pub imbued_support_by_slot: IndexMap<String, String>,
+}
+
+impl SocketGroup {
+    /// `{ }` -- every field nil / false.
+    pub fn new_empty() -> SocketGroup {
+        SocketGroup {
+            enabled: false,
+            include_in_full_dps: None,
+            group_count: None,
+            label: None,
+            slot: None,
+            source: None,
+            main_active_skill: None,
+            main_active_skill_calcs: None,
+            imbued_support: None,
+            gem_list: Vec::new(),
+            source_item: None,
+            source_node: None,
+            no_supports: None,
+            explode_sources: None,
+            slot_enabled: None,
+            display_label: None,
+            display_skill_list: None,
+            display_gem_list: None,
+        }
+    }
 }
 
 impl SkillsTab {
@@ -141,11 +231,12 @@ pub fn load_skill(group: &SocketGroupModel, skills: &Skills) -> Result<SocketGro
         label: group.label.clone(),
         slot: group.slot.clone(),
         source: group.source.clone(),
-        main_active_skill: group.main_active_skill,
-        main_active_skill_calcs: group.main_active_skill_calcs,
+        main_active_skill: Some(group.main_active_skill),
+        main_active_skill_calcs: Some(group.main_active_skill_calcs),
         // :456 `if node.attrib.imbuedSupport and node.attrib.slot` (pob-build keeps it only then)
         imbued_support: group.imbued_support.clone(),
         gem_list,
+        ..SocketGroup::new_empty()
     };
     process_socket_group(&mut sg, skills)?;
     Ok(sg)
@@ -189,9 +280,9 @@ fn load_gem(g: &GemModel, skills: &Skills, data: &pob_data::gems::Gems) -> GemIn
     gi.quality = g.quality;
     gi.name_spec = gi.name_spec.as_deref().map(sanitise_text);
     gi.enabled = g.enabled;
-    gi.enable_global1 = g.enable_global1;
-    gi.enable_global2 = g.enable_global2;
-    gi.count = g.count;
+    gi.enable_global1 = Some(g.enable_global1);
+    gi.enable_global2 = Some(g.enable_global2);
+    gi.count = Some(g.count);
     gi.skill_part = g.skill_part;
     gi.skill_part_calcs = g.skill_part_calcs;
     gi.skill_stage_count = g.skill_stage_count;
@@ -214,6 +305,12 @@ fn has_non_space(s: &str) -> bool {
 
 /// SkillsTab.lua:1161-1236 `ProcessSocketGroup`.
 pub fn process_socket_group(sg: &mut SocketGroup, skills: &Skills) -> Result<(), LuaError> {
+    process_socket_group_ext(sg, skills, &mut Vec::new())
+}
+
+/// `ProcessSocketGroup` recording the data mutation of :1186-1190 (`grantedEffect.levels[level].cost = {}` for a triggered granted
+/// skill) in `cost_wiped` as `(effect id, level)` -- the data here is immutable; whoever reads `cost` (R6.4+) must consult the list.
+pub fn process_socket_group_ext(sg: &mut SocketGroup, skills: &Skills, cost_wiped: &mut Vec<(String, f64)>) -> Result<(), LuaError> {
     let data = gems();
     for gi in &mut sg.gem_list {
         gi.color = Some("^8".to_owned());
@@ -238,7 +335,16 @@ pub fn process_socket_group(sg: &mut SocketGroup, skills: &Skills) -> Result<(),
             // :1180 `data.gemForSkill[gemInstance.skillId]` indexes the table-keyed map with a STRING (D4): always nil
             gi.granted_effect = skills.get(&skill_id).map(|ge| ge.id.clone());
             if gi.triggered {
-                unimplemented!("SkillsTab.lua:1186-1190 triggered granted skill: `grantedEffect.levels[level].cost = {{}}` mutates data");
+                // :1186-1190 `gemInstance.grantedEffect.levels[gemInstance.level].cost = {}`
+                let ge = skills
+                    .get(&skill_id)
+                    .ok_or_else(|| "Classes/SkillsTab.lua:1187: attempt to index field 'grantedEffect' (a nil value)".to_owned())?;
+                if let Some(l) = gi.level.and_then(|l| ge.level(l)) {
+                    let k = (ge.id.clone(), l.level);
+                    if !cost_wiped.contains(&k) {
+                        cost_wiped.push(k);
+                    }
+                }
             }
         } else if has_non_space(gi.name_spec.as_deref().unwrap_or("")) {
             let (err, gd) = find_skill_gem(gi.name_spec.as_deref().unwrap_or(""))?;
@@ -432,4 +538,51 @@ pub fn load_skills_tab(model: &SkillsModel, skills: &Skills) -> Result<SkillsTab
     };
     rebuild_imbued_support_by_slot(&mut tab);
     Ok(tab)
+}
+
+/// SkillsTab.lua:1237-1272 `UpdateSocketGroups` over the active list -- Build.lua:691 runs it right before the first `BuildOutput`, so it
+/// sees only the groups of the XML (the granted ones CalcSetup appends later keep no `matchesSocket`).
+pub fn update_socket_groups(tab: &mut SkillsTab, slots: &[Slot], items: &IndexMap<u64, Rc<Item>>, skills: &Skills) {
+    let data = gems();
+    let mut slot_socketed_counts: IndexMap<String, usize> = IndexMap::new();
+    for sg in tab.socket_group_list_mut() {
+        // Clear stale matches when a group is no longer assigned to an item.
+        for gi in &mut sg.gem_list {
+            gi.matches_socket = Some(false);
+        }
+        let Some(slot_name) = sg.slot.clone() else { continue };
+        let gem_offset = slot_socketed_counts.get(&slot_name).copied().unwrap_or(0);
+        for (i, gi) in sg.gem_list.iter_mut().enumerate() {
+            let ge = match (&gi.granted_effect, &gi.gem_data) {
+                (Some(id), _) => skills.get(id),
+                (None, Some(g)) => skills.get(&data.gems[g].granted_effect_id),
+                (None, None) => None,
+            };
+            let Some(ge) = ge else { continue };
+            let gem_idx = gem_offset + i + 1;
+            // `self.build.itemsTab.slots[socketGroup.slot]`
+            let Some(slot) = slots.iter().find(|s| s.slot_name == slot_name) else {
+                continue;
+            };
+            let item = (slot.sel_item_id >= 0.0 && slot.sel_item_id.fract() == 0.0)
+                .then(|| items.get(&(slot.sel_item_id as u64)))
+                .flatten();
+            // `item.sockets` is always a table on a parsed item
+            if let Some(item) = item {
+                if item.sockets_colour_always_matches {
+                    gi.matches_socket = Some(true);
+                } else {
+                    let colour = match ge.color {
+                        Some(1.0) => Some("R"),
+                        Some(2.0) => Some("G"),
+                        Some(3.0) => Some("B"),
+                        _ => None,
+                    };
+                    // `item.sockets[gemIdx] and (item.sockets[gemIdx].color == gemColour)` -- nil when there is no such socket
+                    gi.matches_socket = item.sockets.get(gem_idx - 1).map(|s| Some(s.color.as_str()) == colour);
+                }
+            }
+        }
+        slot_socketed_counts.insert(slot_name, gem_offset + sg.gem_list.len());
+    }
 }

@@ -31,6 +31,9 @@
 //! R5.6: the initEnv modDB/enemyDB in `ParseMode::Full` = LuaJIT on all six goldens (env gate, every class 0), so no
 //! reason names `cluster` any more; the two that named only `cluster` were measured: spell suppression / damage chance
 //! mismatch only on Mirage Archer (Rust 0 vs golden 14) -- Vaal Grace, an aura of the buff phase.
+//! R6.3 re-measured with the skill phase of initEnv (socket groups, supports, active skills, `requirementsTableGems`; no
+//! `buildActiveSkillModList` yet): 4 keys moved from EXCLUDED to ALLOWLIST (`ReqDex`, `ReqInt`, `ReqIntString`, `ReqStr`), none left
+//! ALLOWLIST, none newly emitted; `ReqDexString`/`ReqStrString` stay EXCLUDED with a new reason ([`REQ_STRING`]).
 
 use indexmap::IndexMap;
 
@@ -103,7 +106,9 @@ const LEECH: &str = "buffs: leech cap is a percentage of an undercounted pool";
 const EST_HITS: &str = "estimation input: taken hits and drained pools (buffs)";
 const EST_MITIGATED: &str = "estimation input: hit-simulation inputs and block/suppression mitigation (buffs)";
 const EST_ARMOUR: &str = "estimation input: Armour (buffs)";
-const GEMS: &str = "gems: requirementsTable gem half needs the skill phase (P5); Req*String also differs by R8 (no breakdown)";
+/// R6.3 closed the gem half of `requirementsTable` (`ReqDex`/`ReqInt`/`ReqStr` ok on every golden); what is left of these two is the
+/// colour branch of CalcPerform.lua:2158 (`out.val > output[attr]` mid-perform).
+const REQ_STRING: &str = "skills + buffs: Req*String takes the NEGATIVE-colour branch (CalcPerform.lua:2158) on Dual Savior -- Rust's output.Dex/Str at that point is below the requirement, LuaJIT's is not (the final Dex/Str are ok)";
 const EST_STUN: &str = "estimation input: StunAvoidChance (buffs; R5.5c: Life and StunThreshold are ok on every golden, StunAvoidChance still mismatches on both Cospris builds)";
 const EST_SELF_STUN: &str =
     "estimation input: SelfStunChance = enemy hit damage taken (totalTakenHit: skills + buffs) over StunThreshold (buffs)";
@@ -401,6 +406,10 @@ pub const ALLOWLIST: &[&str] = &[
     "RemovableFrenzyCharges",
     "RemovablePowerCharges",
     "RemovableTotalCharges",
+    "ReqDex",
+    "ReqInt",
+    "ReqIntString",
+    "ReqStr",
     "SapAvoidChance",
     "ScorchAvoidChance",
     "SelfBleedDuration",
@@ -649,12 +658,8 @@ pub const EXCLUDED: &[(&str, &str)] = &[
     ("NumberOfMitigatedDamagingHits", EST_MITIGATED),
     ("PhysicalDamageReduction", EST_ARMOUR),
     ("PhysicalEffectiveAppliedArmour", EST_ARMOUR),
-    ("ReqDex", GEMS),
-    ("ReqDexString", GEMS),
-    ("ReqInt", GEMS),
-    ("ReqIntString", GEMS),
-    ("ReqStr", GEMS),
-    ("ReqStrString", GEMS),
+    ("ReqDexString", REQ_STRING),
+    ("ReqStrString", REQ_STRING),
     ("SelfStunChance", EST_SELF_STUN),
     ("StunAvoidChance", EST_STUN),
     ("TotalEHP", EST_EHP),

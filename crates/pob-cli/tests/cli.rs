@@ -35,7 +35,7 @@ fn calc_file_json_has_meta_and_allowlisted_stats() {
     let parsed = CandidateOutput::from_json(std::str::from_utf8(&out.stdout).unwrap()).unwrap();
     assert_eq!(
         parsed.stats.len(),
-        340,
+        343,
         "Dual Savior: every ALLOWLIST key it emits (= oracle ok count)"
     );
     assert!(
@@ -43,7 +43,12 @@ fn calc_file_json_has_meta_and_allowlisted_stats() {
         "stats are filtered by ALLOWLIST"
     );
     assert!(parsed.meta.is_some());
-    assert!(parsed.unimplemented.iter().any(|u| u.starts_with("CalcSetup.lua:1453-1946 skills")));
+    assert!(
+        parsed
+            .unimplemented
+            .iter()
+            .any(|u| u.starts_with("CalcSetup.lua:1941-1945 buildActiveSkillModList"))
+    );
 }
 
 /// `POB_EXPERIMENTAL=1`: the raw output, a strict superset of the filtered one (pob-ts `candidate.test.ts`).
@@ -79,16 +84,18 @@ fn experimental_env_disables_the_filter() {
 /// R5.5b (radius jewels, allowlist 353 -> 354, `Spec:EnergyShieldInc`): 317/316, 324/323, 324/323, 335/334, 323/322, 341/340.
 /// R5.5c (timeless jewels, allowlist 354 -> 377): 340/339, 347/346, 347/346, 358/357, 346/345, 364/363 -- +23 on every golden
 /// (the 23 keys failed only on Lethal Pride before).
+/// R6.3 (skills in initEnv: gem requirements, socket multipliers; allowlist 377 -> 381): 343/342, 351/350, 351/350, 362/361, 350/349,
+/// 368/367 -- +3 on Dual Savior (`ReqDex`, `ReqIntString`, `ReqStr`; it emits no `ReqInt`), +4 elsewhere.
 /// O9: `VaalArcticArmourMitigation` is `ok`, not `exact` (golden `+0`, Rust `-0`) -- hence exact = ok - 1.
 #[test]
 fn cli_stats_against_goldens() {
     let pinned: [(&str, usize, usize); 6] = [
-        ("Dual Savior", 340, 339),
-        ("Dual Wield Cospris CoC", 347, 346),
-        ("Dual Wield Cospris CoC - Lethal Pride", 347, 346),
-        ("Generals Perforate Zerker", 358, 357),
-        ("Mirage Archer Toxic Rain", 346, 345),
-        ("OccVortex", 364, 363),
+        ("Dual Savior", 343, 342),
+        ("Dual Wield Cospris CoC", 351, 350),
+        ("Dual Wield Cospris CoC - Lethal Pride", 351, 350),
+        ("Generals Perforate Zerker", 362, 361),
+        ("Mirage Archer Toxic Rain", 350, 349),
+        ("OccVortex", 368, 367),
     ];
     let mut got = Vec::new();
     for (g, (name, _, _)) in GOLDEN_BUILDS.iter().zip(pinned) {
@@ -167,9 +174,9 @@ fn usage_and_unknown_args() {
 
 /// R3-ARCH §3 (c): `meta` against `_meta` of the six goldens (`compare_meta`, field by field, O7).
 ///
-/// NOT 0 diffs: one field cannot match before the skill phase (R6) without faking:
-///  * `socketGroups` = `#socketGroupList`, which upstream also counts the groups the skill phase appends for item/tree
-///    granted skills (CalcSetup.lua:1461-1490) -- 2 builds.
+/// `socketGroups` = `#socketGroupList` after the skill phase appended the item/tree-granted groups (CalcSetup.lua:1448-1563): since R6.3
+/// it matches on all six (was 8 vs 9 on Mirage Archer Toxic Rain and 6 vs 7 on OccVortex -- the "On Kill Monster Explosion" group
+/// of a `CanExplode` tree node).
 ///
 /// `allocNodes` (`#build.spec.allocNodes`, with the nodes `BuildClusterJewelGraphs` generates and the expansion sockets it
 /// puts back, D16) matches on all six since R5.5a (was 98/98/97/103 on the 4 cluster builds).
@@ -183,8 +190,8 @@ fn meta_against_goldens() {
         ("Dual Wield Cospris CoC", &[]),
         ("Dual Wield Cospris CoC - Lethal Pride", &[]),
         ("Generals Perforate Zerker", &[]),
-        ("Mirage Archer Toxic Rain", &[("socketGroups", 9, 8)]),
-        ("OccVortex", &[("socketGroups", 7, 6)]),
+        ("Mirage Archer Toxic Rain", &[]),
+        ("OccVortex", &[]),
     ];
     let mut zero = 0;
     for (g, (name, want)) in GOLDEN_BUILDS.iter().zip(pinned) {
@@ -203,5 +210,5 @@ fn meta_against_goldens() {
         assert_eq!(got, want, "{name}: _meta diffs");
         zero += usize::from(diffs.is_empty());
     }
-    assert_eq!(zero, 4, "builds with 0 _meta diffs");
+    assert_eq!(zero, 6, "builds with 0 _meta diffs");
 }
