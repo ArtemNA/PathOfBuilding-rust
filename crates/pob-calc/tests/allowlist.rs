@@ -109,9 +109,10 @@ fn allowlist_is_the_measured_set() {
     // R7.3 (offence part A; OC1/OC2 = LuaJIT where the top offence runs): 598 / 13;
     // R7.4 (offence part B; OC3 = LuaJIT on every offence run Rust executes): 605 / 13;
     // R7.5 (offence part C; OC4 = LuaJIT on every offence run Rust executes but the 3 R7.10 minion runs): 711 / 13;
-    // R7.6 (offence part D, ailments; OC5 = LuaJIT on every offence run Rust executes but the 3 R7.10 minion runs): 760 / 13
-    assert_eq!(ALLOWLIST.len(), 760, "pinned size of the measured allowlist");
-    assert_eq!(EXCLUDED.len(), 13, "pinned size of the measured exclusions");
+    // R7.6 (offence part D, ailments; OC5 = LuaJIT on every offence run Rust executes but the 3 R7.10 minion runs): 760 / 13;
+    // R7.7 (offence part E + calcFullDPS + buildOutput tail; OC6 = LuaJIT on the same runs): 778 / 11
+    assert_eq!(ALLOWLIST.len(), 778, "pinned size of the measured allowlist");
+    assert_eq!(EXCLUDED.len(), 11, "pinned size of the measured exclusions");
 }
 
 #[test]

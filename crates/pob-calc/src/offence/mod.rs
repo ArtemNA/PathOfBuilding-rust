@@ -10,13 +10,13 @@
 //! damage pass (exerts, pacts, Ruthless / Fist of War, Explosive Arrow, crits, double / triple damage, culling, `postCritFunc`,
 //! Cryogenesis, damage by type, leech, gain on hit / kill, DPS, PvP), the hand combine and the leech rates. R7.6 (part D, [`d`],
 //! [`d2`]): :4155-5770 -- the secondary effect chances, bleed / poison / ignite, the non-damaging ailments, knockback, stun, impale,
-//! the combine of the secondary effect stats, Decay and the burning ground. Everything after :5770 (DoT, self hit, combined DPS --
-//! R7.7) is recorded as `unimplemented` by [`offence`].
+//! the combine of the secondary effect stats, Decay and the burning ground. R7.7 (part E, [`e`]): :5771-6263 -- the skill DoT, the
+//! per-second costs, the self hit damage and the combined DPS.
 //!
 //! The checkpoints of the R7.1 probe (`tools/lua-corpus/export-offence.ts`, line hook): OC1 = before :1057, OC2 = before :1987 (the
 //! `FNEW` of `buildConversionTable` is attributed to its `end` line, so nothing between :1937 and :1986 runs before it), OC3 = before
-//! :2606 (the first hit), OC4 = before :4156, OC5 = before :5772 -- the hook [`Checkpoint::Oc1`]..[`Checkpoint::Oc5`]; from OC3 on the
-//! hand tables are readable through [`checkpoint_hand_outputs`].
+//! :2606 (the first hit), OC4 = before :4156, OC5 = before :5772, OC6 = the end (:6263) -- the hook [`Checkpoint::Oc1`]..[`Checkpoint::Oc6`];
+//! from OC3 on the hand tables are readable through [`checkpoint_hand_outputs`].
 //!
 //! Upstream shapes kept:
 //! * `actor.breakdown` exists iff `env.buildBreakdown` (CalcPerform.lua:1514-1519). Branches under `if breakdown` that write anything
@@ -33,6 +33,7 @@ mod c;
 mod c2;
 mod d;
 mod d2;
+mod e;
 mod gates;
 pub(crate) mod helpers;
 
@@ -272,8 +273,7 @@ pub(crate) fn skill_type_u32(name: &str) -> u32 {
 }
 
 /// `calcs.offence(env, env.player, env.player.mainSkill)` (CalcPerform.lua:3799) -- parts A (:348-1936, R7.3), B (:1937-2605, R7.4),
-/// C (:2606-4154, R7.5) and D (:4155-5770, R7.6); the rest is recorded as unimplemented. `hook` sees
-/// [`Checkpoint::Oc1`]..[`Checkpoint::Oc5`].
+/// C (:2606-4154, R7.5), D (:4155-5770, R7.6) and E (:5771-6263, R7.7). `hook` sees [`Checkpoint::Oc1`]..[`Checkpoint::Oc6`].
 pub(crate) fn offence(env: &mut Env, st: &mut PerformState, mut hook: Hook<'_, '_>) {
     let i = env
         .skills
@@ -342,7 +342,9 @@ pub(crate) fn offence(env: &mut Env, st: &mut PerformState, mut hook: Hook<'_, '
     d::ailment_passes(&mut off, quantity_multiplier);
     d2::after_ailments(&mut off);
     hook_with_hands(&mut off, &mut hook, Checkpoint::Oc5);
-    off.note("CalcOffence.lua:5771-6263 (R7.7) DoT, self hit, combined DPS".into());
+    // :5771-6262
+    e::dot_cost_combined(&mut off, quantity_multiplier);
+    hook_with_hands(&mut off, &mut hook, Checkpoint::Oc6);
 }
 
 /// Calls the hook at `cp` with `output.MainHand` / `output.OffHand` readable through [`checkpoint_hand_outputs`].

@@ -2,7 +2,8 @@
 //! and `output_to_stats` -- boot.lua:791-805 `engine_outputJSON` over the player's output.
 //!
 //! `actor.output` is a Lua table mixing numbers, booleans and strings (`ChaosInoculation`, `GuardSkillActive`,
-//! `FortificationEffect = "0"`) and a few TABLE values ([`OutTable`]: `Req<Attr>Item`, R7.5); table values never reach `getStats`
+//! `FortificationEffect = "0"`) and a few TABLE values ([`OutTable`]: `Req<Attr>Item`, R7.5; `SkillDPS` and the cost warning lists, R7.7);
+//! table values never reach `getStats`
 //! (`output_to_stats` skips them, as boot.lua's `engine_outputJSON` does) and are kept beside the scalars, under the same keys (a key
 //! holds either a scalar or a table, as one Lua slot does). `output.MainHand` / `output.OffHand` live in the offence state (R7.4);
 //! `output.Minion` (CalcPerform.lua:1319, the minion actor's output) is R7.10.
@@ -30,6 +31,21 @@ pub enum OutTable {
     /// CalcPerform.lua:2156 `output["Req"..attr.."Item"] = out.source` -- the `env.requirementsTable` entry itself (`Str`/`Dex`/`Int`,
     /// `source` = `"Item"` with `sourceItem`/`sourceSlot`, or `"Gem"` with `sourceGem`).
     ReqSource(crate::env::ReqEntry),
+    /// Calcs.lua:395 `output.SkillDPS = fullDPS.skills` -- the `calcFullDPS` entries, in insertion order.
+    SkillDps(Vec<FullDpsSkill>),
+    /// Calcs.lua:420/:430 `output[<cost>.."WarningList"]` / `output[<cost>.."PercentCostWarningList"]` -- skill names, in insertion order.
+    Names(Vec<String>),
+}
+
+/// One `fullDPS.skills` entry (Calcs.lua:180/:217/:254/:298-353): `{ name, dps, count, trigger, skillPart, source }` (nil fields absent).
+#[derive(Clone, Debug, PartialEq)]
+pub struct FullDpsSkill {
+    pub name: String,
+    pub dps: f64,
+    pub count: f64,
+    pub trigger: Option<String>,
+    pub skill_part: Option<String>,
+    pub source: Option<String>,
 }
 
 /// `actor.output` (a fresh `{ }` at CalcPerform.lua:1305-1306), in assignment order.

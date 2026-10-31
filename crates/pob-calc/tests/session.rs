@@ -215,7 +215,7 @@ fn nested_runs_follow_luajit() {
             FullDpsOutcome::Done(fd) => {
                 assert_eq!(fd.combined_dps, 0.0);
                 assert_eq!(fd.total_dot_dps, 0.0);
-                assert_eq!(fd.skills, 0);
+                assert!(fd.skills.is_empty());
             }
             other => panic!("{}: calcFullDPS {other:?}", g.name),
         }
@@ -255,14 +255,13 @@ fn second_build_output_reads_the_cache() {
 }
 
 /// `getCachedOutputValue` (CalcPerform.lua:31-43): builds the skill with `limitedProcessingFlags = {uuid}`, MAIN reads the cache on
-/// the next call, CALCULATOR always rebuilds; the value itself is offence output -> the declared boundary, never a nil read as a value.
+/// the next call, CALCULATOR always rebuilds; the values are the cached run's offence output (R7.7).
 #[test]
 fn get_cached_output_value_builds_through_the_cache() {
     let sess = session("OccVortex");
     let env = sess.init_env(CalcMode::Main).unwrap();
     let uuid = cache_skill_uuid(&env, 0);
-    let r = get_cached_output_value(&env, 0, &["Speed", "Duration"]);
-    assert!(r.unwrap_err().contains("calcs.offence"));
+    let r = get_cached_output_value(&env, 0, &["Speed", "Duration"]).expect("the cached run reached calcs.offence");
     {
         let log = sess.log();
         assert_eq!(log.bas.len(), 1);
@@ -272,6 +271,11 @@ fn get_cached_output_value_builds_through_the_cache() {
     let cached = sess.cache();
     let entry = cached.get(CalcMode::Main, &uuid).expect("cached");
     let run = entry.run.borrow();
+    // R7.7: the values are the cached run's offence output
+    assert!(run.offence_ran);
+    let o = &run.state.player.output;
+    assert_eq!(r, vec![o.opt_num("Speed"), o.opt_num("Duration")]);
+    assert!(r[0].is_some());
     assert_eq!(run.env.limited_skills, Some(BTreeSet::from([uuid.clone()])));
     assert!(!run.env.build_breakdown);
     assert!(pob_calc::session::is_limited(&run.env, entry.active_skill));
@@ -308,7 +312,8 @@ fn init_env_modes() {
 
 /// The calcFullDPS frame (Calcs.lua:168-345) on synthetic `includeInFullDPS` groups (the goldens have none): one
 /// `perform(fullEnv, true)` per enabled skill of an included group, in activeSkillList order, CALCULATOR, one re-init after each;
-/// the roll-up stops at the offence boundary.
+/// R7.7: the roll-up runs to the end (both skills reach `calcs.offence`); its numbers are gated against LuaJIT by
+/// `offence_synth.rs::fulldps_matches_luajit`.
 #[test]
 fn calc_full_dps_frame_on_included_groups() {
     let mut m = model("OccVortex");
@@ -331,12 +336,12 @@ fn calc_full_dps_frame_on_included_groups() {
     assert!(!expected.is_empty());
     let inits = sess.log().init_env_calls;
     let out = sess.calc_full_dps(CalcMode::Calculator).unwrap();
-    match out {
-        FullDpsOutcome::Unimplemented { processed, note } => {
-            assert_eq!(processed, expected.len());
-            assert!(note.starts_with("Calcs.lua:176-336"), "{note}");
+    match &out {
+        FullDpsOutcome::Done(fd) => {
+            assert!(fd.combined_dps > 0.0, "{fd:?}");
+            println!("calcFullDPS: combinedDPS {}, {} entries", fd.combined_dps, fd.skills.len());
         }
-        FullDpsOutcome::Done(_) => panic!("roll-up claimed without offence"),
+        FullDpsOutcome::Unimplemented { processed, note } => panic!("roll-up stopped after {processed}: {note}"),
     }
     let log = sess.log();
     let runs: Vec<String> = log.perform.iter().map(|p| p.uuid.clone()).collect();

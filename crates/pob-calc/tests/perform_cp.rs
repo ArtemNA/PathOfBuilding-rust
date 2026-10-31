@@ -85,6 +85,8 @@ fn table_json(t: &OutTable) -> Json {
             }
             Json::Object(o)
         }
+        // written by the buildOutput tail (Calcs.lua:395/:420/:430), after every perform checkpoint
+        OutTable::SkillDps(_) | OutTable::Names(_) => json!("<table>"),
     }
 }
 
@@ -112,7 +114,13 @@ fn run(name: &str) -> BTreeMap<&'static str, Json> {
             Checkpoint::Cp3 => "CP3",
             Checkpoint::Cp4 => "CP4",
             // the offence checkpoints (R7.3) are gated by `offence_cp.rs`
-            Checkpoint::OcEntry | Checkpoint::Oc1 | Checkpoint::Oc2 | Checkpoint::Oc3 | Checkpoint::Oc4 | Checkpoint::Oc5 => return,
+            Checkpoint::OcEntry
+            | Checkpoint::Oc1
+            | Checkpoint::Oc2
+            | Checkpoint::Oc3
+            | Checkpoint::Oc4
+            | Checkpoint::Oc5
+            | Checkpoint::Oc6 => return,
         };
         let pdb = env.player.borrow().mod_db.clone();
         let edb = env.enemy.borrow().mod_db.clone();
@@ -226,7 +234,13 @@ fn perf_perform_to_checkpoints() {
                 Checkpoint::Cp2 => t2 = Some(t0.elapsed()),
                 Checkpoint::Cp3 => t3 = Some(t0.elapsed()),
                 Checkpoint::Cp4 => t4 = Some(t0.elapsed()),
-                Checkpoint::OcEntry | Checkpoint::Oc1 | Checkpoint::Oc2 | Checkpoint::Oc3 | Checkpoint::Oc4 | Checkpoint::Oc5 => {}
+                Checkpoint::OcEntry
+                | Checkpoint::Oc1
+                | Checkpoint::Oc2
+                | Checkpoint::Oc3
+                | Checkpoint::Oc4
+                | Checkpoint::Oc5
+                | Checkpoint::Oc6 => {}
             };
             let _ = perform_with(&mut env, Some(pob_calc::defence), Some(pob_calc::estimations), Some(&mut hook));
             if run > 0 {

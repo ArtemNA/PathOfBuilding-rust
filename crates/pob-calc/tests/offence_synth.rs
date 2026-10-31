@@ -260,3 +260,200 @@ fn offence_synth_matches_luajit() {
         "{bad_total} (scenario, key) pairs differ from LuaJIT, see the report above"
     );
 }
+
+// --- R7.7: the `calcFullDPS` gate on the 15 `fulldps` scenarios -----------------------------------------------------------------------------
+
+/// The `fullDPS` table in the probe's encoding (`%.17g` numbers; `skills` = `{"1": {...}, ...}`; nil fields absent).
+fn full_dps_json(fd: &pob_calc::FullDps) -> Json {
+    let n = |x: f64| Json::String(format_g(x, 17));
+    let mut o = serde_json::Map::new();
+    for (k, v) in [
+        ("TotalDotDPS", fd.total_dot_dps),
+        ("TotalPoisonDPS", fd.total_poison_dps),
+        ("bleedDPS", fd.bleed_dps),
+        ("burningGroundDPS", fd.burning_ground_dps),
+        ("causticGroundDPS", fd.caustic_ground_dps),
+        ("combinedDPS", fd.combined_dps),
+        ("corruptingBloodDPS", fd.corrupting_blood_dps),
+        ("cullingMulti", fd.culling_multi),
+        ("decayDPS", fd.decay_dps),
+        ("dotDPS", fd.dot_dps),
+        ("igniteDPS", fd.ignite_dps),
+        ("impaleDPS", fd.impale_dps),
+    ] {
+        o.insert(k.to_owned(), n(v));
+    }
+    if let Some(c) = fd.culling_dps {
+        o.insert("cullingDPS".to_owned(), n(c));
+    }
+    let mut skills = serde_json::Map::new();
+    for (i, s) in fd.skills.iter().enumerate() {
+        let mut e = serde_json::Map::new();
+        e.insert("name".to_owned(), Json::String(s.name.clone()));
+        e.insert("dps".to_owned(), n(s.dps));
+        e.insert("count".to_owned(), n(s.count));
+        for (k, v) in [("trigger", &s.trigger), ("skillPart", &s.skill_part), ("source", &s.source)] {
+            if let Some(v) = v {
+                e.insert(k.to_owned(), Json::String(v.clone()));
+            }
+        }
+        skills.insert((i + 1).to_string(), Json::Object(e));
+    }
+    o.insert("skills".to_owned(), Json::Object(skills));
+    Json::Object(o)
+}
+
+/// Every difference between two JSON objects (one level of nesting for `skills`), as `key: lj .. rust ..` lines.
+fn json_diff(prefix: &str, lj: &Json, rust: &Json, out: &mut Vec<String>) {
+    let (Some(a), Some(b)) = (lj.as_object(), rust.as_object()) else {
+        if lj != rust {
+            out.push(format!("{prefix}: lj {lj} rust {rust}"));
+        }
+        return;
+    };
+    let keys: std::collections::BTreeSet<&String> = a.keys().chain(b.keys()).collect();
+    for k in keys {
+        let (x, y) = (a.get(k).unwrap_or(&Json::Null), b.get(k).unwrap_or(&Json::Null));
+        if x.is_object() || y.is_object() {
+            json_diff(&format!("{prefix}.{k}"), x, y, out);
+        } else if x != y {
+            out.push(format!("{prefix}.{k}: lj {x} rust {y}"));
+        }
+    }
+}
+
+/// The scenarios whose `calcFullDPS` Rust cannot finish yet, and the boundary it must report (measured R7.7: the roll-up stops at the
+/// first included skill whose run needs an unported triggers / mirages branch, or at a minion skill -- R7.8/R7.9/R7.10).
+const FULLDPS_BOUNDARY: [(&str, &str); 7] = [
+    (
+        "fd-all-cos",
+        "Calcs.lua:178-212 calcFullDPS roll-up of the minion skill Summon Ice Golem",
+    ),
+    ("fd-all-ds", "CalcMirages.lua:120-164 Reflection (The Saviour)"),
+    ("fd-all-gen", "CalcMirages.lua:346-426 General's Cry"),
+    ("fd-all-mir", "CalcMirages.lua:67-119 Mirage Archer"),
+    ("fd-cos-coc", "CalcTriggers.lua:1156 configTable[\"cast on critical strike\"]"),
+    ("fd-mir-mirage", "CalcMirages.lua:67-119 Mirage Archer"),
+    (
+        "fd-occ-minions",
+        "Calcs.lua:178-212 calcFullDPS roll-up of the minion skill Raise Zombie",
+    ),
+];
+
+/// A scenario whose roll-up runs to the end but differs from LuaJIT, with the measured cause (not a part E defect; R7.7 report):
+/// `fd-gen-melee` -- upstream's `calcFullDPS` initEnv gets `specEnv.cachedPlayerDB` (Calcs.lua:392 -> CalcSetup.lua:478-481/:688-690),
+/// so the config / base mods sit in the PARENT ModDB of every full-DPS env; `modDB:Override(nil, "WarcryPower")` then finds the own
+/// `OVERRIDE 999999` ("Warcries have infinite power", Redblade Banner, CalcPerform.lua:1344-1347) before the config `OVERRIDE 50`
+/// (LuaJIT probe: MAIN own = `50@Config; 20@Boss; 999999@...` -> 50; CALCULATOR own = `999999@...`, parent = `50@Config; 20@Boss` ->
+/// 999999). Rust's fresh initEnv keeps the config mods in the env's own list -> 50 -> bleed / poison of every skill +0.13 %. Fix belongs
+/// to initEnv (`specEnv` / `cachedPlayerDB`), outside this card. The differing keys are pinned so a change shows up.
+const FULLDPS_KNOWN: [(&str, &[&str]); 1] = [(
+    "fd-gen-melee",
+    &[
+        "fullDPS.TotalDotDPS",
+        "fullDPS.TotalPoisonDPS",
+        "fullDPS.bleedDPS",
+        "fullDPS.combinedDPS",
+        "fullDPS.cullingDPS",
+        "fullDPS.skills.5.dps",
+        "fullDPS.skills.6.dps",
+        "fullDPS.skills.8.dps",
+        "output.FullDPS",
+        "output.FullDotDPS",
+        "output.SkillDPS.5.dps",
+        "output.SkillDPS.6.dps",
+        "output.SkillDPS.8.dps",
+    ],
+)];
+
+/// R7.7 gate (card p. 2): `calcs.calcFullDPS` (Calcs.lua:142-356) and the buildOutput tail (`SkillDPS` / `FullDPS` / `FullDotDPS`,
+/// :395-397) against LuaJIT on the 15 `fulldps` R7-synth scenarios: the whole `fullDPS` table (every number `%.17g`, every `skills`
+/// entry with `trigger` / `skillPart` / `source`) and the three output keys, exactly. A scenario Rust cannot finish must report its
+/// boundary ([`FULLDPS_BOUNDARY`]) and emit none of the three keys.
+#[test]
+fn fulldps_matches_luajit() {
+    let mut done = Vec::new();
+    let mut bounded = Vec::new();
+    let mut known = Vec::new();
+    let mut bad = Vec::new();
+    for name in scenario_names() {
+        let fx = fixture(&name);
+        if fx["category"].as_str() != Some("fulldps") {
+            continue;
+        }
+        let xml = pob_build::read_build_file(dir().join(format!("{name}.xml"))).expect("xml");
+        let model = pob_build::load_build_xml(&xml).expect("xml parses");
+        let opts = CalculateOptions {
+            parse_mode: ParseMode::Full,
+            skills: true,
+            ..CalculateOptions::default()
+        };
+        let sess = pob_calc::CalcSession::new(std::rc::Rc::new(model), opts);
+        let out = sess.build_output(pob_calc::CalcMode::Main).expect("buildOutput");
+        let r = out.run.borrow();
+        let o = &r.state.player.output;
+        let lua = scalars(&fx["output"]);
+        match &out.full_dps {
+            pob_calc::FullDpsOutcome::Done(fd) => {
+                let mut d = Vec::new();
+                json_diff("fullDPS", &fx["fullDPS"], &full_dps_json(fd), &mut d);
+                for k in ["FullDPS", "FullDotDPS"] {
+                    let rv = o.opt_num(k).map(Gv::Num);
+                    if lua.get(k) != rv.as_ref() {
+                        d.push(format!("output.{k}: lj {} rust {}", show(lua.get(k)), show(rv.as_ref())));
+                    }
+                }
+                let sd = match o.table("SkillDPS") {
+                    Some(pob_calc::OutTable::SkillDps(v)) => full_dps_json(&pob_calc::FullDps {
+                        skills: v.clone(),
+                        ..pob_calc::FullDps::default()
+                    })["skills"]
+                        .clone(),
+                    other => Json::String(format!("{other:?}")),
+                };
+                json_diff("output.SkillDPS", &fx["output"]["tables"]["SkillDPS"], &sd, &mut d);
+                println!("{name}: Done, {} skills entries, differences {}", fd.skills.len(), d.len());
+                for x in &d {
+                    println!("  {name}: {x}");
+                }
+                if let Some((_, keys)) = FULLDPS_KNOWN.iter().find(|(n, _)| *n == name) {
+                    let got: Vec<&str> = d.iter().map(|x| x.split(':').next().unwrap_or("")).collect();
+                    if got != *keys {
+                        bad.push(format!("{name}: known class changed: {got:?}"));
+                    }
+                    known.push(name.clone());
+                    continue;
+                }
+                if d.is_empty() {
+                    done.push(name.clone());
+                }
+                bad.extend(d.into_iter().map(|x| format!("{name}: {x}")));
+            }
+            pob_calc::FullDpsOutcome::Unimplemented { processed, note } => {
+                println!("{name}: boundary after {processed} skills: {note}");
+                let want = FULLDPS_BOUNDARY.iter().find(|(n, _)| *n == name).map(|(_, w)| *w);
+                match want {
+                    Some(w) if note.contains(w) => bounded.push(name.clone()),
+                    _ => bad.push(format!("{name}: unexpected boundary ({want:?}): {note}")),
+                }
+                for k in ["FullDPS", "FullDotDPS", "SkillDPS"] {
+                    if o.get(k).is_some() || o.table(k).is_some() {
+                        bad.push(format!("{name}: {k} written although the roll-up stopped"));
+                    }
+                }
+            }
+        }
+    }
+    println!(
+        "fulldps: {} = LuaJIT {done:?}; {} at a recorded boundary {bounded:?}; {} known class {known:?}",
+        done.len(),
+        bounded.len(),
+        known.len()
+    );
+    assert!(bad.is_empty(), "calcFullDPS != LuaJIT ({}):\n{}", bad.len(), bad.join("\n"));
+    assert_eq!(
+        (done.len(), bounded.len(), known.len()),
+        (7, 7, 1),
+        "pinned split of the 15 fulldps scenarios"
+    );
+}

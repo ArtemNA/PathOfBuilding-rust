@@ -1284,3 +1284,127 @@ pub(super) fn lightning_tendrils_alt_x_post_crit(off: &mut Off<'_>) {
             .nm("Damage", ModType::More, average_more, "Average Pulse Damage", 0, kw, vec![t]);
     }
 }
+
+/// The trap wave variants sharing the body of act_int.lua:11667 (`LightningSpireTrap`).
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Waves {
+    /// act_int.lua:11667 LightningSpireTrap.
+    Spire,
+    /// act_int.lua:11912 LightningSpireTrapAltX (fixed pulse rate, active traps from the throw time).
+    SpireAltX,
+    /// act_int.lua:12150 LightningSpireTrapAltY (fixed pulse rate).
+    SpireAltY,
+    /// act_dex.lua:13381 SeismicTrap (AoE-scaled radius, `SeismicPulseFrequency`).
+    Seismic,
+}
+
+/// `hitChance(enemyRadius, areaDamageRadius, areaSpreadRadius)` of the wave traps; `output.OverlapChance`.
+fn overlap_chance(off: &mut Off<'_>, src: &str) -> f64 {
+    let enemy_radius = off
+        .q
+        .override_num(Some(&off.cfg), &["EnemyRadius"], src)
+        .unwrap_or_else(|| sum(off, ModType::Base, &["EnemyRadius"]));
+    let wave_radius = on(off, "AreaOfEffectRadiusSecondary");
+    let full_radius = on(off, "AreaOfEffectRadius");
+    let damaging = wave_radius + enemy_radius - 1.0;
+    let overlap = min2(damaging * damaging / (full_radius * full_radius), 1.0);
+    off.out().set_num("OverlapChance", overlap * 100.0);
+    overlap
+}
+
+/// The wave traps' body (breakdown rows excluded, R8): pulse rate -> `skillData.hitTimeOverride`, pulses per trap, average active traps,
+/// the overlap chance and the skill part's DPS multiplier.
+fn trap_waves(off: &mut Off<'_>, v: Waves, src: &str) {
+    // :11676 (not Seismic) `output.AreaOfEffectRadius = skillData.radius`
+    if v != Waves::Seismic {
+        let r = off.sd("radius");
+        off.set_out("AreaOfEffectRadius", r);
+    }
+    let nil = |k: &str| -> ! { panic!("{src}: attempt to perform arithmetic on local '{k}' (a nil value)") };
+    let base_interval = off.sd_num("repeatInterval", 0);
+    let wave_pulse_rate = match v {
+        Waves::Spire | Waves::Seismic => {
+            let names: &[&str] = if v == Waves::Seismic {
+                &["TrapThrowingSpeed", "SeismicPulseFrequency"]
+            } else {
+                &["TrapThrowingSpeed"]
+            };
+            let inc = 1.0 + sum(off, ModType::Inc, names) / 100.0;
+            let more_ = more(off, names);
+            inc * more_ / base_interval.unwrap_or_else(|| nil("baseInterval"))
+        }
+        Waves::SpireAltX | Waves::SpireAltY => 1.0 / base_interval.unwrap_or_else(|| nil("baseInterval")),
+    };
+    set(off, "hitTimeOverride", 1.0 / wave_pulse_rate);
+    if matches!(v, Waves::Spire | Waves::Seismic) {
+        off.out().set_num("WavePulseRate", wave_pulse_rate);
+    }
+    let inc_duration = 1.0 + sum(off, ModType::Inc, &["Duration"]) / 100.0;
+    let more_duration = more(off, &["Duration"]);
+    let duration = sdn(off, "duration", src) * inc_duration * more_duration;
+    let pulses = (duration * wave_pulse_rate).floor();
+    off.out().set_num("PulsesPerTrap", pulses);
+    let effective_duration = pulses / wave_pulse_rate;
+    let average_active_traps = if v == Waves::SpireAltX {
+        let action_speed_mod = 1.0 + sum(off, ModType::Inc, &["ActionSpeed"]) / 100.0;
+        let base_speed = 1.0 / sum(off, ModType::Base, &["TrapThrowingTime"]);
+        let throw_speed = base_speed * off.q.calc_mod(Some(&off.cfg), &["TrapThrowingSpeed"]) * action_speed_mod;
+        let throw_speed = min2(throw_speed, misc("ServerTickRate"));
+        effective_duration / (1.0 / throw_speed)
+    } else {
+        effective_duration / on(off, "TrapCooldown")
+    };
+    off.out().set_num("AverageActiveTraps", average_active_traps);
+    let overlap = overlap_chance(off, src);
+    let max_waves = sum(off, ModType::Base, &["MaximumWaves"]);
+    let mut dps_multiplier = 1.0;
+    if part(off, 2.0) {
+        dps_multiplier = max_waves * overlap;
+    } else if part(off, 3.0) {
+        dps_multiplier = max_waves;
+    } else if part(off, 4.0) {
+        dps_multiplier = average_active_traps;
+    } else if part(off, 5.0) {
+        dps_multiplier = average_active_traps * max_waves * overlap;
+    } else if part(off, 6.0) {
+        dps_multiplier = average_active_traps * max_waves;
+    }
+    if dps_multiplier != 1.0 {
+        mul_dps_out(off, dps_multiplier);
+    }
+}
+
+/// act_int.lua:11667 LightningSpireTrap.
+pub(super) fn lightning_spire_trap(off: &mut Off<'_>) {
+    trap_waves(off, Waves::Spire, "act_int.lua:11667");
+}
+
+/// act_int.lua:11912 LightningSpireTrapAltX.
+pub(super) fn lightning_spire_trap_alt_x(off: &mut Off<'_>) {
+    trap_waves(off, Waves::SpireAltX, "act_int.lua:11912");
+}
+
+/// act_int.lua:12150 LightningSpireTrapAltY.
+pub(super) fn lightning_spire_trap_alt_y(off: &mut Off<'_>) {
+    trap_waves(off, Waves::SpireAltY, "act_int.lua:12150");
+}
+
+/// act_dex.lua:13381 SeismicTrap.
+pub(super) fn seismic_trap(off: &mut Off<'_>) {
+    trap_waves(off, Waves::Seismic, "act_dex.lua:13381");
+}
+
+/// act_dex.lua:13622 SeismicTrapAltX (the overlap chance and skill parts 2/3 only).
+pub(super) fn seismic_trap_alt_x(off: &mut Off<'_>) {
+    let overlap = overlap_chance(off, "act_dex.lua:13622");
+    let max_waves = sum(off, ModType::Base, &["MaximumWaves"]);
+    let mut dps_multiplier = 1.0;
+    if part(off, 2.0) {
+        dps_multiplier = max_waves * overlap;
+    } else if part(off, 3.0) {
+        dps_multiplier = max_waves;
+    }
+    if dps_multiplier != 1.0 {
+        mul_dps_out(off, dps_multiplier);
+    }
+}

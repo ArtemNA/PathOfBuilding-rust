@@ -35,7 +35,7 @@ fn calc_file_json_has_meta_and_allowlisted_stats() {
     let parsed = CandidateOutput::from_json(std::str::from_utf8(&out.stdout).unwrap()).unwrap();
     assert_eq!(
         parsed.stats.len(),
-        502,
+        504,
         "Dual Savior: every ALLOWLIST key it emits (= oracle ok count)"
     );
     assert!(
@@ -112,16 +112,18 @@ fn experimental_env_disables_the_filter() {
 /// 691/690 (+106: damage by type, crits, leech, gain on hit / kill, DPS, warcry / Ruthless / Fist of War); the other five unchanged.
 /// R7.6 (offence part D -- ailments, OC5 = LuaJIT on every offence run Rust executes but the 3 R7.10 minion runs; allowlist 711 -> 760):
 /// OccVortex 740/739 (+49: ailment chances, ignite / chill / freeze / shock, knockback, impale chances, enemy stun); the other five unchanged.
+/// R7.7 (offence part E + calcFullDPS + buildOutput tail, OC6 = LuaJIT on the same runs; allowlist 760 -> 778): every golden +2 (`FullDPS`,
+/// `FullDotDPS` = 0: no `includeInFullDPS` group), OccVortex +16 more (758/757: skill DoT, combined DPS, per-second mana cost).
 /// O9: `VaalArcticArmourMitigation` is `ok`, not `exact` (golden `+0`, Rust `-0`) -- hence exact = ok - 1.
 #[test]
 fn cli_stats_against_goldens() {
     let pinned: [(&str, usize, usize); 6] = [
-        ("Dual Savior", 502, 501),
-        ("Dual Wield Cospris CoC", 512, 511),
-        ("Dual Wield Cospris CoC - Lethal Pride", 512, 511),
-        ("Generals Perforate Zerker", 526, 525),
-        ("Mirage Archer Toxic Rain", 513, 512),
-        ("OccVortex", 740, 739),
+        ("Dual Savior", 504, 503),
+        ("Dual Wield Cospris CoC", 514, 513),
+        ("Dual Wield Cospris CoC - Lethal Pride", 514, 513),
+        ("Generals Perforate Zerker", 528, 527),
+        ("Mirage Archer Toxic Rain", 515, 514),
+        ("OccVortex", 758, 757),
     ];
     let mut got = Vec::new();
     for (g, (name, _, _)) in GOLDEN_BUILDS.iter().zip(pinned) {

@@ -111,6 +111,9 @@ pub struct PerformState {
     pub party_members: PartyStub,
     /// `env.aegisItem` (:1315) -- read by the minion half only.
     pub aegis_item: Option<Rc<Item>>,
+    /// `calcs.offence(env, env.player, env.player.mainSkill)` (:3799) ran to its end (R7.7): false when the triggers / mirages dispatch
+    /// (:3797-3798) took an unported branch, or the skill phase is off.
+    pub offence_ran: bool,
 }
 
 impl PerformState {
@@ -154,6 +157,8 @@ pub enum Checkpoint {
     /// `calcs.offence` before :5772 -- after the ailments (secondary effect chances, bleed / poison / ignite, non-damaging ailments,
     /// knockback, stun, impale, the combine, Decay, burning ground) (R7.1 probe OC5).
     Oc5,
+    /// `calcs.offence` at its end (:6263) -- after the skill DoT, the per-second costs, the self hit and the combined DPS (R7.1 probe OC6).
+    Oc6,
 }
 
 /// Called at each [`Checkpoint`] with the env and the player's / enemy's perform state (`actor.output`).
@@ -2735,6 +2740,7 @@ pub fn perform_skip_ehp(
         enemy,
         party_members: party,
         aegis_item,
+        offence_ran: false,
     };
 
     // --- :3792 defence, then the offence tail ---------------------------------------------------------------------------
@@ -2765,7 +2771,10 @@ pub fn perform_skip_ehp(
             crate::offence::Gate::Unported(what) => env.unimplemented.push(what),
             crate::offence::Gate::Pass => match crate::offence::mirages_gate(env) {
                 crate::offence::Gate::Unported(what) => env.unimplemented.push(what),
-                crate::offence::Gate::Pass => crate::offence::offence(env, &mut state, hook),
+                crate::offence::Gate::Pass => {
+                    crate::offence::offence(env, &mut state, hook);
+                    state.offence_ran = true;
+                }
             },
         }
     } else {
@@ -2807,9 +2816,4 @@ pub(crate) fn finish_output_spec(env: &Env, state: &mut PerformState) {
         sum(&db, ModType::Inc, Some(&spec_cfg), &["Evasion", "ArmourAndEvasion"]),
     );
     out.set_num("Spec:EnergyShieldInc", sum(&db, ModType::Inc, Some(&spec_cfg), &["EnergyShield"]));
-}
-
-/// `env.modDB:Flag(nil, name)` for the buildOutput tail (Calcs.lua:406).
-pub(crate) fn mod_db_flag(env: &Env, name: &str) -> bool {
-    flag(&env.mod_db, &[name])
 }

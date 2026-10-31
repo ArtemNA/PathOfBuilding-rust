@@ -35,7 +35,7 @@ pub use allowlist::{ALLOWLIST, EXCLUDED, filter_stats, is_allowed};
 pub use calculate::{CalcError, CalculateOptions, CalculateResult, Timings, calculate, calculate_file, calculate_with};
 pub use defence::{armour_reduction, armour_reduction_f, defence, hit_chance};
 pub use estimations::estimations;
-pub use output::{OutTable, OutValue, Output, StatValue, output_to_stats};
+pub use output::{FullDpsSkill, OutTable, OutValue, Output, StatValue, output_to_stats};
 pub use perform::{
     ActorState, Checkpoint, CheckpointHook, PerformState, PhaseFn, Who, finish_output, noop_phase, perform, perform_skip_ehp, perform_with,
 };

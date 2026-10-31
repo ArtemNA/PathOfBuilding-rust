@@ -15,9 +15,9 @@
 //! tail): the run is moved once into an `Rc<RefCell<CalcRun>>` ([`RunRef`]) shared by the cache and the caller -- no copies. An env
 //! points back at its session with a `Weak` (the cache owns envs).
 //!
-//! Offence (`calcs.offence`, CalcPerform.lua:3797-3801) is not ported yet (R7.3-R7.7): every cache entry says so
-//! ([`CalcRun::offence_ran`]), and every reader of an offence value through the cache stops there with an `unimplemented` note -- no
-//! nil is ever read as a value.
+//! Offence (`calcs.offence`, CalcPerform.lua:3797-3801) runs unless the triggers / mirages dispatch (:3797-3798) takes a branch not
+//! ported yet (R7.8/R7.9): every cache entry says whether it ran ([`CalcRun::offence_ran`]), and every reader of an offence value
+//! through the cache stops at a run without it with an `unimplemented` note -- no nil is ever read as a value.
 
 use std::cell::{Cell, Ref, RefCell};
 use std::collections::BTreeSet;
@@ -31,7 +31,8 @@ use pob_items::Item;
 use crate::calculate::{CalcError, CalculateOptions};
 use crate::env::Env;
 use crate::init_env::{BuildShared, init_env_shared, parse_items};
-use crate::perform::{ActorState, Checkpoint, PerformState, finish_output_spec, mod_db_flag, perform_skip_ehp};
+use crate::output::{FullDpsSkill, OutTable};
+use crate::perform::{ActorState, Checkpoint, PerformState, finish_output_spec, perform_skip_ehp};
 
 /// `env.mode` -- the three keys of `GlobalCache.cachedData`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -75,7 +76,8 @@ pub struct SkillsCarry {
 pub struct CalcRun {
     pub env: Env,
     pub state: PerformState,
-    /// `calcs.offence` ran for `env.player.mainSkill` -- always `false` until R7.7 (CalcPerform.lua:3797-3801 is skipped).
+    /// `calcs.offence` ran for `env.player.mainSkill` ([`PerformState::offence_ran`]): false where CalcPerform.lua:3797-3798 took an
+    /// unported triggers / mirages branch.
     pub offence_ran: bool,
 }
 
@@ -243,7 +245,7 @@ pub struct CalcSession {
     core: Rc<SessionCore>,
 }
 
-/// `calcs.calcFullDPS`'s result table (Calcs.lua:146-160) -- the numbers only (`skills` entries are R7.7).
+/// `calcs.calcFullDPS`'s result table (Calcs.lua:146-160, `cullingDPS` :350).
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct FullDps {
     pub combined_dps: f64,
@@ -258,8 +260,10 @@ pub struct FullDps {
     pub decay_dps: f64,
     pub dot_dps: f64,
     pub culling_multi: f64,
-    /// `#fullDPS.skills`.
-    pub skills: usize,
+    /// `fullDPS.cullingDPS` -- set only when `cullingMulti > 0` (:349-352).
+    pub culling_dps: Option<f64>,
+    /// `fullDPS.skills`, in insertion order.
+    pub skills: Vec<FullDpsSkill>,
 }
 
 /// What [`CalcSession::calc_full_dps`] could do.
@@ -522,11 +526,8 @@ impl CalcSession {
         }
         self.core.depth.set(depth);
         self.core.log.borrow_mut().perform[at].ms = t0.elapsed().as_secs_f64() * 1000.0;
-        let run = Rc::new(RefCell::new(CalcRun {
-            env,
-            state,
-            offence_ran: false,
-        }));
+        let offence_ran = state.offence_ran;
+        let run = Rc::new(RefCell::new(CalcRun { env, state, offence_ran }));
         self.cache_data(&run, top);
         run
     }
@@ -632,10 +633,18 @@ impl CalcSession {
         Ok(())
     }
 
-    /// `calcs.calcFullDPS(build, mode, {}, specEnv)` (Calcs.lua:142-356). The frame: initEnv, every enabled skill of an
-    /// `includeInFullDPS` group as `mainSkill` + `perform(fullEnv, true)`, a new initEnv after each (upstream: the accelerated
-    /// `wipeEnv` re-init, :337-344 -- here a fresh one: the accelerators are upstream's shortcut to the same env), then the ailment
-    /// re-adds. The per-skill roll-up (:176-336) reads offence output (`TotalDPS`, `BleedDPS`, ..., minions, mirages): R7.7.
+    /// `calcs.calcFullDPS(build, mode, {}, specEnv)` (Calcs.lua:142-356): initEnv, every enabled skill of an `includeInFullDPS` group as
+    /// `mainSkill` + `perform(fullEnv, true)` and the roll-up of its output (:176-336), a new initEnv after each (upstream: the
+    /// accelerated `wipeEnv` re-init, :337-344 -- here a fresh one: the accelerators are upstream's shortcut to the same env), then the
+    /// ailment re-adds and the caps (:297-353).
+    ///
+    /// Boundaries (the roll-up stops, [`FullDpsOutcome::Unimplemented`]): a skill whose run did not reach `calcs.offence` (the triggers /
+    /// mirages dispatch took an unported branch -- `activeSkill.infoTrigger` / `activeSkill.mirage` and the skill's DPS come from there,
+    /// R7.8/R7.9), and a minion skill (`activeSkill.minion or usedEnv.minion`, :178-212 -- the minion actor is R7.10).
+    ///
+    /// Hash-order (R13/L10): none -- `fullDPS.skills` is an array, the ailment sources are plain locals compared with a strict `>` (the
+    /// first of equal values wins, as upstream).
+    #[allow(clippy::too_many_lines)]
     pub fn calc_full_dps(&self, mode: CalcMode) -> Result<FullDpsOutcome, CalcError> {
         let mut full_env = match self.init_env(mode) {
             Ok(e) => e,
@@ -647,6 +656,13 @@ impl CalcSession {
                 });
             }
         };
+        let mut fd = FullDps::default();
+        // :162-166 the ailment sources
+        let mut bleed_source = String::new();
+        let mut corrupting_blood_source = String::new();
+        let mut ignite_source = String::new();
+        let mut burning_ground_source = String::new();
+        let mut caustic_ground_source = String::new();
         let mut processed = 0;
         // :168 `ipairs(fullEnv.player.activeSkillList)` -- the list of the first env; the accelerated re-init keeps it
         // (`accelerate.skills`, CalcSetup.lua:372), a fresh one rebuilds the same list.
@@ -661,15 +677,110 @@ impl CalcSession {
             if !included {
                 continue;
             }
-            let (_count, enabled) = get_active_skill_count(&full_env, i);
+            let (count, enabled) = get_active_skill_count(&full_env, i);
             if !enabled {
                 continue;
             }
             // :172-174
             full_env.skills.as_mut().expect("skills on").main_skill = Some(i);
-            self.perform_inner(full_env, true, false);
+            let run = self.perform_inner(full_env, true, false);
             processed += 1;
-            // :176-336 the roll-up of usedEnv's output -- offence (R7.7).
+            {
+                let r = run.borrow();
+                let st = r.env.skills.as_ref().expect("skills on");
+                let sk = &st.active_skill_list[i];
+                let name = st.skills.effects[sk.active_effect.borrow().granted_effect].name.clone();
+                // :176-212 `if activeSkill.minion or usedEnv.minion`
+                if sk.minion.is_some() {
+                    return Ok(FullDpsOutcome::Unimplemented {
+                        processed,
+                        note: format!(
+                            "Calcs.lua:178-212 calcFullDPS roll-up of the minion skill {name} (usedEnv.minion.output; minion actors are R7.10)"
+                        ),
+                    });
+                }
+                // :214-251 `activeSkill.mirage` and :254 `activeSkill.infoTrigger` are set by calcs.mirages / calcs.triggers; a run
+                // whose dispatch took an unported branch has no offence either.
+                if !r.offence_ran {
+                    let why = r
+                        .env
+                        .unimplemented
+                        .iter()
+                        .find(|u| u.starts_with("CalcTriggers.lua:") || u.starts_with("CalcMirages.lua:"))
+                        .cloned()
+                        .unwrap_or_else(|| "calcs.offence did not run".to_owned());
+                    return Ok(FullDpsOutcome::Unimplemented {
+                        processed,
+                        note: format!("Calcs.lua:176-336 calcFullDPS roll-up of {name}: {why}"),
+                    });
+                }
+                // `activeSkill.infoTrigger`: with the dispatch passed, only CalcPerform.lua:1487-1490 (The Saviour) sets it; that
+                // assignment is recorded by the skill loop under this note (perform/skills_loop.rs).
+                let saviour = format!("CalcPerform.lua:1488-1489 activeSkill.infoMessage/infoTrigger of skill {} (", i + 1);
+                let trigger = r
+                    .env
+                    .unimplemented
+                    .iter()
+                    .any(|u| u.starts_with(&saviour))
+                    .then(|| "Saviour".to_owned());
+                let o = &r.state.player.output;
+                let pos = |k: &str| o.opt_num(k).is_some_and(|v| v > 0.0);
+                let num = |k: &str, line: u32| {
+                    o.opt_num(k)
+                        .unwrap_or_else(|| panic!("Modules/Calcs.lua:{line}: attempt to perform arithmetic on field '{k}' (a nil value)"))
+                };
+                // :253-256
+                if pos("TotalDPS") {
+                    let dps = num("TotalDPS", 254);
+                    fd.skills.push(FullDpsSkill {
+                        name: name.clone(),
+                        dps,
+                        count,
+                        trigger,
+                        skill_part: sk.skill_part_name.clone(),
+                        source: None,
+                    });
+                    fd.combined_dps += dps * count;
+                }
+                // `output[k] and output[k] > best` (a non-number is the Lua compare error)
+                let gt = |k: &str, best: f64| o.opt_num(k).is_some_and(|v| v > best);
+                if gt("BleedDPS", fd.bleed_dps) {
+                    fd.bleed_dps = num("BleedDPS", 258);
+                    bleed_source.clone_from(&name);
+                }
+                if gt("CorruptingBloodDPS", fd.corrupting_blood_dps) {
+                    fd.corrupting_blood_dps = num("CorruptingBloodDPS", 262);
+                    corrupting_blood_source.clone_from(&name);
+                }
+                if gt("IgniteDPS", fd.ignite_dps) {
+                    fd.ignite_dps = num("IgniteDPS", 266);
+                    ignite_source.clone_from(&name);
+                }
+                if gt("BurningGroundDPS", fd.burning_ground_dps) {
+                    fd.burning_ground_dps = num("BurningGroundDPS", 270);
+                    burning_ground_source.clone_from(&name);
+                }
+                if pos("PoisonDPS") {
+                    fd.total_poison_dps += num("TotalPoisonDPS", 274) * count;
+                }
+                if gt("CausticGroundDPS", fd.caustic_ground_dps) {
+                    fd.caustic_ground_dps = num("CausticGroundDPS", 277);
+                    caustic_ground_source.clone_from(&name);
+                }
+                if pos("ImpaleDPS") {
+                    fd.impale_dps += num("ImpaleDPS", 281) * count;
+                }
+                if pos("DecayDPS") {
+                    fd.decay_dps += num("DecayDPS", 284);
+                }
+                if pos("TotalDot") {
+                    let stack = if sk.flag("DotCanStack") { count } else { 1.0 };
+                    fd.dot_dps += num("TotalDot", 287) * stack;
+                }
+                if o.opt_num("CullMultiplier").is_some_and(|v| v > 1.0 && v > fd.culling_multi) {
+                    fd.culling_multi = num("CullMultiplier", 290);
+                }
+            }
             // :337-344 re-init
             full_env = match self.init_env(mode) {
                 Ok(e) => e,
@@ -682,22 +793,79 @@ impl CalcSession {
                 }
             };
         }
-        if processed > 0 {
-            return Ok(FullDpsOutcome::Unimplemented {
-                processed,
-                note:
-                    "Calcs.lua:176-336 calcFullDPS roll-up of the skills' TotalDPS/ailment/minion/mirage output (needs calcs.offence, R7.7)"
-                        .into(),
-            });
+        // :297-353 re-add the ailment DPS components
+        let cap = crate::setup::misc("DotDpsCap");
+        let entry = |name: &str, dps: f64, source: Option<&String>| FullDpsSkill {
+            name: name.to_owned(),
+            dps,
+            count: 1.0,
+            trigger: None,
+            skill_part: None,
+            source: source.cloned(),
+        };
+        fd.total_dot_dps = 0.0;
+        if fd.bleed_dps > 0.0 {
+            fd.skills.push(entry("Best Bleed DPS", fd.bleed_dps, Some(&bleed_source)));
+            fd.total_dot_dps += fd.bleed_dps;
         }
-        // :297-355 with nothing rolled up: every component is 0, so no entry is added; the caps keep 0.
-        let mut fd = FullDps::default();
-        fd.total_dot_dps = pob_lua::number::min2(fd.total_dot_dps, crate::setup::misc("DotDpsCap"));
+        if fd.corrupting_blood_dps > 0.0 {
+            fd.skills.push(entry(
+                "Corrupting Blood DPS",
+                fd.corrupting_blood_dps,
+                Some(&corrupting_blood_source),
+            ));
+            fd.total_dot_dps += fd.corrupting_blood_dps;
+        }
+        if fd.ignite_dps > 0.0 {
+            fd.skills.push(entry("Best Ignite DPS", fd.ignite_dps, Some(&ignite_source)));
+            fd.total_dot_dps += fd.ignite_dps;
+        }
+        if fd.burning_ground_dps > 0.0 {
+            fd.skills.push(entry(
+                "Best Burning Ground DPS",
+                fd.burning_ground_dps,
+                Some(&burning_ground_source),
+            ));
+            fd.total_dot_dps += fd.burning_ground_dps;
+        }
+        if fd.total_poison_dps > 0.0 {
+            fd.total_poison_dps = pob_lua::number::min2(fd.total_poison_dps, cap);
+            fd.skills.push(entry("Full Poison DPS", fd.total_poison_dps, None));
+            fd.total_dot_dps += fd.total_poison_dps;
+        }
+        if fd.caustic_ground_dps > 0.0 {
+            fd.skills.push(entry(
+                "Best Caustic Ground DPS",
+                fd.caustic_ground_dps,
+                Some(&caustic_ground_source),
+            ));
+            fd.total_dot_dps += fd.caustic_ground_dps;
+        }
+        if fd.impale_dps > 0.0 {
+            fd.skills.push(entry("Full Impale DPS", fd.impale_dps, None));
+            fd.combined_dps += fd.impale_dps;
+        }
+        if fd.decay_dps > 0.0 {
+            fd.skills.push(entry("Full Decay DPS", fd.decay_dps, None));
+            fd.total_dot_dps += fd.decay_dps;
+        }
+        if fd.dot_dps > 0.0 {
+            fd.skills.push(entry("Full DoT DPS", fd.dot_dps, None));
+            fd.total_dot_dps += fd.dot_dps;
+        }
+        fd.total_dot_dps = pob_lua::number::min2(fd.total_dot_dps, cap);
         fd.combined_dps += fd.total_dot_dps;
+        if fd.culling_multi > 0.0 {
+            let c = fd.combined_dps * (fd.culling_multi - 1.0);
+            fd.culling_dps = Some(c);
+            fd.skills.push(entry("Full Culling DPS", c, None));
+            fd.combined_dps += c;
+        }
         Ok(FullDpsOutcome::Done(fd))
     }
 
     /// `calcs.buildOutput(build, mode)` (Calcs.lua:384-470) up to the display tables. Only MAIN is ported (the caller's mode).
+    #[allow(clippy::too_many_lines)]
     pub fn build_output(&self, mode: CalcMode) -> Result<BuildOutput, CalcError> {
         // :386-387
         let env = match self.init_env(mode) {
@@ -709,52 +877,127 @@ impl CalcSession {
 
         // :392 `calcs.calcFullDPS(build, "CALCULATOR", {}, ...)`
         let full_dps = self.calc_full_dps(CalcMode::Calculator)?;
-        // :395-397 `env.player.output.SkillDPS/FullDPS/FullDotDPS` -- the keys are claimed with the roll-up (R7.7), even when it is
-        // exact (nothing rolled up): R7-ARCH §3, R7.2 card p. 3.
+        // :395-397 `env.player.output.SkillDPS/FullDPS/FullDotDPS`
         {
-            let what = match &full_dps {
-                FullDpsOutcome::Done(fd) => format!(
-                    "Calcs.lua:395-397 SkillDPS/FullDPS/FullDotDPS not written (calcFullDPS ran, 0 skills rolled up: combinedDPS {}, TotalDotDPS {}; claimed in R7.7)",
-                    pob_lua::tostring_num(fd.combined_dps),
-                    pob_lua::tostring_num(fd.total_dot_dps)
-                ),
-                FullDpsOutcome::Unimplemented { processed, note } => {
-                    format!("Calcs.lua:392-398 calcFullDPS ({processed} skills performed): {note}")
+            let mut r = run.borrow_mut();
+            match &full_dps {
+                FullDpsOutcome::Done(fd) => {
+                    let o = &mut r.state.player.output;
+                    o.set_table("SkillDPS", OutTable::SkillDps(fd.skills.clone()));
+                    o.set_num("FullDPS", fd.combined_dps);
+                    o.set_num("FullDotDPS", fd.total_dot_dps);
                 }
-            };
-            run.borrow_mut().env.unimplemented.push(what);
+                FullDpsOutcome::Unimplemented { processed, note } => {
+                    let what = format!("Calcs.lua:392-398 calcFullDPS ({processed} skills performed): {note}");
+                    r.env.unimplemented.push(what);
+                }
+            }
         }
 
         if mode == CalcMode::Main {
             // :400-437 every skill: build it if MAIN has no entry, then the cost checks against the cache
-            let uuids: Vec<String> = {
+            let (uuids, names, main_name): (Vec<String>, Vec<String>, Option<String>) = {
                 let r = run.borrow();
-                let n = r.env.skills.as_ref().map_or(0, |s| s.active_skill_list.len());
-                (0..n).map(|i| cache_skill_uuid(&r.env, i)).collect()
+                let st = r.env.skills.as_ref().expect("skills on");
+                let name_of = |i: usize| {
+                    st.skills.effects[st.active_skill_list[i].active_effect.borrow().granted_effect]
+                        .name
+                        .clone()
+                };
+                let n = st.active_skill_list.len();
+                (
+                    (0..n).map(|i| cache_skill_uuid(&r.env, i)).collect(),
+                    (0..n).map(name_of).collect(),
+                    st.main_skill.map(name_of),
+                )
             };
-            let mut cost_note = false;
             for (i, uuid) in uuids.iter().enumerate() {
                 if !self.core.cache.borrow().contains(mode, uuid) {
                     let r = run.borrow();
                     self.build_active_skill(&r.env, mode, i, Some(uuid), &[])?;
                 }
-                let cached_offence = self.core.cache.borrow().get(mode, uuid).map(|c| c.run.borrow().offence_ran);
-                if let Some(offence_ran) = cached_offence {
-                    // :406 `output.EnergyShieldProtectsMana = env.modDB:Flag(nil, "EnergyShieldProtectsMana")` (true or nil)
-                    let mut r = run.borrow_mut();
-                    let espm = mod_db_flag(&r.env, "EnergyShieldProtectsMana");
-                    if espm {
-                        r.state.player.output.set_bool("EnergyShieldProtectsMana", true);
-                    } else {
-                        r.state.player.output.remove("EnergyShieldProtectsMana");
+                // the cached run's costs (read before any write: the top run may be that same run)
+                let cached = {
+                    let cache = self.core.cache.borrow();
+                    cache.get(mode, uuid).map(|c| {
+                        let cr = c.run.borrow();
+                        let o = &cr.state.player.output;
+                        let st = cr.env.skills.as_ref().expect("skills on");
+                        let ms = &st.active_skill_list[main_skill_of(&cr.env)];
+                        let costs: Vec<Option<f64>> = COST_POOLS
+                            .iter()
+                            .chain(PERCENT_COST_POOLS.iter())
+                            .map(|(_, c)| o.opt_num(c))
+                            .collect();
+                        let reserved: Vec<pob_mods::Value> = COST_POOLS
+                            .iter()
+                            .map(|(pool, _)| {
+                                let raw = pool.strip_suffix("Unreserved").unwrap_or(pool);
+                                ms.skill_data.get(&format!("{raw}ReservedPercent")).cloned().unwrap_or_default()
+                            })
+                            .collect();
+                        (cr.offence_ran, costs, reserved)
+                    })
+                };
+                let Some((offence_ran, costs, reserved)) = cached else { continue };
+                let mut r = run.borrow_mut();
+                let CalcRun { env, state, .. } = &mut *r;
+                // :406 `output.EnergyShieldProtectsMana = env.modDB:Flag(nil, "EnergyShieldProtectsMana")`
+                let espm = crate::setup::ok(env.mod_db.borrow().flag(None, &["EnergyShieldProtectsMana"]));
+                let o = &mut state.player.output;
+                match espm {
+                    Some(b) => o.set_bool("EnergyShieldProtectsMana", b),
+                    None => o.remove("EnergyShieldProtectsMana"),
+                }
+                if !offence_ran {
+                    // the cached run stopped at the triggers / mirages dispatch: its costs (offence part A) are missing
+                    let what = format!(
+                        "Calcs.lua:407-436 cost warnings of {}: the cached run has no calcs.offence (its triggers/mirages branch is R7.8/R7.9)",
+                        names[i]
+                    );
+                    if !env.unimplemented.contains(&what) {
+                        env.unimplemented.push(what);
                     }
-                    // :407-436 `cachedCost = ...Env.player.output[costResource]` -- the costs are offence output.
-                    if !offence_ran && !cost_note {
-                        cost_note = true;
-                        r.env.unimplemented.push(
-                            "Calcs.lua:407-436 cost warnings: the cached LifeCost/ManaCost/RageCost/ESCost/*PercentCost come from calcs.offence (R7.7)"
-                                .into(),
-                        );
+                    continue;
+                }
+                let is_main = main_name.as_deref() == Some(names[i].as_str());
+                // :407-427 `pairs({...})`: each pool writes only its own keys -- order-free (R13); constructor order
+                let espm_on = espm == Some(true);
+                for (k, (pool, cost)) in COST_POOLS.iter().enumerate() {
+                    let Some(cached_cost) = costs[k] else { continue };
+                    let es = if espm_on && *cost == "ManaCost" {
+                        o.opt_num("EnergyShield").unwrap_or(0.0)
+                    } else {
+                        0.0
+                    };
+                    let total_pool = es + o.opt_num(pool).unwrap_or(0.0);
+                    if total_pool < cached_cost {
+                        let raw = pool.strip_suffix("Unreserved").unwrap_or(pool);
+                        let warn = match &reserved[k] {
+                            pob_mods::Value::Nil | pob_mods::Value::Bool(false) => true,
+                            v => {
+                                let res = v.as_num().unwrap_or_else(|| {
+                                    panic!(
+                                        "Modules/Calcs.lua:414: attempt to perform arithmetic on local 'reservation' ({})",
+                                        v.type_name()
+                                    )
+                                });
+                                total_pool + (o.opt_num(raw).unwrap_or(0.0) * res / 100.0).ceil() < cached_cost
+                            }
+                        };
+                        if warn {
+                            if is_main {
+                                o.set_bool(&format!("{cost}Warning"), true);
+                            }
+                            push_name(o, &format!("{cost}WarningList"), &names[i]);
+                        }
+                    }
+                }
+                // :428-436
+                for (k, (pool, cost)) in PERCENT_COST_POOLS.iter().enumerate() {
+                    let Some(cached_cost) = costs[COST_POOLS.len() + k] else { continue };
+                    if o.opt_num(pool).unwrap_or(0.0) < cached_cost {
+                        push_name(o, &format!("{cost}PercentCostWarningList"), &names[i]);
                     }
                 }
             }
@@ -769,11 +1012,36 @@ impl CalcSession {
     }
 }
 
+/// Calcs.lua:407 `{ LifeUnreserved = "LifeCost", ManaUnreserved = "ManaCost", Rage = "RageCost", EnergyShield = "ESCost" }`.
+const COST_POOLS: [(&str, &str); 4] = [
+    ("LifeUnreserved", "LifeCost"),
+    ("ManaUnreserved", "ManaCost"),
+    ("Rage", "RageCost"),
+    ("EnergyShield", "ESCost"),
+];
+
+/// Calcs.lua:428 `{ LifeUnreservedPercent = "LifePercentCost", ManaUnreservedPercent = "ManaPercentCost" }`.
+const PERCENT_COST_POOLS: [(&str, &str); 2] = [
+    ("LifeUnreservedPercent", "LifePercentCost"),
+    ("ManaUnreservedPercent", "ManaPercentCost"),
+];
+
+/// `output[key] = output[key] or {}; t_insert(output[key], name)`.
+fn push_name(o: &mut crate::output::Output, key: &str, name: &str) {
+    let mut list = match o.table(key) {
+        Some(OutTable::Names(v)) => v.clone(),
+        _ => Vec::new(),
+    };
+    list.push(name.to_owned());
+    o.set_table(key, OutTable::Names(list));
+}
+
 /// `getCachedOutputValue(env, activeSkill, ...)` (CalcPerform.lua:31-43): the output values of another skill's run, built (and
 /// cached) on demand -- MAIN reads the cache, CALCULATOR always rebuilds. `skill` indexes `env`'s `activeSkillList`.
 ///
-/// `Ok(values)` once offence runs; until then (R7.7) every value it is asked for is offence output (`Speed`, `HitSpeed`,
-/// `Duration`), so it returns `Err(note)` at that boundary -- after doing the build exactly as upstream does.
+/// `Ok(values)` when the cached run reached `calcs.offence`; a run stopped at an unported triggers / mirages branch has none of the
+/// offence output asked for (`Speed`, `HitSpeed`, `Duration`), so it returns `Err(note)` at that boundary -- after doing the build
+/// exactly as upstream does.
 pub fn get_cached_output_value(env: &Env, skill: usize, keys: &[&str]) -> Result<Vec<Option<f64>>, String> {
     let session = CalcSession::of(env).ok_or_else(|| "CalcPerform.lua:31 getCachedOutputValue outside a CalcSession".to_owned())?;
     let mode = CalcMode::of(env);
@@ -793,7 +1061,7 @@ pub fn get_cached_output_value(env: &Env, skill: usize, keys: &[&str]) -> Result
     let run = entry.run.borrow();
     if !run.offence_ran {
         return Err(format!(
-            "CalcPerform.lua:39 getCachedOutputValue({}): the cached run's output has no calcs.offence yet (R7.7)",
+            "CalcPerform.lua:39 getCachedOutputValue({}): the cached run's output has no calcs.offence (its triggers/mirages branch is R7.8/R7.9)",
             keys.join(", ")
         ));
     }
