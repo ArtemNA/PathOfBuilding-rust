@@ -7,9 +7,11 @@
 //! [`ConfigState`]. Placeholder writes land in the active set's table mid-loop -- `enemyIsBoss` (varList index 652) changes
 //! what `enemyArmour`/`enemyEvasion`/`enemy*Resist` read a few iterations later. Do not split that into two passes.
 //!
-//! Registry of the `apply` closures: [`apply`] (R3-ARCH §2.5).
+//! Registry of the `apply` closures: [`apply`] (R3-ARCH §2.5) -- 92 hand-ported + 447 generated (`apply_gen.rs`, R3.5b) = all 539.
 
 pub mod apply;
+#[rustfmt::skip]
+mod apply_gen;
 
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -26,7 +28,11 @@ use pob_mods::{LuaError, LuaResult, ModList};
 use crate::load::active_config;
 use crate::model::{BlockText, BuildModel, ConfigSetModel, CustomModsBlockModel, InputValue};
 
-pub use apply::{APPLY_REGISTRY, ApplyCtx, ApplyEntry, registry_drift};
+pub use apply::{
+    APPLY_REGISTRY, ApplyCtx, ApplyEntry, HAND_PORTED, MAP_AFFIX_APPLY, MapAffixEntry, map_affix_drift, map_affixes_with_apply,
+    registry_drift,
+};
+pub use apply_gen::GENERATED;
 
 /// A config `input`/`placeholder` value: Lua number, string or boolean (placeholders are never booleans).
 pub type ConfigValue = InputValue;

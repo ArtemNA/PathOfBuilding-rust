@@ -10,7 +10,8 @@
 //! `ALLOWLIST` (offence is R7, so only the allowlisted keys can be compared) the LuaJIT value must match round4 ("ok", the oracle's
 //! rule) AND bit for bit ("exact", `%.17g`, `-0` counted). A key Rust emits and LuaJIT does not is a mismatch (LuaJIT `nil`).
 //! The test prints the table "scenario -> compared / ok / exact / mismatch" and every mismatch with the scenario's `covers`.
-//! Nothing is tolerated or skipped here: a mismatch is a Rust bug to fix in a later card, hence the `#[ignore]` below while any exist.
+//! Nothing is tolerated or skipped here: a mismatch is a Rust bug. Green since R3.5b (the last 10 divergences were config `apply`
+//! closures not yet ported: `conditionUsingFlask` x9, `conditionHaveTotem` x1).
 
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
@@ -186,7 +187,6 @@ fn run_scenario(name: &str) -> Row {
 }
 
 #[test]
-#[ignore = "R4-synth: 14 mismatches, see report"]
 fn defence_synth_corpus_matches_luajit() {
     let names = scenario_names();
     assert!(names.len() >= MIN_SCENARIOS, "{} scenarios < {MIN_SCENARIOS}", names.len());
