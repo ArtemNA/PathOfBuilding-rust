@@ -16,7 +16,7 @@ use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet};
 use std::rc::Rc;
 
-use pob_calc::{ActorState, CalcMode, CalcSession, CalculateOptions, Checkpoint, Env, OutValue};
+use pob_calc::{ActorState, CalcMode, CalcSession, CalculateOptions, Checkpoint, Env, OutValue, cache_skill_uuid};
 use pob_golden::registry::GOLDEN_BUILDS;
 use pob_lua::format_g;
 use pob_mods::{StoreKind, StoreRef};
@@ -40,6 +40,32 @@ fn mod_count(db: &StoreRef) -> usize {
     }
 }
 
+/// The probe's string encoding (`export-offence.ts` DUMP `D`): a string that LOOKS like a number (`nan`/`inf`/`-inf` or
+/// `^-?[%d.]+[eE]?[+-]?%d*$`) is prefixed `$str:` so it cannot be confused with a `%.17g` number.
+fn probe_str(v: &str) -> String {
+    let b = v.strip_prefix('-').unwrap_or(v).as_bytes();
+    let i = b.iter().take_while(|c| c.is_ascii_digit() || **c == b'.').count();
+    let mut rest = &b[i..];
+    if i > 0 {
+        if let [c, tail @ ..] = rest
+            && matches!(c, b'e' | b'E')
+        {
+            rest = tail;
+        }
+        if let [c, tail @ ..] = rest
+            && matches!(c, b'+' | b'-')
+        {
+            rest = tail;
+        }
+        rest = &rest[rest.iter().take_while(|c| c.is_ascii_digit()).count()..];
+    }
+    if (i > 0 && rest.is_empty()) || matches!(v, "nan" | "inf" | "-inf") {
+        format!("$str:{v}")
+    } else {
+        v.to_owned()
+    }
+}
+
 /// The probe's checkpoint snapshot, from Rust's state.
 fn snap(env: &Env, player: &ActorState) -> Json {
     let st = env.skills.as_ref().expect("skills on");
@@ -51,7 +77,7 @@ fn snap(env: &Env, player: &ActorState) -> Json {
         .map(|(k, v)| {
             let j = match v {
                 OutValue::Num(x) => n17(*x),
-                OutValue::Str(t) => json!(t.to_string()),
+                OutValue::Str(t) => json!(probe_str(t.as_ref())),
                 OutValue::Bool(b) => json!(b),
             };
             (k.to_string(), j)
@@ -216,10 +242,241 @@ fn oc1_oc2_equal_luajit_on_six_goldens() {
     assert!(all_bad.is_empty(), "OC1/OC2 != LuaJIT ({}):\n{}", all_bad.len(), all_bad.join("\n"));
 }
 
+// --- R7.1b: every player `calcs.offence` call of `buildOutput(MAIN)` -------------------------------------------------------------------
+// LuaJIT truth: `<build>.offence-runs.json` (headers of every offence call, perform markers) + `-<n>.json` parts (OC snapshots by run `seq`),
+// producer `tools/lua-corpus/export-offence.ts runs`. A LuaJIT run is matched to a Rust run by `{mode, uuid, limited, ordinal}` (ordinal =
+// the n-th player offence call with that mode/uuid/limitedSkills-or-not, in call order); only OC1/OC2 are compared (the Rust hooks).
+
+/// A LuaJIT player offence call: header + OC1/OC2 snapshots.
+struct LjRun {
+    seq: u64,
+    mode: String,
+    uuid: String,
+    limited: bool,
+    ordinal: u64,
+    depth: u64,
+    name: String,
+    oc: BTreeMap<&'static str, Json>,
+}
+
+fn lj_runs(name: &str) -> (Vec<LjRun>, Json) {
+    let slug = name.replace(' ', "-");
+    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures");
+    let read = |f: String| -> Json {
+        let p = dir.join(&f);
+        serde_json::from_str(&std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("{}: {e}", p.display()))).expect("fixture json")
+    };
+    let main = read(format!("{slug}.offence-runs.json"));
+    let parts: Vec<Json> = main["parts"]
+        .as_array()
+        .expect("parts")
+        .iter()
+        .map(|f| read(f.as_str().expect("part name").to_owned()))
+        .collect();
+    let mut runs = Vec::new();
+    for h in main["runs"].as_array().expect("runs") {
+        if h["player"] != json!(true) {
+            continue;
+        }
+        let num = |k: &str| h[k].as_str().expect(k).parse::<f64>().expect(k) as u64;
+        let seq = num("seq");
+        let mut oc = BTreeMap::new();
+        for k in ["OC1", "OC2"] {
+            if let Some(v) = parts.iter().find_map(|p| p["runs"].get(seq.to_string()).and_then(|r| r.get(k))) {
+                oc.insert(k, v.clone());
+            }
+        }
+        runs.push(LjRun {
+            seq,
+            mode: h["mode"].as_str().expect("mode").to_owned(),
+            uuid: h["uuid"].as_str().expect("uuid").to_owned(),
+            limited: h["limited"] == json!(true),
+            ordinal: num("ordinal"),
+            depth: num("depth"),
+            name: h["name"].as_str().expect("name").to_owned(),
+            oc,
+        });
+    }
+    (runs, main)
+}
+
+/// One Rust player offence call (`Checkpoint::OcEntry`), with the OC1/OC2 snapshots it reached.
+struct RustRun {
+    mode: &'static str,
+    uuid: String,
+    limited: bool,
+    ordinal: u64,
+    oc: BTreeMap<&'static str, Json>,
+}
+
+fn rust_runs(name: &str) -> (Vec<RustRun>, Vec<String>) {
+    let g = GOLDEN_BUILDS.iter().find(|g| g.name == name).expect("golden");
+    let model = pob_build::load_build_xml(&std::fs::read_to_string(g.xml_path()).expect("xml")).expect("xml parses");
+    let sess = CalcSession::new(Rc::new(model), CalculateOptions::default());
+    let runs: Rc<RefCell<Vec<RustRun>>> = Rc::default();
+    let r2 = runs.clone();
+    sess.set_hook(Some(Box::new(
+        move |cp: Checkpoint, env: &Env, player: &ActorState, _: &ActorState| {
+            let mut v = r2.borrow_mut();
+            match cp {
+                Checkpoint::OcEntry => {
+                    let uuid = cache_skill_uuid(env, env.skills.as_ref().expect("skills on").main_skill.expect("mainSkill"));
+                    let limited = env.limited_skills.is_some();
+                    let ordinal = v
+                        .iter()
+                        .filter(|r| r.mode == env.mode && r.uuid == uuid && r.limited == limited)
+                        .count() as u64
+                        + 1;
+                    v.push(RustRun {
+                        mode: env.mode,
+                        uuid,
+                        limited,
+                        ordinal,
+                        oc: BTreeMap::new(),
+                    });
+                }
+                Checkpoint::Oc1 | Checkpoint::Oc2 => {
+                    let k = if cp == Checkpoint::Oc1 { "OC1" } else { "OC2" };
+                    v.last_mut().expect("OcEntry before OC").oc.insert(k, snap(env, player));
+                }
+                _ => {}
+            }
+        },
+    )));
+    let out = sess.build_output(CalcMode::Main).unwrap_or_else(|e| panic!("{name}: {e:?}"));
+    sess.set_hook(None);
+    let notes = out.run.borrow().env.unimplemented.clone();
+    (Rc::try_unwrap(runs).ok().expect("hook dropped").into_inner(), notes)
+}
+
+/// Dual Savior: the LuaJIT `CALCULATOR`-mode offence runs come from `calcs.mirages` (Reflection), which Rust does not port yet.
+const SAVIOR_GATE: (&str, &str) = (
+    "Dual Savior",
+    "CalcMirages.lua:120-164 Reflection (The Saviour) for Reflection (R7.9)",
+);
+
+/// Compares every matched run; returns (differences / unexplained gaps, totals `[LuaJIT, Rust, matched, OC1 ok, OC2 ok, diff lines, not run]`).
+fn compare_all() -> (Vec<String>, [usize; 7]) {
+    let mut bad = Vec::new();
+    let mut unexecuted = Vec::new();
+    println!("golden | LuaJIT player runs | Rust runs | matched | OC1 ok | OC2 ok | differences | Rust did not run");
+    let mut tot = [0usize; 7];
+    for g in GOLDEN_BUILDS {
+        let (lj, main) = lj_runs(g.name);
+        let (rs, notes) = rust_runs(g.name);
+        let (mut matched, mut ok1, mut ok2, mut ndiff, mut nun) = (0, 0, 0, 0, 0);
+        let mut used = BTreeSet::new();
+        let gate = GATED.iter().chain([&SAVIOR_GATE]).find(|(n, _)| *n == g.name).map(|(_, why)| *why);
+        let gate_recorded = gate.is_some_and(|why| notes.iter().any(|u| u == why));
+        for l in &lj {
+            let found = rs
+                .iter()
+                .enumerate()
+                .find(|(_, r)| r.mode == l.mode && r.uuid == l.uuid && r.limited == l.limited && r.ordinal == l.ordinal);
+            let Some((i, r)) = found else {
+                let why = match gate {
+                    Some(why) if gate_recorded => format!("recorded gate `{why}`"),
+                    Some(why) => format!("expected gate `{why}` NOT recorded"),
+                    None => "no gate recorded".to_owned(),
+                };
+                let line = format!(
+                    "{}: LuaJIT run #{} (seq {}, {} {} depth {}, limitedSkills {}) -- Rust did not run offence: {why}",
+                    g.name, l.ordinal, l.seq, l.mode, l.uuid, l.depth, l.limited
+                );
+                // Savior: only the mirage simulation's CALCULATOR runs are covered by the gate
+                if !gate_recorded || (g.name == SAVIOR_GATE.0 && l.mode != "CALCULATOR") {
+                    bad.push(line.clone());
+                }
+                unexecuted.push(line);
+                nun += 1;
+                continue;
+            };
+            used.insert(i);
+            matched += 1;
+            for cp in ["OC1", "OC2"] {
+                let (Some(w), Some(h)) = (l.oc.get(cp), r.oc.get(cp)) else {
+                    bad.push(format!(
+                        "{}: {} {cp} missing (LuaJIT {}, Rust {})",
+                        g.name,
+                        l.uuid,
+                        l.oc.contains_key(cp),
+                        r.oc.contains_key(cp)
+                    ));
+                    continue;
+                };
+                let d = diff(w, h);
+                if d.is_empty() {
+                    if cp == "OC1" {
+                        ok1 += 1;
+                    } else {
+                        ok2 += 1;
+                    }
+                } else {
+                    ndiff += d.len();
+                    bad.extend(d.into_iter().map(|x| {
+                        format!(
+                            "{}: run seq {} ({}, {} limited {}) {cp} {x}",
+                            g.name, l.seq, l.name, l.mode, l.limited
+                        )
+                    }));
+                }
+            }
+        }
+        for (_, r) in rs.iter().enumerate().filter(|(i, _)| !used.contains(i)) {
+            bad.push(format!(
+                "{}: Rust run {} #{} (limited {}) has no LuaJIT counterpart",
+                g.name, r.uuid, r.ordinal, r.limited
+            ));
+        }
+        let markers = main["performs"]
+            .as_array()
+            .expect("performs")
+            .iter()
+            .filter(|p| p["offenceCalled"] == json!(false))
+            .count();
+        println!(
+            "{} | {} | {} | {matched} | {ok1} | {ok2} | {ndiff} | {nun} (LuaJIT performs without offence: {markers})",
+            g.name,
+            lj.len(),
+            rs.len()
+        );
+        for (t, x) in tot.iter_mut().zip([lj.len(), rs.len(), matched, ok1, ok2, ndiff, nun]) {
+            *t += x;
+        }
+    }
+    println!(
+        "TOTAL | {} | {} | {} | {} | {} | {} | {}",
+        tot[0], tot[1], tot[2], tot[3], tot[4], tot[5], tot[6]
+    );
+    for u in &unexecuted {
+        println!("unexecuted by Rust: {u}");
+    }
+    (bad, tot)
+}
+
+/// The strict gate: every LuaJIT player offence run is either compared OC1/OC2-equal or explained by a recorded gate. Currently RED on the
+/// known classes (report of `tasks/R7.1b-offence-all-runs.md`); un-ignore when R7.10 (minion limit / `output.Minion`) and the
+/// `OnKillMonsterExplosion` skill function (Data/Skills/other.lua:6205-6251) are ported.
+#[test]
+#[ignore = "R7.1b: known divergences on nested minion / OnKillMonsterExplosion runs (R7.10, other.lua:6205)"]
+fn oc1_oc2_equal_luajit_on_all_offence_runs() {
+    let (bad, _) = compare_all();
+    assert!(bad.is_empty(), "offence runs != LuaJIT ({}):\n{}", bad.len(), bad.join("\n"));
+}
+
+/// Pins the measured R7.1b state so it cannot drift silently: 82 LuaJIT player offence runs, 56 run by Rust (all matched), 26 not run
+/// (the recorded triggers/mirages gates), OC1 53/56 and OC2 51/56 equal, 14 difference lines in the known runs.
+#[test]
+fn offence_runs_state_is_pinned() {
+    let (bad, tot) = compare_all();
+    assert_eq!(tot, [82, 56, 56, 53, 51, 14, 26], "{}", bad.join("\n"));
+    assert_eq!(bad.len(), 14, "unexplained gaps or differences:\n{}", bad.join("\n"));
+}
+
 /// The skill-function registry = `data/closures.json` (every `Data/Skills/` closure, `src`/`from`/`to`/sha256), 134/134.
 #[test]
 fn skill_func_registry_matches_closures_json() {
-    let p = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../data/closures.json");
+    let p = pob_data::data_dir().join("closures.json");
     let j: Json = serde_json::from_str(&std::fs::read_to_string(&p).expect("closures.json")).expect("json");
     let list: Vec<&Json> = j["closures"]
         .as_array()

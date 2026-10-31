@@ -120,7 +120,7 @@ local function uninstallBase() calcs.initEnv, calcs.perform, calcs.buildActiveSk
 `
 
 // --- Lua: dump helpers + probe (fixture mode) -------------------------------------------------------------------------------------------
-const DUMP = String.raw`
+const DUMP_HELPERS = String.raw`
 local RAWF = string.format
 for i = 1, 20 do local n, v = debug.getupvalue(string.format, i); if not n then break end; if n == "s_format" then RAWF = v break end end
 local OBJ = { __jsontype = "object" }
@@ -232,6 +232,8 @@ local function mainInfo(env)
 end
 local function cacheIndex() local t = obj() for _, mode in ipairs({ "MAIN", "CALCS", "CALCULATOR" }) do t[mode] = sortedKeys(GlobalCache.cachedData[mode]) end return t end
 
+`
+const PROBE = String.raw`
 local res = obj()
 res.jitStatus = jit.status() and "on" or "off"
 res.outputLoad, res.cacheAfterLoad = D(build.calcsTab.mainOutput, 0, {}), cacheIndex()
@@ -276,6 +278,87 @@ wipeGlobalCache(); resetLogs()
 build.calcsTab:BuildOutput()
 res.outputWipeBuildOutput = D(build.calcsTab.mainOutput, 0, {})
 uninstallBase()
+res.ambiguousStrings = N(ambiguous)
+return res
+`
+
+const DUMP = DUMP_HELPERS + PROBE
+
+// --- R7.1b: every calcs.offence call of one buildOutput(MAIN) (mode, uuid, depth, ordinal) + OC1..OC6 of each player call, perform markers ---------
+const RUNS_PROBE = String.raw`
+local topEnv, seq, ostack, pstack, runs, performs, ord = nil, 0, {}, {}, {}, {}, {}
+local oInit2, oPerform2, oOffence2, oMir2 = calcs.initEnv, calcs.perform, calcs.offence, calcs.mirages
+local function uuidOf(sk, env) local ok, u = pcall(cacheSkillUUID, sk, env) return ok and u or "<err>" end
+local function install()
+  calcs.initEnv = function(b, mode, ...) local env, r2, r3 = oInit2(b, mode, ...) if not topEnv and mode == "MAIN" then topEnv = env end return env, r2, r3 end
+  calcs.mirages = function(env) local r = oMir2(env) local f = pstack[#pstack] if f and f.env == env then f.rec.mirages = r and true or false end return r end
+  calcs.perform = function(env, skipEHP)
+    local rec = { seq = #performs + 1, mode = env.mode, uuid = uuidOf(env.player.mainSkill, env), depth = #pstack, top = env == topEnv, skipEHP = skipEHP and true or false, limited = env.limitedSkills ~= nil, offenceCalled = false }
+    performs[rec.seq] = rec
+    pstack[#pstack + 1] = { env = env, rec = rec }
+    local r = oPerform2(env, skipEHP)
+    pstack[#pstack] = nil
+    rec.disable = env.player.mainSkill.skillFlags.disable and true or false
+    if not rec.offenceCalled then
+      rec.reason = rec.mirages == true and "CalcPerform.lua:3798 calcs.mirages(env) returned true (offence skipped)" or ("offence not reached: mirages " .. tostring(rec.mirages) .. ", skill disabled " .. tostring(rec.disable))
+    end
+    return r
+  end
+  calcs.offence = function(env, actor, sk)
+    local u, isPlayer = uuidOf(sk, env), actor == env.player
+    local pf = pstack[#pstack]
+    if isPlayer and pf and pf.env == env then pf.rec.offenceCalled = true end
+    seq = seq + 1
+    local key = env.mode .. "|" .. u .. "|" .. tostring(isPlayer) .. "|" .. tostring(env.limitedSkills ~= nil)
+    ord[key] = (ord[key] or 0) + 1
+    local rec = { seq = seq, mode = env.mode, uuid = u, depth = #pstack, top = env == topEnv, player = isPlayer, limited = env.limitedSkills ~= nil, ordinal = ord[key],
+      name = sk.activeEffect.grantedEffect.name, performSeq = pf and pf.rec.seq or 0, hits = obj() }
+    rec.oc = obj()
+    runs[seq] = rec
+    ostack[#ostack + 1] = { env = env, actor = actor, sk = sk, rec = rec }
+    local r = oOffence2(env, actor, sk)
+    ostack[#ostack] = nil
+    return r
+  end
+end
+local function uninstall() calcs.initEnv, calcs.perform, calcs.offence, calcs.mirages = oInit2, oPerform2, oOffence2, oMir2 end
+local function hook(_, line)
+  local name = TARGET[line]
+  if not name then return end
+  local top = ostack[#ostack]
+  if not top or not top.rec.player then return end
+  if not debug.getinfo(2, "S").source:find("CalcOffence", 1, true) then return end
+  local n1, e = debug.getlocal(2, 1)
+  local n2, a = debug.getlocal(2, 2)
+  local n3, sk = debug.getlocal(2, 3)
+  if n1 ~= "env" or n2 ~= "actor" or n3 ~= "activeSkill" or e ~= top.env or a ~= top.actor or sk ~= top.sk then return end
+  local rec = top.rec
+  rec.hits[name] = (rec.hits[name] or 0) + 1
+  if not rec.oc[name] then rec.oc[name] = snap(line, e, a, sk) end
+end
+local function sig() local t = {} for i, r in ipairs(runs) do t[i] = r.seq .. "|" .. r.mode .. "|" .. r.uuid .. "|" .. r.depth .. "|" .. tostring(r.player) end return t end
+local function strip(l) local t = {} for i, r in ipairs(l) do local c = obj() for k, v in pairs(r) do if k ~= "oc" then c[k] = D(v, 0, {}) end end t[i] = c end return t end
+local res = obj()
+install()
+wipeGlobalCache(); topEnv, seq, ostack, pstack, runs, performs, ord = nil, 0, {}, {}, {}, {}, {}
+local envA = calcs.buildOutput(build, "MAIN") -- A: plain wrapped run
+res.sigA, res.outputA, res.performsA = sig(), D(envA.player.output, 0, {}), #performs
+wipeGlobalCache(); topEnv, seq, ostack, pstack, runs, performs, ord = nil, 0, {}, {}, {}, {}, {}
+local jitWas = jit.status()
+jit.off(); jit.flush()
+debug.sethook(hook, "l")
+local envB = calcs.buildOutput(build, "MAIN") -- B: the same under the line hook
+debug.sethook()
+if jitWas then jit.on() end
+uninstall()
+res.sigB, res.outputB = sig(), D(envB.player.output, 0, {})
+res.runs, res.performs = {}, strip(performs)
+for i, r in ipairs(runs) do
+  local c = obj()
+  for k, v in pairs(r) do if k ~= "oc" then c[k] = D(v, 0, {}) end end
+  c.oc = r.oc
+  res.runs[i] = c
+end
 res.ambiguousStrings = N(ambiguous)
 return res
 `
@@ -436,5 +519,58 @@ async function perf(): Promise<void> {
   console.log(JSON.stringify(Object.fromEntries(Object.entries(out.builds).map(([k, v]: [string, any]) => [k, { buildOutput: v.buildOutput, offenceMain: v.offenceMain, calcFullDPS: v.calcFullDPS, nestedPerform: v.nestedPerform[0] }])), null, 1)) // eslint-disable-line
 }
 
-if (process.argv[2] === 'perf') await perf()
+
+// R7.1b: `node tools/lua-corpus/export-offence.ts runs` -> crates/pob-calc/tests/fixtures/<build>.offence-runs.json (+ -<n> parts with the OC snapshots)
+async function runsMode(): Promise<void> {
+  const luts = await prepareLuts()
+  const report: Rec = {}
+  for (const b of GOLDEN_BUILDS) {
+    const xml = readFileSync(b.xmlPath(roots))
+    const r = norm(ljEval(loadChunk(xml, b.name) + `local function probe()\n${WRAP}\n${DUMP_HELPERS}\n${RUNS_PROBE}\nend\nreturn probe()\n`, luts))
+    const slug = b.name.replace(/ /g, '-')
+    const OCS = ['OC1', 'OC2', 'OC3', 'OC4', 'OC5', 'OC6']
+    const runs: Rec[] = r.runs
+    const text = (o: Rec): string => ser(o) + '\n'
+    const outEq = diffOutputs(r.outputA, r.outputB, 'plain', 'hook')
+    const sigEqual = ser(r.sigA) === ser(r.sigB)
+    // parts: units = (run seq, OCn) packed greedily; the main file keeps the headers, markers and the part index
+    const parts: Rec[] = [{}]
+    let size = 0
+    for (const run of runs) for (const k of OCS) {
+      const v = run.oc[k]
+      if (!v) continue
+      const sz = ser(v).length + 40
+      if (size + sz > MAX_BYTES - 2000 && size > 0) { parts.push({}); size = 0 }
+      size += sz
+      const cur = parts[parts.length - 1]!
+      ;(cur[run.seq] ??= {})[k] = v
+    }
+    const head = { format: 1, producer: { generator: 'tools/lua-corpus/export-offence.ts runs', image: LUAJIT_IMAGE, pobSha: git(roots.pobRoot), dataManifestSha256: sha(readFileSync(resolve(ROOT, 'data/manifest.json'))),
+      libm: 'docker = Alpine/musl (MINEFIELD-RUST R2)', ocLines: 'CalcOffence.lua OC1=1057 OC2=1938 OC3=2606 OC4=4156 OC5=5772 OC6=6263' }, build: b.name, xmlSha256: sha(xml) }
+    const headers = runs.map((x) => { const { oc, ...h } = x; return { ...h, ocPresent: OCS.filter((k) => oc[k]) } })
+    const names = parts.map((_, i) => `${slug}.offence-runs-${i + 1}.json`)
+    const files: { file: string; bytes: number }[] = []
+    const put = (name: string, o: Rec): void => {
+      const t = text(o)
+      if (Buffer.byteLength(t) > MAX_BYTES) throw new Error(`${name}: ${Buffer.byteLength(t)} bytes > ${MAX_BYTES} -- STOP`)
+      const file = resolve(FIX, name)
+      writeFileSync(file, t, 'utf8')
+      files.push({ file: file.replace(`${ROOT}\\`, ''), bytes: statSync(file).size })
+    }
+    put(`${slug}.offence-runs.json`, { ...head, runs: headers, performs: r.performs, parts: names, consistency: { plainEqualsHookSignature: sigEqual, plainEqualsHookOutput: outEq.equal, runsPlain: r.sigA.length, runsHook: r.sigB.length } })
+    parts.forEach((p, i) => put(names[i]!, { ...head, part: i + 1, runs: p }))
+    const pl = runs.filter((x) => x.player)
+    report[b.name] = {
+      offenceCalls: runs.length, playerCalls: pl.length, minionCalls: runs.length - pl.length, topPlayerCalls: pl.filter((x) => x.top).length, limitedPlayerCalls: pl.filter((x) => x.limited).length,
+      maxDepth: Math.max(...runs.map((x) => Number(x.depth))), distinctKeys: new Set(pl.map((x) => `${x.mode}|${x.uuid}|${x.limited}`)).size,
+      ocComplete: pl.filter((x) => OCS.every((k) => x.oc[k])).length, ocIncomplete: pl.filter((x) => !OCS.every((k) => x.oc[k])).map((x) => `seq ${x.seq} ${x.name}: missing ${OCS.filter((k) => !x.oc[k]).join(',')}`),
+      performs: r.performs.length, performsNoOffence: r.performs.filter((x: Rec) => !x.offenceCalled).map((x: Rec) => `perform ${x.seq} ${x.mode} depth ${x.depth} top ${x.top} ${x.uuid}: ${x.reason}`),
+      plainEqualsHookSignature: sigEqual, plainEqualsHookOutput: outEq.equal, ambiguousStrings: r.ambiguousStrings, files }
+    console.error(`${b.name}: done (${runs.length} offence calls)`)
+  }
+  console.log(JSON.stringify(report, null, 1))
+}
+
+if (process.argv[2] === 'runs') await runsMode()
+else if (process.argv[2] === 'perf') await perf()
 else await fixtures()
