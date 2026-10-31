@@ -2088,12 +2088,24 @@ pub fn perform(env: &mut Env, defence: Option<PhaseFn>, estimations: Option<Phas
 }
 
 /// [`perform`] with a [`CheckpointHook`] called at the R6 checkpoints (the hook only observes; the computation is the same).
-#[allow(clippy::too_many_lines)]
 pub fn perform_with(
     env: &mut Env,
     defence: Option<PhaseFn>,
     estimations: Option<PhaseFn>,
+    hook: Option<CheckpointHook<'_>>,
+) -> PerformState {
+    perform_skip_ehp(env, defence, estimations, hook, false)
+}
+
+/// `calcs.perform(env, skipEHP)` (:1286): [`perform_with`] with upstream's second argument -- `true` skips
+/// `buildDefenceEstimations` (:3793-3795), what every nested run (`calcs.buildActiveSkill`, `calcFullDPS`) passes (R7.2).
+#[allow(clippy::too_many_lines)]
+pub fn perform_skip_ehp(
+    env: &mut Env,
+    defence: Option<PhaseFn>,
+    estimations: Option<PhaseFn>,
     mut hook: Option<CheckpointHook<'_>>,
+    skip_ehp: bool,
 ) -> PerformState {
     let mod_db = env.mod_db.clone();
     let enemy_db = env.enemy_db.clone();
@@ -2705,15 +2717,19 @@ pub fn perform_with(
     match defence {
         Some(def) => {
             def(env, &mut state, Who::Player);
-            // :3793-3795 `if not skipEHP then` -- buildOutput (MAIN) never passes `skipEHP`.
-            match estimations {
-                Some(est) => est(env, &mut state, Who::Player),
-                None => skip(env, "3793-3795 buildDefenceEstimations (P4.4c)"),
+            // :3793-3795 `if not skipEHP then`
+            if !skip_ehp {
+                match estimations {
+                    Some(est) => est(env, &mut state, Who::Player),
+                    None => skip(env, "3793-3795 buildDefenceEstimations (P4.4c)"),
+                }
             }
         }
         None => {
             skip(env, "3792 calcs.defence (P4.4b)");
-            skip(env, "3793-3795 buildDefenceEstimations (P4.4c)");
+            if !skip_ehp {
+                skip(env, "3793-3795 buildDefenceEstimations (P4.4c)");
+            }
         }
     }
     skip(env, "3797-3801 triggers / mirages / offence (P5)");
@@ -2729,6 +2745,13 @@ pub fn finish_output(env: &mut Env, state: &mut PerformState) {
         .push("Calcs.lua:392-398 calcFullDPS -> SkillDPS/FullDPS/FullDotDPS (P5)".into());
     env.unimplemented
         .push("Calcs.lua:400-427 per-skill cost warnings + EnergyShieldProtectsMana (P5)".into());
+    finish_output_spec(env, state);
+    env.unimplemented
+        .push("Calcs.lua:450-464 env.skillsUsed / display stats (P5)".into());
+}
+
+/// Calcs.lua:440-449 -- `ExtraPoints` and the tree's `Spec:*Inc` (the MAIN tail of `calcs.buildOutput` after the per-skill loop).
+pub(crate) fn finish_output_spec(env: &Env, state: &mut PerformState) {
     let db = env.mod_db.clone();
     let out = &mut state.player.output;
     // :440
@@ -2746,6 +2769,9 @@ pub fn finish_output(env: &mut Env, state: &mut PerformState) {
         sum(&db, ModType::Inc, Some(&spec_cfg), &["Evasion", "ArmourAndEvasion"]),
     );
     out.set_num("Spec:EnergyShieldInc", sum(&db, ModType::Inc, Some(&spec_cfg), &["EnergyShield"]));
-    env.unimplemented
-        .push("Calcs.lua:450-464 env.skillsUsed / display stats (P5)".into());
+}
+
+/// `env.modDB:Flag(nil, name)` for the buildOutput tail (Calcs.lua:406).
+pub(crate) fn mod_db_flag(env: &Env, name: &str) -> bool {
+    flag(&env.mod_db, &[name])
 }

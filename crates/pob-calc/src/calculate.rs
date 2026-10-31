@@ -18,6 +18,7 @@ use crate::env::Env;
 use crate::init_env::{InitEnvOptions, init_env_with};
 use crate::output::{StatValue, output_to_stats};
 use crate::perform::{PerformState, PhaseFn, finish_output, perform};
+use crate::session::{CalcMode, CalcRun, CalcSession, SessionLog};
 use crate::{EnvMeta, meta_of};
 
 /// What `calculate` plugs into perform's `calcs.defence` / `calcs.buildDefenceEstimations` call sites (CalcPerform.lua:
@@ -72,6 +73,8 @@ pub struct CalculateResult {
     pub character_level: f64,
     /// `configTab:BuildModList()`'s lists when `EstimatePlayerProgress` changed the level (Build.lua:913), else `None`.
     pub config_rebuilt: Option<ConfigModLists>,
+    /// With the skill phase on: what the [`CalcSession`] did (nested runs, cache writes, their timings); `None` on the pre-R6 path.
+    pub session_log: Option<SessionLog>,
 }
 
 #[derive(Debug)]
@@ -101,11 +104,16 @@ pub fn calculate_file(path: impl AsRef<Path>, opts: CalculateOptions) -> Result<
     calculate_with(&xml, opts)
 }
 
-/// `calcs.buildOutput(build, "MAIN")` + `EstimatePlayerProgress` for one build text, taken as given.
+/// `calcs.buildOutput(build, "MAIN")` + `EstimatePlayerProgress` for one build text, taken as given. With the skill phase on (the
+/// default) it runs through a fresh [`CalcSession`] (R7.2: the golden is `wipeGlobalCache` + one `buildOutput`); without it, the
+/// pre-R6 path (one initEnv + one perform, the "= pob-ts" gates).
 pub fn calculate_with(xml: &str, opts: CalculateOptions) -> Result<CalculateResult, CalcError> {
     let t0 = Instant::now();
     let model = pob_build::load_build_xml(xml).map_err(|e| CalcError(format!("XML: {e}")))?;
     let load_ms = ms(t0);
+    if opts.skills {
+        return calculate_session(Rc::new(model), opts, load_ms);
+    }
 
     let t1 = Instant::now();
     let env_opts = InitEnvOptions {
@@ -142,6 +150,48 @@ pub fn calculate_with(xml: &str, opts: CalculateOptions) -> Result<CalculateResu
         perform: state,
         character_level,
         config_rebuilt,
+        session_log: None,
+    })
+}
+
+/// [`calculate_with`] with the skill phase: `CalcSession::build_output(MAIN)` + `EstimatePlayerProgress`.
+fn calculate_session(model: Rc<pob_build::BuildModel>, opts: CalculateOptions, load_ms: f64) -> Result<CalculateResult, CalcError> {
+    let t1 = Instant::now();
+    let session = CalcSession::new(model, opts);
+    let out = session.build_output(CalcMode::Main)?;
+    let build_ms = ms(t1);
+    let log = session.log().clone();
+    // The cache shares the top run: dropping the session leaves the caller its only owner.
+    drop(out.full_dps);
+    drop(session);
+    let CalcRun { mut env, state, .. } = Rc::try_unwrap(out.run)
+        .map_err(|_| CalcError("calculate: the top run is still shared after the session ended".into()))?
+        .into_inner();
+    let init_env_ms = log.init_env_ms.first().copied().unwrap_or(0.0);
+
+    let t3 = Instant::now();
+    let (character_level, config_rebuilt) = estimate_player_progress(&mut env, &state)?;
+    let estimate_ms = ms(t3);
+
+    let stats = output_to_stats(&state.player.output);
+    let meta = meta_of(&env);
+    let mut unimplemented = env.spec.unimplemented.clone();
+    unimplemented.extend(env.unimplemented.iter().cloned());
+    Ok(CalculateResult {
+        stats,
+        meta,
+        unimplemented,
+        timings: Timings {
+            load_ms,
+            init_env_ms,
+            perform_ms: build_ms - init_env_ms,
+            estimate_ms,
+        },
+        env,
+        perform: state,
+        character_level,
+        config_rebuilt,
+        session_log: Some(log),
     })
 }
 

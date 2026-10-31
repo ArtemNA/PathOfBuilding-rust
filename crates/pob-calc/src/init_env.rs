@@ -468,8 +468,20 @@ pub fn init_env(build: Rc<BuildModel>, opts: InitEnvOptions) -> Result<Env, Init
 
 /// `calcs.initEnv(build, "MAIN")` -- CalcSetup.lua:475-1975, phases (1)-(19) of CALC-ARCH §7; `skills` = the skill phase (R6.3,
 /// R6-ARCH §2 p. 5: socketedGems, the granted-skill merge, supports, active skills, the main skill, `requirementsTableGems`).
-#[allow(clippy::too_many_lines)]
 pub fn init_env_with(build: Rc<BuildModel>, opts: InitEnvOptions, skills: bool) -> Result<Env, InitEnvError> {
+    init_env_seeded(build, opts, skills, None)
+}
+
+/// [`init_env_with`] for a [`crate::session::CalcSession`] run (R7.2): `carry` = the writes earlier initEnvs of the process left on
+/// the shared `data.skills` tables (`grantedEffect.fromItem = true` CalcSetup.lua:1633-1634, `levels[level].cost = {}`
+/// SkillsTab.lua:ProcessSocketGroup) -- upstream's next initEnv starts from them, so the skill phase here does too.
+#[allow(clippy::too_many_lines)]
+pub fn init_env_seeded(
+    build: Rc<BuildModel>,
+    opts: InitEnvOptions,
+    skills: bool,
+    carry: Option<&crate::session::SkillsCarry>,
+) -> Result<Env, InitEnvError> {
     // --- (1) env + the three ModDBs + the actors (:490-547) ---------------------------------------------------------
     let mut spec = match opts.spec {
         Some(s) => s,
@@ -572,6 +584,8 @@ pub fn init_env_with(build: Rc<BuildModel>, opts: InitEnvOptions, skills: bool) 
         skills: None,
         skill_mod_lists: Vec::new(),
         unimplemented: Vec::new(),
+        limited_skills: None,
+        session: std::rc::Weak::new(),
         spec,
     };
     // The config apply closures this port has no entry for (R3.5): visible, not silent.
@@ -926,8 +940,12 @@ pub fn init_env_with(build: Rc<BuildModel>, opts: InitEnvOptions, skills: bool) 
     env.items = parsed_items;
     // `build.skillsTab` as the first BuildOutput finds it: SkillsTab:Load + UpdateSocketGroups (Build.lua:691), R6.2/R6.3.
     if skills {
-        env.skills =
-            Some(SkillsState::load(&build, &env.ordered_slots, &env.items).map_err(|e| InitEnvError(format!("SkillsTab:Load: {e}")))?);
+        let mut st = SkillsState::load(&build, &env.ordered_slots, &env.items).map_err(|e| InitEnvError(format!("SkillsTab:Load: {e}")))?;
+        if let Some(c) = carry {
+            st.from_item_marks.clone_from(&c.from_item_marks);
+            st.cost_wiped.clone_from(&c.cost_wiped);
+        }
+        env.skills = Some(st);
     }
     let use_second_weapon_set = item_set.use_second_weapon_set;
     let mut items: IndexMap<String, Rc<Item>> = IndexMap::new();

@@ -23,6 +23,7 @@ pub mod init_env;
 pub mod output;
 pub mod perform;
 pub mod pools;
+pub mod session;
 pub mod setup;
 pub mod skill_modlist;
 pub mod skills;
@@ -33,10 +34,15 @@ pub use calculate::{CalcError, CalculateOptions, CalculateResult, Timings, calcu
 pub use defence::{armour_reduction, armour_reduction_f, defence, hit_chance};
 pub use estimations::estimations;
 pub use output::{OutValue, Output, StatValue, output_to_stats};
-pub use perform::{ActorState, Checkpoint, CheckpointHook, PerformState, PhaseFn, Who, finish_output, noop_phase, perform, perform_with};
+pub use perform::{
+    ActorState, Checkpoint, CheckpointHook, PerformState, PhaseFn, Who, finish_output, noop_phase, perform, perform_skip_ehp, perform_with,
+};
+pub use session::{
+    BuildOutput, CachedSkill, CalcMode, CalcRun, CalcSession, FullDps, FullDpsOutcome, GlobalCache, RunRef, SessionLog, cache_skill_uuid,
+};
 
 pub use env::{CalcActor, Env, GrantedSkill, MainSkillStub, RadiusFunc, RadiusJewel, ReqEntry, Slot};
-pub use init_env::{InitEnvError, InitEnvOptions, init_env, init_env_with, item_options, parse_items};
+pub use init_env::{InitEnvError, InitEnvOptions, init_env, init_env_seeded, init_env_with, item_options, parse_items};
 pub use pob_parser::ParseMode;
 pub use skills_tab::{
     GemInstance, SkillSet, SkillsTab, SocketGroup, find_skill_gem, load_skills_tab, process_gem_level, process_socket_group,

@@ -8,6 +8,7 @@
 //! its `actors` map (pob-mods API) -- those are the only cycles, and `Drop for Env` cuts them.
 
 use std::cell::RefCell;
+use std::collections::BTreeSet;
 use std::rc::{Rc, Weak};
 
 use indexmap::IndexMap;
@@ -195,6 +196,14 @@ pub struct Env {
 
     /// Every upstream branch this port knowingly skips, as `"<File.lua>:<line> <what>"` (RUST-ARCH §5).
     pub unimplemented: Vec<String>,
+
+    /// `env.limitedSkills` (R7.2): the uuids `calcs.buildActiveSkill` (Calcs.lua:361-371) marks so that a nested run does not
+    /// recurse into them again. nil (`None`) on an env `buildActiveSkill` did not make; a set -- upstream walks it with `pairs`
+    /// only to copy it (R13: the order cannot matter).
+    pub limited_skills: Option<BTreeSet<String>>,
+    /// The [`crate::session::CalcSession`] that built this env (what upstream reaches as the globals `calcs`/`GlobalCache`):
+    /// nested runs (`getCachedOutputValue`, triggers, mirages) go through it. Weak -- the session's cache owns envs.
+    pub session: Weak<crate::session::SessionCore>,
 }
 
 impl Env {
