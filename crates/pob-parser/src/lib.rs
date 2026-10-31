@@ -22,6 +22,7 @@
 #![forbid(unsafe_code)]
 
 pub mod closures;
+pub mod closures_gen;
 pub mod helpers;
 pub mod parse;
 pub mod scan;

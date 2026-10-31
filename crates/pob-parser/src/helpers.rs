@@ -82,7 +82,9 @@ pub fn gsub_str(s: &str, pattern: &str, repl: &str) -> Result<String, ParseError
 
 /// `s:gsub(pattern, string.upper)`; the first return.
 pub fn gsub_upper(s: &str, pattern: &str) -> Result<String, ParseError> {
-    let mut f = |m: &[u8], _: &pob_lua::Captures| Some(m.to_ascii_uppercase());
+    // the function gets the subject and the captures (the whole match when the pattern has none) -- R5.3a fix: it
+    // upper-cased the whole subject before
+    let mut f = |subject: &[u8], caps: &pob_lua::Captures| caps.get(0).and_then(|c| c.bytes(subject)).map(<[u8]>::to_ascii_uppercase);
     let (out, _) =
         pob_lua::gsub(s.as_bytes(), pattern.as_bytes(), pob_lua::Repl::Fn(&mut f), None).map_err(|e| ParseError::Lua(LuaError(e.0)))?;
     String::from_utf8(out).map_err(|_| ParseError::Unrepresentable("gsub produced a non-UTF-8 string".into()))
@@ -499,4 +501,406 @@ impl Threshold {
         }
         Ok(())
     }
+}
+
+// --- Lua operators for the generated closures (closures_gen.rs, tools/modparser-gen) --------------------------------
+//
+// `what` is how LuaJIT names an operand in an error ("local 'num'", "upvalue 'x'", "field 'k'", or "" for a temporary).
+
+fn lua_err(s: String) -> ParseError {
+    ParseError::Lua(LuaError(s))
+}
+
+fn operand(what: &str, v: &Value) -> String {
+    if what.is_empty() {
+        format!("a {} value", v.type_name())
+    } else {
+        format!("{what} (a {} value)", v.type_name())
+    }
+}
+
+/// Positional argument `i` (nil when absent -- a Lua parameter without an argument).
+pub fn arg(a: &[Value], i: usize) -> Value {
+    a.get(i).cloned().unwrap_or_default()
+}
+
+/// `...` of a function with `n` named parameters.
+pub fn rest(a: &[Value], n: usize) -> Vec<Value> {
+    a.get(n..).map(<[Value]>::to_vec).unwrap_or_default()
+}
+
+/// A `return` list as the two values `parseMod` keeps (L11: missing values are nil).
+pub fn ret2(v: Vec<Value>) -> (Value, Value) {
+    let mut it = v.into_iter();
+    (it.next().unwrap_or_default(), it.next().unwrap_or_default())
+}
+
+/// An upvalue holding a plain Lua value (nil when this reference does not carry it).
+pub fn upv(f: &FnRef, name: &str) -> Result<Value, ParseError> {
+    match f.up.get(name) {
+        None => Ok(Value::Nil),
+        Some(PVal::Lua(v)) => Ok(v.clone()),
+        Some(_) => Err(ParseError::Unrepresentable(format!(
+            "{}: upvalue '{name}' is not a plain value",
+            f.id
+        ))),
+    }
+}
+
+/// An upvalue holding a Lua function (a generated helper such as `explodeFunc`).
+pub fn up_fn<'a>(f: &'a FnRef, name: &str) -> Result<&'a FnRef, ParseError> {
+    match f.up.get(name) {
+        Some(PVal::Fn(g)) => Ok(g),
+        _ => Err(ParseError::Unrepresentable(format!("{}: upvalue '{name}' is not a function", f.id))),
+    }
+}
+
+/// The number an arithmetic operand converts to (L2: numeric strings convert).
+fn arith_num(v: &Value) -> Option<f64> {
+    match v {
+        Value::Num(n) => Some(*n),
+        Value::Str(s) => pob_lua::tonumber(s),
+        _ => None,
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+pub enum Arith {
+    Add,
+    Sub,
+    Mul,
+    Div,
+    Mod,
+    Pow,
+}
+
+/// `a <op> b` on doubles in Lua order; LuaJIT names the first operand that is not a number.
+pub fn arith(op: Arith, a: &Value, b: &Value, wa: &str, wb: &str) -> Result<Value, ParseError> {
+    let (Some(x), Some(y)) = (arith_num(a), arith_num(b)) else {
+        let (v, w) = if arith_num(a).is_none() { (a, wa) } else { (b, wb) };
+        return Err(lua_err(format!("attempt to perform arithmetic on {}", operand(w, v))));
+    };
+    Ok(Value::Num(match op {
+        Arith::Add => x + y,
+        Arith::Sub => x - y,
+        Arith::Mul => x * y,
+        Arith::Div => x / y,
+        Arith::Mod => pob_lua::number::modulo(x, y),
+        Arith::Pow => x.powf(y),
+    }))
+}
+
+/// Unary `-v`.
+pub fn neg_v(v: &Value, what: &str) -> Result<Value, ParseError> {
+    match arith_num(v) {
+        Some(n) => Ok(Value::Num(-n)),
+        None => Err(lua_err(format!("attempt to perform arithmetic on {}", operand(what, v)))),
+    }
+}
+
+/// `#v`: a string's byte length, a table's array part.
+pub fn len_v(v: &Value, what: &str) -> Result<Value, ParseError> {
+    match v {
+        Value::Str(s) => Ok(Value::Num(s.len() as f64)),
+        Value::Table(t) => Ok(Value::Num(t.array.iter().rposition(|x| !x.is_nil()).map_or(0, |i| i + 1) as f64)),
+        Value::Mod(m) => Ok(Value::Num(m.tags.len() as f64)),
+        _ => Err(lua_err(format!("attempt to get length of {}", operand(what, v)))),
+    }
+}
+
+/// `a .. b` (L1: a number is `tostring`ed, `%.14g`).
+pub fn concat_v(a: &Value, b: &Value, wa: &str, wb: &str) -> Result<Value, ParseError> {
+    let s = |v: &Value| match v {
+        Value::Str(s) => Some(s.to_string()),
+        Value::Num(n) => Some(pob_lua::tostring_num(*n)),
+        _ => None,
+    };
+    match (s(a), s(b)) {
+        (Some(x), Some(y)) => Ok(Value::str(&(x + &y))),
+        (None, _) => Err(lua_err(format!("attempt to concatenate {}", operand(wa, a)))),
+        (_, None) => Err(lua_err(format!("attempt to concatenate {}", operand(wb, b)))),
+    }
+}
+
+/// `a == b`.
+pub fn lua_eq(a: &Value, b: &Value) -> bool {
+    a.raw_eq(b)
+}
+
+fn compare(a: &Value, b: &Value, le: bool) -> Result<bool, ParseError> {
+    match (a, b) {
+        (Value::Num(x), Value::Num(y)) => Ok(if le { x <= y } else { x < y }),
+        (Value::Str(x), Value::Str(y)) => Ok(if le {
+            x.as_bytes() <= y.as_bytes()
+        } else {
+            x.as_bytes() < y.as_bytes()
+        }),
+        _ => Err(lua_err(format!("attempt to compare {} with {}", a.type_name(), b.type_name()))),
+    }
+}
+
+/// `a < b` (numbers, or strings byte-wise -- C locale).
+pub fn lt_v(a: &Value, b: &Value) -> Result<bool, ParseError> {
+    compare(a, b, false)
+}
+
+/// `a <= b`.
+pub fn le_v(a: &Value, b: &Value) -> Result<bool, ParseError> {
+    compare(a, b, true)
+}
+
+/// `o[k]` / `o.k` as Lua indexes it.
+pub fn index_v(o: &Value, k: &Value, what: &str) -> Result<Value, ParseError> {
+    match o {
+        Value::Table(t) => Ok(t.index(k)),
+        Value::Mod(_) => Ok(o.index(k)),
+        Value::Str(_) => match k {
+            Value::Str(key) => string_lib_field(key),
+            _ => Ok(Value::Nil),
+        },
+        _ => Err(lua_err(format!("attempt to index {}", operand(what, o)))),
+    }
+}
+
+/// `t[k] = v` needs a key: nil and NaN raise (the table itself is not observable -- tools/modparser-gen checks).
+pub fn table_key_check(k: &Value) -> Result<(), ParseError> {
+    match k {
+        Value::Nil => Err(lua_err("table index is nil".into())),
+        Value::Num(n) if n.is_nan() => Err(lua_err("table index is NaN".into())),
+        _ => Ok(()),
+    }
+}
+
+/// The receiver of a string method (`s:gsub(...)`): numbers have no methods in LuaJIT.
+pub fn self_str(v: &Value, what: &str) -> Result<Str, ParseError> {
+    match v {
+        Value::Str(s) => Ok(s.clone()),
+        _ => Err(lua_err(format!("attempt to index {}", operand(what, v)))),
+    }
+}
+
+/// A string argument of a `string.*` function (`luaL_checklstring`: numbers convert).
+pub fn check_str(v: &Value, n: usize, fname: &str) -> Result<Str, ParseError> {
+    match v {
+        Value::Str(s) => Ok(s.clone()),
+        Value::Num(x) => Ok(Str::from(pob_lua::tostring_num(*x).as_str())),
+        _ => Err(lua_err(format!(
+            "bad argument #{n} to '{fname}' (string expected, got {})",
+            v.type_name()
+        ))),
+    }
+}
+
+/// An integer argument (`luaL_checkint`: numbers and numeric strings, truncated).
+fn check_int(v: &Value, n: usize, fname: &str, default: Option<i64>) -> Result<i64, ParseError> {
+    match (v, default) {
+        (Value::Nil, Some(d)) => Ok(d),
+        _ => match arith_num(v) {
+            Some(x) => Ok(i64::from(x as i32)),
+            None => Err(lua_err(format!(
+                "bad argument #{n} to '{fname}' (number expected, got {})",
+                v.type_name()
+            ))),
+        },
+    }
+}
+
+/// The replacement of a generated `gsub`: `string.upper` or a literal string.
+#[derive(Clone, Copy, Debug)]
+pub enum GsubRepl {
+    Upper,
+    Str(&'static str),
+}
+
+/// `s:gsub(pattern, repl)`: both returns (the string and the count).
+pub fn gsub_v(s: &str, pattern: &str, repl: GsubRepl) -> Result<(Value, Value), ParseError> {
+    let (out, n) = match repl {
+        GsubRepl::Upper => {
+            // `string.upper` gets the first capture (the whole match without captures); the generator only emits
+            // patterns without position captures
+            let mut f =
+                |subject: &[u8], caps: &pob_lua::Captures| caps.get(0).and_then(|c| c.bytes(subject)).map(<[u8]>::to_ascii_uppercase);
+            pob_lua::gsub(s.as_bytes(), pattern.as_bytes(), pob_lua::Repl::Fn(&mut f), None)
+        }
+        GsubRepl::Str(r) => pob_lua::gsub(s.as_bytes(), pattern.as_bytes(), pob_lua::Repl::Str(r.as_bytes()), None),
+    }
+    .map_err(|e| lua_err(e.0))?;
+    let out = String::from_utf8(out).map_err(|_| ParseError::Unrepresentable("gsub produced a non-UTF-8 string".into()))?;
+    Ok((Value::str(&out), Value::Num(n as f64)))
+}
+
+/// `s:sub(i[, j])` (Lua 5.1 `str_sub`: negative positions count from the end).
+pub fn str_sub(s: &str, i: &Value, j: &Value) -> Result<Value, ParseError> {
+    let len = s.len() as i64;
+    let rel = |p: i64| if p < 0 { len + p + 1 } else { p };
+    let start = rel(check_int(i, 1, "sub", None)?).max(1);
+    let end = rel(check_int(j, 2, "sub", Some(-1))?).min(len);
+    if start > end {
+        return Ok(Value::str(""));
+    }
+    let b = &s.as_bytes()[(start - 1) as usize..end as usize];
+    let out = std::str::from_utf8(b).map_err(|_| ParseError::Unrepresentable("string.sub split a UTF-8 sequence".into()))?;
+    Ok(Value::str(out))
+}
+
+fn check_num(v: &Value, n: usize, fname: &str) -> Result<f64, ParseError> {
+    arith_num(v).ok_or_else(|| {
+        let got = if v.is_nil() { "no value" } else { v.type_name() };
+        lua_err(format!("bad argument #{n} to '{fname}' (number expected, got {got})"))
+    })
+}
+
+/// `math.floor(x)`.
+pub fn math_floor(v: &Value) -> Result<Value, ParseError> {
+    Ok(Value::Num(check_num(v, 1, "floor")?.floor()))
+}
+
+fn nums(a: &[Value], fname: &str) -> Result<(f64, Vec<f64>), ParseError> {
+    let first = check_num(a.first().unwrap_or(&Value::Nil), 1, fname)?;
+    let rest = a
+        .iter()
+        .enumerate()
+        .skip(1)
+        .map(|(i, v)| check_num(v, i + 1, fname))
+        .collect::<Result<_, _>>()?;
+    Ok((first, rest))
+}
+
+/// `math.min(...)` (L7: the SSE fold).
+pub fn math_min(a: &[Value]) -> Result<Value, ParseError> {
+    let (first, rest) = nums(a, "min")?;
+    Ok(Value::Num(pob_lua::number::min(first, &rest)))
+}
+
+/// `math.max(...)` (L7).
+pub fn math_max(a: &[Value]) -> Result<Value, ParseError> {
+    let (first, rest) = nums(a, "max")?;
+    Ok(Value::Num(pob_lua::number::max(first, &rest)))
+}
+
+/// `bit.bor(...)`.
+pub fn bor_v(a: &[Value]) -> Result<Value, ParseError> {
+    let (first, rest) = nums(a, "bor")?;
+    let init = f64::from(pob_lua::number::tobit(first));
+    Ok(Value::Num(rest.iter().fold(init, |x, &y| pob_lua::number::bor(x, y))))
+}
+
+/// The three flag tables of Data/Global.lua the closures read as globals.
+#[derive(Clone, Copy, Debug)]
+pub enum GlobalFlags {
+    ModFlag,
+    KeywordFlag,
+    SkillType,
+}
+
+/// `ModFlag.X` / `KeywordFlag.X` / `SkillType.X` (nil for a name the table does not have).
+pub fn global_flag(t: GlobalFlags, key: &str) -> Value {
+    let g = pob_data::globals::globals();
+    let m = match t {
+        GlobalFlags::ModFlag => &g.mod_flag,
+        GlobalFlags::KeywordFlag => &g.keyword_flag,
+        GlobalFlags::SkillType => &g.skill_type,
+    };
+    m.get(key).map_or(Value::Nil, |n| Value::Num(*n))
+}
+
+/// `ModFlag[k]` with a computed key.
+pub fn global_flag_v(t: GlobalFlags, k: &Value) -> Value {
+    match k {
+        Value::Str(s) => global_flag(t, s),
+        _ => Value::Nil,
+    }
+}
+
+fn pval_lua(v: Option<&PVal>, what: &str) -> Result<Value, ParseError> {
+    match v {
+        None => Ok(Value::Nil),
+        Some(PVal::Lua(x)) => Ok(x.clone()),
+        Some(_) => Err(ParseError::Unrepresentable(format!("{what}: a closure-holding value"))),
+    }
+}
+
+/// `gemIdLookup[k]` (a module-local table the closures capture).
+pub fn named_gem_id_lookup(d: &ModParserData, k: &Value) -> Result<Value, ParseError> {
+    Ok(match k {
+        Value::Str(s) => d.gem_id_lookup.get(&**s).map_or(Value::Nil, |x| Value::Str(x.clone())),
+        _ => Value::Nil,
+    })
+}
+
+/// `conquerorList[k]`.
+pub fn named_conqueror_list(d: &ModParserData, k: &Value) -> Result<Value, ParseError> {
+    match k {
+        Value::Str(s) => pval_lua(d.conqueror_list.get(s), "conquerorList"),
+        _ => Ok(Value::Nil),
+    }
+}
+
+/// `dmgTypes[k]`.
+pub fn named_dmg_types(d: &ModParserData, k: &Value) -> Result<Value, ParseError> {
+    match k {
+        Value::Str(s) => pval_lua(d.table("dmgTypes").get(s), "dmgTypes"),
+        _ => Ok(Value::Nil),
+    }
+}
+
+/// A sequence constructor `{ a, b, ... }` (trailing nils are not part of the array).
+pub fn seq(mut v: Vec<Value>) -> Value {
+    while v.last().is_some_and(Value::is_nil) {
+        v.pop();
+    }
+    Value::table(Table {
+        array: v,
+        ..Table::default()
+    })
+}
+
+/// A constructor mixing positional and named fields, filled in source order.
+#[derive(Default)]
+pub struct TableBuilder(Table);
+
+impl TableBuilder {
+    pub fn push(&mut self, v: Value) {
+        self.0.array.push(v);
+    }
+
+    pub fn extend(&mut self, v: Vec<Value>) {
+        self.0.array.extend(v);
+    }
+
+    pub fn key(&mut self, k: &str, v: Value) {
+        if v.is_nil() {
+            self.0.hash.shift_remove(k);
+        } else {
+            self.0.hash.insert(Str::from(k), v);
+        }
+    }
+
+    pub fn build(self) -> Value {
+        let mut t = self.0;
+        while t.array.last().is_some_and(Value::is_nil) {
+            t.array.pop();
+        }
+        Value::table(t)
+    }
+}
+
+/// `mod(name, type, value, ...)` (ModTools.lua:33 with the vararg heuristic) as a Lua value.
+pub fn call_mod(mut a: Vec<Value>) -> Result<Value, ParseError> {
+    if a.len() < 3 {
+        a.resize(3, Value::Nil);
+    }
+    let value = std::mem::take(&mut a[2]);
+    Ok(Value::Mod(Rc::new(create_mod_lua(&a[0], &a[1], value, &a[3..])?)))
+}
+
+/// `flag(name, ...)` (ModParser.lua:2012) as a Lua value.
+pub fn call_flag(a: Vec<Value>) -> Result<Value, ParseError> {
+    let name = a.first().cloned().unwrap_or_default();
+    Ok(Value::Mod(Rc::new(flag(&name, a.get(1..).unwrap_or_default())?)))
+}
+
+/// `firstToUpper(str)` (ModParser.lua:13) on a Lua value: `str:gsub` needs a string.
+pub fn first_to_upper_v(v: &Value) -> Result<Value, ParseError> {
+    Ok(Value::str(&first_to_upper(&self_str(v, "local 'str'")?)))
 }

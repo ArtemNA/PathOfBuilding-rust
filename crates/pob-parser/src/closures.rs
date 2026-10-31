@@ -131,13 +131,20 @@ pub const HELPERS: [Registered; 11] = [
     ),
 ];
 
-/// Every registered definition, by id. R5.3 adds the generated closures (`closures_gen.rs`) and the hand-ported class C.
+/// Every registered definition, by id: the hand-ported helpers and the generated closures (`closures_gen.rs`, R5.3a);
+/// the hand-ported class C joins in R5.3b.
 pub fn registry() -> &'static HashMap<&'static str, Registered> {
     static R: OnceLock<HashMap<&'static str, Registered>> = OnceLock::new();
-    R.get_or_init(|| all_entries().into_iter().map(|e| (e.id, e)).collect())
+    R.get_or_init(|| {
+        let mut m = HashMap::new();
+        for e in HELPERS.iter().chain(&crate::closures_gen::GENERATED) {
+            assert!(m.insert(e.id, *e).is_none(), "{} registered twice", e.id);
+        }
+        m
+    })
 }
 
-/// The registered entries in declaration order.
+/// The hand-ported entries in declaration order (the generated ones: `closures_gen::GENERATED`).
 pub fn all_entries() -> Vec<Registered> {
     HELPERS.to_vec()
 }
