@@ -18,7 +18,7 @@ use std::rc::Rc;
 use indexmap::IndexMap;
 use pob_items::Item;
 use pob_lua::number::{max2, min2};
-use pob_mods::{Mod, ModCfg, ModStore, ModType, StoreRef, Value, compare_mod_params, create_mod};
+use pob_mods::{Mod, ModCfg, ModStore, ModType, StoreRef, Value, create_mod};
 
 use super::{base, cfg_actor, flag, inc, max_, more, nm, num_val, set_cond, sum};
 use crate::calc_tools::get_converted_mod_tags;
@@ -323,31 +323,9 @@ fn flask_recovery(db: &StoreRef, cx: &FlaskCtx, ty: &str, item: &Item) -> Vec<Rc
 
 type Buffs = IndexMap<String, Vec<Rc<Mod>>>;
 
-/// :45-67 `mergeBuff(src, destTable, destKey)`.
+/// :45-67 `mergeBuff(src, destTable, destKey)` (the algorithm lives in [`super::buffs::merge_mods`]).
 fn merge_buff(src: &[Rc<Mod>], dest_table: &mut Buffs, key: &str) {
-    let dest = dest_table.entry(key.to_owned()).or_default();
-    for m in src {
-        let mut matched = false;
-        if m.ty != Some(ModType::List) {
-            for dest_mod in dest.iter_mut() {
-                if compare_mod_params(m, dest_mod) {
-                    if let Value::Num(dv) = dest_mod.value {
-                        let mv = m.value.as_num().unwrap_or_else(|| {
-                            panic!("Modules/CalcPerform.lua:55: attempt to compare number with {}", m.value.type_name())
-                        });
-                        if mv > dv {
-                            *dest_mod = m.clone();
-                        }
-                    }
-                    matched = true;
-                    break;
-                }
-            }
-        }
-        if !matched {
-            dest.push(m.clone());
-        }
-    }
+    super::buffs::merge_mods(src, dest_table.entry(key.to_owned()).or_default());
 }
 
 /// `srcList = new("ModList"):ModList(); srcList:ScaleAddList(list, scale)`.

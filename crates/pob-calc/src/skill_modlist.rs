@@ -79,7 +79,7 @@ fn gem(id: &str) -> &'static GemEntry {
 }
 
 /// `data.minions` (Data/Minions.lua via `data/minions.json`) as a Lua table -- R6 only asks whether a type exists and its `hostile`.
-fn minion_data(id: &str) -> Value {
+pub(crate) fn minion_data(id: &str) -> Value {
     thread_local! {
         static M: std::cell::OnceCell<Value> = const { std::cell::OnceCell::new() };
     }
@@ -132,7 +132,7 @@ fn lua<T>(r: pob_mods::LuaResult<T>) -> Result<T, LuaError> {
 }
 
 /// `mergeLevelMod`'s value write (:33-44) onto a shallow copy of the mod's value.
-fn level_value(old: &Value, value: f64) -> Value {
+pub(crate) fn level_value(old: &Value, value: f64) -> Value {
     match old {
         Value::Table(_) | Value::Mod(_) => {
             let mut t = old.clone();
@@ -183,6 +183,36 @@ fn validate_effect_level(sk: &Skills, e: &EffectRef) -> Result<f64, LuaError> {
     Ok(l)
 }
 
+/// CalcActiveSkill.lua:62-72 -- every `statMap` mod of every stat, with its computed value (the shared walk of `mergeSkillInstanceMods`).
+pub(crate) fn for_each_stat_mod(
+    sk: &Skills,
+    ge: &GrantedEffect,
+    stats: &IndexMap<String, f64>,
+    mut f: impl FnMut(&SkillMod, f64),
+) -> Result<(), LuaError> {
+    for (stat, &stat_value) in stats {
+        let Some(map) = sk.stat_map(ge, stat)? else { continue };
+        for elem in &map.mods {
+            match elem {
+                ModElem::Mod(m) => {
+                    let v = map
+                        .value
+                        .unwrap_or(stat_value * map.mult.unwrap_or(1.0) / map.div.unwrap_or(1.0) + map.base.unwrap_or(0.0));
+                    f(m, v);
+                }
+                ModElem::Group { mods, div, mult } => {
+                    // a group carries no `value`/`base`
+                    let v = stat_value * mult.unwrap_or(1.0) / div.unwrap_or(1.0) + 0.0;
+                    for m in mods {
+                        f(m, v);
+                    }
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
 /// CalcActiveSkill.lua:53-79 `calcs.mergeSkillInstanceMods(env, modList, skillEffect, extraStats)`.
 fn merge_skill_instance_mods(
     sk: &Skills,
@@ -222,26 +252,7 @@ fn merge_skill_instance_mods(
             *e += v;
         }
     }
-    for (stat, &stat_value) in &stats {
-        let Some(map) = sk.stat_map(ge, stat)? else { continue };
-        for elem in &map.mods {
-            match elem {
-                ModElem::Mod(m) => {
-                    let v = map
-                        .value
-                        .unwrap_or(stat_value * map.mult.unwrap_or(1.0) / map.div.unwrap_or(1.0) + map.base.unwrap_or(0.0));
-                    merge_level_mod(ml, malformed, m, v);
-                }
-                ModElem::Group { mods, div, mult } => {
-                    // a group carries no `value`/`base`
-                    let v = stat_value * mult.unwrap_or(1.0) / div.unwrap_or(1.0) + 0.0;
-                    for m in mods {
-                        merge_level_mod(ml, malformed, m, v);
-                    }
-                }
-            }
-        }
-    }
+    for_each_stat_mod(sk, ge, &stats, |m, v| merge_level_mod(ml, malformed, m, v))?;
     // `modList:AddList(grantedEffect.baseMods)` -- the data's own mod tables
     if let Some(base) = &ge.base_mods {
         for elem in base {

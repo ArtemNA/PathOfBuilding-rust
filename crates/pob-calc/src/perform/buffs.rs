@@ -67,7 +67,11 @@ pub(super) struct Combined {
 
 /// :45-67 `mergeBuff(src, destTable, destKey)` -- the highest value of each `compareModParams`-equal mod.
 pub(super) fn merge_buff(src: &[Rc<Mod>], dest_table: &mut Buffs, key: &str) {
-    let dest = &mut dest_table.entry(key.to_owned()).or_default().mods;
+    merge_mods(src, &mut dest_table.entry(key.to_owned()).or_default().mods);
+}
+
+/// The body of `mergeBuff` over an already-resolved `destTable[destKey]` mod list (shared with the flask phase's plain-`Vec` tables).
+pub(super) fn merge_mods(src: &[Rc<Mod>], dest: &mut Vec<Rc<Mod>>) {
     for m in src {
         let mut matched = false;
         if m.ty != Some(ModType::List) {

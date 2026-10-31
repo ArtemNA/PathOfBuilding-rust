@@ -11,7 +11,7 @@
 use std::rc::Rc;
 
 use pob_data::skill_stat_map::{ModElem, SkillMod};
-use pob_mods::{Mod, ModCfg, ModType, Value};
+use pob_mods::{Mod, ModCfg, ModType};
 
 use super::buffs::{Curse, determine_curse_priority, new_list, no_spaces, scale_add};
 use super::{base, flag, inc, more, nm, set_cond, skill_list_of};
@@ -19,9 +19,10 @@ use crate::calc_tools::{GemLevelTarget, SkillInstance, build_skill_instance_stat
 use crate::env::Env;
 use crate::output::Output;
 use crate::setup::{list_mods, ok};
+use crate::skill_modlist::{for_each_stat_mod, level_value};
 
 /// CalcActiveSkill.lua:53-79 `calcs.mergeSkillInstanceMods(env, gemModList, { grantedEffect, level, quality = 0 })` for an ExtraCurse
-/// (:3150-3154). The same algorithm as `skill_modlist::merge_skill_instance_mods` (private there); a malformed data mod in a curse effect
+/// (:3150-3154). The stat walk is `skill_modlist::for_each_stat_mod`; a malformed data mod in a curse effect
 /// is not handled (none in the data reaches this call on the goldens) and stops with its line.
 fn merge_extra_curse_mods(env: &Env, ge_idx: usize, level: Option<f64>) -> Vec<Rc<Mod>> {
     let st = env.skills.as_ref().expect("skills on");
@@ -45,25 +46,11 @@ fn merge_extra_curse_mods(env: &Env, ge_idx: usize, level: Option<f64>) -> Vec<R
     )
     .unwrap_or_else(|e| panic!("{e}"));
     let mut out: Vec<Rc<Mod>> = Vec::new();
-    let mut push = |m: &SkillMod, v: f64| match m {
+    let push = |m: &SkillMod, v: f64| match m {
         SkillMod::Mod(md) => {
             // `mergeLevelMod`: `copyTable(mod, true)` with the new value.
             let mut nmod = md.clone();
-            nmod.value = match &md.value {
-                t @ (Value::Table(_) | Value::Mod(_)) => {
-                    let mut t = t.clone();
-                    let inner = t.get("mod");
-                    if inner.truthy() {
-                        let mut im = inner;
-                        im.set("value", Value::Num(v));
-                        t.set("mod", im);
-                    } else {
-                        t.set("value", Value::Num(v));
-                    }
-                    t
-                }
-                _ => Value::Num(v),
-            };
+            nmod.value = level_value(&md.value, v);
             out.push(Rc::new(nmod));
         }
         SkillMod::Malformed(mm) => unimplemented!(
@@ -72,27 +59,7 @@ fn merge_extra_curse_mods(env: &Env, ge_idx: usize, level: Option<f64>) -> Vec<R
             ge.id
         ),
     };
-    for (stat, &stat_value) in &stats {
-        let Some(map) = sk.stat_map(ge, stat).unwrap_or_else(|e| panic!("{e}")) else {
-            continue;
-        };
-        for elem in &map.mods {
-            match elem {
-                ModElem::Mod(m) => {
-                    let v = map
-                        .value
-                        .unwrap_or(stat_value * map.mult.unwrap_or(1.0) / map.div.unwrap_or(1.0) + map.base.unwrap_or(0.0));
-                    push(m, v);
-                }
-                ModElem::Group { mods, div, mult } => {
-                    let v = stat_value * mult.unwrap_or(1.0) / div.unwrap_or(1.0) + 0.0;
-                    for m in mods {
-                        push(m, v);
-                    }
-                }
-            }
-        }
-    }
+    for_each_stat_mod(sk, ge, &stats, push).unwrap_or_else(|e| panic!("{e}"));
     if let Some(base_mods) = &ge.base_mods {
         for elem in base_mods {
             match elem {

@@ -16,6 +16,7 @@ use crate::active_skill::ActiveSkill;
 use crate::env::Env;
 use crate::output::Output;
 use crate::setup::{n, new_mod, ok, s, tag};
+use crate::skill_modlist::minion_data;
 
 /// What the loop leaves for later phases.
 #[derive(Default)]
@@ -25,23 +26,7 @@ pub(crate) struct LoopOut {
     /// `guaranteedChillSkills` (:1430) -- indices into `activeSkillList`, read at :3379.
     pub guaranteed_chill_skills: Vec<usize>,
     /// `hasGuaranteedBonechill` (:1416/:1433), read at :3510 (the ailment phase, R6.9).
-    #[allow(dead_code)]
     pub has_guaranteed_bonechill: bool,
-}
-
-/// `env.data.minions[id]` (Data/Minions.lua via `data/minions.json`) -- the loop reads `limit` and `hostile`.
-fn minion_data(id: &str) -> Value {
-    thread_local! {
-        static M: std::cell::OnceCell<Value> = const { std::cell::OnceCell::new() };
-    }
-    M.with(|c| {
-        c.get_or_init(|| {
-            let j = pob_data::read_json("minions.json").unwrap_or_else(|e| panic!("pob-data: minions.json: {e}"));
-            let v = pob_data::wire::json_to_value(&j).unwrap_or_else(|e| panic!("pob-data: minions.json: {e}"));
-            v.get("minions")
-        })
-        .get(id)
-    })
 }
 
 /// :1294-1303 `activeSkill.skillModList = new("ModList"):ModList(activeSkill.baseSkillModList)` for every skill; the minion half
