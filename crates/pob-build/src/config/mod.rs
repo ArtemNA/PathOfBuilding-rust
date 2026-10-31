@@ -20,10 +20,11 @@ use pob_data::config_options::config_options;
 use pob_data::wire::Scalar;
 use pob_lua::number::min2;
 use pob_lua::{Capture, Repl, gmatch, gsub, match_, tonumber, tostring_num};
-use pob_mods::{LuaError, LuaResult, Mod, ModList, Value};
+use pob_mods::format::set_source;
+use pob_mods::{LuaError, LuaResult, ModList};
 
 use crate::load::active_config;
-use crate::model::{BuildModel, CustomModsBlockModel, InputValue};
+use crate::model::{BlockText, BuildModel, ConfigSetModel, CustomModsBlockModel, InputValue};
 
 pub use apply::{APPLY_REGISTRY, ApplyCtx, ApplyEntry, registry_drift};
 
@@ -158,28 +159,34 @@ impl ConfigState {
         ConfigState {
             input,
             placeholder,
-            custom_mods_list: vec![CustomModsBlockModel {
-                title: "Default".into(),
-                enabled: true,
-                text: String::new(),
-            }],
+            custom_mods_list: vec![CustomModsBlockModel::default_block()],
             enemy_level: 1.0,
             controls: ConfigControls::default(),
         }
     }
 
-    /// The state right after `Build:Load`: `ConfigTab:Load` (:839-938) recreates every set (`NewConfigSet` = defaults), writes
-    /// the XML's `<Input>`/`<Placeholder>` on top (already in `BuildModel.config`, incl. the :876 Placeholder->input quirk)
-    /// and activates the requested set.
+    /// One `configSets[id]` as `ConfigTab:Load` leaves it: `NewConfigSet` (defaults, in varList order) with the XML's writes
+    /// on top in document order -- a nil write (failed `tonumber`) deletes the key, a default included.
+    pub fn from_set(set: &ConfigSetModel) -> ConfigState {
+        let mut state = ConfigState::new();
+        for (k, v) in &set.input {
+            set_or_remove(&mut state.input, k, v.clone());
+        }
+        for (k, v) in &set.placeholder {
+            set_or_remove(&mut state.placeholder, k, v.map(InputValue::Num));
+        }
+        state.custom_mods_list = set.custom_mods_list.clone();
+        state
+    }
+
+    /// The active set right after `Build:Load` (`ConfigTab:Load` + `SetActiveConfigSet`, before its `BuildModList`).
     ///
     /// D17 (bug-compat): Build.lua:649-651 copies `bandit`/`pantheonMajorGod`/`pantheonMinorGod` from `<Build>` into
     /// `configTab.input` BEFORE `ConfigTab:Load`, which replaces the sets -- so with a `<Config>` element (all six goldens)
-    /// the three are lost, exactly as pob-ts (`configStateFromBuild` never reads them). Without any `<Config>` element Load
-    /// never runs and they survive in the ctor's set: reproduced through `has_config_section` (pob-ts cannot tell the
-    /// cases apart; no golden exercises it).
+    /// the three are lost. Without any `<Config>` element Load never runs and they survive in the ctor's set.
     pub fn from_build(model: &BuildModel) -> ConfigState {
-        let mut state = ConfigState::new();
         if !model.has_config_section {
+            let mut state = ConfigState::new();
             state.input.insert("bandit".into(), InputValue::Str(model.bandit.clone()));
             state
                 .input
@@ -189,15 +196,7 @@ impl ConfigState {
                 .insert("pantheonMinorGod".into(), InputValue::Str(model.pantheon_minor_god.clone()));
             return state;
         }
-        let set = active_config(model);
-        for (k, v) in &set.input {
-            state.input.insert(k.clone(), v.clone());
-        }
-        for (k, v) in &set.placeholder {
-            state.placeholder.insert(k.clone(), InputValue::Num(*v));
-        }
-        state.custom_mods_list = set.custom_mods_list.clone();
-        state
+        ConfigState::from_set(active_config(model))
     }
 
     /// `ConfigTab:UpdateLevel` (:1118-1128): `input.enemyLevel and input.enemyLevel > 0` (L4: a stored 0 falls through),
@@ -324,20 +323,51 @@ impl ConfigState {
             (entry.apply)(&val, &mut ctx)?;
         }
 
-        // Custom Modifier groups (:1163-1186).
+        // Custom Modifier groups (:1163-1186): `block.enabled ~= false and block.text and #block.text > 0`, then
+        // `block.text:gmatch(...)` -- on whatever Lua value `text` holds (BlockText).
         let mut has_block_text = false;
         for block in &self.custom_mods_list {
-            if block.enabled && !block.text.is_empty() {
-                has_block_text = true;
-                add_custom_lines(&mut mod_list, &block.text, &format!("Custom:{}", block.title));
+            if !block.enabled {
+                continue;
+            }
+            match &block.text {
+                BlockText::Str(text) if text.is_empty() => {}
+                BlockText::Str(text) => {
+                    has_block_text = true;
+                    add_custom_lines(&mut mod_list, text, &format!("Custom:{}", block.title));
+                }
+                BlockText::Bool(false) => {}
+                BlockText::Num(_) | BlockText::Bool(_) => {
+                    return Err(LuaError(format!(
+                        "Classes/ConfigTab.lua:1167: attempt to get length of field 'text' (a {} value)",
+                        if matches!(block.text, BlockText::Num(_)) {
+                            "number"
+                        } else {
+                            "boolean"
+                        }
+                    )));
+                }
+                // `#` of the element table = its child count.
+                BlockText::Element(e) if e.children.is_empty() => {}
+                BlockText::Element(_) => {
+                    return Err(LuaError(
+                        "Classes/ConfigTab.lua:1169: attempt to call method 'gmatch' (a nil value)".into(),
+                    ));
+                }
             }
         }
-        // Fallback for tests/headless (:1188-1202). `ConfigTab:Load` nils `input.customMods` (:934): dead on a loaded build.
-        if !has_block_text
-            && let Some(InputValue::Str(legacy)) = self.input.get("customMods")
-            && !legacy.is_empty()
-        {
-            add_custom_lines(&mut mod_list, legacy, "Custom");
+        // Fallback for tests/headless (:1187-1202). `ConfigTab:Load` nils `input.customMods` of every listed set (:934).
+        if !has_block_text {
+            match self.input.get("customMods") {
+                Some(InputValue::Str(legacy)) if !legacy.is_empty() => add_custom_lines(&mut mod_list, legacy, "Custom"),
+                Some(v @ (InputValue::Num(_) | InputValue::Bool(true))) => {
+                    return Err(LuaError(format!(
+                        "Classes/ConfigTab.lua:1187: attempt to get length of field 'customMods' (a {} value)",
+                        if matches!(v, InputValue::Num(_)) { "number" } else { "boolean" }
+                    )));
+                }
+                _ => {}
+            }
         }
 
         let ignored_legacy = self
@@ -406,23 +436,6 @@ fn add_custom_lines(mod_list: &mut ModList, text: &str, source: &str) {
                 set_source(&mut m, source);
                 mod_list.mods.push(Rc::new(m));
             }
-        }
-    }
-}
-
-/// ModTools.lua:239-245 `modLib.setSource`, in place, on `value.mod` too. Same as `pob_tree::modtools::set_source` -- a
-/// copy because pob-tree depends on this crate (TODO(R3.7): both move to pob-mods).
-fn set_source(m: &mut Mod, source: &str) {
-    let src: Rc<str> = Rc::from(source);
-    m.source = Some(src.clone());
-    if let Value::Table(t) = &mut m.value
-        && t.get("mod").truthy()
-    {
-        let t = Rc::make_mut(t);
-        match t.hash.get_mut("mod") {
-            Some(Value::Mod(inner)) => Rc::make_mut(inner).source = Some(src),
-            Some(v @ Value::Table(_)) => v.set("source", Value::Str(src)),
-            _ => unimplemented!("Modules/ModTools.lua:242 `value.mod.source = ...` on a non-table `value.mod`"),
         }
     }
 }

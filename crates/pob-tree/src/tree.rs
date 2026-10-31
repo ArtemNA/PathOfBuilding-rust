@@ -24,7 +24,7 @@ use pob_lua::tostring_num;
 use pob_mods::{Mod, ModList, ModType, Value, create_mod};
 use pob_parser::parse_mod_line;
 
-use crate::modtools::{format_mod, set_source};
+use pob_mods::format::{format_mod, set_source};
 
 /// A Lua error / missing data while building the tree or a spec.
 #[derive(Clone, Debug, PartialEq, Eq)]

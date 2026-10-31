@@ -2,14 +2,17 @@
 //! Build.lua:976-1015, TreeTab.lua:500-527, PassiveSpec.lua:103-195, ItemsTab.lua:1216-1327, SkillsTab.lua:440-570,
 //! ConfigTab.lua:839-938, CalcsTab.lua:163-180). Pure: no state survives a call (W12).
 
+use std::fmt;
+
 use indexmap::IndexMap;
 use pob_data::tree::TreeJson;
 use pob_lua::number::{max2, min2};
 use pob_lua::{Capture, Repl, gmatch, gsub, tonumber};
 
+use crate::config::{ConfigModLists, ConfigState};
 use crate::model::*;
 use crate::sanitise::sanitise_text;
-use crate::xml::{XmlElement, XmlError, parse_xml};
+use crate::xml::{XmlElement, XmlNode, parse_xml_document};
 
 /// GameVersions.lua:4 `legacyTargetVersion`.
 const LEGACY_TARGET_VERSION: &str = "2_6";
@@ -43,6 +46,7 @@ fn empty_element(name: &str) -> XmlElement {
         name: name.to_owned(),
         attrib: IndexMap::new(),
         children: Vec::new(),
+        empty: true,
     }
 }
 
@@ -104,7 +108,7 @@ fn config_string_value(name: &str, raw: &str) -> String {
     String::from_utf8(out).expect("ASCII-only rewrites keep UTF-8")
 }
 
-fn load_build(el: &XmlElement, m: &mut BuildModel) {
+fn load_build_section(el: &XmlElement, m: &mut BuildModel) {
     m.level = num(el, "level").unwrap_or(1.0);
     m.target_version = attr(el, "targetVersion").unwrap_or_else(|| LEGACY_TARGET_VERSION.into());
     if let Some(v) = attr(el, "viewMode") {
@@ -435,114 +439,204 @@ fn load_skills(el: &XmlElement) -> SkillsModel {
     }
 }
 
+/// ConfigTab.lua:893-897 / :911-915: `{ title = attrib.title or "Default", enabled = (enabled == "true" or enabled == nil),
+/// text = node[1] or "" }` -- the FIRST child only (a later text run, e.g. after a CDATA, is not read).
 fn load_custom_mods_block(el: &XmlElement) -> CustomModsBlockModel {
     CustomModsBlockModel {
         title: attr(el, "title").unwrap_or_else(|| "Default".into()),
         enabled: default_true(el, "enabled"),
-        text: el.text(),
+        text: match el.children.first() {
+            Some(XmlNode::Text(t)) => BlockText::Str(t.clone()),
+            Some(XmlNode::Element(e)) => BlockText::Element(e.clone()),
+            None => BlockText::Str(String::new()),
+        },
     }
 }
 
-/// ConfigTab.lua:843-881 `setInputAndPlaceholder`.
-fn apply_input(node: &XmlElement, set: &mut ConfigSetModel) {
-    let Some(name) = node.attr("name") else { return };
+/// `launch:ShowErrMsg("^1Error parsing '%s': ...", fileName)` of ConfigTab:Load.
+fn config_parse_error(what: &str) -> BuildLoadError {
+    BuildLoadError(format!("^1Error parsing '{DB_FILE_NAME}': {what}"))
+}
+
+/// ConfigTab.lua:843-881 `setInputAndPlaceholder`: every write recorded in order, a failed `tonumber` as a nil write.
+/// Its `return true` after `ShowErrMsg` is ignored by the caller and loading goes on -- but the first message is the
+/// prompt the user sees (Launch.lua:382), so the load reports it.
+fn set_input_and_placeholder(node: &XmlElement, set: &mut ConfigSetModel) -> Result<(), BuildLoadError> {
     match node.name.as_str() {
         "Input" => {
-            if let Some(n) = node.attr("number") {
-                if let Some(n) = tonumber(n) {
-                    set.input.insert(name.to_owned(), InputValue::Num(n));
-                }
+            let Some(name) = node.attr("name") else {
+                return Err(config_parse_error("'Input' element missing name attribute"));
+            };
+            let v = if let Some(n) = node.attr("number") {
+                tonumber(n).map(InputValue::Num)
             } else if let Some(s) = node.attr("string") {
-                set.input.insert(name.to_owned(), InputValue::Str(config_string_value(name, s)));
+                Some(InputValue::Str(config_string_value(name, s)))
             } else if node.attr("boolean").is_some() {
-                set.input.insert(name.to_owned(), InputValue::Bool(is_true(node, "boolean")));
-            }
+                Some(InputValue::Bool(is_true(node, "boolean")))
+            } else {
+                return Err(config_parse_error("'Input' element missing number, string or boolean attribute"));
+            };
+            set.input.insert(name.to_owned(), v);
         }
         "Placeholder" => {
+            let Some(name) = node.attr("name") else {
+                return Err(config_parse_error("'Placeholder' element missing name attribute"));
+            };
             if let Some(n) = node.attr("number") {
-                if let Some(n) = tonumber(n) {
-                    set.placeholder.insert(name.to_owned(), n);
-                }
+                set.placeholder.insert(name.to_owned(), tonumber(n));
             } else if let Some(s) = node.attr("string") {
                 // upstream quirk, ConfigTab.lua:876: a string Placeholder is written into `input` -- verbatim.
-                set.input.insert(name.to_owned(), InputValue::Str(s.to_owned()));
+                set.input.insert(name.to_owned(), Some(InputValue::Str(s.to_owned())));
+            } else {
+                return Err(config_parse_error("'Placeholder' element missing number"));
             }
         }
         _ => {}
     }
+    Ok(())
 }
 
-/// ConfigTab.lua:839-938. `input`/`placeholder` carry the XML's own values only (defaults/apply: R3.5).
-fn load_config(el: &XmlElement) -> ConfigModel {
-    let mut sets: Vec<ConfigSetModel> = Vec::new();
-    fn ensure(sets: &mut Vec<ConfigSetModel>, id: f64, title: &str) -> usize {
-        if let Some(i) = sets.iter().position(|s| s.id == id) {
-            return i;
+/// ConfigTab.lua:1280-1300 `NewConfigSet(id, title)` as far as the model goes (the defaults are `ConfigState::from_set`'s):
+/// a fresh set, replacing one with the same id in place.
+fn new_config_set(sets: &mut Vec<ConfigSetModel>, id: f64, title: Option<String>) -> usize {
+    let set = ConfigSetModel {
+        id,
+        title,
+        input: IndexMap::new(),
+        placeholder: IndexMap::new(),
+        custom_mods_list: vec![CustomModsBlockModel::default_block()],
+    };
+    match sets.iter().position(|s| s.id == id) {
+        Some(i) => {
+            sets[i] = set;
+            i
         }
-        sets.push(ConfigSetModel {
-            id,
-            title: title.to_owned(),
-            input: IndexMap::new(),
-            placeholder: IndexMap::new(),
-            custom_mods_list: Vec::new(),
-        });
-        sets.len() - 1
+        None => {
+            sets.push(set);
+            sets.len() - 1
+        }
     }
-    let top: Vec<&XmlElement> = el.child_elements().collect();
-    if top.is_empty() {
-        ensure(&mut sets, 1.0, "Default"); // ConfigTab.lua:885 `xml.empty`
+}
+
+/// The set `ConfigTab:ConfigTab` creates (:146-148 `configSetOrderList = { 1 }`, `NewConfigSet(1)` -- no title) and that a
+/// build without `<Config>` keeps.
+fn ctor_config() -> ConfigModel {
+    let mut sets = Vec::new();
+    new_config_set(&mut sets, 1.0, None);
+    ConfigModel {
+        sets,
+        active_config_set: 1.0,
+        set_order_list: vec![(1.0, 1.0)],
     }
-    for node in top {
-        if node.name != "ConfigSet" {
-            let i = ensure(&mut sets, 1.0, "Default");
-            if node.name == "CustomModifierBlock" {
-                sets[i].custom_mods_list.push(load_custom_mods_block(node));
-            } else {
-                apply_input(node, &mut sets[i]);
+}
+
+/// ConfigTab.lua:923-936, one set of `ipairs(configSetOrderList)`: the legacy `input.customMods` migration.
+fn migrate_legacy_custom_mods(set: &mut ConfigSetModel) {
+    // `configSet.input and configSet.input.customMods or ""` (L4: a stored `false` reads as "").
+    let legacy = match set.input.get("customMods") {
+        Some(Some(InputValue::Bool(false)) | None) | None => None,
+        Some(Some(v)) => Some(v.clone()),
+    };
+    let legacy_nonempty = match &legacy {
+        Some(InputValue::Str(s)) => !s.is_empty(),
+        Some(_) => true,
+        None => false,
+    };
+    let list = &set.custom_mods_list;
+    let blank = list.is_empty() || (list.len() == 1 && list[0].text == BlockText::Str(String::new()));
+    if legacy_nonempty && blank {
+        let text = match legacy.expect("non-empty") {
+            InputValue::Str(s) => BlockText::Str(s),
+            InputValue::Num(n) => BlockText::Num(n),
+            InputValue::Bool(b) => BlockText::Bool(b),
+        };
+        set.custom_mods_list = vec![CustomModsBlockModel {
+            title: "Default".into(),
+            enabled: true,
+            text,
+        }];
+    } else if list.is_empty() {
+        set.custom_mods_list = vec![CustomModsBlockModel::default_block()];
+    }
+    // `configSet.input.customMods = nil`: ConfigOptions has no `customMods` var, so no default comes back.
+    set.input.shift_remove("customMods");
+}
+
+/// ConfigTab.lua:839-938 `ConfigTab:Load` + the `SetActiveConfigSet` id resolution (:1337-1354). Children are walked as
+/// `ipairs(xml)` -- text nodes included: one creates set 1 like any non-`<ConfigSet>` child and counts as an index.
+fn load_config(el: &XmlElement) -> Result<ConfigModel, BuildLoadError> {
+    let mut sets: Vec<ConfigSetModel> = Vec::new();
+    let mut order: Vec<(f64, f64)> = vec![(1.0, 1.0)];
+    if el.empty {
+        new_config_set(&mut sets, 1.0, Some("Default".into())); // :885-887
+    }
+    for (k, node) in el.children.iter().enumerate() {
+        let index = (k + 1) as f64;
+        match node {
+            XmlNode::Element(n) if n.name == "ConfigSet" => {
+                let Some(id) = num(n, "id") else {
+                    // :905 `NewConfigSet(nil, ...)` picks a free id, :906 stores nil, :907 `configSets[nil].customModsList`.
+                    return Err(BuildLoadError::runtime("Classes/ConfigTab.lua:907: attempt to index a nil value"));
+                };
+                let i = new_config_set(&mut sets, id, Some(attr(n, "title").unwrap_or_else(|| "Default".into())));
+                match order.iter_mut().find(|(ix, _)| *ix == index) {
+                    Some(slot) => slot.1 = id,
+                    None => {
+                        order.push((index, id));
+                        order.sort_by(|a, b| a.0.total_cmp(&b.0));
+                    }
+                }
+                sets[i].custom_mods_list.clear();
+                for child in &n.children {
+                    match child {
+                        XmlNode::Element(c) if c.name == "CustomModifierBlock" => {
+                            sets[i].custom_mods_list.push(load_custom_mods_block(c));
+                        }
+                        XmlNode::Element(c) => set_input_and_placeholder(c, &mut sets[i])?,
+                        XmlNode::Text(_) => {} // `child.elem` of a string is nil
+                    }
+                }
             }
-        } else {
-            let title = attr(node, "title").unwrap_or_else(|| "Default".into());
-            let i = ensure(&mut sets, num(node, "id").unwrap_or(0.0), &title);
-            sets[i].title = title;
-            sets[i].custom_mods_list.clear();
-            for child in node.child_elements() {
-                if child.name == "CustomModifierBlock" {
-                    sets[i].custom_mods_list.push(load_custom_mods_block(child));
-                } else {
-                    apply_input(child, &mut sets[i]);
+            _ => {
+                let i = match sets.iter().position(|s| s.id == 1.0) {
+                    Some(i) => i,
+                    None => new_config_set(&mut sets, 1.0, Some("Default".into())),
+                };
+                match node {
+                    XmlNode::Element(n) if n.name == "CustomModifierBlock" => {
+                        sets[i].custom_mods_list.push(load_custom_mods_block(n));
+                    }
+                    XmlNode::Element(n) => set_input_and_placeholder(n, &mut sets[i])?,
+                    XmlNode::Text(_) => {}
                 }
             }
         }
     }
-    for set in &mut sets {
-        // Legacy customMods migration, ConfigTab.lua:923-935.
-        let legacy_text = match set.input.get("customMods") {
-            Some(InputValue::Str(s)) => s.clone(),
-            _ => String::new(),
-        };
-        let blank = set.custom_mods_list.is_empty() || (set.custom_mods_list.len() == 1 && set.custom_mods_list[0].text.is_empty());
-        if !legacy_text.is_empty() && blank {
-            set.custom_mods_list = vec![CustomModsBlockModel {
-                title: "Default".into(),
-                enabled: true,
-                text: legacy_text,
-            }];
-        } else if set.custom_mods_list.is_empty() {
-            set.custom_mods_list = vec![CustomModsBlockModel {
-                title: "Default".into(),
-                enabled: true,
-                text: String::new(),
-            }];
-        }
-        set.input.shift_remove("customMods");
+    // :924 `for _, configSetId in ipairs(self.configSetOrderList)` -- stops at the first hole.
+    let mut ix = 1.0;
+    while let Some(&(_, id)) = order.iter().find(|(x, _)| *x == ix) {
+        let i = sets
+            .iter()
+            .position(|s| s.id == id)
+            .expect("every listed id was created by NewConfigSet");
+        migrate_legacy_custom_mods(&mut sets[i]);
+        ix += 1.0;
     }
+    // :937 `SetActiveConfigSet(tonumber(xml.attrib.activeConfigSet) or 1)`.
     let requested = num(el, "activeConfigSet").unwrap_or(1.0);
     let active_config_set = if sets.iter().any(|s| s.id == requested) {
         requested
     } else {
-        sets[0].id
+        order.iter().find(|(x, _)| *x == 1.0).map_or(1.0, |&(_, id)| id)
     };
-    ConfigModel { sets, active_config_set }
+    if !sets.iter().any(|s| s.id == active_config_set) {
+        return Err(BuildLoadError::runtime("Classes/ConfigTab.lua:1352: attempt to index a nil value"));
+    }
+    Ok(ConfigModel {
+        sets,
+        active_config_set,
+        set_order_list: order,
+    })
 }
 
 /// CalcsTab.lua:163-180 (`<Section>` skipped).
@@ -563,9 +657,68 @@ fn load_calcs(el: &XmlElement) -> IndexMap<String, InputValue> {
     out
 }
 
-/// Parse a build XML and load every section the calc reads.
-pub fn load_build_xml(xml_text: &str) -> Result<BuildModel, XmlError> {
-    let root = parse_xml(xml_text)?;
+/// A build PoB refuses or fails to load: the text `launch:ShowErrMsg` shows (`string.format(fmt, ...)` of Launch.lua:386,
+/// without the frame -- see [`BuildLoadError::prompt`]). The first message wins (Launch.lua:382 `if not self.promptMsg`),
+/// so a load stops at the first one. Runtime Lua errors reach it through `launch:OnFrame`'s `PCall` (Launch.lua:118) as
+/// `In 'OnFrame': <LuaJIT message>`.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct BuildLoadError(pub String);
+
+impl BuildLoadError {
+    /// A Lua error raised while the build loads (Launch.lua:118).
+    pub fn runtime(message: &str) -> BuildLoadError {
+        BuildLoadError(format!("In 'OnFrame': {message}"))
+    }
+
+    /// `launch.promptMsg` as Launch.lua:381-388 builds it for PoB `versionNumber` (no `versionBranch`).
+    pub fn prompt(&self, version: &str) -> String {
+        format!(
+            "^1Error:\n\n^0{}\n^8v{version}\n^0Press Enter/Escape to dismiss, F4 to return to build selection, or F5 to restart the application.\nPress CTRL + C to copy error text.",
+            self.0
+        )
+    }
+}
+
+impl fmt::Display for BuildLoadError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl std::error::Error for BuildLoadError {}
+
+/// `build.dbFileName` that ConfigTab:Load's messages print: `false` -- the build comes as text (HeadlessWrapper.lua:60-62
+/// `main:SetMode("BUILD", false, name, xmlText)`), which is what `load_build_xml` models.
+const DB_FILE_NAME: &str = "false";
+
+/// Build.lua:2222-2233 `LoadDB(xmlText, "Unnamed build")`: `ParseXML`, then `dbXML[1]` must be `<PathOfBuilding>`.
+fn parse_root(xml_text: &str) -> Result<XmlElement, BuildLoadError> {
+    let mut top = parse_xml_document(xml_text).map_err(|e| {
+        if e.thrown {
+            BuildLoadError::runtime(&e.message)
+        } else {
+            BuildLoadError(format!("^1{}", e.message)) // :2229 `ShowErrMsg("^1"..errMsg)`
+        }
+    })?;
+    if top.is_empty() {
+        // :2231 `dbXML[1].elem` with `dbXML[1] == nil` (empty or whitespace-only text). Message text not oracle-checked.
+        return Err(BuildLoadError::runtime(
+            "Modules/Build.lua:2231: attempt to index field '?' (a nil value)",
+        ));
+    }
+    match top.swap_remove(0) {
+        XmlNode::Element(e) if e.name == "PathOfBuilding" => Ok(e),
+        // A text node (e.g. a UTF-8 BOM before the root) has no `.elem`.
+        _ => Err(BuildLoadError(
+            "^1Error parsing 'Unnamed build': 'PathOfBuilding' root element missing".into(),
+        )),
+    }
+}
+
+/// `xmlText` -> the model, calling `on_config` right after each `<Config>` section's `ConfigTab:Load` (where Lua's
+/// `SetActiveConfigSet` runs `BuildModList`).
+fn load_model(xml_text: &str, on_config: &mut dyn FnMut(&BuildModel) -> Result<(), BuildLoadError>) -> Result<BuildModel, BuildLoadError> {
+    let root = parse_root(xml_text)?;
     let mut m = BuildModel {
         level: 1.0,
         target_version: LEGACY_TARGET_VERSION.into(),
@@ -588,14 +741,18 @@ pub fn load_build_xml(xml_text: &str) -> Result<BuildModel, XmlError> {
         item_sets: Vec::new(),
         active_item_set: 1.0,
         skills: load_skills(&empty_element("Skills")),
-        config: load_config(&empty_element("Config")),
+        config: ctor_config(),
         calcs_input: IndexMap::new(),
         unknown_sections: Vec::new(),
         has_config_section: false,
     };
+    // Build.lua:2236-2241: only the FIRST <Build>, before every other section (it has no saver, :628-638).
+    if let Some(b) = root.child_elements().find(|e| e.name == "Build") {
+        load_build_section(b, &mut m);
+    }
     for el in root.child_elements() {
         match el.name.as_str() {
-            "Build" => load_build(el, &mut m),
+            "Build" => {}
             "Calcs" => m.calcs_input = load_calcs(el),
             "Skills" => m.skills = load_skills(el),
             "Tree" => m.tree = load_tree(el),
@@ -608,8 +765,9 @@ pub fn load_build_xml(xml_text: &str) -> Result<BuildModel, XmlError> {
             }
             "Items" => load_items_into(el, &mut m),
             "Config" => {
-                m.config = load_config(el);
+                m.config = load_config(el)?;
                 m.has_config_section = true;
+                on_config(&m)?;
             }
             other => m.unknown_sections.push(other.to_owned()),
         }
@@ -621,6 +779,72 @@ pub fn load_build_xml(xml_text: &str) -> Result<BuildModel, XmlError> {
         load_items_into(&empty_element("Items"), &mut m);
     }
     Ok(m)
+}
+
+/// Parse a build XML and load every section the calc reads (Build.lua:2222-2260 + the tab `Load`s). Errors are the ones
+/// Lua reports while doing exactly that: the XML (`nil, err` of xml.lua), the root element, ConfigTab:Load's messages and
+/// its `<ConfigSet>` without a numeric id. `BuildModList` and the calc are not run here -- see [`load_build`].
+pub fn load_build_xml(xml_text: &str) -> Result<BuildModel, BuildLoadError> {
+    load_model(xml_text, &mut |_| Ok(()))
+}
+
+/// Build.lua:898-913 `EstimatePlayerProgress`: with `characterLevelAutoMode` the level is re-estimated from the allocated
+/// tree points after the calc, and a changed level re-runs `configTab:BuildModList()` -- not ported (needs the tree and
+/// the calc output; R4 prerequisite). `LoadedBuild` keeps the `<Build level>` value and reports this marker.
+pub const ESTIMATE_PLAYER_PROGRESS_UNIMPLEMENTED: &str = "Modules/Build.lua:898-913 EstimatePlayerProgress (characterLevelAutoMode)";
+
+/// What loading a build leaves in the ConfigTab: the model, the active set's state after `BuildModList`, and its lists.
+#[derive(Debug)]
+pub struct LoadedBuild {
+    pub model: BuildModel,
+    /// `configSets[activeConfigSetId]` after the last `BuildModList` + `ConfigTab.enemyLevel`.
+    pub config: ConfigState,
+    pub config_lists: ConfigModLists,
+    /// Upstream load steps this port skips (explicit, never silent).
+    pub unimplemented: Vec<&'static str>,
+}
+
+/// `loadBuildFromXML` as far as pob-build models it: [`load_build_xml`]; each `<Config>`'s `SetActiveConfigSet` ->
+/// `BuildModList` (ConfigTab.lua:937, :1358 -- its Lua errors, e.g. an unknown `presetBossSkills`, fail the load); without
+/// `<Config>` the ctor's set with Build.lua:649-651's `bandit`/pantheons (D17); then CalcSetup.lua:663-673's pantheon
+/// lookup, which fails in `PantheonTools.lua:7` for a god `data.pantheons` does not have.
+pub fn load_build(xml_text: &str) -> Result<LoadedBuild, BuildLoadError> {
+    let mut last: Option<(ConfigState, ConfigModLists)> = None;
+    let model = load_model(xml_text, &mut |m| {
+        let mut state = ConfigState::from_set(active_config(m));
+        let lists = state.build_mod_list(m.level).map_err(|e| BuildLoadError::runtime(&e.0))?;
+        last = Some((state, lists));
+        Ok(())
+    })?;
+    let (config, config_lists) = match last {
+        Some(x) => x,
+        None => {
+            let mut state = ConfigState::from_build(&model);
+            let lists = state.build_mod_list(model.level).map_err(|e| BuildLoadError::runtime(&e.0))?;
+            (state, lists)
+        }
+    };
+    for key in ["pantheonMajorGod", "pantheonMinorGod"] {
+        let god = config.input.get(key);
+        if matches!(god, Some(InputValue::Str(g)) if g == "None") {
+            continue;
+        }
+        if !matches!(god, Some(InputValue::Str(g)) if pob_data::pantheons::pantheons().get(g.as_str()).is_some()) {
+            return Err(BuildLoadError::runtime(
+                "Modules/PantheonTools.lua:7: attempt to index local 'god' (a nil value)",
+            ));
+        }
+    }
+    let mut unimplemented = Vec::new();
+    if model.character_level_auto_mode {
+        unimplemented.push(ESTIMATE_PLAYER_PROGRESS_UNIMPLEMENTED);
+    }
+    Ok(LoadedBuild {
+        model,
+        config,
+        config_lists,
+        unimplemented,
+    })
 }
 
 /// The active `<Spec>` (index clamped as TreeTab.lua:526/:551).

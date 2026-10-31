@@ -17,7 +17,7 @@ use crate::apply_range::{apply_range, is_zero_value_line};
 use crate::lua::{
     escape_ggg_string, find, find_plain, gmatch, gsub, gsub_count, gsub_fn, lower, match_, match1, matches, round, tonumber, tostring,
 };
-use crate::mod_tools::set_source;
+use pob_mods::format::set_source;
 
 const ITEM: &str = "Classes/Item.lua";
 

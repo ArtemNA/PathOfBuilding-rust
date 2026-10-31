@@ -1,23 +1,28 @@
-//! PoB's build-XML dialect -- elements/attributes/text, entities, CDATA, comments, a leading `<?xml?>` -- as pob-ts
-//! `src/build/xml.ts` reads it (checked against the oracle's `xml.ParseXML`, D22). One linear pass over the bytes; every
-//! delimiter is ASCII, so slices of the UTF-8 input stay UTF-8 (L16: text is bytes, nothing is re-encoded).
+//! `runtime/lua/xml.lua` `ParseXML` (:35-96), ported verbatim -- the same Lua patterns run through `pob_lua::pattern`
+//! (MINEFIELD L13), on bytes (L16: the input may be any byte string; nothing is decoded or re-encoded).
 //!
-//! `runtime/lua/xml.lua` semantics kept: `decodeContent` (:9-15) = `gsub("&(.-);", ent -> entTbl[ent] or "")` -- only the
-//! five named entities survive, every other `&...;` (numeric references, unknown names) becomes "", the lazy `.-` runs to
-//! the FIRST `;` over any byte, an `&` with no later `;` stays; applied per attribute value (:28) and per text run (:46);
-//! comments are stripped before parsing (:36), so a text run continues across a comment; CDATA (:41-50) is literal and ends
-//! a run. Attributes: a repeated name keeps the last value (Lua table write), first-seen position.
-//! As pob-ts (L19): `\r\n`/`\r` -> `\n` up front, a UTF-8 BOM is dropped.
+//! What that means (R3.8a corpus, `tests/fixtures/xml-lua.json`): comments are stripped first (`<!%-%-.-%-%->`, so a text
+//! run continues across one); every text run is trimmed of ASCII whitespace and dropped when only whitespace remains; the
+//! result is the top-level list (text before/after the root and several roots included); `<?...?>` anywhere is skipped;
+//! `<!DOCTYPE`, `< a>`, ... end the tag scan and the rest becomes text; attributes are `(%w+)=(["'])(.-)%2` (no spaces
+//! around `=`, `a-b="v"` reads as `b`, a repeated key keeps the last value -- Lua table write, first-seen position here);
+//! entities are `decodeContent` (D22: only the five named ones survive, every other `&...;` becomes "" -- the lazy `.-`
+//! runs to the FIRST `;`); CDATA is literal and only kept when it has a non-space byte. No CRLF or BOM handling: a BOM is
+//! a text node before the root, as in Lua. Errors are the `nil, msg` strings of xml.lua.
 
 use std::fmt;
 
 use indexmap::IndexMap;
+use pob_lua::{Capture, Captures, PatternError, Repl, gmatch, gsub, match_};
 
+/// One element of the tree as UTF-8 strings (see [`parse_xml_document`]).
 #[derive(Clone, Debug, PartialEq)]
 pub struct XmlElement {
     pub name: String,
     pub attrib: IndexMap<String, String>,
     pub children: Vec<XmlNode>,
+    /// xml.lua's `empty` flag: set on `<a/>` (:61) and on a closed element with no children (:77-79).
+    pub empty: bool,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -26,24 +31,52 @@ pub enum XmlNode {
     Text(String),
 }
 
+/// One element of the tree as byte strings (see [`parse_xml_bytes`]).
+#[derive(Clone, Debug, PartialEq)]
+pub struct RawXmlElement {
+    pub name: Vec<u8>,
+    pub attrib: IndexMap<Vec<u8>, Vec<u8>>,
+    pub children: Vec<RawXmlNode>,
+    pub empty: bool,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum RawXmlNode {
+    Element(RawXmlElement),
+    Text(Vec<u8>),
+}
+
+/// A failed `ParseXML`: `thrown == false` is the `nil, errMsg` return (the message is xml.lua's text);
+/// `thrown == true` is a Lua error raised by the pattern engine (e.g. "pattern too complex").
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct XmlError {
     pub message: String,
-    /// 1-based line and column (characters) of the failure.
-    pub line: usize,
-    pub column: usize,
+    pub thrown: bool,
 }
 
 impl fmt::Display for XmlError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{} at {}:{}", self.message, self.line, self.column)
+        f.write_str(&self.message)
     }
 }
 
 impl std::error::Error for XmlError {}
 
+impl From<PatternError> for XmlError {
+    fn from(e: PatternError) -> Self {
+        XmlError {
+            message: e.0,
+            thrown: true,
+        }
+    }
+}
+
+fn err<T>(message: String) -> Result<T, XmlError> {
+    Err(XmlError { message, thrown: false })
+}
+
 impl XmlElement {
-    /// The element children, text dropped.
+    /// The element children, text dropped (`type(node) == "table"`).
     pub fn child_elements(&self) -> impl Iterator<Item = &XmlElement> {
         self.children.iter().filter_map(|c| match c {
             XmlNode::Element(e) => Some(e),
@@ -51,7 +84,7 @@ impl XmlElement {
         })
     }
 
-    /// The text children concatenated in order, exactly as written (no trim).
+    /// The text children concatenated in order.
     pub fn text(&self) -> String {
         let mut out = String::new();
         for c in &self.children {
@@ -68,242 +101,178 @@ impl XmlElement {
     }
 }
 
-/// xml.lua:9-15 `decodeContent`.
-pub fn decode_content(content: &str) -> String {
-    let b = content.as_bytes();
-    let mut out = String::with_capacity(content.len());
-    let mut last = 0;
-    let mut i = 0;
-    while i < b.len() {
-        if b[i] != b'&' {
-            i += 1;
-            continue;
-        }
-        let Some(rel) = b[i + 1..].iter().position(|&c| c == b';') else {
-            break; // no `;` after this `&`: neither it nor any later `&` can match
+/// LuaJIT `lj_char_isspace` (C locale): `%s`.
+fn is_space(c: u8) -> bool {
+    c == b' ' || (b'\t'..=b'\r').contains(&c)
+}
+
+/// `s:find("%S")`.
+fn has_non_space(s: &[u8]) -> bool {
+    s.iter().any(|&c| !is_space(c))
+}
+
+fn cap<'a>(s: &'a [u8], caps: &Captures, i: usize) -> &'a [u8] {
+    match caps.get(i) {
+        Some(Capture::Str { start, end }) => &s[start..end],
+        other => unreachable!("capture {i} is a string capture, got {other:?}"),
+    }
+}
+
+fn pos(caps: &Captures, i: usize) -> usize {
+    match caps.get(i) {
+        Some(Capture::Pos(p)) => p,
+        other => unreachable!("capture {i} is a position capture, got {other:?}"),
+    }
+}
+
+/// xml.lua:9-15 `decodeContent`: `content:gsub("&(.-);", entTbl[ent] or "")`.
+pub fn decode_content(content: &[u8]) -> Vec<u8> {
+    if !content.contains(&b'&') {
+        return content.to_vec(); // gsub finds no match: the subject unchanged
+    }
+    let mut ent = |subject: &[u8], caps: &Captures| -> Option<Vec<u8>> {
+        let rep: &[u8] = match cap(subject, caps, 0) {
+            b"lt" => b"<",
+            b"gt" => b">",
+            b"amp" => b"&",
+            b"apos" => b"'",
+            b"quot" => b"\"",
+            _ => b"",
         };
-        let semi = i + 1 + rel;
-        out.push_str(&content[last..i]);
-        out.push_str(match &content[i + 1..semi] {
-            "lt" => "<",
-            "gt" => ">",
-            "amp" => "&",
-            "apos" => "'",
-            "quot" => "\"",
-            _ => "",
-        });
-        i = semi + 1;
-        last = i;
-    }
-    out.push_str(&content[last..]);
-    out
-}
-
-fn is_name_start(c: u8) -> bool {
-    c.is_ascii_alphabetic() || c == b'_' || c == b':'
-}
-
-fn is_name_char(c: u8) -> bool {
-    c.is_ascii_alphanumeric() || matches!(c, b'_' | b':' | b'.' | b'-')
-}
-
-struct Parser<'a> {
-    s: &'a str,
-    b: &'a [u8],
-    i: usize,
-}
-
-impl<'a> Parser<'a> {
-    fn fail<T>(&self, message: String, at: usize) -> Result<T, XmlError> {
-        let (mut line, mut column) = (1, 1);
-        for ch in self.s[..at.min(self.s.len())].chars() {
-            if ch == '\n' {
-                line += 1;
-                column = 1;
-            } else {
-                column += ch.len_utf16();
-            }
-        }
-        Err(XmlError { message, line, column })
-    }
-
-    fn starts_with(&self, p: &str) -> bool {
-        self.b[self.i..].starts_with(p.as_bytes())
-    }
-
-    fn find(&self, p: &str, from: usize) -> Option<usize> {
-        let from = from.min(self.b.len());
-        self.s[from..].find(p).map(|k| from + k)
-    }
-
-    fn skip_ws(&mut self) {
-        while self.i < self.b.len() && matches!(self.b[self.i], b' ' | b'\t' | b'\n' | b'\r') {
-            self.i += 1;
-        }
-    }
-
-    /// Comments and `<?...?>` wherever they may appear.
-    fn skip_misc(&mut self) -> Result<bool, XmlError> {
-        if self.starts_with("<!--") {
-            let Some(e) = self.find("-->", self.i + 4) else {
-                return self.fail("unterminated comment".into(), self.i);
-            };
-            self.i = e + 3;
-            return Ok(true);
-        }
-        if self.starts_with("<?") {
-            let Some(e) = self.find("?>", self.i + 2) else {
-                return self.fail("unterminated processing instruction".into(), self.i);
-            };
-            self.i = e + 2;
-            return Ok(true);
-        }
-        Ok(false)
-    }
-
-    fn parse_name(&mut self) -> Result<&'a str, XmlError> {
-        if self.i >= self.b.len() || !is_name_start(self.b[self.i]) {
-            return self.fail("expected a name".into(), self.i);
-        }
-        let start = self.i;
-        self.i += 1;
-        while self.i < self.b.len() && is_name_char(self.b[self.i]) {
-            self.i += 1;
-        }
-        Ok(&self.s[start..self.i])
-    }
-
-    fn parse_attr_value(&mut self) -> Result<String, XmlError> {
-        let quote = self.b.get(self.i).copied();
-        let q = match quote {
-            Some(b'"') => "\"",
-            Some(b'\'') => "'",
-            _ => return self.fail("expected an attribute value".into(), self.i),
-        };
-        self.i += 1;
-        let Some(e) = self.find(q, self.i) else {
-            return self.fail("unterminated attribute value".into(), self.i);
-        };
-        let raw = &self.s[self.i..e];
-        self.i = e + 1;
-        Ok(decode_content(raw))
-    }
-
-    fn parse_attributes(&mut self) -> Result<IndexMap<String, String>, XmlError> {
-        let mut attrib = IndexMap::new();
-        loop {
-            self.skip_ws();
-            if self.i >= self.b.len() || matches!(self.b[self.i], b'>' | b'/') {
-                return Ok(attrib);
-            }
-            let name = self.parse_name()?;
-            self.skip_ws();
-            if self.b.get(self.i) != Some(&b'=') {
-                return self.fail(format!("expected '=' after attribute '{name}'"), self.i);
-            }
-            self.i += 1;
-            self.skip_ws();
-            let v = self.parse_attr_value()?;
-            attrib.insert(name.to_owned(), v);
-        }
-    }
-
-    fn parse_cdata(&mut self) -> Result<&'a str, XmlError> {
-        let Some(e) = self.find("]]>", self.i + 9) else {
-            return self.fail("unterminated CDATA section".into(), self.i);
-        };
-        let content = &self.s[self.i + 9..e];
-        self.i = e + 3;
-        Ok(content)
-    }
-
-    fn parse_element(&mut self) -> Result<XmlElement, XmlError> {
-        self.i += 1; // '<'
-        let name = self.parse_name()?.to_owned();
-        self.skip_ws();
-        let attrib = self.parse_attributes()?;
-        if self.starts_with("/>") {
-            self.i += 2;
-            return Ok(XmlElement {
-                name,
-                attrib,
-                children: Vec::new(),
-            });
-        }
-        if self.b.get(self.i) != Some(&b'>') {
-            return self.fail(format!("expected '>' or '/>' for '<{name}'"), self.i);
-        }
-        self.i += 1;
-        let mut children = Vec::new();
-        // `buf` = decoded text so far, `raw` = the pending undecoded run (continues across comments, ends at CDATA).
-        let mut buf = String::new();
-        let mut raw = String::new();
-        loop {
-            if self.i >= self.b.len() {
-                return self.fail(format!("unterminated element '{name}'"), self.i);
-            }
-            if self.skip_misc()? {
-                continue;
-            }
-            if self.starts_with("<![CDATA[") {
-                buf.push_str(&decode_content(&raw));
-                raw.clear();
-                let c = self.parse_cdata()?;
-                buf.push_str(c);
-                continue;
-            }
-            if self.starts_with("</") {
-                buf.push_str(&decode_content(&raw));
-                if !buf.is_empty() {
-                    children.push(XmlNode::Text(std::mem::take(&mut buf)));
-                }
-                self.i += 2;
-                let close = self.parse_name()?;
-                self.skip_ws();
-                if self.b.get(self.i) != Some(&b'>') {
-                    return self.fail(format!("expected '>' after '</{close}'"), self.i);
-                }
-                self.i += 1;
-                if close != name {
-                    return self.fail(format!("mismatched closing tag: expected '</{name}>', got '</{close}>'"), self.i);
-                }
-                return Ok(XmlElement { name, attrib, children });
-            }
-            if self.b[self.i] == b'<' {
-                buf.push_str(&decode_content(&raw));
-                raw.clear();
-                if !buf.is_empty() {
-                    children.push(XmlNode::Text(std::mem::take(&mut buf)));
-                }
-                children.push(XmlNode::Element(self.parse_element()?));
-                continue;
-            }
-            // Plain text up to the next '<' (a whole UTF-8 run at once).
-            let end = self.b[self.i..]
-                .iter()
-                .position(|&c| c == b'<')
-                .map_or(self.b.len(), |k| self.i + k);
-            raw.push_str(&self.s[self.i..end]);
-            self.i = end;
-        }
-    }
-}
-
-/// Parse a build XML into its root element.
-pub fn parse_xml(raw_text: &str) -> Result<XmlElement, XmlError> {
-    let no_crlf = raw_text.replace("\r\n", "\n").replace('\r', "\n");
-    let text = no_crlf.strip_prefix('\u{feff}').unwrap_or(&no_crlf);
-    let mut p = Parser {
-        s: text,
-        b: text.as_bytes(),
-        i: 0,
+        Some(rep.to_vec())
     };
-    p.skip_ws();
-    while p.skip_misc()? {
-        p.skip_ws();
+    gsub(content, b"&(.-);", Repl::Fn(&mut ent), None).expect("decodeContent pattern").0
+}
+
+/// xml.lua:25-31 `parseAttribs`: `str:gsub("(%w+)=([\"'])(.-)%2", ...)` -- `attrib[key] = decodeContent(val)`.
+fn parse_attribs(s: &[u8]) -> Result<IndexMap<Vec<u8>, Vec<u8>>, XmlError> {
+    let mut attrib = IndexMap::new();
+    for caps in gmatch(s, br#"(%w+)=(["'])(.-)%2"#) {
+        let caps = caps?;
+        attrib.insert(cap(s, &caps, 0).to_vec(), decode_content(cap(s, &caps, 2)));
     }
-    if p.i >= p.b.len() || p.b[p.i] != b'<' {
-        return p.fail("expected the root element".into(), p.i);
+    Ok(attrib)
+}
+
+/// An open element on xml.lua's `stack` (the bottom one is the nameless `top` list).
+struct Frame {
+    name: Vec<u8>,
+    attrib: IndexMap<Vec<u8>, Vec<u8>>,
+    children: Vec<RawXmlNode>,
+}
+
+const CDATA_PAT: &[u8] = b"^%s*([^<]-)%s*<!%[CDATA%[(.-)%]%]>()";
+const TAG_PAT: &[u8] = b"^%s*([^<]-)%s*<([%?/]?)([%w:]+)(.-)([%?/]?)>()";
+
+/// xml.lua:35-96 `xml.ParseXML(str)` on bytes: the top-level list.
+pub fn parse_xml_bytes(input: &[u8]) -> Result<Vec<RawXmlNode>, XmlError> {
+    let s = gsub(input, b"<!%-%-.-%-%->", Repl::Str(b""), None)?.0; // :36 strip comments
+    let s = s.as_slice();
+    let mut stack: Vec<Frame> = vec![Frame {
+        name: Vec::new(),
+        attrib: IndexMap::new(),
+        children: Vec::new(),
+    }];
+    let mut i = 1usize;
+    loop {
+        let top = stack.last_mut().expect("the bottom frame is never popped");
+        let ie;
+        if let Some(caps) = match_(s, CDATA_PAT, Some(i as i64))? {
+            // :43-50 CDATA section
+            let (content, cdata) = (cap(s, &caps, 0), cap(s, &caps, 1));
+            if has_non_space(content) {
+                top.children.push(RawXmlNode::Text(decode_content(content)));
+            }
+            if has_non_space(cdata) {
+                top.children.push(RawXmlNode::Text(cdata.to_vec()));
+            }
+            ie = pos(&caps, 2);
+        } else {
+            let Some(caps) = match_(s, TAG_PAT, Some(i as i64))? else {
+                break; // :54-57 no more tags
+            };
+            let (content, cs, elem, attrib, ce) = (
+                cap(s, &caps, 0),
+                cap(s, &caps, 1),
+                cap(s, &caps, 2),
+                cap(s, &caps, 3),
+                cap(s, &caps, 4),
+            );
+            ie = pos(&caps, 5);
+            if has_non_space(content) {
+                top.children.push(RawXmlNode::Text(decode_content(content)));
+            }
+            if cs == b"?" || ce == b"?" {
+                // :61 processing instruction, ignored
+            } else if ce == b"/" {
+                top.children.push(RawXmlNode::Element(RawXmlElement {
+                    name: elem.to_vec(),
+                    attrib: parse_attribs(attrib)?,
+                    children: Vec::new(),
+                    empty: true,
+                }));
+            } else if cs.is_empty() {
+                let frame = Frame {
+                    name: elem.to_vec(),
+                    attrib: parse_attribs(attrib)?,
+                    children: Vec::new(),
+                };
+                stack.push(frame);
+            } else {
+                // :71-83 end tag
+                let elem_s = String::from_utf8_lossy(elem);
+                if stack.len() == 1 {
+                    return err(format!("nothing to close with '{elem_s}'"));
+                }
+                let closed = stack.pop().expect("len > 1");
+                if closed.name != elem {
+                    return err(format!(
+                        "trying to close <{}> with '{elem_s}'",
+                        String::from_utf8_lossy(&closed.name)
+                    ));
+                }
+                let empty = closed.children.is_empty();
+                stack.last_mut().expect("len > 1").children.push(RawXmlNode::Element(RawXmlElement {
+                    name: closed.name,
+                    attrib: closed.attrib,
+                    children: closed.children,
+                    empty,
+                }));
+            }
+        }
+        i = ie;
     }
-    p.parse_element()
+    if stack.len() > 1 {
+        let name = &stack.last().expect("len > 1").name;
+        return err(format!("unclosed element '{}'", String::from_utf8_lossy(name)));
+    }
+    // :89-92 trailing text
+    let caps = match_(s, b"^%s*(.-)%s*$", Some(i as i64))?.expect("`^%s*(.-)%s*$` always matches");
+    let content = cap(s, &caps, 0);
+    let mut bottom = stack.pop().expect("the bottom frame");
+    if has_non_space(content) {
+        bottom.children.push(RawXmlNode::Text(decode_content(content)));
+    }
+    Ok(bottom.children)
+}
+
+fn utf8(v: Vec<u8>) -> String {
+    String::from_utf8(v).expect("ASCII-delimited slices of a UTF-8 input stay UTF-8")
+}
+
+fn to_utf8_node(n: RawXmlNode) -> XmlNode {
+    match n {
+        RawXmlNode::Text(t) => XmlNode::Text(utf8(t)),
+        RawXmlNode::Element(e) => XmlNode::Element(XmlElement {
+            name: utf8(e.name),
+            attrib: e.attrib.into_iter().map(|(k, v)| (utf8(k), utf8(v))).collect(),
+            children: e.children.into_iter().map(to_utf8_node).collect(),
+            empty: e.empty,
+        }),
+    }
+}
+
+/// `xml.ParseXML(str)` of a UTF-8 text: every delimiter, trimmed byte and removed entity is ASCII, so all pieces stay UTF-8.
+pub fn parse_xml_document(text: &str) -> Result<Vec<XmlNode>, XmlError> {
+    Ok(parse_xml_bytes(text.as_bytes())?.into_iter().map(to_utf8_node).collect())
 }

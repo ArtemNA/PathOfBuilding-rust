@@ -70,7 +70,7 @@ fn usage_and_unknown_args() {
 #[test]
 fn dual_savior_all_unimplemented_but_non_strict_parity() {
     let golden = find_golden("Dual Savior").unwrap().load_snapshot().unwrap();
-    let output = pob_cli::calc(&std::fs::read_to_string(dual_savior_xml()).unwrap()).unwrap();
+    let output = pob_cli::calc(&pob_build::read_build_file(dual_savior_xml()).unwrap()).unwrap();
     let report = compare_stats(&golden.stats, &output.stats, &[]);
     assert_eq!(report.unimplemented, 632);
     assert!(is_parity(&report, false));
@@ -100,7 +100,7 @@ fn meta_against_goldens() {
     for (g, (name, want)) in GOLDEN_BUILDS.iter().zip(pinned) {
         assert_eq!(g.name, name);
         let snap = g.load_snapshot().unwrap();
-        let out = pob_cli::calc(&std::fs::read_to_string(g.xml_path()).unwrap()).unwrap();
+        let out = pob_cli::calc(&pob_build::read_build_file(g.xml_path()).unwrap()).unwrap();
         let diffs = compare_meta(&snap.meta, out.meta.as_ref());
         let got: Vec<(&str, i64, i64)> = diffs
             .iter()

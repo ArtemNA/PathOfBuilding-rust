@@ -18,8 +18,6 @@ serde_json.workspace = true
 
 [dev-dependencies]
 pob-golden.workspace = true
-# format_source_mod for the config dump (pob-tree depends on this crate; a dev-only cycle is fine for integration tests).
-pob-tree.workspace = true
 
 [lints]
 workspace = true

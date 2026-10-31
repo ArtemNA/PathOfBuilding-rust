@@ -507,7 +507,7 @@ pub(crate) fn merge_keystones(env: &mut Env, db: &StoreRef) {
         for m in mods {
             if from_tree {
                 let mut c = m.deep_copy();
-                pob_tree::modtools::set_source(&mut c, source.as_deref().expect("fromTree implies a source"));
+                pob_mods::format::set_source(&mut c, source.as_deref().expect("fromTree implies a source"));
                 db.borrow_mut().add_mod(Rc::new(c));
             } else {
                 db.borrow_mut().add_mod(m);

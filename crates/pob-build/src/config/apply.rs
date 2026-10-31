@@ -28,7 +28,8 @@ use serde_json::Value as Json;
 use super::{ConfigState, ConfigValue, lua_tostring, truthy};
 use crate::model::InputValue;
 
-const CO: &str = "Modules/ConfigOptions.lua";
+/// The chunk name LuaJIT reports for ConfigOptions.lua (R3.8a: `./Modules/ConfigOptions.lua:2276: ...`).
+const CO: &str = "./Modules/ConfigOptions.lua";
 const CONFIG: &str = "Config";
 
 /// What an `apply(val, modList, enemyModList, build)` closure reaches: the two lists and `build.configTab`.
@@ -383,7 +384,7 @@ fn preset_boss_skills(v: &ConfigValue, c: &mut ApplyCtx<'_>) -> LuaResult<()> {
     if !is(v, "None") {
         let name = lua_tostring(v);
         let Some(boss) = boss_skills().get(&name) else {
-            return Err(LuaError(format!("{CO}:2275: attempt to index local 'bossData' (a nil value)")));
+            return Err(LuaError(format!("{CO}:2276: attempt to index local 'bossData' (a nil value)")));
         };
         let sel = c.tab.list_value_at("enemyIsBoss", c.tab.sel_index("enemyIsBoss"));
         let mut is_uber = sel.as_ref().is_some_and(|x| is(x, "Uber"));

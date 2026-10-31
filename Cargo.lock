@@ -52,7 +52,6 @@ dependencies = [
  "pob-lua",
  "pob-mods",
  "pob-parser",
- "pob-tree",
  "serde",
  "serde_json",
 ]

@@ -6,6 +6,8 @@ use indexmap::IndexMap;
 use serde::Serialize;
 use serde::ser::{SerializeMap, Serializer};
 
+use crate::xml::XmlElement;
+
 /// A Lua table keyed by numbers (`jewels[nodeId] = itemId`, `masteryEffects[mastery] = effect`): insertion order, a repeated
 /// key overwrites in place. Serialized with the keys as JS `String(n)` (integers as digits), like pob-ts' `Record<number, ..>`.
 #[derive(Clone, Debug, PartialEq)]
@@ -344,32 +346,94 @@ pub struct SkillsModel {
     pub active_skill_set: f64,
 }
 
+/// A custom-modifier block's `text` (ConfigTab.lua:893-897/:911-915 `node[1] or ""`, :926-929 legacy `input.customMods`):
+/// whatever Lua value lands there -- the element's FIRST child (a string, or an element table) or the legacy input.
+#[derive(Clone, Debug, PartialEq)]
+pub enum BlockText {
+    Str(String),
+    Num(f64),
+    Bool(bool),
+    /// `node[1]` was an element: Lua keeps the table.
+    Element(XmlElement),
+}
+
+impl BlockText {
+    pub fn as_str(&self) -> Option<&str> {
+        match self {
+            BlockText::Str(s) => Some(s),
+            _ => None,
+        }
+    }
+}
+
+impl Serialize for BlockText {
+    fn serialize<S: Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        match self {
+            BlockText::Str(t) => s.serialize_str(t),
+            BlockText::Num(n) => s.serialize_f64(*n),
+            BlockText::Bool(b) => s.serialize_bool(*b),
+            // Not a pob-ts shape (pob-ts concatenates the text); never on the goldens.
+            BlockText::Element(e) => s.serialize_str(&e.text()),
+        }
+    }
+}
+
 #[derive(Clone, Debug, Serialize)]
 pub struct CustomModsBlockModel {
     pub title: String,
     pub enabled: bool,
-    pub text: String,
+    pub text: BlockText,
 }
 
-/// ConfigTab.lua:839-938. `input`/`placeholder` hold only what the XML's own `<Input>`/`<Placeholder>` set -- the
-/// ConfigOptions defaults (`NewConfigSet`) and `apply` are R3.5.
+impl CustomModsBlockModel {
+    /// `{ title = "Default", enabled = true, text = "" }`.
+    pub fn default_block() -> CustomModsBlockModel {
+        CustomModsBlockModel {
+            title: "Default".into(),
+            enabled: true,
+            text: BlockText::Str(String::new()),
+        }
+    }
+}
+
+/// `t[k] = v` writes with `v` possibly nil: serialized as the pob-ts form (only the non-nil writes).
+fn ser_writes<V: Serialize, S: Serializer>(m: &IndexMap<String, Option<V>>, s: S) -> Result<S::Ok, S::Error> {
+    let mut out = s.serialize_map(None)?;
+    for (k, v) in m {
+        if let Some(v) = v {
+            out.serialize_entry(k, v)?;
+        }
+    }
+    out.end()
+}
+
+/// One `configSets[id]` of ConfigTab.lua:839-938 as the XML wrote it: `input`/`placeholder` are the writes of
+/// `setInputAndPlaceholder` in order (`None` = a nil write: `tonumber` failed, which DELETES the `NewConfigSet` default),
+/// applied on top of the ConfigOptions defaults by `ConfigState::from_set`. `title` is `None` only for the ctor's set
+/// (`NewConfigSet(1)`, ConfigTab.lua:147) of a file without `<Config>`.
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ConfigSetModel {
     pub id: f64,
-    pub title: String,
-    #[serde(serialize_with = "ser_map")]
-    pub input: IndexMap<String, InputValue>,
-    #[serde(serialize_with = "ser_map")]
-    pub placeholder: IndexMap<String, f64>,
+    pub title: Option<String>,
+    #[serde(serialize_with = "ser_writes")]
+    pub input: IndexMap<String, Option<InputValue>>,
+    #[serde(serialize_with = "ser_writes")]
+    pub placeholder: IndexMap<String, Option<f64>>,
     pub custom_mods_list: Vec<CustomModsBlockModel>,
 }
 
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ConfigModel {
+    /// `configSets`, in creation order; a repeated id replaces the set in place (`NewConfigSet`).
     pub sets: Vec<ConfigSetModel>,
+    /// `activeConfigSetId` as `SetActiveConfigSet` (:1337-1354) resolves it.
     pub active_config_set: f64,
+    /// `configSetOrderList` as `(index, id)` pairs sorted by index -- sparse (`[index] = id` with the `<ConfigSet>`'s
+    /// position among ALL children of `<Config>`, :906). Not part of the pob-ts form.
+    #[serde(skip)]
+    pub set_order_list: Vec<(f64, f64)>,
 }
 
 /// `getStats()._meta` as the model alone can answer it (raw XML counts; tree/skill resolution supersedes in R3.6).

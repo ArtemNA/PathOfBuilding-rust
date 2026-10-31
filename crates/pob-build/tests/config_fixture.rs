@@ -5,9 +5,9 @@
 
 use std::time::Instant;
 
-use pob_build::{BuildModel, ConfigState, ConfigValue, load_build_xml};
+use pob_build::{BlockText, BuildModel, ConfigState, ConfigValue, load_build_xml};
 use pob_golden::registry::GOLDEN_BUILDS;
-use pob_tree::modtools::format_source_mod;
+use pob_mods::format::format_source_mod;
 use serde_json::{Map, Value as Json, json};
 
 fn fixture(name: &str, kind: &str) -> Json {
@@ -18,6 +18,8 @@ fn fixture(name: &str, kind: &str) -> Json {
     j["config"].take()
 }
 
+/// "As the docker fixture" (`pob_build::file`): the raw file bytes, CRLF kept -- the LuaJIT dumps of R3.1 were taken in
+/// Linux docker, where `io.open(path, "r")` does not translate line ends. (The config dump does not depend on it.)
 fn model(name: &str) -> BuildModel {
     let g = GOLDEN_BUILDS.iter().find(|g| g.name == name).unwrap();
     load_build_xml(&std::fs::read_to_string(g.xml_path()).unwrap()).unwrap()
@@ -239,7 +241,7 @@ fn set_placeholder_dance() {
 #[test]
 fn custom_mods_blocks() {
     let mut s = ConfigState::new();
-    s.custom_mods_list[0].text = "^7  10% increased Damage  \nnot a mod line\n".into();
+    s.custom_mods_list[0].text = BlockText::Str("^7  10% increased Damage  \nnot a mod line\n".into());
     s.custom_mods_list[0].title = "Mine".into();
     let l = s.build_mod_list(90.0).unwrap();
     let custom: Vec<String> = l
@@ -250,7 +252,7 @@ fn custom_mods_blocks() {
         .filter(|x| x.contains("|Custom"))
         .collect();
     assert_eq!(custom, ["10|Custom:Mine|Damage|INC|-|-|-"]);
-    s.custom_mods_list[0].text.clear();
+    s.custom_mods_list[0].text = BlockText::Str(String::new());
     s.input.insert("customMods".into(), ConfigValue::Str("10% increased Damage".into()));
     let l = s.build_mod_list(90.0).unwrap();
     assert!(l.mod_list.mods.iter().any(|x| format_source_mod(x) == "10|Custom|Damage|INC|-|-|-"));

@@ -8,16 +8,18 @@ fn fail(msg: &str) -> ExitCode {
     ExitCode::from(2)
 }
 
+/// The build text as desktop PoB reads it (`io.open(path, "r")`, Build.lua:2267: CRLF -> LF, `pob_build::file`). Stdin
+/// gets the same treatment: the oracle adapter pipes the file's content.
 fn read_input(src: &str) -> Result<String, String> {
     if src == "-" {
         let mut bytes = Vec::new();
         std::io::stdin()
             .read_to_end(&mut bytes)
             .map_err(|e| format!("cannot read stdin: {e}"))?;
-        String::from_utf8(bytes).map_err(|e| format!("stdin is not valid UTF-8: {e}"))
+        let text = String::from_utf8(bytes).map_err(|e| format!("stdin is not valid UTF-8: {e}"))?;
+        Ok(pob_build::desktop_text_mode(&text))
     } else {
-        let bytes = std::fs::read(src).map_err(|e| format!("cannot read '{src}': {e}"))?;
-        String::from_utf8(bytes).map_err(|e| format!("'{src}' is not valid UTF-8: {e}"))
+        pob_build::read_build_file(src).map_err(|e| format!("cannot read '{src}': {e}"))
     }
 }
 

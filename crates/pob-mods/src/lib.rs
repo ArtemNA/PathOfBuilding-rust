@@ -9,6 +9,7 @@
 pub mod calc_lib;
 pub mod data;
 mod eval;
+pub mod format;
 pub mod matching;
 pub mod store;
 pub mod types;

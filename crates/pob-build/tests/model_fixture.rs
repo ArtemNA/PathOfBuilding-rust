@@ -41,24 +41,63 @@ fn diff(path: &str, want: &Json, got: &Json) -> Option<String> {
     }
 }
 
+/// What `runtime/lua/xml.lua` does to a text run (`^%s*([^<]-)%s*<`, :54): strip LuaJIT `%s` (space, `\t`..`\r`) at
+/// both ends. pob-ts kept text runs verbatim, so its `items[].raw` / `tree.specs[].url` are mapped through this before
+/// the exact comparison. Input: the same bytes the parser gets here (`read_build_file`, CRLF -> LF as desktop PoB; pob-ts
+/// normalised CRLF too). Exact for these fields: xml.lua trims before `decodeContent`, and decoding can change the
+/// edges only when an entity sits at the very start/end of the run -- none does in the goldens' item texts and URLs.
+fn lua_trim_text(s: &str) -> String {
+    let lua_space = |c: char| c == ' ' || ('\t'..='\r').contains(&c);
+    s.trim_matches(lua_space).to_owned()
+}
+
+/// Maps `items[].raw` and `tree.specs[].url` of the pob-ts form through [`lua_trim_text`]; returns how many changed.
+fn to_lua_text_form(want: &mut Json) -> usize {
+    let mut changed = 0;
+    let mut fix = |v: &mut Json| {
+        if let Json::String(s) = v {
+            let t = lua_trim_text(s);
+            if t != *s {
+                *s = t;
+                changed += 1;
+            }
+        }
+    };
+    for item in want["items"].as_array_mut().unwrap() {
+        fix(&mut item["raw"]);
+    }
+    for spec in want["tree"]["specs"].as_array_mut().unwrap() {
+        if let Some(url) = spec.get_mut("url") {
+            fix(url);
+        }
+    }
+    changed
+}
+
+/// The goldens as desktop PoB loads them (CRLF -> LF, Build.lua:2267) = pob-ts, except the R6.1 text trim of
+/// `items[].raw` / `tree.specs[].url`, pinned: 136 values (128 raw + 8 url) differ between pob-ts and Lua.
 #[test]
 fn model_equals_pob_ts_for_6_goldens() {
+    let mut trimmed = 0;
     for g in GOLDEN_BUILDS {
-        let xml = std::fs::read_to_string(g.xml_path()).unwrap_or_else(|e| panic!("{}: {e}", g.name));
+        let xml = read_build_file(g.xml_path()).unwrap_or_else(|e| panic!("{}: {e}", g.name));
         let model = load_build_xml(&xml).unwrap_or_else(|e| panic!("{}: {e}", g.name));
         let got = serde_json::to_value(&model).unwrap();
-        let want: Json = serde_json::from_str(&std::fs::read_to_string(fixture_path(g.name)).unwrap()).unwrap();
+        let mut want: Json = serde_json::from_str(&std::fs::read_to_string(fixture_path(g.name)).unwrap()).unwrap();
+        trimmed += to_lua_text_form(&mut want);
         if let Some(d) = diff("$", &want, &got) {
             panic!("{}: {d}", g.name);
         }
     }
+    println!("pob-ts -> Lua text form: {trimmed} values trimmed");
+    assert_eq!(trimmed, 136, "128 items[].raw + 8 tree.specs[].url");
 }
 
 /// W12: a load leaves nothing behind -- A then B equals B alone.
 #[test]
 fn no_shared_state_between_loads() {
-    let a = std::fs::read_to_string(GOLDEN_BUILDS[0].xml_path()).unwrap();
-    let b = std::fs::read_to_string(GOLDEN_BUILDS[1].xml_path()).unwrap();
+    let a = read_build_file(GOLDEN_BUILDS[0].xml_path()).unwrap();
+    let b = read_build_file(GOLDEN_BUILDS[1].xml_path()).unwrap();
     let _ = load_build_xml(&a).unwrap();
     let after = serde_json::to_value(load_build_xml(&b).unwrap()).unwrap();
     let alone = serde_json::to_value(load_build_xml(&b).unwrap()).unwrap();
@@ -114,7 +153,7 @@ fn expected(name: &str) -> Expected {
 fn counts_match_pob_ts_load_test() {
     let tree = pob_data::tree::load_tree("3_13").unwrap();
     for g in GOLDEN_BUILDS {
-        let m = load_build_xml(&std::fs::read_to_string(g.xml_path()).unwrap()).unwrap();
+        let m = load_build_xml(&read_build_file(g.xml_path()).unwrap()).unwrap();
         let want = expected(g.name);
         let spec = active_spec(&m);
         let groups = active_skill_groups(&m);
@@ -155,7 +194,10 @@ fn counts_match_pob_ts_load_test() {
             assert_eq!(groups[2].source.as_deref(), Some("Item:1:The Saviour, Legion Sword"));
             assert_eq!(groups[2].gems[0].name_spec, "Reflection");
             assert!(!groups[0].gems[1].enabled);
-            assert_eq!(active_config(&m).input.get("conditionLeeching"), Some(&InputValue::Bool(true)));
+            assert_eq!(
+                active_config(&m).input.get("conditionLeeching"),
+                Some(&Some(InputValue::Bool(true)))
+            );
             assert_eq!(m.calcs_input.len(), 2);
         }
     }
@@ -180,18 +222,22 @@ fn lua_nuances() {
     let c = active_config(&m);
     assert_eq!(
         c.input["enemyIsBoss"],
-        InputValue::Str("Boss".into()),
+        Some(InputValue::Str("Boss".into())),
         "title-case then Uber Atziri -> Boss"
     );
-    assert_eq!(c.input["presetBossSkills"], InputValue::Str("Atziri Flameblast".into()));
+    assert_eq!(c.input["presetBossSkills"], Some(InputValue::Str("Atziri Flameblast".into())));
     assert_eq!(
         c.input["p"],
-        InputValue::Str("s".into()),
+        Some(InputValue::Str("s".into())),
         "ConfigTab.lua:876 Placeholder string -> input"
     );
-    assert_eq!(c.placeholder["q"], 3.0);
+    assert_eq!(c.placeholder["q"], Some(3.0));
     assert!(!c.input.contains_key("customMods"));
-    assert_eq!(c.custom_mods_list[0].text, "+1 to Life", "legacy customMods migration :923-935");
+    assert_eq!(
+        c.custom_mods_list[0].text,
+        BlockText::Str("+1 to Life".into()),
+        "legacy customMods migration :923-935"
+    );
     let empty = load_build_xml("<PathOfBuilding/>").unwrap();
     assert!(!empty.has_config_section);
     assert_eq!(empty.config.sets.len(), 1);

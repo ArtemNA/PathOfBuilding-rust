@@ -1132,7 +1132,7 @@ pub fn init_env(build: Rc<BuildModel>, opts: InitEnvOptions) -> Result<Env, Init
                     }
                     // `copyTable(mod)` + setSource on the copy (R4).
                     let mut c = m.deep_copy();
-                    pob_tree::modtools::set_source(&mut c, item.mod_source.as_deref().unwrap_or("nil"));
+                    pob_mods::format::set_source(&mut c, item.mod_source.as_deref().unwrap_or("nil"));
                     ok(item_mod_db.borrow_mut().scale_add_mod(&Rc::new(c), scale, false));
                 }
                 for (mult_name, property) in INFLUENCE_MULTS {
