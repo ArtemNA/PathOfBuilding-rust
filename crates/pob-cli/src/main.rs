@@ -134,14 +134,24 @@ fn run_bench(args: &[String]) -> ExitCode {
     println!("full calculate_file ({mode:?}), {runs} runs (+1 warm-up), ms: median [min-max]");
     for (name, path) in jobs {
         match pob_cli::bench(&path, runs, mode) {
-            Ok(r) => println!(
-                "{name}: {} | {} | {} | {} | {}",
-                fmt_row("total", &r.total),
-                fmt_row("load", &r.load),
-                fmt_row("initEnv", &r.init_env),
-                fmt_row("perform", &r.perform),
-                fmt_row("estimate", &r.estimate),
-            ),
+            Ok(r) => {
+                println!(
+                    "{name}: {} | {} | {} | {} | {}",
+                    fmt_row("total", &r.total),
+                    fmt_row("load", &r.load),
+                    fmt_row("initEnv", &r.init_env),
+                    fmt_row("perform", &r.perform),
+                    fmt_row("estimate", &r.estimate),
+                );
+                if !r.init_env_all.is_empty() {
+                    println!(
+                        "    {} | {} (x{})",
+                        fmt_row("buildOutput", &r.build_output),
+                        fmt_row("initEnv all", &r.init_env_all),
+                        r.init_env_calls
+                    );
+                }
+            }
             Err(e) => return fail(&e),
         }
     }

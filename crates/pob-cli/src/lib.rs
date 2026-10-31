@@ -97,6 +97,12 @@ pub struct BenchRow {
     pub init_env: Vec<f64>,
     pub perform: Vec<f64>,
     pub estimate: Vec<f64>,
+    /// `calcs.buildOutput(MAIN)` = initEnv + perform above (every nested run included).
+    pub build_output: Vec<f64>,
+    /// Every initEnv of the buildOutput session, summed (R7-perf).
+    pub init_env_all: Vec<f64>,
+    /// initEnv calls per buildOutput (0 on the pre-R6 path, which has no session).
+    pub init_env_calls: usize,
 }
 
 /// Median / min / max of a non-empty sample (median of an even count = mean of the two middle values).
@@ -122,6 +128,9 @@ pub fn bench(path: &Path, runs: usize, mode: ParseMode) -> Result<BenchRow, Stri
         init_env: vec![],
         perform: vec![],
         estimate: vec![],
+        build_output: vec![],
+        init_env_all: vec![],
+        init_env_calls: 0,
     };
     for _ in 0..runs {
         let t = Instant::now();
@@ -137,6 +146,11 @@ pub fn bench(path: &Path, runs: usize, mode: ParseMode) -> Result<BenchRow, Stri
         row.init_env.push(init_env_ms);
         row.perform.push(perform_ms);
         row.estimate.push(estimate_ms);
+        row.build_output.push(init_env_ms + perform_ms);
+        if let Some(log) = &res.session_log {
+            row.init_env_all.push(log.init_env_ms.iter().sum());
+            row.init_env_calls = log.init_env_calls;
+        }
     }
     Ok(row)
 }

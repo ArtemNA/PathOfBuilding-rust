@@ -387,3 +387,70 @@ fn perf_repeated_runs() {
     }
     println!("{}", rows.join("\n"));
 }
+
+/// `format!("{:?}")` of an env's modDB buckets (names, mods, tags -- `tag.div` cells included).
+fn mod_db_dump(env: &pob_calc::Env) -> String {
+    match &env.mod_db.borrow().kind {
+        pob_mods::StoreKind::Db(db) => format!("{:?}", db.mods),
+        pob_mods::StoreKind::List(_) => unreachable!("modDB is a ModDB"),
+    }
+}
+
+/// R7-perf: the build state a session shares between its initEnvs (`BuildShared`: `build.spec` after `PostLoad`, the config lists,
+/// the loaded `build.skillsTab`) gives the env a standalone initEnv gives, and a second MAIN initEnv + perform of the session = the
+/// first (output, modDB, unimplemented), on 6 goldens.
+#[test]
+fn shared_build_state_second_run_equals_first() {
+    for g in GOLDEN_BUILDS {
+        let m = Rc::new(model(g.name));
+        let sess = CalcSession::new(m.clone(), CalculateOptions::default());
+        let env1 = sess.init_env(CalcMode::Main).unwrap();
+        // the same env as a standalone initEnv (own spec, own config lists, own SkillsTab:Load)
+        let alone = pob_calc::init_env_with(
+            m.clone(),
+            pob_calc::InitEnvOptions {
+                parse_mode: pob_calc::ParseMode::Full,
+                ..pob_calc::InitEnvOptions::default()
+            },
+            true,
+        )
+        .unwrap();
+        assert_eq!(
+            mod_db_dump(&env1),
+            mod_db_dump(&alone),
+            "{}: modDB, session vs standalone initEnv",
+            g.name
+        );
+        assert_eq!(env1.unimplemented, alone.unimplemented, "{}", g.name);
+        // (Debug: `EffectRef` compares by identity, its Debug prints the effect)
+        assert_eq!(
+            format!("{:?}", env1.skills.as_ref().unwrap().tab),
+            format!("{:?}", alone.skills.as_ref().unwrap().tab),
+            "{}: skills tab after the merge",
+            g.name
+        );
+        let db1 = mod_db_dump(&env1);
+        let r1 = sess.perform(env1, false);
+        let env2 = sess.init_env(CalcMode::Main).unwrap();
+        assert!(Rc::ptr_eq(&r1.borrow().env.spec, &env2.spec), "{}: one spec per session", g.name);
+        assert_eq!(mod_db_dump(&env2), db1, "{}: modDB, second initEnv vs first", g.name);
+        let r2 = sess.perform(env2, false);
+        let (a, b) = (r1.borrow(), r2.borrow());
+        assert_eq!(
+            format!("{:?}", pob_calc::output_to_stats(&a.state.player.output)),
+            format!("{:?}", pob_calc::output_to_stats(&b.state.player.output)),
+            "{}: player output, second run vs first",
+            g.name
+        );
+        assert_eq!(a.env.unimplemented, b.env.unimplemented, "{}", g.name);
+        // the shared tab is the load's, untouched by the merges of both runs
+        let shared = sess.shared().unwrap();
+        let fresh = pob_calc::skills::SkillsState::load_tab(&m, &b.env.ordered_slots, &b.env.items).unwrap();
+        assert_eq!(
+            format!("{:?}", shared.skills_tab.as_ref().unwrap()),
+            format!("{fresh:?}"),
+            "{}: shared skills tab",
+            g.name
+        );
+    }
+}

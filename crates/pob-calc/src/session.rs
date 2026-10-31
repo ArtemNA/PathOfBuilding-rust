@@ -6,8 +6,10 @@
 //! Ownership (R7-ARCH §1 p. 1): a [`CalcSession`] holds what upstream keeps on the `build` object between runs -- the build model and
 //! the parsed items (`build.itemsTab.items`) -- plus the process-global state a run leaves behind: the cache and the writes into the
 //! shared `data.skills` tables ([`SkillsCarry`]; the warcry tag cell already lives in the thread-local `pob_data::skills()`). Every
-//! `initEnv` makes a fresh [`Env`] (upstream does too); the passive spec and `build.skillsTab` are rebuilt from the model each time,
-//! which is what upstream's shared copies hold after the first MAIN initEnv (see [`CalcSession::init_env`]).
+//! `initEnv` makes a fresh [`Env`] (upstream does too). R7-perf: the passive spec (after `PostLoad`) and the loaded
+//! `build.skillsTab` are made once per session ([`BuildShared`]): every env shares the spec, and each initEnv merges the granted
+//! skills into its own copy of the loaded tab -- which is what upstream's shared tab holds after the first MAIN initEnv (see
+//! [`CalcSession::init_env`]).
 //!
 //! `cacheData` stores the WHOLE env (`Env = env`), and upstream keeps writing into the top env after caching it (the buildOutput
 //! tail): the run is moved once into an `Rc<RefCell<CalcRun>>` ([`RunRef`]) shared by the cache and the caller -- no copies. An env
@@ -28,7 +30,7 @@ use pob_items::Item;
 
 use crate::calculate::{CalcError, CalculateOptions};
 use crate::env::Env;
-use crate::init_env::{InitEnvOptions, init_env_seeded, parse_items};
+use crate::init_env::{BuildShared, init_env_shared, parse_items};
 use crate::perform::{ActorState, Checkpoint, PerformState, finish_output_spec, mod_db_flag, perform_skip_ehp};
 
 /// `env.mode` -- the three keys of `GlobalCache.cachedData`.
@@ -216,8 +218,10 @@ impl From<CalcError> for SessionError {
 pub struct SessionCore {
     build: Rc<BuildModel>,
     opts: CalculateOptions,
-    /// `build.itemsTab.items`, parsed once (ItemsTab:Load).
-    items: IndexMap<u64, Rc<Item>>,
+    /// `build.itemsTab.items`, parsed once (ItemsTab:Load); moved into [`SessionCore::shared`] by the first initEnv.
+    items: RefCell<Option<IndexMap<u64, Rc<Item>>>>,
+    /// `build.spec` + the loaded `build.skillsTab`, made by the first initEnv (R7-perf).
+    shared: RefCell<Option<Rc<BuildShared>>>,
     cache: RefCell<GlobalCache>,
     carry: RefCell<SkillsCarry>,
     log: RefCell<SessionLog>,
@@ -361,7 +365,8 @@ impl CalcSession {
             core: Rc::new(SessionCore {
                 build,
                 opts,
-                items,
+                items: RefCell::new(Some(items)),
+                shared: RefCell::new(None),
                 cache: RefCell::new(GlobalCache::default()),
                 carry: RefCell::new(SkillsCarry::default()),
                 log: RefCell::new(SessionLog::default()),
@@ -437,13 +442,9 @@ impl CalcSession {
         }
         self.core.log.borrow_mut().init_env_calls += 1;
         let t0 = std::time::Instant::now();
-        let opts = InitEnvOptions {
-            spec: None,
-            items: Some(self.core.items.clone()),
-            parse_mode: self.core.opts.parse_mode,
-        };
+        let shared = self.shared().map_err(|e| SessionError::Calc(CalcError(format!("initEnv: {e}"))))?;
         let carry = self.core.carry.borrow().clone();
-        let mut env = init_env_seeded(self.core.build.clone(), opts, true, Some(&carry))
+        let mut env = init_env_shared(self.core.build.clone(), &shared, self.core.opts.parse_mode, Some(&carry))
             .map_err(|e| SessionError::Calc(CalcError(format!("initEnv: {e}"))))?;
         if let Some(st) = &env.skills {
             let mut c = self.core.carry.borrow_mut();
@@ -463,6 +464,23 @@ impl CalcSession {
         }
         self.core.log.borrow_mut().init_env_ms.push(t0.elapsed().as_secs_f64() * 1000.0);
         Ok(env)
+    }
+
+    /// The session's [`BuildShared`], made on first use (a load error is returned, and retried by the next initEnv).
+    pub fn shared(&self) -> Result<Rc<BuildShared>, crate::init_env::InitEnvError> {
+        if let Some(s) = self.core.shared.borrow().as_ref() {
+            return Ok(s.clone());
+        }
+        let items = self
+            .core
+            .items
+            .borrow()
+            .clone()
+            .expect("the items are moved into BuildShared only once it exists");
+        let s = Rc::new(BuildShared::new(&self.core.build, items, self.core.opts.parse_mode)?);
+        *self.core.items.borrow_mut() = None;
+        *self.core.shared.borrow_mut() = Some(s.clone());
+        Ok(s)
     }
 
     /// `calcs.perform(env, skipEHP)` (CalcPerform.lua:1286-3990) -- the env moves into the returned run, which the cache shares

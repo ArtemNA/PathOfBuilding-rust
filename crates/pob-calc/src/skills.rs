@@ -103,11 +103,22 @@ fn group_slot_name(sg: &SocketGroup) -> Option<String> {
 impl SkillsState {
     /// `SkillsTab:Load` + `UpdateSocketGroups` (Build.lua:691) -- the tab as the first `BuildOutput` finds it.
     pub fn load(build: &BuildModel, slots: &[Slot], items: &IndexMap<u64, Rc<Item>>) -> Result<SkillsState, LuaError> {
+        Ok(SkillsState::from_tab(build, SkillsState::load_tab(build, slots, items)?))
+    }
+
+    /// The tab half of [`SkillsState::load`]: a function of the model, the ordered slots and the items only (R7-perf: a
+    /// [`crate::init_env::BuildShared`] loads it once per build).
+    pub fn load_tab(build: &BuildModel, slots: &[Slot], items: &IndexMap<u64, Rc<Item>>) -> Result<SkillsTab, LuaError> {
         let sk = skills();
         let mut tab = load_skills_tab(&build.skills, &sk)?;
         update_socket_groups(&mut tab, slots, items, &sk);
-        Ok(SkillsState {
-            skills: sk,
+        Ok(tab)
+    }
+
+    /// The state of a fresh initEnv over a loaded tab (no active skills yet, no data writes).
+    pub fn from_tab(build: &BuildModel, tab: SkillsTab) -> SkillsState {
+        SkillsState {
+            skills: skills(),
             tab,
             active_skill_list: Vec::new(),
             main_skill: None,
@@ -116,7 +127,7 @@ impl SkillsState {
             cost_wiped: Vec::new(),
             order_notes: Vec::new(),
             aux_skill_list: Vec::new(),
-        })
+        }
     }
 
     /// :1312-1320 `socketedGems` of one slot: the enabled gems with `gemData` of the slot's own (not granted) enabled groups.

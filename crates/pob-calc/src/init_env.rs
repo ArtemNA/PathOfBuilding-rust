@@ -10,7 +10,7 @@ use std::cell::RefCell;
 use std::rc::{Rc, Weak};
 
 use indexmap::IndexMap;
-use pob_build::{BuildModel, ConfigState, InputValue, active_item_set, active_skill_groups, active_spec};
+use pob_build::{BuildModel, ConfigModLists, ConfigState, InputValue, active_item_set, active_skill_groups, active_spec};
 use pob_data::constants::{constants, monster_table_at};
 use pob_data::pantheons::pantheons;
 use pob_data::rules::rules;
@@ -52,6 +52,64 @@ impl std::error::Error for InitEnvError {}
 impl From<TreeError> for InitEnvError {
     fn from(e: TreeError) -> Self {
         InitEnvError(e.0)
+    }
+}
+
+/// R7-perf: wall time of initEnv by phase, summed over every initEnv of the thread while on (off by default: one `Cell` read per
+/// phase mark). Diagnostics only -- nothing in the calculation reads it.
+pub mod profile {
+    use std::cell::{Cell, RefCell};
+    use std::time::Instant;
+
+    use indexmap::IndexMap;
+
+    thread_local! {
+        static ON: Cell<bool> = const { Cell::new(false) };
+        static ACC: RefCell<IndexMap<&'static str, (f64, usize)>> = RefCell::new(IndexMap::new());
+    }
+
+    /// Turns the per-phase timing on or off for this thread.
+    pub fn enable(on: bool) {
+        ON.with(|c| c.set(on));
+    }
+
+    /// The phases timed since the last `take`, in first-seen order: `(phase, total ms, count)`.
+    pub fn take() -> Vec<(&'static str, f64, usize)> {
+        ACC.with(|a| {
+            std::mem::take(&mut *a.borrow_mut())
+                .into_iter()
+                .map(|(k, (ms, n))| (k, ms, n))
+                .collect()
+        })
+    }
+
+    /// Adds `ms` to `phase` (a no-op while off).
+    pub fn add(phase: &'static str, ms: f64) {
+        if ON.with(Cell::get) {
+            ACC.with(|a| {
+                let mut a = a.borrow_mut();
+                let e = a.entry(phase).or_insert((0.0, 0));
+                e.0 += ms;
+                e.1 += 1;
+            });
+        }
+    }
+
+    /// Times the stretch since the previous mark.
+    pub(crate) struct Marker(Option<Instant>);
+
+    impl Marker {
+        pub(crate) fn new() -> Marker {
+            Marker(ON.with(Cell::get).then(Instant::now))
+        }
+
+        pub(crate) fn mark(&mut self, phase: &'static str) {
+            if let Some(t) = self.0 {
+                let now = Instant::now();
+                add(phase, (now - t).as_secs_f64() * 1000.0);
+                self.0 = Some(now);
+            }
+        }
     }
 }
 
@@ -460,6 +518,11 @@ fn new_actor(mod_db: &StoreRef, level: f64) -> Rc<RefCell<CalcActor>> {
 
 // --- the entry point ----------------------------------------------------------------------------------------------
 
+/// What the body of initEnv reads of [`InitEnvOptions`] once the spec and the items are in hand.
+struct InitEnvMode {
+    parse_mode: pob_parser::ParseMode,
+}
+
 /// `calcs.initEnv(build, "MAIN")` WITHOUT the skill phase -- the pre-R6 path its callers (the "= pob-ts" gates, the R3/R5 env gates,
 /// `examples/bench_env.rs`) pin. The skill phase: [`init_env_with`] / `CalculateOptions::skills` (default on).
 pub fn init_env(build: Rc<BuildModel>, opts: InitEnvOptions) -> Result<Env, InitEnvError> {
@@ -475,33 +538,139 @@ pub fn init_env_with(build: Rc<BuildModel>, opts: InitEnvOptions, skills: bool) 
 /// [`init_env_with`] for a [`crate::session::CalcSession`] run (R7.2): `carry` = the writes earlier initEnvs of the process left on
 /// the shared `data.skills` tables (`grantedEffect.fromItem = true` CalcSetup.lua:1633-1634, `levels[level].cost = {}`
 /// SkillsTab.lua:ProcessSocketGroup) -- upstream's next initEnv starts from them, so the skill phase here does too.
-#[allow(clippy::too_many_lines)]
 pub fn init_env_seeded(
     build: Rc<BuildModel>,
     opts: InitEnvOptions,
     skills: bool,
     carry: Option<&crate::session::SkillsCarry>,
 ) -> Result<Env, InitEnvError> {
-    // --- (1) env + the three ModDBs + the actors (:490-547) ---------------------------------------------------------
+    let mut prof = profile::Marker::new();
+    let parse_mode = opts.parse_mode;
+    let (spec, parsed_items) = load_spec(&build, opts)?;
+    prof.mark("spec: load + PostLoad");
+    init_env_core(build, spec, parsed_items, parse_mode, None, skills, carry)
+}
+
+/// The build state upstream keeps on `build` and every initEnv reads unchanged (R7-perf): `build.spec` after `PostLoad`,
+/// `build.itemsTab.items`, `build.configTab` with the lists its load-time `BuildModList` made, and `build.skillsTab` as
+/// `SkillsTab:Load` + `UpdateSocketGroups` left it (Build.lua:691) -- BEFORE the granted-skill merge of an initEnv
+/// (CalcSetup.lua:1448-1563), which every initEnv makes on its own copy of the tab.
+///
+/// Why sharing is exact: after load nothing in initEnv/perform takes the spec mutably (`Env::spec` is an `Rc`), and
+/// `SkillsState::load` is a function of the model, the ordered slots (spec + item set) and the items -- all fixed for a build.
+/// The mod objects of the spec and of the config lists are shared between runs, as upstream's (`env.spec = build.spec`,
+/// CalcSetup.lua:486; `modDB:AddList(build.configTab.modList)`, :681-684): a `tag.div` written by one run is seen by the next
+/// (MINEFIELD-RUST R4), as on LuaJIT. Each env gets its own copy of the config state (`EstimatePlayerProgress` rebuilds it).
+pub struct BuildShared {
+    pub spec: Rc<PassiveSpec>,
+    pub items: ParsedItems,
+    /// `SkillsTab:Load` + `UpdateSocketGroups` on the ordered slots of `spec`, or the Lua error it raised (reported at the
+    /// point of initEnv where the load used to run).
+    pub skills_tab: Result<crate::skills_tab::SkillsTab, crate::calc_tools::LuaError>,
+    /// `build.configTab` after its `BuildModList` (which runs `UpdateLevel`), and the lists it made.
+    pub config: ConfigState,
+    pub config_lists: ConfigModLists,
+}
+
+impl BuildShared {
+    /// Loads the spec (+ `PostLoad` in `ParseMode::Full`) and the skills tab of `build` over `items`.
+    pub fn new(build: &BuildModel, items: ParsedItems, parse_mode: pob_parser::ParseMode) -> Result<BuildShared, InitEnvError> {
+        let opts = InitEnvOptions {
+            spec: None,
+            items: Some(items),
+            parse_mode,
+        };
+        let mut prof = profile::Marker::new();
+        let (spec, items) = load_spec(build, opts)?;
+        prof.mark("once per session: spec load + PostLoad");
+        let (config, config_lists) = load_config(build, parse_mode)?;
+        prof.mark("once per session: config BuildModList");
+        let slots = build_ordered_slots(&spec, active_item_set(build));
+        let skills_tab = SkillsState::load_tab(build, &slots, &items);
+        prof.mark("once per session: SkillsTab:Load");
+        Ok(BuildShared {
+            spec,
+            items,
+            skills_tab,
+            config,
+            config_lists,
+        })
+    }
+}
+
+/// [`init_env_seeded`] over a [`BuildShared`] (the session path, R7-perf): no spec load, no `SkillsTab:Load` -- a copy of the
+/// shared tab instead.
+pub fn init_env_shared(
+    build: Rc<BuildModel>,
+    shared: &BuildShared,
+    parse_mode: pob_parser::ParseMode,
+    carry: Option<&crate::session::SkillsCarry>,
+) -> Result<Env, InitEnvError> {
+    init_env_core(
+        build,
+        shared.spec.clone(),
+        shared.items.clone(),
+        parse_mode,
+        Some(shared),
+        true,
+        carry,
+    )
+}
+
+/// `build.itemsTab.items`: item id -> the parsed item.
+type ParsedItems = IndexMap<u64, Rc<Item>>;
+
+/// `build.configTab` as the load leaves it: the XML's config set, then `BuildModList` -- the lists `build.configTab.modList`/
+/// `.enemyModList` initEnv adds (CalcSetup.lua:681-684); it also runs `UpdateLevel`, which sets `configTab.enemyLevel`.
+fn load_config(build: &BuildModel, parse_mode: pob_parser::ParseMode) -> Result<(ConfigState, ConfigModLists), InitEnvError> {
+    let mut config = ConfigState::from_build(build);
+    config.parse_mode = parse_mode;
+    let lists = config.build_mod_list(build.level).map_err(|e| InitEnvError(e.to_string()))?;
+    Ok((config, lists))
+}
+
+/// The spec (`PassiveSpec:Load`, then `PostLoad` in `ParseMode::Full`) and `build.itemsTab.items`, from `opts` or loaded.
+fn load_spec(build: &BuildModel, opts: InitEnvOptions) -> Result<(Rc<PassiveSpec>, ParsedItems), InitEnvError> {
     let mut spec = match opts.spec {
         Some(s) => s,
-        None => PassiveSpec::load_mode(active_spec(&build), opts.parse_mode)?,
+        None => PassiveSpec::load_mode(active_spec(build), opts.parse_mode)?,
     };
     // `build.itemsTab.items` (ItemsTab:Load) exists before any calculation; the spec's PostLoad needs it.
     let parsed_items = match opts.items {
         Some(i) => i,
-        None => parse_items(&build, opts.parse_mode),
+        None => parse_items(build, opts.parse_mode),
     };
     // Build.lua:680 `PostLoad` -> BuildClusterJewelGraphs (R5.5a). `ParseMode::CacheOnly` reproduces pob-ts, which has no
     // cluster graphs (its gates -- env (a), perform/defence/full fixtures -- are pinned without them).
     if opts.parse_mode == pob_parser::ParseMode::Full && !spec.post_loaded {
         post_load_spec(&mut spec, &parsed_items)?;
     }
-    let mut config = ConfigState::from_build(&build);
-    config.parse_mode = opts.parse_mode;
-    // `build.configTab.modList`/`.enemyModList` are what `ConfigTab:BuildModList` left behind at load; it also runs
-    // `UpdateLevel`, which sets `configTab.enemyLevel`.
-    let config_lists = config.build_mod_list(build.level).map_err(|e| InitEnvError(e.to_string()))?;
+    Ok((Rc::new(spec), parsed_items))
+}
+
+#[allow(clippy::too_many_lines)]
+fn init_env_core(
+    build: Rc<BuildModel>,
+    spec: Rc<PassiveSpec>,
+    parsed_items: ParsedItems,
+    parse_mode: pob_parser::ParseMode,
+    shared: Option<&BuildShared>,
+    skills: bool,
+    carry: Option<&crate::session::SkillsCarry>,
+) -> Result<Env, InitEnvError> {
+    let mut prof = profile::Marker::new();
+    let opts = InitEnvMode { parse_mode };
+    // --- (1) env + the three ModDBs + the actors (:490-547) ---------------------------------------------------------
+    let own_lists;
+    let (config, config_lists) = match shared {
+        Some(sh) => (sh.config.clone(), &sh.config_lists),
+        None => {
+            let (config, lists) = load_config(&build, opts.parse_mode)?;
+            own_lists = lists;
+            (config, &own_lists)
+        }
+    };
+    prof.mark("config");
 
     let mod_db = ModStore::new_db(None);
     let enemy_db = ModStore::new_db(None);
@@ -900,6 +1069,8 @@ pub fn init_env_seeded(
 
     // (9) `override.conditions` (:696-700) -- no override in MAIN.
 
+    prof.mark("(1)-(9) env, base modDB, enemy, config lists");
+
     // --- (10) allocated nodes (:702-776) -------------------------------------------------------------------------------
     let allocated_notable_count = f64::from(env.spec.allocated_notable_count);
     let allocated_keystone_count = f64::from(env.spec.allocated_keystone_count);
@@ -934,19 +1105,27 @@ pub fn init_env_seeded(
     }
     // :792-796 `allocatedTattooTypes` -- tattoos are P5; the table is always empty.
 
+    prof.mark("(10)-(11) allocated nodes");
+
     // --- (12) items (:800-1370) --------------------------------------------------------------------------------------
     let item_set = active_item_set(&build);
     env.ordered_slots = build_ordered_slots(&env.spec, item_set);
     env.items = parsed_items;
     // `build.skillsTab` as the first BuildOutput finds it: SkillsTab:Load + UpdateSocketGroups (Build.lua:691), R6.2/R6.3.
     if skills {
-        let mut st = SkillsState::load(&build, &env.ordered_slots, &env.items).map_err(|e| InitEnvError(format!("SkillsTab:Load: {e}")))?;
+        let loaded = match shared.map(|sh| &sh.skills_tab) {
+            Some(Ok(tab)) => Ok(SkillsState::from_tab(&build, tab.clone())),
+            Some(Err(e)) => Err(e.clone()),
+            None => SkillsState::load(&build, &env.ordered_slots, &env.items),
+        };
+        let mut st = loaded.map_err(|e| InitEnvError(format!("SkillsTab:Load: {e}")))?;
         if let Some(c) = carry {
             st.from_item_marks.clone_from(&c.from_item_marks);
             st.cost_wiped.clone_from(&c.cost_wiped);
         }
         env.skills = Some(st);
     }
+    prof.mark("(12) orderedSlots + SkillsTab:Load");
     let use_second_weapon_set = item_set.use_second_weapon_set;
     let mut items: IndexMap<String, Rc<Item>> = IndexMap::new();
     let mut jewel_limits: IndexMap<String, f64> = IndexMap::new();
@@ -1528,6 +1707,8 @@ pub fn init_env_seeded(
         }
     }
 
+    prof.mark("(12) items");
+
     // --- (13) mergeDB (:1385) ------------------------------------------------------------------------------------------
     merge_db(&mod_db, &item_mod_db);
 
@@ -1633,6 +1814,8 @@ pub fn init_env_seeded(
         .chain(env.granted_skills_items_extra.iter().cloned())
         .collect();
 
+    prof.mark("(13)-(17) mergeDB, granted passives, node mods");
+
     // --- (18) the skill phase (:1453-1970) ------------------------------------------------------------------------------
     // (18-) the merge of the granted skills (:1448-1563, R6.3)
     if let Some(st) = env.skills.as_mut() {
@@ -1642,6 +1825,8 @@ pub fn init_env_seeded(
         env.unimplemented
             .push("CalcSetup.lua:1453-1946 skills: socket groups, supports, createActiveSkill, buildActiveSkillModList (P5)".into());
     }
+
+    prof.mark("(18-) granted-skill merge");
 
     // (18a) weapon data (:1565-1581)
     let weapon1 = player.borrow().item_list.get("Weapon 1").cloned();
@@ -1709,6 +1894,8 @@ pub fn init_env_seeded(
         env.main_socket_group = min2(max2(groups, 1.0), build.main_socket_group);
     }
 
+    prof.mark("(18a-b) weapon data, main group");
+
     // (18c) supports, active skills, the main skill (:1593-1940, R6.3)
     if let Some(mut st) = env.skills.take() {
         let affected_by_energy_blade = mod_db.borrow().conditions.get("AffectedByEnergyBlade").copied().unwrap_or(false);
@@ -1736,6 +1923,7 @@ pub fn init_env_seeded(
             };
             crate::skills::setup_skills(&mut st, &inp).map_err(InitEnvError)?
         };
+        prof.mark("(18c) setup_skills");
         env.requirements_table_gems = out.requirements_table_gems;
         env.unimplemented.extend(out.unimplemented);
         // (18c') CalcSetup.lua:1941-1945 buildActiveSkillModList for every active skill (R6.4)
@@ -1778,6 +1966,7 @@ pub fn init_env_seeded(
             };
             crate::skill_modlist::build_all(&mut st, &inp).map_err(InitEnvError)?
         };
+        prof.mark("(18c') buildActiveSkillModList");
         env.unimplemented.extend(more);
         env.skills = Some(st);
     }
@@ -1807,6 +1996,7 @@ pub fn init_env_seeded(
         env.unimplemented
             .push("CalcSetup.lua:1972 requirementsTableGems (gem requirements need data.gems, P5)".into());
     }
+    prof.mark("(18d)-(19) rest");
 
     Ok(env)
 }

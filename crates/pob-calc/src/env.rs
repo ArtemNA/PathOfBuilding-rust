@@ -123,7 +123,7 @@ pub struct Env {
     pub build: Rc<BuildModel>,
     pub mode: &'static str,
     pub build_breakdown: bool,
-    pub spec: PassiveSpec,
+    pub spec: Rc<PassiveSpec>,
     pub class_id: usize,
     /// The ConfigTab state behind `env.configInput` (`config.input`) / `env.configPlaceholder` (`config.placeholder`).
     pub config: ConfigState,
