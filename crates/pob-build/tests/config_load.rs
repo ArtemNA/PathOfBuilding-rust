@@ -5,10 +5,7 @@
 //! same `input`/`placeholder` diff against the fixture's `reference`, `normAddr` applied, and compared as JSON, exactly.
 //! A Lua error case (`{"prompt": ...}`) must be a `BuildLoadError` whose `launch:ShowErrMsg` prompt is the same text.
 
-use pob_build::{
-    BlockText, BuildLoadError, ConfigState, ConfigValue, ESTIMATE_PLAYER_PROGRESS_UNIMPLEMENTED, LoadedBuild, XmlElement, XmlNode,
-    load_build,
-};
+use pob_build::{BlockText, BuildLoadError, ConfigState, ConfigValue, LoadedBuild, XmlElement, XmlNode, load_build};
 use pob_mods::format::format_source_mod;
 use serde_json::{Map, Value as Json, json};
 
@@ -213,7 +210,8 @@ fn paths(path: &str, want: &Json, got: &Json, out: &mut Vec<String>) {
 /// - `skill-groups` (R6): CalcSetup.lua:1589 `build.mainSocketGroup = m_min(m_max(#socketGroupList, 1), ...)` -- the base
 ///   build has no `<Items>`, its two item-granted groups go, 3 -> 2. Rust keeps Build.lua:986's value.
 /// - `EstimatePlayerProgress`: Build.lua:898-913 re-estimates `characterLevel` from tree points when
-///   `characterLevelAutoMode` -- not ported (`ESTIMATE_PLAYER_PROGRESS_UNIMPLEMENTED`).
+///   `characterLevelAutoMode` -- after the calc, so it lives in `pob_calc::calculate`; the check that this case ends at
+///   LuaJIT's level 7 moved to `crates/pob-calc/tests/perform_estimate.rs` (R4.2). `load_build` alone keeps 1.
 fn post_load_class(diff: &str) -> Option<&'static str> {
     if diff.ends_with(".mainSocketGroup.num: want \"2\", got \"3\"") {
         return Some("skill-groups");
@@ -235,12 +233,7 @@ fn config_load_corpus_99() {
         let want = &c["result"];
         let got = match load_build(&utf8_of_bytes(c["input"].as_str().unwrap())) {
             Ok(l) => {
-                let auto = l.model.character_level_auto_mode;
-                assert_eq!(
-                    l.unimplemented.contains(&ESTIMATE_PLAYER_PROGRESS_UNIMPLEMENTED),
-                    auto,
-                    "{name}: EstimatePlayerProgress marker"
-                );
+                assert!(l.unimplemented.is_empty(), "{name}: {:?}", l.unimplemented);
                 norm_addr(pack(dump(&l), reference))
             }
             Err(BuildLoadError(msg)) => norm_addr(json!({ "prompt": bstr(&BuildLoadError(msg).prompt(POB_VERSION)) })),

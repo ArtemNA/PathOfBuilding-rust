@@ -1,14 +1,25 @@
-//! Calc environment: `init_env` (R3.6, KNOWLEDGE/R3-ARCH.md), later perform/defence (R4).
+//! Calc environment: `init_env` (R3.6, KNOWLEDGE/R3-ARCH.md), `perform` without skills + `calculate` (R4.2, R4-ARCH),
+//! later defence/estimations (R4.3/R4.4).
 //!
 //! `init_env` = `calcs.initEnv(build, "MAIN")` (Modules/CalcSetup.lua:475-1975) without the skill half; the R3 gate
 //! (R3-ARCH §3) is `tests/env_fixture.rs` against the R3.1 fixtures in `tests/fixtures/` (LuaJIT + pob-ts dumps).
+//! `perform` = CalcPerform.lua:1286-3792 (CALC-ARCH §8 subset); its gate is `tests/perform_fixture.rs` against the pob-ts
+//! perform-only fixtures (`tools/lua-corpus/export-perform-only.ts`).
 
 #![forbid(unsafe_code)]
 
 pub mod calc_lib;
+pub mod calculate;
 pub mod env;
 pub mod init_env;
+pub mod output;
+pub mod perform;
+pub mod pools;
 pub mod setup;
+
+pub use calculate::{CalcError, CalculateOptions, CalculateResult, Timings, calculate, calculate_file, calculate_with};
+pub use output::{OutValue, Output, StatValue, output_to_stats};
+pub use perform::{ActorState, PerformState, PhaseFn, Who, finish_output, noop_phase, perform};
 
 pub use env::{CalcActor, Env, GrantedSkill, MainSkillStub, ReqEntry, Slot};
 pub use init_env::{InitEnvError, InitEnvOptions, init_env, item_options, parse_items};

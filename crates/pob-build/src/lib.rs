@@ -15,8 +15,7 @@ pub mod xml;
 pub use config::{ConfigModLists, ConfigState, ConfigValue};
 pub use file::{desktop_text_mode, read_build_file};
 pub use load::{
-    BuildLoadError, ESTIMATE_PLAYER_PROGRESS_UNIMPLEMENTED, LoadedBuild, active_config, active_item_set, active_skill_groups, active_spec,
-    load_build, load_build_xml, meta_of,
+    BuildLoadError, LoadedBuild, active_config, active_item_set, active_skill_groups, active_spec, load_build, load_build_xml, meta_of,
 };
 pub use model::*;
 pub use sanitise::sanitise_text;

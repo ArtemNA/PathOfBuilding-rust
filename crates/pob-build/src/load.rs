@@ -788,11 +788,6 @@ pub fn load_build_xml(xml_text: &str) -> Result<BuildModel, BuildLoadError> {
     load_model(xml_text, &mut |_| Ok(()))
 }
 
-/// Build.lua:898-913 `EstimatePlayerProgress`: with `characterLevelAutoMode` the level is re-estimated from the allocated
-/// tree points after the calc, and a changed level re-runs `configTab:BuildModList()` -- not ported (needs the tree and
-/// the calc output; R4 prerequisite). `LoadedBuild` keeps the `<Build level>` value and reports this marker.
-pub const ESTIMATE_PLAYER_PROGRESS_UNIMPLEMENTED: &str = "Modules/Build.lua:898-913 EstimatePlayerProgress (characterLevelAutoMode)";
-
 /// What loading a build leaves in the ConfigTab: the model, the active set's state after `BuildModList`, and its lists.
 #[derive(Debug)]
 pub struct LoadedBuild {
@@ -835,10 +830,9 @@ pub fn load_build(xml_text: &str) -> Result<LoadedBuild, BuildLoadError> {
             ));
         }
     }
-    let mut unimplemented = Vec::new();
-    if model.character_level_auto_mode {
-        unimplemented.push(ESTIMATE_PLAYER_PROGRESS_UNIMPLEMENTED);
-    }
+    // Build.lua:898-913 `EstimatePlayerProgress` runs after the calc (`calcsTab:BuildOutput()` -> `RefreshStatList()`), so
+    // it lives in `pob_calc::calculate`; `LoadedBuild` keeps the `<Build level>` value.
+    let unimplemented = Vec::new();
     Ok(LoadedBuild {
         model,
         config,
