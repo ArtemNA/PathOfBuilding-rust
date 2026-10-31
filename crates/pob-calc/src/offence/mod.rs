@@ -6,13 +6,15 @@
 //! reservation, curse/warcry/link/herald effect, trap/mine/totem/brand, corpse), durations, uptime, costs, Eldritch Battery, Sacrificial
 //! Zeal, `preDamageFunc`, explosions and the damage-disabling flags. R7.4 (part B, [`b`]): :1937-2605 -- the conversion tables, the
 //! damage passes (`passList`, `output.MainHand/OffHand` = [`HandOut`], `combineStat`), accuracy / hit chance / enemy block / speed /
-//! trauma / hit time per pass, the misc DPS multipliers and the quantity multiplier. Everything after :2605 (damage, crits, leech,
-//! ailments, DoT, combined DPS -- R7.5-R7.7) is recorded as `unimplemented` by [`offence`].
+//! trauma / hit time per pass, the misc DPS multipliers and the quantity multiplier. R7.5 (part C, [`c`], [`c2`]): :2606-4154 -- the
+//! damage pass (exerts, pacts, Ruthless / Fist of War, Explosive Arrow, crits, double / triple damage, culling, `postCritFunc`,
+//! Cryogenesis, damage by type, leech, gain on hit / kill, DPS, PvP), the hand combine and the leech rates. Everything after :4154
+//! (ailments, DoT, combined DPS -- R7.6-R7.7) is recorded as `unimplemented` by [`offence`].
 //!
 //! The checkpoints of the R7.1 probe (`tools/lua-corpus/export-offence.ts`, line hook): OC1 = before :1057, OC2 = before :1987 (the
 //! `FNEW` of `buildConversionTable` is attributed to its `end` line, so nothing between :1937 and :1986 runs before it), OC3 = before
-//! :2606 (the first hit) -- the hook [`Checkpoint::Oc1`]/[`Checkpoint::Oc2`]/[`Checkpoint::Oc3`]; at OC3 the hand tables are readable
-//! through [`checkpoint_hand_outputs`].
+//! :2606 (the first hit), OC4 = before :4156 -- the hook [`Checkpoint::Oc1`]..[`Checkpoint::Oc4`]; at OC3/OC4 the hand tables are
+//! readable through [`checkpoint_hand_outputs`].
 //!
 //! Upstream shapes kept:
 //! * `actor.breakdown` exists iff `env.buildBreakdown` (CalcPerform.lua:1514-1519). Branches under `if breakdown` that write anything
@@ -25,6 +27,8 @@
 mod a1;
 mod a2;
 mod b;
+mod c;
+mod c2;
 mod gates;
 pub(crate) mod helpers;
 
@@ -65,7 +69,6 @@ pub(crate) struct Off<'e> {
     /// `isAttack` (:1052, `skillFlags.attack` before `preSkillTypeFunc`).
     pub is_attack: bool,
     /// `canDeal` (:1932-1935), `dmgTypeList` order.
-    #[allow(dead_code)] // read by the damage passes (R7.5)
     pub can_deal: IndexMap<&'static str, bool>,
     /// `activeSkill.conversionTable` (:1989).
     pub conversion_table: ConversionTable,
@@ -75,6 +78,10 @@ pub(crate) struct Off<'e> {
     pub hands: Option<[HandOut; 2]>,
     /// `passList` (:1997-2065).
     pub passes: Vec<Pass>,
+    /// `monsterLife` (:1916, read at :3791).
+    pub monster_life: f64,
+    /// The index of the pass the damage pass loop is in (:2606-3955): `explosiveArrowFunc`'s `output` is that pass's.
+    pub cur_pass: usize,
 }
 
 /// `output.MainHand` / `output.OffHand`: a Lua table inside upstream's `output`. Rust's [`Output`] keeps scalars only (it mirrors the
@@ -111,7 +118,7 @@ pub(crate) struct Pass {
 
 /// The `mode` of `combineStat` (:2066).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-#[allow(dead_code)] // ADD / CHANCE / CHANCE_AILMENT / DPS: first callers in R7.5-R7.7
+#[allow(dead_code)] // ADD / CHANCE / CHANCE_AILMENT: first callers in R7.6-R7.7
 pub(crate) enum CombineMode {
     Or,
     Add,
@@ -258,9 +265,8 @@ pub(crate) fn skill_type_u32(name: &str) -> u32 {
         .unwrap_or_else(|| panic!("SkillType.{name} is nil")) as u32
 }
 
-/// `calcs.offence(env, env.player, env.player.mainSkill)` (CalcPerform.lua:3799) -- parts A (:348-1936, R7.3) and B (:1937-2605, R7.4);
-/// the rest is recorded as
-/// unimplemented. `hook` sees [`Checkpoint::Oc1`] / [`Checkpoint::Oc2`] / [`Checkpoint::Oc3`].
+/// `calcs.offence(env, env.player, env.player.mainSkill)` (CalcPerform.lua:3799) -- parts A (:348-1936, R7.3), B (:1937-2605, R7.4) and
+/// C (:2606-4154, R7.5); the rest is recorded as unimplemented. `hook` sees [`Checkpoint::Oc1`]..[`Checkpoint::Oc4`].
 pub(crate) fn offence(env: &mut Env, st: &mut PerformState, mut hook: Hook<'_, '_>) {
     let i = env
         .skills
@@ -297,6 +303,8 @@ pub(crate) fn offence(env: &mut Env, st: &mut PerformState, mut hook: Hook<'_, '
         weapon_conversion: [None, None],
         hands: None,
         passes: Vec::new(),
+        monster_life: 0.0,
+        cur_pass: 0,
     };
     if let Some(h) = hook.as_mut() {
         h(Checkpoint::OcEntry, off.env, &off.st.player, &off.st.enemy);
@@ -316,17 +324,26 @@ pub(crate) fn offence(env: &mut Env, st: &mut PerformState, mut hook: Hook<'_, '
     // :1937-2605
     b::build_passes(&mut off);
     b::speed_accuracy(&mut off);
-    b::misc_dps(&mut off);
+    let quantity_multiplier = b::misc_dps(&mut off);
+    hook_with_hands(&mut off, &mut hook, Checkpoint::Oc3);
+    // :2606-4154
+    c::damage_passes(&mut off, quantity_multiplier);
+    c2::after_passes(&mut off);
+    hook_with_hands(&mut off, &mut hook, Checkpoint::Oc4);
+    off.note("CalcOffence.lua:4155-6263 (R7.6-R7.7) ailments, DoT, self hit, combined DPS".into());
+}
+
+/// Calls the hook at `cp` with `output.MainHand` / `output.OffHand` readable through [`checkpoint_hand_outputs`].
+fn hook_with_hands(off: &mut Off<'_>, hook: &mut Hook<'_, '_>, cp: Checkpoint) {
     if let Some(h) = hook.as_mut() {
         let tables = off.hands.as_ref().map(|hs| {
             let t = |x: &HandOut| x.map.iter().map(|(k, v)| (k.to_string(), v.clone())).collect::<HandTable>();
             (t(&hs[0]), t(&hs[1]))
         });
         CHECKPOINT_HANDS.with(|c| *c.borrow_mut() = tables);
-        h(Checkpoint::Oc3, off.env, &off.st.player, &off.st.enemy);
+        h(cp, off.env, &off.st.player, &off.st.enemy);
         CHECKPOINT_HANDS.with(|c| *c.borrow_mut() = None);
     }
-    off.note("CalcOffence.lua:2606-6263 damage, crits, leech, ailments, DoT, combined DPS (R7.5-R7.7)".into());
 }
 
 /// `runSkillFunc(name)` (:509-514): `activeSkill.activeEffect.grantedEffect[name](activeSkill, output, breakdown)`.

@@ -5,7 +5,6 @@
 //! Each entry is one of:
 //! * [`Body::Port`] -- a hand port in [`funcs`] (several skills share a body; the sha says which);
 //! * [`Body::Unported`] -- an explicit gap: calling it records `"<src>:<from>-<to> <path>: <why>"` in `env.unimplemented`;
-//! * [`Body::Later`] -- `postCritFunc` / `explosiveArrowFunc`, called from offence sections after :2605 (R7.5).
 //!
 //! `runSkillFunc` (CalcOffence.lua:509-514) looks the active effect's hook up here as `skills.<grantedEffect.id>.<hook>`.
 
@@ -22,7 +21,6 @@ use funcs as f;
 pub(crate) enum Body {
     Port(fn(&mut Off<'_>)),
     Unported(&'static str),
-    Later(&'static str),
 }
 
 /// One `data/closures.json` skill closure.
@@ -49,7 +47,7 @@ const fn e(path: &'static str, src: &'static str, from: u32, to: u32, sha: &'sta
     }
 }
 
-use Body::{Later, Port, Unported};
+use Body::{Port, Unported};
 
 /// Every skill closure of `data/closures.json`, in its order.
 #[rustfmt::skip]
@@ -92,7 +90,7 @@ pub(crate) static SKILL_FUNCS: [SkillFuncEntry; 134] = [
     e("skills.DivineIreAltY.preDamageFunc", "act_int.lua", 4823, 4825, "7a4ba81a52f2a63bb6f18cda7ea66454dd7fb1ae2bc33adc50260434d39485f5", Port(f::divine_ire_alt_y)),
     e("skills.Earthquake.preDamageFunc", "act_str.lua", 3363, 3366, "f83e1ae0bdaf20278a8f98f4c547f3f91a4fbe9bd6074350753a14d1bf68d7fd", Port(f::earthquake)),
     e("skills.EnemyExplode.preDamageFunc", "other.lua", 6204, 6252, "7e9905c62fd2940c2fa3a44316dc64e87f0c8502f602d0c16b061cbb04e58913", Port(f::enemy_explode)),
-    e("skills.ExplosiveArrow.explosiveArrowFunc", "act_dex.lua", 6699, 6778, "fcb10aac6ef439a9aeda38d6950f55f88ee90e682f5888b661c270c448f78105", Later("called at CalcOffence.lua:3038 (R7.5)")),
+    e("skills.ExplosiveArrow.explosiveArrowFunc", "act_dex.lua", 6699, 6778, "fcb10aac6ef439a9aeda38d6950f55f88ee90e682f5888b661c270c448f78105", Port(f::explosive_arrow)),
     e("skills.ExplosiveTrap.preDamageFunc", "act_dex.lua", 7156, 7221, "d3c4aeaf80b651612cead32b56b5483cc01d01b91446d8cd1fb324ead204a510", Unported("pairs(output.AreaOfEffectRadiusTertiaryOccurrences): float sum in lj_tab order (R11)")),
     e("skills.ExplosiveTrap.statMap._grantedEffect.preDamageFunc", "act_dex.lua", 7156, 7221, "d3c4aeaf80b651612cead32b56b5483cc01d01b91446d8cd1fb324ead204a510", Unported("pairs(output.AreaOfEffectRadiusTertiaryOccurrences): float sum in lj_tab order (R11)")),
     e("skills.EyeOfWinter.preDamageFunc", "act_int.lua", 5518, 5520, "0a1071f37209aa0bde8bc91a7ab1bb25d949adf9554f2fc4afb04d0d4e96aa5f", Port(f::eye_of_winter)),
@@ -123,9 +121,9 @@ pub(crate) static SKILL_FUNCS: [SkillFuncEntry; 134] = [
     e("skills.IncinerateAltY.preDamageFunc", "act_int.lua", 10561, 10565, "b61aa681cbe1828858a0c35fdfad00007843ae8c0fac92c0902fb7b526bfd1dd", Port(f::incinerate_alt_y)),
     e("skills.InfernalBlow.preDamageFunc", "act_str.lua", 7115, 7123, "51d48b99032e2cafffa213dfd711a775ddfa0608c6f184c6aceb084e9c16c0d2", Port(f::infernal_blow)),
     e("skills.InfernalBlowAltX.preDamageFunc", "act_str.lua", 7241, 7249, "e7d573845e95ae52fe78cb4fbf8db7fffad8426a8b1326ae229343ccaf7dcff1", Port(f::infernal_blow_alt_x)),
-    e("skills.KineticFusillade.postCritFunc", "act_int.lua", 11046, 11123, "84ce184bd3aec16164374c36bedcfed0b740bad90f48d0de247dfc004c135304", Later("called at CalcOffence.lua:3315 (R7.5)")),
+    e("skills.KineticFusillade.postCritFunc", "act_int.lua", 11046, 11123, "84ce184bd3aec16164374c36bedcfed0b740bad90f48d0de247dfc004c135304", Port(f::kinetic_fusillade_post_crit)),
     e("skills.KineticFusillade.preDamageFunc", "act_int.lua", 11009, 11045, "7894a531ba5645f60951d837ce03583965a144c4ef3f22c9e8e69d26f816367a", Port(f::kinetic_fusillade)),
-    e("skills.KineticFusilladeAltX.postCritFunc", "act_int.lua", 11264, 11341, "84ce184bd3aec16164374c36bedcfed0b740bad90f48d0de247dfc004c135304", Later("called at CalcOffence.lua:3315 (R7.5)")),
+    e("skills.KineticFusilladeAltX.postCritFunc", "act_int.lua", 11264, 11341, "84ce184bd3aec16164374c36bedcfed0b740bad90f48d0de247dfc004c135304", Port(f::kinetic_fusillade_post_crit)),
     e("skills.KineticFusilladeAltX.preDamageFunc", "act_int.lua", 11227, 11263, "ff8dd4f936006f9cd573b6c8cac571d1bbbf4b3e206a59c1f7576c9e208b1e3c", Port(f::kinetic_fusillade_alt_x)),
     e("skills.LancingSteel.preDamageFunc", "act_dex.lua", 10234, 10241, "78ba4c2f5a3bc6abc7c60ced2ec7a1ef808108754657bbf0ace863c3a0cc87d2", Port(f::lancing_steel)),
     e("skills.LancingSteelAltX.preDamageFunc", "act_dex.lua", 10337, 10344, "224eb660840035750561b12ee3d7e1b4598b6cf3c992dd97dae3a67aee13f50b", Port(f::lancing_steel_alt_x)),
@@ -133,7 +131,7 @@ pub(crate) static SKILL_FUNCS: [SkillFuncEntry; 134] = [
     e("skills.LightningSpireTrap.preDamageFunc", "act_int.lua", 11667, 11788, "d7337e59d5c21fa35d46d46e596f8b5884ac6223f66675756b9e367f0ebf1ea8", Unported("trap wave / overlap model (not ported)")),
     e("skills.LightningSpireTrapAltX.preDamageFunc", "act_int.lua", 11912, 12028, "028ba06841b97aabc71d46f9e1889238deb8252d56389e4d5b41adc296ab402f", Unported("trap wave / overlap model (not ported)")),
     e("skills.LightningSpireTrapAltY.preDamageFunc", "act_int.lua", 12150, 12260, "ef24fbb9e65b31ff10dda30110edff92b135ceffd54395d20f91c0e5198ffaa1", Unported("trap wave / overlap model (not ported)")),
-    e("skills.LightningTendrilsAltX.postCritFunc", "act_int.lua", 12651, 12662, "1d9effc02375c0875ba97ed557181296c4fb298a2994b5923f902c3162a2c0f5", Later("called at CalcOffence.lua:3315 (R7.5)")),
+    e("skills.LightningTendrilsAltX.postCritFunc", "act_int.lua", 12651, 12662, "1d9effc02375c0875ba97ed557181296c4fb298a2994b5923f902c3162a2c0f5", Port(f::lightning_tendrils_alt_x_post_crit)),
     e("skills.LightningTendrilsAltX.preDamageFunc", "act_int.lua", 12642, 12650, "b646128c0d7652d7854f4684bbe6be3c545a3739c7803643487b494bb9be0dad", Port(f::lightning_tendrils_alt_x)),
     e("skills.Manabond.preDamageFunc", "act_int.lua", 13527, 13532, "bb99045da4e3a30496e00a37107e19a7760dc43a6c9020f4c6e1ca2909836783", Port(f::manabond)),
     e("skills.MinionInstability.preDamageFunc", "minion.lua", 1756, 1758, "bc3a99f2a20c2aa3d459f84684ca97c7f18ea23622b4c852bfdd0a67f9443ecb", Unported("activeSkill.summonSkill (minion skills, R7.10)")),
@@ -198,13 +196,13 @@ pub(crate) fn call(off: &mut Off<'_>, id: &str, hook: &str) {
     };
     match en.body {
         Body::Port(func) => func(off),
-        Body::Unported(why) | Body::Later(why) => {
+        Body::Unported(why) => {
             off.note(format!("Data/Skills/{}:{}-{} {path}: {why}", en.src, en.from, en.to));
         }
     }
 }
 
-/// Every registry entry as `(path, src under src/Data/Skills/, from, to, sha256, kind)` with kind `"port"` / `"unported"` / `"later"`
+/// Every registry entry as `(path, src under src/Data/Skills/, from, to, sha256, kind)` with kind `"port"` / `"unported"`
 /// (the drift test compares this with `data/closures.json`).
 pub fn skill_func_entries() -> Vec<(&'static str, &'static str, u32, u32, &'static str, &'static str)> {
     SKILL_FUNCS
@@ -213,16 +211,16 @@ pub fn skill_func_entries() -> Vec<(&'static str, &'static str, u32, u32, &'stat
             let kind = match e.body {
                 Body::Port(_) => "port",
                 Body::Unported(_) => "unported",
-                Body::Later(_) => "later",
             };
             (e.path, e.src, e.from, e.to, e.sha, kind)
         })
         .collect()
 }
 
-/// `(ported, unported, later)` entry counts, and the `<src>:<from>-<to> <path>` of every unported one.
+/// `(ported, unported, later)` entry counts (`later` -- hooks called from offence sections not ported yet: none since R7.5), and the
+/// `<src>:<from>-<to> <path>` of every unported one.
 pub fn skill_func_summary() -> (usize, usize, usize, Vec<String>) {
-    let (mut p, mut u, mut l) = (0, 0, 0);
+    let (mut p, mut u, l) = (0, 0, 0);
     let mut names = Vec::new();
     for en in &SKILL_FUNCS {
         match en.body {
@@ -231,7 +229,6 @@ pub fn skill_func_summary() -> (usize, usize, usize, Vec<String>) {
                 u += 1;
                 names.push(format!("{}:{}-{} {}: {why}", en.src, en.from, en.to, en.path));
             }
-            Body::Later(_) => l += 1,
         }
     }
     (p, u, l, names)

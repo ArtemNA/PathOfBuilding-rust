@@ -564,9 +564,10 @@ pub(super) fn speed_accuracy(off: &mut Off<'_>) {
     }
 }
 
-/// :2489-2605 -- misc DPS multipliers, combined hit chance / speed of the two hands, quantity multiplier.
+/// :2489-2605 -- misc DPS multipliers, combined hit chance / speed of the two hands, quantity multiplier (returned: the local
+/// `quantityMultiplier` the damage pass reads, :3801).
 #[allow(clippy::too_many_lines)]
-pub(super) fn misc_dps(off: &mut Off<'_>) {
+pub(super) fn misc_dps(off: &mut Off<'_>) -> f64 {
     let q = off.q.clone();
     let skill_cfg = off.cfg.clone();
     let sc = Some(&skill_cfg);
@@ -669,6 +670,7 @@ pub(super) fn misc_dps(off: &mut Off<'_>) {
     if quantity > 1.0 {
         off.out().set_num("QuantityMultiplier", quantity);
     }
+    quantity
 }
 
 impl Off<'_> {
@@ -772,7 +774,6 @@ impl Off<'_> {
     }
 
     /// The conversion table a pass's `calcDamage` reads: `(cfg and cfg.conversionTable) or activeSkill.conversionTable`.
-    #[allow(dead_code)] // first caller: R7.5 (the damage passes)
     pub(crate) fn pass_conversion(&self, pi: usize) -> &ConversionTable {
         match self.passes[pi].out {
             PassOut::Hand(h) => self.weapon_conversion[h].as_ref().unwrap_or(&self.conversion_table),

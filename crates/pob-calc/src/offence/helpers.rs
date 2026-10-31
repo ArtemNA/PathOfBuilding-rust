@@ -267,7 +267,6 @@ pub(crate) fn sd_num_or(skill_data: &IndexMap<String, Value>, k: &str, fallback:
 /// `activeSkill.conversionTable` / `cfg.conversionTable` (built by `buildConversionTable`, :1938-1987, R7.4): per source damage type,
 /// `conversion[dst]`, `gain[dst]`, the total `[dst]` and `mult`; Chaos has `mult` only.
 #[derive(Clone, Debug, Default)]
-#[allow(dead_code)] // built and read from R7.4 on (the damage passes)
 pub(crate) struct ConvEntry {
     pub conversion: IndexMap<&'static str, f64>,
     pub gain: IndexMap<&'static str, f64>,
@@ -275,12 +274,10 @@ pub(crate) struct ConvEntry {
     pub mult: f64,
 }
 
-#[allow(dead_code)] // built and read from R7.4 on (the damage passes)
 pub(crate) type ConversionTable = IndexMap<&'static str, ConvEntry>;
 
 /// :70-141 `calcDamage(activeSkill, output, cfg, breakdown, damageType, typeFlags, convDst)` without the breakdown rows (R8). `base`
 /// reads `output[<type>MinBase]` / `output[<type>MaxBase]`; `cfg` is the pass cfg (the conversion table is passed resolved).
-#[allow(dead_code)] // first caller: R7.4/R7.5 (the damage passes)
 pub(crate) fn calc_damage(
     q: &Q,
     conv: &ConversionTable,

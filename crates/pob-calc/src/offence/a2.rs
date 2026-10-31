@@ -441,6 +441,7 @@ pub(super) fn skill_type_stats(off: &mut Off<'_>) {
         Some(v) => v,
         None => monster_table_at(&constants().monster_life_table, off.env.enemy_level).unwrap_or(100.0),
     };
+    off.monster_life = monster_life;
     if off.sd_truthy("explodeCorpse") {
         let dt = match off.sd("corpseExplosionDamageType") {
             Value::Str(s) => s.to_string(),
@@ -491,7 +492,7 @@ fn or_override(db: &pob_mods::StoreRef, name: &str, fallback: f64, line: u32) ->
 
 /// :374-492 `calcAreaOfEffect` (breakdown tables excluded, R8).
 #[allow(clippy::too_many_lines)]
-fn calc_area_of_effect(off: &mut Off<'_>, q: &Q, cfg: &ModCfg) {
+pub(super) fn calc_area_of_effect(off: &mut Off<'_>, q: &Q, cfg: &ModCfg) {
     let c = Some(cfg);
     let (inc_area, more_area) = q.calc_mods(c, &["AreaOfEffect", "AreaOfEffectPrimary"]);
     let area_mod = calc_area_mod(inc_area, more_area);

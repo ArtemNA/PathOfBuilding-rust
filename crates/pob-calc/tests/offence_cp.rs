@@ -19,7 +19,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::rc::Rc;
 
 use pob_calc::skill_funcs::checkpoint_hand_outputs;
-use pob_calc::{ActorState, CalcMode, CalcSession, CalculateOptions, Checkpoint, Env, OutValue, cache_skill_uuid};
+use pob_calc::{ActorState, CalcMode, CalcSession, CalculateOptions, Checkpoint, Env, OutTable, OutValue, cache_skill_uuid};
 use pob_golden::registry::GOLDEN_BUILDS;
 use pob_lua::format_g;
 use pob_mods::{StoreKind, StoreRef};
@@ -78,6 +78,33 @@ fn out_json(v: &OutValue) -> Json {
     }
 }
 
+/// A table value of `output` in the probe's encoding (`export-offence.ts` DUMP `D`): numbers `%.17g`, the item a class object
+/// (`"<class Item>"`). `sourceGem` -- the gem instance TABLE, which the probe dumps member by member (6 levels deep, through `gemData`,
+/// `grantedEffect`, ...) -- is written as Rust's reference to it, `"<gem g:i>"` (1-based), and pinned by [`GEM_REF`].
+fn table_json(t: &OutTable) -> Json {
+    match t {
+        OutTable::ReqSource(r) => {
+            let mut o = Map::new();
+            for (k, v) in [("Str", r.str_), ("Dex", r.dex), ("Int", r.int)] {
+                if let Some(v) = v {
+                    o.insert(k.to_owned(), n17(v));
+                }
+            }
+            o.insert("source".to_owned(), json!(r.source));
+            if r.source_item.is_some() {
+                o.insert("sourceItem".to_owned(), json!("<class Item>"));
+            }
+            if let Some(s) = &r.source_slot {
+                o.insert("sourceSlot".to_owned(), json!(probe_str(s)));
+            }
+            if let Some((g, i)) = r.source_gem {
+                o.insert("sourceGem".to_owned(), json!(format!("<gem {}:{}>", g + 1, i + 1)));
+            }
+            Json::Object(o)
+        }
+    }
+}
+
 /// The probe's checkpoint snapshot, from Rust's state (inside the hook: `output.MainHand` / `output.OffHand` come from
 /// [`checkpoint_hand_outputs`], set by offence around the OC3 hook).
 fn snap(env: &Env, player: &ActorState) -> Json {
@@ -85,6 +112,9 @@ fn snap(env: &Env, player: &ActorState) -> Json {
     let i = st.main_skill.expect("mainSkill");
     let sk = &st.active_skill_list[i];
     let mut output: Map<String, Json> = player.output.iter().map(|(k, v)| (k.to_string(), out_json(v))).collect();
+    for (k, t) in player.output.tables() {
+        output.insert(k.to_string(), table_json(t));
+    }
     if let Some((mh, oh)) = checkpoint_hand_outputs() {
         for (name, t) in [("MainHand", mh), ("OffHand", oh)] {
             let o: Map<String, Json> = t.iter().map(|(k, v)| (k.clone(), out_json(v))).collect();
@@ -108,8 +138,8 @@ fn snap(env: &Env, player: &ActorState) -> Json {
     })
 }
 
-/// The checkpoints Rust reaches (R7.4: up to OC3).
-const CPS: [&str; 3] = ["OC1", "OC2", "OC3"];
+/// The checkpoints Rust reaches (R7.5: up to OC4).
+const CPS: [&str; 4] = ["OC1", "OC2", "OC3", "OC4"];
 
 /// A checkpoint hit: the env had `limitedSkills` (a nested run), the mode, the snapshot.
 struct Hit {
@@ -118,8 +148,11 @@ struct Hit {
     snap: Json,
 }
 
-/// Proven class `output-table-value` (perform_cp.rs, R6.6).
-const TABLE_OUTPUT: [&str; 4] = ["ReqStrItem", "ReqDexItem", "ReqIntItem", "ReqOmniItem"];
+/// Proven class `gem-ref` (R7.5): `output.Req<Attr>Item.sourceGem` is the gem instance table (CalcSetup.lua:1847-1853); the probe dumps
+/// it member by member, Rust's [`OutTable::ReqSource`] keeps the reference `(group, gem)`. Allowed: the ONLY differing member of such a
+/// table is `sourceGem`, LuaJIT has a table there and Rust the reference (every other member -- `Str`/`Dex`/`Int`/`source` -- is
+/// compared exactly; `perform_cp.rs` compares the reference itself against the `export-skills.ts` key `<group>:<gem>`).
+const GEM_REF: [&str; 4] = ["ReqStrItem", "ReqDexItem", "ReqIntItem", "ReqOmniItem"];
 
 /// The goldens whose top env takes an unported branch at CalcPerform.lua:3797-3798, and the reason Rust records (measured: the R7.1
 /// fixtures' OC1 has `SkillTriggerRate`/`TriggerRateCap` (Cospris: Cast On Critical Strike), `skillFlags.mirageArcher` (Toxic Rain) and the
@@ -146,6 +179,17 @@ const GATED: [(&str, &str); 4] = [
 /// Every difference between LuaJIT's checkpoint and Rust's, as text lines.
 fn diff(lj: &Json, rust: &Json) -> Vec<String> {
     let mut out = Vec::new();
+    for (k, v) in lj["output"].as_object().expect("output") {
+        if GEM_REF.contains(&k.as_str()) && v.is_object() {
+            TABLES.with(|t| {
+                let mut t = t.borrow_mut();
+                t.0 += 1;
+                if rust["output"].get(k) != Some(v) && gem_ref_only(v, &rust["output"][k]) {
+                    t.1 += 1;
+                }
+            });
+        }
+    }
     for part in ["output", "skillFlags", "playerConditions", "playerMultipliers"] {
         let (w, g) = (lj[part].as_object().expect(part), rust[part].as_object().expect(part));
         let keys: BTreeSet<&String> = w.keys().chain(g.keys()).collect();
@@ -154,7 +198,7 @@ fn diff(lj: &Json, rust: &Json) -> Vec<String> {
             if a == b {
                 continue;
             }
-            if part == "output" && TABLE_OUTPUT.contains(&k.as_str()) && a.is_object() && b.is_null() {
+            if part == "output" && GEM_REF.contains(&k.as_str()) && gem_ref_only(a, b) {
                 continue;
             }
             out.push(format!("{part}.{k}: lj {a} rust {b}"));
@@ -166,6 +210,23 @@ fn diff(lj: &Json, rust: &Json) -> Vec<String> {
         }
     }
     out
+}
+
+thread_local! {
+    /// `(Req<Attr>Item tables compared, of them equal but for the pinned sourceGem)` -- reported by the gates.
+    static TABLES: RefCell<(usize, usize)> = const { RefCell::new((0, 0)) };
+}
+
+/// `a` (LuaJIT) and `b` (Rust) differ only in `sourceGem` (LuaJIT: a table, Rust: `"<gem g:i>"`).
+fn gem_ref_only(a: &Json, b: &Json) -> bool {
+    let (Some(a), Some(b)) = (a.as_object(), b.as_object()) else {
+        return false;
+    };
+    let keys: BTreeSet<&String> = a.keys().chain(b.keys()).collect();
+    keys.into_iter().all(|k| {
+        let (x, y) = (a.get(k), b.get(k));
+        x == y || (k == "sourceGem" && x.is_some_and(Json::is_object) && y.and_then(Json::as_str).is_some_and(|s| s.starts_with("<gem ")))
+    })
 }
 
 fn run(name: &str) -> (BTreeMap<&'static str, Vec<Hit>>, Vec<String>) {
@@ -180,6 +241,7 @@ fn run(name: &str) -> (BTreeMap<&'static str, Vec<Hit>>, Vec<String>) {
                 Checkpoint::Oc1 => "OC1",
                 Checkpoint::Oc2 => "OC2",
                 Checkpoint::Oc3 => "OC3",
+                Checkpoint::Oc4 => "OC4",
                 _ => return,
             };
             h2.borrow_mut().entry(key).or_default().push(Hit {
@@ -197,7 +259,7 @@ fn run(name: &str) -> (BTreeMap<&'static str, Vec<Hit>>, Vec<String>) {
 }
 
 #[test]
-fn oc1_oc3_equal_luajit_on_six_goldens() {
+fn oc1_oc4_equal_luajit_on_six_goldens() {
     let mut all_bad = Vec::new();
     let mut compared = 0;
     for g in GOLDEN_BUILDS {
@@ -250,14 +312,15 @@ fn oc1_oc3_equal_luajit_on_six_goldens() {
             all_bad.extend(d.into_iter().map(|x| format!("{}: {cp} {x}", g.name)));
         }
     }
-    println!("checkpoints compared: {compared}");
-    assert!(all_bad.is_empty(), "OC1-OC3 != LuaJIT ({}):\n{}", all_bad.len(), all_bad.join("\n"));
+    let (nt, ng) = TABLES.with(|t| *t.borrow());
+    println!("checkpoints compared: {compared}; Req<Attr>Item table values compared {nt}, of them pinned `gem-ref` (sourceGem only) {ng}");
+    assert!(all_bad.is_empty(), "OC1-OC4 != LuaJIT ({}):\n{}", all_bad.len(), all_bad.join("\n"));
 }
 
 // --- R7.1b: every player `calcs.offence` call of `buildOutput(MAIN)` -------------------------------------------------------------------
 // LuaJIT truth: `<build>.offence-runs.json` (headers of every offence call, perform markers) + `-<n>.json` parts (OC snapshots by run `seq`),
 // producer `tools/lua-corpus/export-offence.ts runs`. A LuaJIT run is matched to a Rust run by `{mode, uuid, limited, ordinal}` (ordinal =
-// the n-th player offence call with that mode/uuid/limitedSkills-or-not, in call order); OC1-OC3 are compared (the Rust hooks).
+// the n-th player offence call with that mode/uuid/limitedSkills-or-not, in call order); OC1-OC4 are compared (the Rust hooks).
 
 /// A LuaJIT player offence call: header + OC1-OC3 snapshots.
 struct LjRun {
@@ -347,11 +410,12 @@ fn rust_runs(name: &str) -> (Vec<RustRun>, Vec<String>) {
                         oc: BTreeMap::new(),
                     });
                 }
-                Checkpoint::Oc1 | Checkpoint::Oc2 | Checkpoint::Oc3 => {
+                Checkpoint::Oc1 | Checkpoint::Oc2 | Checkpoint::Oc3 | Checkpoint::Oc4 => {
                     let k = match cp {
                         Checkpoint::Oc1 => "OC1",
                         Checkpoint::Oc2 => "OC2",
-                        _ => "OC3",
+                        Checkpoint::Oc3 => "OC3",
+                        _ => "OC4",
                     };
                     v.last_mut().expect("OcEntry before OC").oc.insert(k, snap(env, player));
                 }
@@ -372,17 +436,17 @@ const SAVIOR_GATE: (&str, &str) = (
 );
 
 /// Compares every matched run; returns (differences / unexplained gaps, totals
-/// `[LuaJIT, Rust, matched, OC1 ok, OC2 ok, OC3 ok, diff lines, not run]`).
-fn compare_all() -> (Vec<String>, [usize; 8]) {
+/// `[LuaJIT, Rust, matched, OC1 ok, OC2 ok, OC3 ok, OC4 ok, diff lines, not run]`).
+fn compare_all() -> (Vec<String>, [usize; 9]) {
     let mut bad = Vec::new();
     let mut unexecuted = Vec::new();
-    println!("golden | LuaJIT player runs | Rust runs | matched | OC1 ok | OC2 ok | OC3 ok | differences | Rust did not run");
-    let mut tot = [0usize; 8];
+    println!("golden | LuaJIT player runs | Rust runs | matched | OC1 ok | OC2 ok | OC3 ok | OC4 ok | differences | Rust did not run");
+    let mut tot = [0usize; 9];
     for g in GOLDEN_BUILDS {
         let (lj, main) = lj_runs(g.name);
         let (rs, notes) = rust_runs(g.name);
         let (mut matched, mut ndiff, mut nun) = (0, 0, 0);
-        let mut oks = [0usize; 3];
+        let mut oks = [0usize; 4];
         let mut used = BTreeSet::new();
         let gate = GATED.iter().chain([&SAVIOR_GATE]).find(|(n, _)| *n == g.name).map(|(_, why)| *why);
         let gate_recorded = gate.is_some_and(|why| notes.iter().any(|u| u == why));
@@ -449,28 +513,31 @@ fn compare_all() -> (Vec<String>, [usize; 8]) {
             .filter(|p| p["offenceCalled"] == json!(false))
             .count();
         println!(
-            "{} | {} | {} | {matched} | {} | {} | {} | {ndiff} | {nun} (LuaJIT performs without offence: {markers})",
+            "{} | {} | {} | {matched} | {} | {} | {} | {} | {ndiff} | {nun} (LuaJIT performs without offence: {markers})",
             g.name,
             lj.len(),
             rs.len(),
             oks[0],
             oks[1],
-            oks[2]
+            oks[2],
+            oks[3]
         );
         for (t, x) in tot
             .iter_mut()
-            .zip([lj.len(), rs.len(), matched, oks[0], oks[1], oks[2], ndiff, nun])
+            .zip([lj.len(), rs.len(), matched, oks[0], oks[1], oks[2], oks[3], ndiff, nun])
         {
             *t += x;
         }
     }
     println!(
-        "TOTAL | {} | {} | {} | {} | {} | {} | {} | {}",
-        tot[0], tot[1], tot[2], tot[3], tot[4], tot[5], tot[6], tot[7]
+        "TOTAL | {} | {} | {} | {} | {} | {} | {} | {} | {}",
+        tot[0], tot[1], tot[2], tot[3], tot[4], tot[5], tot[6], tot[7], tot[8]
     );
     for u in &unexecuted {
         println!("unexecuted by Rust: {u}");
     }
+    let (nt, ng) = TABLES.with(|t| *t.borrow());
+    println!("Req<Attr>Item table values compared {nt}, of them pinned `gem-ref` (sourceGem only) {ng}");
     (bad, tot)
 }
 
@@ -479,25 +546,27 @@ fn compare_all() -> (Vec<String>, [usize; 8]) {
 /// `output.Minion` and `ActiveMinionLimit` / `SummonedMinionsPerCast` (CalcOffence.lua:1057-1065, `activeSkill.minion.minionData`);
 /// un-ignore when R7.10 (minion actors) is ported.
 #[test]
-#[ignore = "R7.4: known divergences on nested minion runs only (output.Minion, :1057-1065 -- R7.10)"]
-fn oc1_oc3_equal_luajit_on_all_offence_runs() {
+#[ignore = "R7.4/R7.5: known divergences on nested minion runs only (output.Minion, :1057-1065 -- R7.10)"]
+fn oc1_oc4_equal_luajit_on_all_offence_runs() {
     let (bad, _) = compare_all();
     assert!(bad.is_empty(), "offence runs != LuaJIT ({}):\n{}", bad.len(), bad.join("\n"));
 }
 
-/// The R7.10 class: the keys a minion skill's offence writes from `activeSkill.minion` (not built yet) -- `output.Minion` (a table) at
-/// OC1-OC3, `ActiveMinionLimit` / `SummonedMinionsPerCast` (:1057-1065) from OC2 on.
+/// The R7.10 class: the keys a minion skill's offence writes from `activeSkill.minion` (not built yet) -- `output.Minion` (a table:
+/// the minion actor's output, CalcPerform.lua:1319-1320 `initMinionModDB`) at OC1-OC4, `ActiveMinionLimit` / `SummonedMinionsPerCast`
+/// (:1057-1065) from OC2 on.
 const MINION_CLASS: [&str; 3] = ["output.Minion:", "output.ActiveMinionLimit:", "output.SummonedMinionsPerCast:"];
 
-/// Pins the measured R7.4 state so it cannot drift silently: 82 LuaJIT player offence runs, 56 run by Rust (all matched), 26 not run
-/// (the recorded triggers/mirages gates), OC1/OC2/OC3 53/56 equal; the 21 difference lines are all the R7.10 class ([`MINION_CLASS`])
-/// on the 3 nested minion runs (OC1 1 + OC2 3 + OC3 3 per run). R7.1b was OC1 53, OC2 51, 14 lines: `ExplodeChance` (2 runs of
-/// "On Kill Monster Explosion") closed by the port of `skills.EnemyExplode.preDamageFunc` (other.lua:6204-6252).
+/// Pins the measured R7.5 state so it cannot drift silently: 82 LuaJIT player offence runs, 56 run by Rust (all matched), 26 not run
+/// (the recorded triggers/mirages gates), OC1/OC2/OC3/OC4 53/56 equal; the 30 difference lines are all the R7.10 class
+/// ([`MINION_CLASS`]) on the 3 nested minion runs (OC1 1 + OC2 3 + OC3 3 + OC4 3 per run). R7.4 was the same with OC1-OC3 (21 lines);
+/// R7.1b was OC1 53, OC2 51, 14 lines: `ExplodeChance` (2 runs of "On Kill Monster Explosion") closed by the port of
+/// `skills.EnemyExplode.preDamageFunc` (other.lua:6204-6252).
 #[test]
 fn offence_runs_state_is_pinned() {
     let (bad, tot) = compare_all();
-    assert_eq!(tot, [82, 56, 56, 53, 53, 53, 21, 26], "{}", bad.join("\n"));
-    assert_eq!(bad.len(), 21, "unexplained gaps or differences:\n{}", bad.join("\n"));
+    assert_eq!(tot, [82, 56, 56, 53, 53, 53, 53, 30, 26], "{}", bad.join("\n"));
+    assert_eq!(bad.len(), 30, "unexplained gaps or differences:\n{}", bad.join("\n"));
     let other: Vec<&String> = bad.iter().filter(|l| !MINION_CLASS.iter().any(|c| l.contains(c))).collect();
     assert!(other.is_empty(), "differences outside the R7.10 minion class:\n{other:?}");
 }
@@ -549,19 +618,19 @@ fn skill_func_registry_matches_closures_json() {
     assert!(bad.is_empty(), "registry drift:\n{}", bad.join("\n"));
 }
 
-/// Times of one top-level offence call: the entry instant, entry -> OC1, -> OC2, -> OC3.
-type Times = Rc<RefCell<(Option<std::time::Instant>, Option<f64>, Option<f64>, Option<f64>)>>;
+/// Times of one top-level offence call: the entry instant, entry -> OC1, -> OC2, -> OC3, -> OC4.
+type Times = Rc<RefCell<(Option<std::time::Instant>, [Option<f64>; 4])>>;
 
-/// `cargo test --release -p pob-calc --test offence_cp perf -- --ignored --nocapture`: wall time of offence parts A and B of the main
-/// skill -- offence entry (CalcPerform.lua:3799) -> OC1, -> OC2 and -> OC3 -- on the first run that reaches OC3 (the top perform; a gated
+/// `cargo test --release -p pob-calc --test offence_cp perf -- --ignored --nocapture`: wall time of offence parts A-C of the main skill --
+/// offence entry (CalcPerform.lua:3799) -> OC1, -> OC2, -> OC3 and -> OC4 -- on the first run that reaches OC4 (the top perform; a gated
 /// golden: the first nested run), median of 50 after a warm-up, a fresh session per run. The Rust side of
 /// `tools/.scratch/perf-offence.json`.
 #[test]
 #[ignore = "timing; not a check"]
-fn perf_offence_parts_a_b() {
+fn perf_offence_parts_a_c() {
     for g in GOLDEN_BUILDS {
         let text = std::fs::read_to_string(g.xml_path()).expect("xml");
-        let (mut a, mut b, mut c) = (Vec::new(), Vec::new(), Vec::new());
+        let mut series: [Vec<f64>; 4] = Default::default();
         for run in 0..51 {
             let model = pob_build::load_build_xml(&text).expect("xml parses");
             let sess = CalcSession::new(Rc::new(model), CalculateOptions::default());
@@ -569,42 +638,41 @@ fn perf_offence_parts_a_b() {
             let t2 = t.clone();
             sess.set_hook(Some(Box::new(move |cp: Checkpoint, _: &Env, _: &ActorState, _: &ActorState| {
                 let mut s = t2.borrow_mut();
-                if s.3.is_some() {
+                if s.1[3].is_some() {
                     return;
                 }
-                let ms = |s: &(Option<std::time::Instant>, Option<f64>, Option<f64>, Option<f64>)| {
-                    s.0.map(|t0| t0.elapsed().as_secs_f64() * 1000.0)
-                };
+                let ms = s.0.map(|t0| t0.elapsed().as_secs_f64() * 1000.0);
                 match cp {
                     Checkpoint::OcEntry => s.0 = Some(std::time::Instant::now()),
-                    Checkpoint::Oc1 => s.1 = ms(&s),
-                    Checkpoint::Oc2 => s.2 = ms(&s),
-                    Checkpoint::Oc3 => s.3 = ms(&s),
+                    Checkpoint::Oc1 => s.1[0] = ms,
+                    Checkpoint::Oc2 => s.1[1] = ms,
+                    Checkpoint::Oc3 => s.1[2] = ms,
+                    Checkpoint::Oc4 => s.1[3] = ms,
                     _ => {}
                 }
             })));
             let _ = sess.build_output(CalcMode::Main).expect("buildOutput");
             sess.set_hook(None);
             let s = t.borrow();
-            if run > 0
-                && let (Some(x), Some(y), Some(z)) = (s.1, s.2, s.3)
-            {
-                a.push(x);
-                b.push(y);
-                c.push(z);
+            if run > 0 && s.1.iter().all(Option::is_some) {
+                for (v, x) in series.iter_mut().zip(s.1) {
+                    v.push(x.expect("checked"));
+                }
             }
         }
         let med = |v: &mut Vec<f64>| {
             v.sort_by(f64::total_cmp);
             v[v.len() / 2]
         };
+        let n = series[0].len();
+        let [a, b, c, d] = &mut series;
         println!(
-            "{}: offence entry -> OC1 {:.4} ms, -> OC2 {:.4} ms, -> OC3 {:.4} ms (median of {})",
+            "{}: offence entry -> OC1 {:.4} ms, -> OC2 {:.4} ms, -> OC3 {:.4} ms, -> OC4 {:.4} ms (median of {n})",
             g.name,
-            med(&mut a),
-            med(&mut b),
-            med(&mut c),
-            a.len()
+            med(a),
+            med(b),
+            med(c),
+            med(d)
         );
     }
 }

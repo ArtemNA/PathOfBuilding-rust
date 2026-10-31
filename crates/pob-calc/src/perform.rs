@@ -148,6 +148,9 @@ pub enum Checkpoint {
     Oc2,
     /// `calcs.offence` before :2606 -- after conversions, the pass list, speed/accuracy/block, misc DPS multipliers (R7.1 probe OC3).
     Oc3,
+    /// `calcs.offence` before :4156 -- after the damage pass (exert, crits, damage by type, leech, DPS, PvP), the hand combine and the
+    /// leech rates (R7.1 probe OC4).
+    Oc4,
 }
 
 /// Called at each [`Checkpoint`] with the env and the player's / enemy's perform state (`actor.output`).
@@ -2407,6 +2410,7 @@ pub fn perform_skip_ehp(
         for attr in attr_table {
             let breakdown_attr = if omni_requirements.is_some() { "Omni" } else { attr };
             let mut val = 0.0;
+            let mut source: Option<&crate::env::ReqEntry> = None;
             for req_source in &env.requirements_table {
                 let raw = match *attr {
                     "Str" => req_source.str_,
@@ -2423,6 +2427,7 @@ pub fn perform_skip_ehp(
                     }
                     if req > val {
                         val = req;
+                        source = Some(req_source);
                     }
                 }
             }
@@ -2434,7 +2439,13 @@ pub fn perform_skip_ehp(
             if val > current {
                 player.output.set_num(&format!("Req{breakdown_attr}String"), val);
                 player.output.set_num(&format!("Req{breakdown_attr}"), val);
-                // :2156 `output["Req..Item"] = out.source` -- a table value: never in `getStats` (not kept).
+                // :2156 `output["Req..Item"] = out.source` -- a table value (never in `getStats`); `out.source` is set whenever `val > 0`
+                match source {
+                    Some(src) => player
+                        .output
+                        .set_table(&format!("Req{breakdown_attr}Item"), crate::output::OutTable::ReqSource(src.clone())),
+                    None => player.output.remove(&format!("Req{breakdown_attr}Item")),
+                }
                 if breakdown {
                     // :2158 the coloured string when the requirement is not met.
                     let have = player.output.opt_num(breakdown_attr).unwrap_or(0.0);

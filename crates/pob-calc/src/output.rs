@@ -2,7 +2,10 @@
 //! and `output_to_stats` -- boot.lua:791-805 `engine_outputJSON` over the player's output.
 //!
 //! `actor.output` is a Lua table mixing numbers, booleans and strings (`ChaosInoculation`, `GuardSkillActive`,
-//! `FortificationEffect = "0"`); table values (`Req*Item`, `Minion`, `SkillDPS`) never reach `getStats` and are not kept.
+//! `FortificationEffect = "0"`) and a few TABLE values ([`OutTable`]: `Req<Attr>Item`, R7.5); table values never reach `getStats`
+//! (`output_to_stats` skips them, as boot.lua's `engine_outputJSON` does) and are kept beside the scalars, under the same keys (a key
+//! holds either a scalar or a table, as one Lua slot does). `output.MainHand` / `output.OffHand` live in the offence state (R7.4);
+//! `output.Minion` (CalcPerform.lua:1319, the minion actor's output) is R7.10.
 //! The mod core reads the same table through `store.actor.output` (`PerStat`/`StatThreshold`/`GetStat`, ModStore.lua:
 //! 308-357) as numbers only (`pob_mods::Actor::output`), so [`Output`] owns the full table and mirrors every number into the
 //! mod core's actor on each write -- one Lua table, two typed views kept in step. A non-number value is invisible to the mod
@@ -21,9 +24,19 @@ pub enum OutValue {
     Str(Str),
 }
 
+/// A table value of `actor.output`, with the structure of the Lua table it is.
+#[derive(Clone, Debug)]
+pub enum OutTable {
+    /// CalcPerform.lua:2156 `output["Req"..attr.."Item"] = out.source` -- the `env.requirementsTable` entry itself (`Str`/`Dex`/`Int`,
+    /// `source` = `"Item"` with `sourceItem`/`sourceSlot`, or `"Gem"` with `sourceGem`).
+    ReqSource(crate::env::ReqEntry),
+}
+
 /// `actor.output` (a fresh `{ }` at CalcPerform.lua:1305-1306), in assignment order.
 pub struct Output {
     map: IndexMap<Str, OutValue>,
+    /// The table values (a key is in at most one of `map` / `tables`).
+    tables: IndexMap<Str, OutTable>,
     actor: ActorRef,
 }
 
@@ -33,6 +46,7 @@ impl Output {
         actor.borrow_mut().output = Some(IndexMap::new());
         Output {
             map: IndexMap::new(),
+            tables: IndexMap::new(),
             actor: actor.clone(),
         }
     }
@@ -58,6 +72,7 @@ impl Output {
     }
 
     pub fn set_num(&mut self, key: &str, v: f64) {
+        self.drop_table(key);
         let k: Str = Rc::from(key);
         if let Some(out) = self.actor.borrow_mut().output.as_mut() {
             out.insert(k.clone(), v);
@@ -75,6 +90,7 @@ impl Output {
 
     /// `output[key] = nil`.
     pub fn remove(&mut self, key: &str) {
+        self.drop_table(key);
         if let Some(out) = self.actor.borrow_mut().output.as_mut() {
             out.shift_remove(key);
         }
@@ -82,10 +98,36 @@ impl Output {
     }
 
     fn set_other(&mut self, key: &str, v: OutValue) {
+        self.drop_table(key);
         if let Some(out) = self.actor.borrow_mut().output.as_mut() {
             out.shift_remove(key);
         }
         self.map.insert(Rc::from(key), v);
+    }
+
+    /// `output[key] = <table>` (the scalar under `key`, if any, is replaced -- one Lua slot).
+    pub fn set_table(&mut self, key: &str, t: OutTable) {
+        if let Some(out) = self.actor.borrow_mut().output.as_mut() {
+            out.shift_remove(key);
+        }
+        self.map.shift_remove(key);
+        self.tables.insert(Rc::from(key), t);
+    }
+
+    /// `output[key]` when it is a table value.
+    pub fn table(&self, key: &str) -> Option<&OutTable> {
+        self.tables.get(key)
+    }
+
+    /// The table values, in assignment order.
+    pub fn tables(&self) -> impl Iterator<Item = (&Str, &OutTable)> {
+        self.tables.iter()
+    }
+
+    fn drop_table(&mut self, key: &str) {
+        if !self.tables.is_empty() {
+            self.tables.shift_remove(key);
+        }
     }
 
     pub fn iter(&self) -> impl Iterator<Item = (&Str, &OutValue)> {
@@ -111,7 +153,7 @@ pub enum StatValue {
 
 /// boot.lua:791-805 `engine_outputJSON`: a number goes through as it is, except that JSON has no NaN/inf tokens, so those
 /// become the strings `tostring` renders (MINEFIELD O2/O3: `"nan"`, `"inf"`, `"-inf"`); strings and booleans go through;
-/// every other Lua type was never stored in [`Output`]. `-0.0` stays `-0.0` (O9).
+/// table values ([`OutTable`]) are skipped (`engine_outputJSON` writes scalars only). `-0.0` stays `-0.0` (O9).
 pub fn output_to_stats(output: &Output) -> IndexMap<String, StatValue> {
     output
         .iter()

@@ -1155,3 +1155,132 @@ pub(super) fn enemy_explode(off: &mut Off<'_>) {
     let ec = min2(on(off, "ExplodeChance") * 100.0, 100.0);
     off.out().set_num("ExplodeChance", ec);
 }
+
+// --- R7.5: `explosiveArrowFunc` (CalcOffence.lua:3038) and `postCritFunc` (:3315) ----------------------------------------------------
+
+/// act_dex.lua:6699-6778 ExplosiveArrow.explosiveArrowFunc(activeSkill, output, globalOutput, globalBreakdown, env): `output` is the
+/// damage pass's (`off.cur_pass`); the breakdown rows are R8.
+pub(super) fn explosive_arrow(off: &mut Off<'_>) {
+    const SRC: &str = "Data/Skills/act_dex.lua";
+    let pi = off.cur_pass;
+    let skill_part = off.sk().skill_part;
+    if skill_part != Some(1.0) && skill_part != Some(2.0) {
+        return;
+    }
+    let q = off.q.clone();
+    let cfg = off.cfg.clone();
+    let c = Some(&cfg);
+    let duration = crate::offence::calc_skill_duration(
+        &q.list,
+        &q.malformed,
+        &cfg,
+        &off.sk().skill_data,
+        off.env.mode_effective,
+        &off.enemy_db,
+    );
+    let fuse_limit = q.base(c, &["ExplosiveArrowMaxFuseCount"]);
+    let active_totems = if off.flag("totem") {
+        let o = crate::setup::ok(off.mod_db.borrow().override_(None, &["TotemsSummoned"])).filter(Value::truthy);
+        Some(match o {
+            Some(v) => v
+                .as_num()
+                .unwrap_or_else(|| panic!("{SRC}:6729: attempt to perform arithmetic on local 'activeTotems'")),
+            None => q.base(c, &["ActiveTotemLimit", "ActiveBallistaLimit"]),
+        })
+    } else {
+        None
+    };
+    let mut barrage = None;
+    if q.flag(None, &["SequentialProjectiles"])
+        && !q.flag(None, &["OneShotProj"])
+        && !q.flag(None, &["NoAdditionalProjectiles"])
+        && !q.flag(None, &["TriggeredBySnipe"])
+    {
+        let b = q.base(c, &["ProjectileCount"]);
+        barrage = Some(b);
+        let d = sdn(off, "dpsMultiplier", "act_dex.lua:6721") / b;
+        set(off, "dpsMultiplier", d);
+    }
+    let hit_chance = match off.pval(pi, "HitChance") {
+        Some(crate::output::OutValue::Num(x)) => *x,
+        o => panic!("{SRC}:6724: attempt to perform arithmetic on field 'HitChance' ({o:?})"),
+    };
+    let mut rate = (hit_chance / 100.0) * on(off, "Speed") * sdn(off, "dpsMultiplier", "act_dex.lua:6724") * barrage.unwrap_or(1.0);
+    if let Some(t) = active_totems {
+        rate *= t;
+    }
+    if part(off, 2.0) {
+        let maximum = min2((rate * duration).floor() + 1.0, fuse_limit);
+        off.q
+            .nm("Multiplier:ExplosiveArrowStage", ModType::Base, maximum, "Base", 0, 0, vec![]);
+        off.q.nm(
+            "Multiplier:ExplosiveArrowStageAfterFirst",
+            ModType::Base,
+            maximum - 1.0,
+            "Base",
+            0,
+            0,
+            vec![],
+        );
+        off.out().set_num("MaxExplosiveArrowFuseCalculated", maximum);
+    } else {
+        off.out().remove("MaxExplosiveArrowFuseCalculated");
+    }
+    let time_to_max = fuse_limit / rate;
+    let hit_time = if part(off, 2.0) || (part(off, 1.0) && off.sk().active_stage_count.unwrap_or(0.0) + 1.0 >= fuse_limit) {
+        min2(duration, time_to_max)
+    } else {
+        duration
+    };
+    off.out().set_num("HitTime", hit_time);
+    off.out().set_num("HitSpeed", 1.0 / hit_time);
+}
+
+/// act_int.lua:11046-11123 KineticFusillade(AltX).postCritFunc (`output` = the top-level output; breakdown rows are R8, the query of
+/// their `currentAPS` branch is made).
+pub(super) fn kinetic_fusillade_post_crit(off: &mut Off<'_>) {
+    const SRC: &str = "act_int.lua:11053";
+    let base_delay = off.sd_num("delayPerProjectile", 0);
+    let projectile_count = if part(off, 1.0) { on(off, "ProjectileCount") } else { 1.0 };
+    let hover_delay = sdn(off, "duration", "act_int.lua:11064");
+    let duration_mod = on(off, "DurationMod");
+    let base_time = base_delay
+        .unwrap_or_else(|| panic!("{SRC}: attempt to perform arithmetic on local 'baseDelayBetweenProjectiles' (a nil value)"))
+        * (projectile_count - 1.0);
+    let effective_delay = (hover_delay + base_time) * duration_mod;
+    let tick_time = misc("ServerTickTime");
+    let rounded = (effective_delay / tick_time).ceil() * tick_time;
+    let max_aps = 1.0 / rounded;
+    let current = off.st.player.output.opt_num("Speed");
+    off.out().set_num("KineticFusilladeMaxEffectiveAPS", max_aps);
+    if off.breakdown && current.is_some() {
+        let _ = sum(off, ModType::Inc, &["Speed"]);
+    }
+    if part(off, 1.0)
+        && let Some(cur) = current
+        && cur > max_aps
+    {
+        let ratio = max_aps / cur;
+        let original = off.sd_num("dpsMultiplier", 0).unwrap_or_else(|| on(off, "ProjectileCount"));
+        set(off, "dpsMultiplier", original * ratio);
+    }
+}
+
+/// act_int.lua:12651-12662 LightningTendrilsAltX.postCritFunc.
+pub(super) fn lightning_tendrils_alt_x_post_crit(off: &mut Off<'_>) {
+    if part(off, 1.0) {
+        let interval = sdn(off, "pulseInterval", "act_int.lua:12658");
+        let pulse_damage = sdn(off, "pulseDamage", "act_int.lua:12655") / 100.0;
+        let crit_chance = on(off, "PreEffectiveCritChance") / 100.0;
+        let effective = on(off, "CritChance") / 100.0;
+        let crit_multi = on(off, "CritMultiplier");
+        let average_more = 100.0
+            * (((interval - 1.0) * (1.0 + crit_chance * (crit_multi - 1.0)) + (1.0 + pulse_damage) * crit_multi)
+                / (interval * ((1.0 - effective) + crit_multi * effective))
+                - 1.0);
+        let kw = crate::setup::keyword_flag("Hit") | crate::setup::keyword_flag("Ailment");
+        let t = tag(&[("type", Value::str("SkillPart")), ("skillPart", Value::Num(1.0))]);
+        off.q
+            .nm("Damage", ModType::More, average_more, "Average Pulse Damage", 0, kw, vec![t]);
+    }
+}

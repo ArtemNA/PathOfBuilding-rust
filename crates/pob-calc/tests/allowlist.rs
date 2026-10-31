@@ -107,8 +107,9 @@ fn allowlist_is_the_measured_set() {
     // R6.5 (skills + flasks in perform, CP1 = LuaJIT): 411 / 142; R6.6 (reservations, CP2 = LuaJIT; ReqIntString -> SYNTH_EXCLUDED): 414 / 139;
     // R6.7 (buffs/debuffs/curses/guards, CP3 = LuaJIT): 542 / 14; R6.8 (ailments/exposures/ally life, CP4 = LuaJIT): 555 / 11;
     // R7.3 (offence part A; OC1/OC2 = LuaJIT where the top offence runs): 598 / 13;
-    // R7.4 (offence part B; OC3 = LuaJIT on every offence run Rust executes): 605 / 13
-    assert_eq!(ALLOWLIST.len(), 605, "pinned size of the measured allowlist");
+    // R7.4 (offence part B; OC3 = LuaJIT on every offence run Rust executes): 605 / 13;
+    // R7.5 (offence part C; OC4 = LuaJIT on every offence run Rust executes but the 3 R7.10 minion runs): 711 / 13
+    assert_eq!(ALLOWLIST.len(), 711, "pinned size of the measured allowlist");
     assert_eq!(EXCLUDED.len(), 13, "pinned size of the measured exclusions");
 }
 

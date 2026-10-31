@@ -10,14 +10,15 @@
 //! The checkpoints are taken through `perform_with`'s hook (`Checkpoint`), not a copy of perform. R6.6: CP2 -- after the first
 //! `doActorLifeManaReservation(env.player)` (:2092; attributes/pools :1943-1966 and the per-skill reservation loop :1978-2090) -- is gated
 //! the same way. R6.7: CP3 -- the entry of `calcs.defenceForConditionals` (:3484; heralds/auras :2164, buffs/debuffs/curses/guards
-//! :2193-3377, Choir/extra auras/keystones/Dancing Dervish :3394-3482) -- too, with ONE proven class pinned by name ([`TABLE_OUTPUT`]).
-//! R6.8: CP4 -- the entry of `calcs.defence` (:3792; misc buffs :3489, non-damaging ailments and chill/shock multipliers :3497-3622, the
-//! enemy's charges/misc :3625-3626, exposures/consecrated ground :3627-3665, ally life pools :3667-3790) -- the same way, the same pin.
+//! :2193-3377, Choir/extra auras/keystones/Dancing Dervish :3394-3482) -- too. R6.8: CP4 -- the entry of `calcs.defence` (:3792; misc
+//! buffs :3489, non-damaging ailments and chill/shock multipliers :3497-3622, the enemy's charges/misc :3625-3626, exposures/consecrated
+//! ground :3627-3665, ally life pools :3667-3790) -- the same way. R7.5: the table values of `output` (`Req<Attr>Item`, CalcPerform.lua:2156,
+//! once pinned as `output-table-value`) are compared too ([`table_json`]) -- no pin left.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::rc::Rc;
 
-use pob_calc::{ActorState, Checkpoint, Env, InitEnvOptions, OutValue, ParseMode, init_env_with, perform_with};
+use pob_calc::{ActorState, Checkpoint, Env, InitEnvOptions, OutTable, OutValue, ParseMode, init_env_with, perform_with};
 use pob_golden::registry::GOLDEN_BUILDS;
 use pob_lua::format_g;
 use pob_mods::format::format_source_mod;
@@ -43,7 +44,7 @@ fn snap(db: &StoreRef, st: &ActorState) -> Json {
     mods.sort();
     let conditions: Map<String, Json> = s.conditions.iter().map(|(k, v)| (k.to_string(), json!(v))).collect();
     let multipliers: Map<String, Json> = s.multipliers.iter().map(|(k, v)| (k.to_string(), n17(*v))).collect();
-    let output: Map<String, Json> = st
+    let mut output: Map<String, Json> = st
         .output
         .iter()
         .map(|(k, v)| {
@@ -55,7 +56,36 @@ fn snap(db: &StoreRef, st: &ActorState) -> Json {
             (k.to_string(), j)
         })
         .collect();
+    for (k, t) in st.output.tables() {
+        output.insert(k.to_string(), table_json(t));
+    }
     json!({ "modDB": mods, "modCount": n17(s_count(&mods)), "conditions": conditions, "multipliers": multipliers, "output": output })
+}
+
+/// A table value of `output` in the `export-skills.ts` encoding: numbers `%.17g`, `sourceItem` = the item's name, `sourceGem` = the
+/// gem's `<group>:<gem>` (1-based) key.
+fn table_json(t: &OutTable) -> Json {
+    match t {
+        OutTable::ReqSource(r) => {
+            let mut o = Map::new();
+            for (k, v) in [("Str", r.str_), ("Dex", r.dex), ("Int", r.int)] {
+                if let Some(v) = v {
+                    o.insert(k.to_owned(), n17(v));
+                }
+            }
+            o.insert("source".to_owned(), json!(r.source));
+            if let Some(i) = &r.source_item {
+                o.insert("sourceItem".to_owned(), json!(i.name));
+            }
+            if let Some(s) = &r.source_slot {
+                o.insert("sourceSlot".to_owned(), json!(s));
+            }
+            if let Some((g, i)) = r.source_gem {
+                o.insert("sourceGem".to_owned(), json!(format!("{}:{}", g + 1, i + 1)));
+            }
+            Json::Object(o)
+        }
+    }
 }
 
 fn s_count(m: &[String]) -> f64 {
@@ -82,7 +112,7 @@ fn run(name: &str) -> BTreeMap<&'static str, Json> {
             Checkpoint::Cp3 => "CP3",
             Checkpoint::Cp4 => "CP4",
             // the offence checkpoints (R7.3) are gated by `offence_cp.rs`
-            Checkpoint::OcEntry | Checkpoint::Oc1 | Checkpoint::Oc2 | Checkpoint::Oc3 => return,
+            Checkpoint::OcEntry | Checkpoint::Oc1 | Checkpoint::Oc2 | Checkpoint::Oc3 | Checkpoint::Oc4 => return,
         };
         let pdb = env.player.borrow().mod_db.clone();
         let edb = env.enemy.borrow().mod_db.clone();
@@ -127,23 +157,6 @@ fn diff_actor(who: &str, lj: &Json, rust: &Json) -> Vec<String> {
     out
 }
 
-/// Proven class `output-table-value` (R6-ARCH §6, R6.6): CalcPerform.lua:2156 `output["Req"..attr.."Item"] = out.source` stores the
-/// requirement-source TABLE in `output`; Rust's `Output` holds numbers/strings/booleans only (the key never reaches `getStats`). Pinned: a
-/// difference on such a key is allowed only when LuaJIT has a table and Rust nothing; any other difference on it fails.
-const TABLE_OUTPUT: [&str; 4] = ["ReqStrItem", "ReqDexItem", "ReqIntItem", "ReqOmniItem"];
-
-/// Removes the pinned `output-table-value` differences of a checkpoint (`player.output.Req<Attr>Item: lj {table} rust null`); returns
-/// how many.
-fn strip_table_output(d: &mut Vec<String>) -> usize {
-    let before = d.len();
-    d.retain(|x| {
-        !TABLE_OUTPUT
-            .iter()
-            .any(|k| x.starts_with(&format!("player.output.{k}: lj {{")) && x.ends_with(" rust null"))
-    });
-    before - d.len()
-}
-
 #[test]
 fn cp1_cp2_cp3_cp4_equal_luajit_on_six_goldens() {
     let mut all_bad = Vec::new();
@@ -161,9 +174,8 @@ fn cp1_cp2_cp3_cp4_equal_luajit_on_six_goldens() {
             };
             let mut d = diff_actor("player", &w["player"], &r["player"]);
             d.extend(diff_actor("enemy", &w["enemy"], &r["enemy"]));
-            let pinned = strip_table_output(&mut d);
             println!(
-                "{}: {cp} player {} mods / {} conditions / {} multipliers / {} output, enemy {} mods / {} conditions / {} multipliers -- differences {}, pinned output-table-value {pinned}",
+                "{}: {cp} player {} mods / {} conditions / {} multipliers / {} output, enemy {} mods / {} conditions / {} multipliers -- differences {} (table values: {})",
                 g.name,
                 r["player"]["modCount"].as_str().unwrap(),
                 r["player"]["conditions"].as_object().unwrap().len(),
@@ -172,7 +184,13 @@ fn cp1_cp2_cp3_cp4_equal_luajit_on_six_goldens() {
                 r["enemy"]["modCount"].as_str().unwrap(),
                 r["enemy"]["conditions"].as_object().unwrap().len(),
                 r["enemy"]["multipliers"].as_object().unwrap().len(),
-                d.len()
+                d.len(),
+                r["player"]["output"]
+                    .as_object()
+                    .unwrap()
+                    .values()
+                    .filter(|v| v.is_object())
+                    .count()
             );
             all_bad.extend(d.into_iter().map(|x| format!("{}: {cp} {x}", g.name)));
         }
@@ -208,7 +226,7 @@ fn perf_perform_to_checkpoints() {
                 Checkpoint::Cp2 => t2 = Some(t0.elapsed()),
                 Checkpoint::Cp3 => t3 = Some(t0.elapsed()),
                 Checkpoint::Cp4 => t4 = Some(t0.elapsed()),
-                Checkpoint::OcEntry | Checkpoint::Oc1 | Checkpoint::Oc2 | Checkpoint::Oc3 => {}
+                Checkpoint::OcEntry | Checkpoint::Oc1 | Checkpoint::Oc2 | Checkpoint::Oc3 | Checkpoint::Oc4 => {}
             };
             let _ = perform_with(&mut env, Some(pob_calc::defence), Some(pob_calc::estimations), Some(&mut hook));
             if run > 0 {
