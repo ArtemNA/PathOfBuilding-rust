@@ -172,6 +172,39 @@ impl SpecNode {
             None => self.tree_node().reminder_text.as_deref(),
         }
     }
+
+    /// `node.nodesInRadius` (PassiveTree.lua:654-711) through the metatable: the tree socket's/keystone's lists. A node
+    /// `BuildSubgraph` made is a plain table without them (PassiveSpec.lua:2160-2170), so `nil` -- as for every other node.
+    pub fn nodes_in_radius(&self) -> Option<&crate::radius::NodesInRadius> {
+        match &self.base {
+            NodeBase::Tree(_) => self.tree.nodes_in_radius(self.id),
+            NodeBase::Owned(_) => None,
+        }
+    }
+}
+
+/// What a radius-jewel visitor (`pob_parser::jewel::visit`, ModParser.lua:6151-6593) reads off a spec node.
+impl pob_parser::helpers::JewelNode for SpecNode {
+    fn mod_list(&self) -> &[Rc<pob_mods::Mod>] {
+        &SpecNode::mod_list(self).mods
+    }
+    /// `node.isTattoo` -- tattoos are not ported (P5): nil.
+    fn is_tattoo(&self) -> bool {
+        false
+    }
+    fn node_type(&self) -> &str {
+        self.ty().as_str()
+    }
+    /// `node.conqueredBy` -- written by the timeless-jewel half of BuildAllDependsAndPaths (PassiveSpec.lua:1176-1190),
+    /// R5.5c; nil until then.
+    fn conquered_by(&self) -> bool {
+        false
+    }
+    fn sum_base(&self, stat: &str) -> Result<f64, pob_mods::LuaError> {
+        let st = pob_mods::ModStore::new_list(None);
+        st.borrow_mut().add_list(&SpecNode::mod_list(self).mods);
+        st.borrow().sum(pob_mods::ModType::Base, None, &[stat])
+    }
 }
 
 pub struct PassiveSpec {

@@ -5,18 +5,22 @@
 //! Cluster jewels (`BuildClusterJewelGraphs`/`BuildSubgraph`, R5.5a) are in [`cluster`]; the caller runs
 //! [`PassiveSpec::post_load`] with the items once they are parsed (pob-calc `init_env`).
 //!
-//! Not ported (explicit `unimplemented` lists on `PassiveTree`/`PassiveSpec`): radius/timeless/abyss jewels, tattoos,
+//! Jewel radii (`nodesInRadius`, R5.5b) are in [`radius`]; the radius-jewel passes themselves run in pob-calc (CalcSetup).
+//!
+//! Not ported (explicit `unimplemented` lists on `PassiveTree`/`PassiveSpec`): timeless/abyss jewels, tattoos,
 //! paths/`pathDist`, URL specs, legion/tattoo passives, alternate ascendancies, display-only assets.
 
 #![forbid(unsafe_code)]
 
 pub mod cluster;
 pub mod modtools;
+pub mod radius;
 pub mod spec;
 pub mod tree;
 
 pub use cluster::{ClusterJewel, JewelLookup};
 pub use pob_parser::ParseMode;
+pub use radius::{NodesInRadius, RadiusInfo, set_jewel_radii};
 pub use spec::{AllocNodeCounts, AllocOrder, PassiveSpec, SpecNode};
 pub use tree::{
     AscendClass, AscendEntry, MasteryEffect, NodeModLine, NodeStats, NodeType, PassiveTree, TreeClass, TreeError, TreeGroup, TreeNode,

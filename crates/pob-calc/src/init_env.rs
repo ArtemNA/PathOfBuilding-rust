@@ -20,7 +20,7 @@ use pob_mods::{Actor, Mod, ModStore, ModType, StoreRef, Value};
 use pob_tree::{ClusterJewel, PassiveSpec, TreeError};
 
 use crate::calc_lib;
-use crate::env::{CalcActor, Env, GrantedSkill, MainSkillStub, ReqEntry, Slot};
+use crate::env::{CalcActor, Env, GrantedSkill, MainSkillStub, RadiusFunc, RadiusJewel, ReqEntry, Slot};
 use crate::setup::{
     apply_soul_mod, base, build_mod_list_for_node_list, cc, cfg_source, cond, cond_neg, init_mod_db, keyword_flag, list_mods, lua_gsub,
     merge_db, merge_keystones, misc, mod_flag, mult, n, new_mod, ok, s, tag, temp_list, title_case_rarity,
@@ -351,6 +351,61 @@ fn merge_scaled(src_list: &[Rc<Mod>], scale: f64) -> Vec<Rc<Mod>> {
     list_mods(&combined)
 }
 
+/// CalcSetup.lua:875-904: one `radiusJewelList` entry per function of the jewel (`item.jewelData.funcList`, or the default
+/// tally), and the unallocated nodes in radius of every non-`Self` function into `extraRadiusNodeList`.
+fn add_radius_jewel(env: &mut Env, item: &Rc<Item>, socket_id: u32, radius_index: f64) {
+    // `(item.jewelData and item.jewelData.funcList) or { default }` -- an empty funcList table is truthy (L4).
+    let funcs: Vec<(RadiusFunc, Value)> = match item.jewel_data.as_ref().map(|jd| jd.get("funcList")) {
+        Some(Value::Table(t)) => t
+            .array
+            .iter()
+            .take_while(|f| !f.is_nil())
+            .map(|f| (RadiusFunc::Visitor(f.get("func")), f.get("type")))
+            .collect(),
+        Some(Value::Nil | Value::Bool(false)) | None => vec![(RadiusFunc::DefaultTally, Value::str("Self"))],
+        Some(other) => panic!(
+            "Modules/CalcSetup.lua:886: bad argument #1 to 'ipairs' (table expected, got {})",
+            other.type_name()
+        ),
+    };
+    for (func, ty) in funcs {
+        // `local node = env.spec.nodes[slot.nodeId]` -- the socket is allocated (:845), so it exists.
+        let socket = env
+            .spec
+            .node(socket_id)
+            .unwrap_or_else(|| panic!("Modules/CalcSetup.lua:888: attempt to index local 'node' (a nil value)"));
+        let nir = socket.nodes_in_radius();
+        // `nodesInRadius[item.jewelRadiusIndex]` -- an index the tree's table does not have is nil.
+        let list = nir.and_then(|l| {
+            (radius_index >= 1.0 && radius_index.fract() == 0.0)
+                .then(|| l.get(radius_index as usize - 1))
+                .flatten()
+        });
+        let nodes = list.cloned().unwrap_or_default();
+        if !ty.is_str("Self") && nir.is_some() {
+            let Some(list) = list else {
+                panic!("Modules/CalcSetup.lua:898: bad argument #1 to 'pairs' (table expected, got nil)");
+            };
+            for &id in list {
+                // `env.extraRadiusNodeList[nodeId] = env.spec.nodes[nodeId]` -- a nil value leaves no key.
+                if !env.alloc_nodes.contains_key(&id)
+                    && let Some(idx) = env.spec.node_idx(id)
+                {
+                    env.extra_radius_node_list.insert(id, idx);
+                }
+            }
+        }
+        env.radius_jewel_list.push(RadiusJewel {
+            nodes,
+            func,
+            ty,
+            item: item.clone(),
+            node_id: socket_id,
+            data: pob_mods::Table::default(),
+        });
+    }
+}
+
 fn new_actor(mod_db: &StoreRef, level: f64) -> Rc<RefCell<CalcActor>> {
     let actor = Rc::new(RefCell::new(Actor {
         mod_db: Some(mod_db.clone()),
@@ -452,6 +507,7 @@ pub fn init_env(build: Rc<BuildModel>, opts: InitEnvOptions) -> Result<Env, Init
         alloc_nodes: IndexMap::new(),
         initial_node_mod_db: ModStore::new_list(None),
         keystones_added: IndexMap::new(),
+        radius_jewel_list: Vec::new(),
         extra_radius_node_list: IndexMap::new(),
         granted_passives: IndexMap::new(),
         granted_skills: Vec::new(),
@@ -923,11 +979,15 @@ pub fn init_env(build: Rc<BuildModel>, opts: InitEnvOptions) -> Result<Env, Init
                     }
                     jewel_limits.insert(limit_key, used.unwrap_or(0.0) + 1.0);
                 }
-                // :871-935 -- gated on `item.jewelRadiusIndex`; needs `node.nodesInRadius` (P5). The jewel's own mods are
-                // still merged below like any item's; only its effect on the nodes around it is lost.
-                if item.jewel_radius_index.is_some() {
-                    env.unimplemented
-                        .push(format!("CalcSetup.lua:871 radius jewel {} (nodesInRadius, P5)", item.name));
+                // :871-935 -- gated on `item.jewelRadiusIndex` (`override` is nil in MAIN: no `extraJewelFuncs`, see (16)).
+                // `ParseMode::CacheOnly` reproduces pob-ts, which has no radius jewels.
+                if let Some(radius_index) = item.jewel_radius_index {
+                    if opts.parse_mode == pob_parser::ParseMode::Full {
+                        add_radius_jewel(&mut env, item, node_id, radius_index);
+                    } else {
+                        env.unimplemented
+                            .push(format!("CalcSetup.lua:871 radius jewel {} (nodesInRadius, pob-ts)", item.name));
+                    }
                 }
             }
         }
@@ -1445,7 +1505,7 @@ pub fn init_env(build: Rc<BuildModel>, opts: InitEnvOptions) -> Result<Env, Init
         let (node_mod_list, node_explode) = build_mod_list_for_node_list(&mut env, true);
         mod_db.borrow_mut().add_list(&list_mods(&node_mod_list));
         // `env.explodeSources = tableConcat(explodeSources, env.explodeSources)` -- nodes first. A node only gets
-        // `CanExplode` through a radius jewel (P5), so the node half is always empty here.
+        // `CanExplode` through a radius jewel (R5.5b); none of the goldens has one, so the node half stays unported here.
         if !node_explode.is_empty() {
             env.unimplemented.push(format!(
                 "CalcSetup.lua:1424 {} node explode sources (typed as items downstream)",

@@ -35,7 +35,7 @@ fn calc_file_json_has_meta_and_allowlisted_stats() {
     let parsed = CandidateOutput::from_json(std::str::from_utf8(&out.stdout).unwrap()).unwrap();
     assert_eq!(
         parsed.stats.len(),
-        316,
+        317,
         "Dual Savior: every ALLOWLIST key it emits (= oracle ok count)"
     );
     assert!(
@@ -76,16 +76,17 @@ fn experimental_env_disables_the_filter() {
 /// R5.4 (`ParseMode::Full`, the real ModParser, re-measured allowlist): 296/295, 303/302, 303/302, 314/313, 302/301, 320/319 -- the same
 /// numbers `npm run oracle -- <golden> --cand tools/oracle-adapter/candidate.ts` prints. R5.5a (cluster-jewel subgraphs,
 /// allowlist re-measured 333 -> 353): 316/315, 323/322, 323/322, 334/333, 322/321, 340/339 (the same `npm run oracle`).
+/// R5.5b (radius jewels, allowlist 353 -> 354, `Spec:EnergyShieldInc`): 317/316, 324/323, 324/323, 335/334, 323/322, 341/340.
 /// O9: `VaalArcticArmourMitigation` is `ok`, not `exact` (golden `+0`, Rust `-0`) -- hence exact = ok - 1.
 #[test]
 fn cli_stats_against_goldens() {
     let pinned: [(&str, usize, usize); 6] = [
-        ("Dual Savior", 316, 315),
-        ("Dual Wield Cospris CoC", 323, 322),
-        ("Dual Wield Cospris CoC - Lethal Pride", 323, 322),
-        ("Generals Perforate Zerker", 334, 333),
-        ("Mirage Archer Toxic Rain", 322, 321),
-        ("OccVortex", 340, 339),
+        ("Dual Savior", 317, 316),
+        ("Dual Wield Cospris CoC", 324, 323),
+        ("Dual Wield Cospris CoC - Lethal Pride", 324, 323),
+        ("Generals Perforate Zerker", 335, 334),
+        ("Mirage Archer Toxic Rain", 323, 322),
+        ("OccVortex", 341, 340),
     ];
     for (g, (name, ok, exact)) in GOLDEN_BUILDS.iter().zip(pinned) {
         assert_eq!(g.name, name);

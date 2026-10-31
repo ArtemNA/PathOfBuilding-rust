@@ -57,6 +57,36 @@ pub struct GrantedSkill {
     pub source_node: Option<u32>,
 }
 
+/// The function of a `radiusJewelList` entry.
+#[derive(Clone, Debug)]
+pub enum RadiusFunc {
+    /// `func.func` of an entry of `item.jewelData.funcList` -- a `pob_parser::jewel` function value.
+    Visitor(pob_mods::Value),
+    /// CalcSetup.lua:877-884, the default when the jewel has no `funcList`: tallies Str/Dex/Int of `out` into `data`.
+    DefaultTally,
+}
+
+/// One `env.radiusJewelList` entry (CalcSetup.lua:887-895). `attributes` (`node.attributesInRadius[...]`) is not kept:
+/// PassiveTree only ever makes it empty tables and nothing in the calc reads it.
+#[derive(Clone, Debug)]
+pub struct RadiusJewel {
+    /// `node.nodesInRadius[item.jewelRadiusIndex] or {}` -- node ids, ascending.
+    pub nodes: Vec<u32>,
+    pub func: RadiusFunc,
+    /// `func.type` ("Other", "Self", "SelfUnalloc", "Threshold", ...).
+    pub ty: pob_mods::Value,
+    pub item: Rc<Item>,
+    pub node_id: u32,
+    pub data: pob_mods::Table,
+}
+
+impl RadiusJewel {
+    /// `rad.nodes[id]` (a hash lookup upstream).
+    pub fn has(&self, id: u32) -> bool {
+        self.nodes.binary_search(&id).is_ok()
+    }
+}
+
 /// `env.requirementsTable[i]` (:1082-1090 items; the gem half is P5 and stays empty).
 #[derive(Clone, Debug)]
 pub struct ReqEntry {
@@ -111,7 +141,10 @@ pub struct Env {
     /// A ModList.
     pub initial_node_mod_db: StoreRef,
     pub keystones_added: IndexMap<String, bool>,
-    /// P5 (`nodesInRadius`): always empty, so both radius passes of buildModListForNode are inert.
+    /// `env.radiusJewelList` (CalcSetup.lua:871-935, R5.5b; `ParseMode::Full` only -- pob-ts has none).
+    pub radius_jewel_list: Vec<RadiusJewel>,
+    /// `env.extraRadiusNodeList`: node id -> index into `spec.nodes`. Upstream walks it with `pairs` (a hash order, D13); here
+    /// the insertion order (jewel order, then ascending id).
     pub extra_radius_node_list: IndexMap<u32, usize>,
     pub granted_passives: IndexMap<u32, bool>,
     pub granted_skills: Vec<GrantedSkill>,

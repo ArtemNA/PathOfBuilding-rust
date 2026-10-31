@@ -30,7 +30,7 @@ pub use estimations::estimations;
 pub use output::{OutValue, Output, StatValue, output_to_stats};
 pub use perform::{ActorState, PerformState, PhaseFn, Who, finish_output, noop_phase, perform};
 
-pub use env::{CalcActor, Env, GrantedSkill, MainSkillStub, ReqEntry, Slot};
+pub use env::{CalcActor, Env, GrantedSkill, MainSkillStub, RadiusFunc, RadiusJewel, ReqEntry, Slot};
 pub use init_env::{InitEnvError, InitEnvOptions, init_env, item_options, parse_items};
 pub use pob_parser::ParseMode;
 

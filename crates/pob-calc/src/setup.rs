@@ -11,7 +11,8 @@ use pob_mods::{LuaResult, Mod, ModCfg, ModStore, ModType, StoreKind, StoreRef, T
 use pob_tree::NodeType;
 
 use crate::calc_lib;
-use crate::env::{Env, GrantedSkill};
+use crate::env::{Env, GrantedSkill, RadiusFunc};
+use pob_parser::helpers::JewelNode;
 
 // --- small helpers -----------------------------------------------------------------------------------------------
 
@@ -346,10 +347,10 @@ pub(crate) fn init_mod_db(env_modes: (bool, bool, bool), db: &StoreRef) {
 // --- CalcSetup.lua:123-305 ------------------------------------------------------------------------------------------
 
 /// CalcSetup.lua:123-257 `buildModListForNode(env, node)` (MAIN: `reuse` is nil -> a fresh list per node); `node` is an
-/// index into `env.spec.nodes`. Returns the list and the explode source (the second Lua value, L11). The radius-jewel
-/// passes (:144-152, :190-200) are inert: `env.radiusJewelList` is always empty (P5), which also makes the `wipeTable`
-/// branches unreachable on real data -- the mods triggering them only reach a node through `rad.func`. Ported anyway;
-/// upstream's wipe also nils the list's `conditions`/`multipliers`/`parent`, which only a later EvalMod on that list sees.
+/// index into `env.spec.nodes`. Returns the list and the explode source (the second Lua value, L11). The two radius-jewel
+/// passes (:144-153 `Other`, :192-203 `Threshold`/`Self`/`SelfUnalloc`) run `env.radiusJewelList` in list order (R5.5b).
+/// Upstream's `wipeTable(modList)` also nils the list's `conditions`/`multipliers`/`parent`, which only a later EvalMod on
+/// that list sees -- noted in `env.unimplemented` when taken.
 pub(crate) fn build_mod_list_for_node(env: &mut Env, node_idx: usize) -> (StoreRef, Option<u32>) {
     let node = &env.spec.nodes[node_idx];
     let node_id = node.id;
@@ -363,6 +364,14 @@ pub(crate) fn build_mod_list_for_node(env: &mut Env, node_idx: usize) -> (StoreR
     } else {
         // L14: the SAME mod objects as `node.modList`, shared with every other list, exactly as upstream.
         mod_list.borrow_mut().add_list(&node.mod_list().mods);
+    }
+
+    // :144-153 first pass radius jewels
+    for i in 0..env.radius_jewel_list.len() {
+        let rad = &env.radius_jewel_list[i];
+        if rad.ty.is_str("Other") && rad.has(node_id) && !in_radius_is_mastery(env, node_id) {
+            run_radius_func(env, i, Some(node_idx), &mod_list);
+        }
     }
 
     // :155-171 prefilter
@@ -403,7 +412,31 @@ pub(crate) fn build_mod_list_for_node(env: &mut Env, node_idx: usize) -> (StoreR
         }
     }
 
-    // :192-213: the second radius pass + rescan -- inert without radius jewels.
+    // :192-203 second pass radius jewels
+    let mut rescan = false;
+    let alloc = env.alloc_nodes.contains_key(&node_id);
+    for i in 0..env.radius_jewel_list.len() {
+        let rad = &env.radius_jewel_list[i];
+        let ty_ok = rad.ty.is_str("Threshold") || (rad.ty.is_str("Self") && alloc) || (rad.ty.is_str("SelfUnalloc") && !alloc);
+        if rad.has(node_id) && !in_radius_is_mastery(env, node_id) && ty_ok {
+            run_radius_func(env, i, Some(node_idx), &mod_list);
+            rescan = true;
+            has_other_effect = false;
+            has_extra_skill = false;
+            has_explode = false;
+        }
+    }
+    // :205-216
+    if rescan {
+        for m in list_mods(&mod_list) {
+            match &*m.name {
+                "PassiveSkillHasOtherEffect" => has_other_effect = true,
+                "ExtraSkill" => has_extra_skill = true,
+                "CanExplode" => has_explode = true,
+                _ => {}
+            }
+        }
+    }
 
     if has_other_effect && flag(&mod_list, "PassiveSkillHasOtherEffect") {
         let new_mods = ok(mod_list.borrow().list(None, &["NodeModifier"]));
@@ -452,12 +485,73 @@ pub(crate) fn build_mod_list_for_node(env: &mut Env, node_idx: usize) -> (StoreR
     (mod_list, None)
 }
 
+/// `rad.nodes[node.id].type == "Mastery"` -- the value in `nodesInRadius` is the TREE node.
+fn in_radius_is_mastery(env: &Env, id: u32) -> bool {
+    env.spec.tree.node(id).is_some_and(|n| n.ty == NodeType::Mastery)
+}
+
+/// `rad.func(node, out, rad.data)` -- `node` an index into `env.spec.nodes`, nil on the final call. A Lua error dies with its
+/// text (RUST-ARCH §5); a visitor the port cannot run is recorded, never guessed.
+fn run_radius_func(env: &mut Env, i: usize, node_idx: Option<usize>, out: &StoreRef) {
+    let Env {
+        spec,
+        radius_jewel_list,
+        unimplemented,
+        ..
+    } = env;
+    let rad = &mut radius_jewel_list[i];
+    let node: Option<&dyn JewelNode> = node_idx.map(|k| &spec.nodes[k] as &dyn JewelNode);
+    let r = match &rad.func {
+        RadiusFunc::Visitor(f) => pob_parser::jewel::visit(f, node, &mut out.borrow_mut(), &mut rad.data),
+        RadiusFunc::DefaultTally => {
+            default_tally(node.is_some(), out, &mut rad.data);
+            Ok(())
+        }
+    };
+    match r {
+        Ok(()) => {}
+        Err(pob_parser::ParseError::Lua(e)) => panic!("{e}"),
+        Err(e) => unimplemented.push(format!(
+            "CalcSetup.lua:{} radius jewel {} at {}: {e}",
+            if node_idx.is_some() { 151 } else { 293 },
+            rad.item.name,
+            rad.node_id
+        )),
+    }
+}
+
+/// CalcSetup.lua:877-884 the default radius function: `data[stat] = (data[stat] or 0) + out:Sum("BASE", nil, stat)`.
+fn default_tally(has_node: bool, out: &StoreRef, data: &mut Table) {
+    if !has_node {
+        return;
+    }
+    for stat in ["Str", "Dex", "Int"] {
+        let sum = ok(out.borrow().sum(ModType::Base, None, &[stat]));
+        let cur = match data.get(stat) {
+            Value::Nil | Value::Bool(false) => 0.0,
+            Value::Num(n) => *n,
+            other => panic!(
+                "Modules/CalcSetup.lua:881: attempt to perform arithmetic on a {} value",
+                other.type_name()
+            ),
+        };
+        data.hash.insert(Rc::from(stat), Value::Num(cur + sum));
+    }
+}
+
 /// CalcSetup.lua:259-305 `buildModListForNodeList(env, nodeList, finishJewels)`.
 ///
 /// D13: upstream walks `pairs(nodeList)` -- a hash order; this port walks the insertion order of `env.allocNodes` (the XML
 /// node order, the order pob-ts' `Map` keeps). The mods land in the same buckets, so only the order INSIDE a bucket can
 /// differ from LuaJIT, which the oracle comparison treats as a multiset (L10: it reaches the last bits of a >= 3-term sum).
 pub(crate) fn build_mod_list_for_node_list(env: &mut Env, finish_jewels: bool) -> (StoreRef, Vec<u32>) {
+    // :260-264 initialise radius jewels -- `pairs` over a sequence walks it in order.
+    for rad in &mut env.radius_jewel_list {
+        rad.data = Table::default();
+        rad.data
+            .hash
+            .insert(Rc::from("modSource"), Value::str(&format!("Tree:{}", rad.node_id)));
+    }
     let mod_list = ModStore::new_list(None);
     let mut explode_sources = Vec::new();
     let nodes: Vec<usize> = env.alloc_nodes.values().copied().collect();
@@ -472,12 +566,16 @@ pub(crate) fn build_mod_list_for_node_list(env: &mut Env, finish_jewels: bool) -
         env.node_final_mod_list.insert(id, node_mod_list);
     }
     if finish_jewels {
-        // :285-300: extraRadiusNodeList + `rad.func(nil, modList, rad.data)` -- both empty without radius jewels (P5).
+        // :283-290 extraRadiusNodeList (D13: insertion order, see `Env::extra_radius_node_list`)
         let extra: Vec<usize> = env.extra_radius_node_list.values().copied().collect();
         for idx in extra {
             let (node_mod_list, _) = build_mod_list_for_node(env, idx);
             let id = env.spec.nodes[idx].id;
             env.node_final_mod_list.insert(id, node_mod_list);
+        }
+        // :292-300 finalise radius jewels: `rad.func(nil, modList, rad.data)`; `rad.item.jewelRadiusData` is display only.
+        for i in 0..env.radius_jewel_list.len() {
+            run_radius_func(env, i, None, &mod_list);
         }
     }
     (mod_list, explode_sources)

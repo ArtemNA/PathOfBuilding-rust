@@ -435,16 +435,91 @@ fn env_vs_luajit_classified_as_pob_ts() {
 }
 
 /// `ParseMode::Full`: [item-miss, node-miss, cluster, granted-passive, alloc-count, tree-jewel]. R5.4 measured cluster
-/// 66/66/84/21 and alloc-count 2/2/4/2; R5.5a (BuildClusterJewelGraphs in `PostLoad`) closes both. What is left is
-/// `tree-jewel` -- radius jewels (R5.5b) and the Lethal Pride conquest (R5.5c).
+/// 66/66/84/21 and alloc-count 2/2/4/2; R5.5a (BuildClusterJewelGraphs in `PostLoad`) closes both. R5.5b (radius jewels:
+/// `nodesInRadius`, `radiusJewelList`, both passes of buildModListForNode) takes `tree-jewel` from 12/29 to 0/17; on Cospris
+/// there is no timeless jewel, so `has_tree_jewel` is false and any tree-sourced difference would be `unexplained`. The 17
+/// left on Lethal Pride are the conquest (timeless, R5.5c) -- [`TIMELESS_FULL`], by name.
 const EXPECTED_CLASSES_FULL: [(&str, [usize; 6]); 6] = [
     ("Dual Savior", [0, 0, 0, 0, 0, 0]),
-    ("Dual Wield Cospris CoC", [0, 0, 0, 0, 0, 12]),
-    ("Dual Wield Cospris CoC - Lethal Pride", [0, 0, 0, 0, 0, 29]),
+    ("Dual Wield Cospris CoC", [0, 0, 0, 0, 0, 0]),
+    ("Dual Wield Cospris CoC - Lethal Pride", [0, 0, 0, 0, 0, 17]),
     ("Generals Perforate Zerker", [0, 0, 0, 0, 0, 0]),
     ("Mirage Archer Toxic Rain", [0, 0, 0, 0, 0, 0]),
     ("OccVortex", [0, 0, 0, 0, 0, 0]),
 ];
+
+/// R5.5b: the `tree-jewel` remainder of `ParseMode::Full` on Lethal Pride, as `(bucket, source node)` -- every one a mod the
+/// conquest gives a node in the jewel's radius (PassiveSpec.lua:1176-1190 `conqueredBy` + the LUT, R5.5c) that Rust does not
+/// have yet. Checked: each node is in `nodesInRadius[jewelRadiusIndex]` of the Lethal Pride socket (LuaJIT, export-radius.ts).
+const TIMELESS_FULL: [(&str, u32); 17] = [
+    ("CritChance", 25411),
+    ("FireResist", 8001),
+    ("Life", 47484),
+    ("MaximumFortification", 24050),
+    ("MaximumFortification", 32176),
+    ("Str", 13885),
+    ("Str", 28012),
+    ("Str", 53213),
+    ("Str", 58244),
+    ("Str", 7112),
+    ("Str", 10763),
+    ("Str", 11018),
+    ("Str", 3537),
+    ("Str", 35851),
+    ("Str", 38995),
+    ("Str", 60592),
+    ("Str", 8012),
+];
+
+/// The `tree-jewel` lines of `ParseMode::Full` = [`TIMELESS_FULL`] on Lethal Pride (all inside its radius), none elsewhere.
+fn check_timeless_remainder(name: &str, lines: &[String], failures: &mut Vec<String>) {
+    let got: BTreeSet<(String, u32)> = lines
+        .iter()
+        .map(|l| {
+            let bucket = l.split("mods[").nth(1).and_then(|r| r.split(']').next()).unwrap_or("?");
+            let src = l
+                .split("src=Tree:")
+                .nth(1)
+                .and_then(|r| r.split_whitespace().next())
+                .and_then(|n| n.parse().ok())
+                .unwrap_or(0);
+            (bucket.to_owned(), src)
+        })
+        .collect();
+    let lethal = name.contains("Lethal Pride");
+    let want: BTreeSet<(String, u32)> = if lethal {
+        TIMELESS_FULL.iter().map(|(b, n)| ((*b).to_owned(), *n)).collect()
+    } else {
+        BTreeSet::new()
+    };
+    if got != want || got.len() != lines.len() {
+        failures.push(format!("{name}: tree-jewel remainder {got:?} != pinned {want:?}"));
+    }
+    if lethal {
+        let p = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../pob-tree/tests/fixtures")
+            .join(format!("radius-{}.json", name.replace(' ', "-")));
+        let j: Json = serde_json::from_str(&std::fs::read_to_string(&p).unwrap()).unwrap();
+        let socket = j["sockets"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|s| s["name"].as_str().is_some_and(|n| n.starts_with("Lethal Pride")))
+            .expect("the Lethal Pride socket");
+        let idx = socket["radiusIndex"].as_u64().unwrap() as usize;
+        let radius: BTreeSet<u32> = socket["radius"][idx - 1]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|x| x.as_u64().unwrap() as u32)
+            .collect();
+        for (_, n) in &got {
+            if !radius.contains(n) {
+                failures.push(format!("{name}: tree-jewel node {n} outside the Lethal Pride radius"));
+            }
+        }
+    }
+}
 
 /// R5.4 gate (c): the classification of (b) with the real parser behind every line.
 #[test]
@@ -564,6 +639,9 @@ fn env_vs_luajit(mode: ParseMode, expected_classes: &[(&str, [usize; 6]); 6]) {
             }
         }
 
+        if mode == ParseMode::Full {
+            check_timeless_remainder(name, cls.get("tree-jewel").map(Vec::as_slice).unwrap_or_default(), &mut failures);
+        }
         let counts: Vec<usize> = CLASSES.iter().map(|c| cls.get(c).map_or(0, Vec::len)).collect();
         let unexplained = cls.get("unexplained").cloned().unwrap_or_default();
         let lj_count = |d: &Json| -> (usize, usize) {

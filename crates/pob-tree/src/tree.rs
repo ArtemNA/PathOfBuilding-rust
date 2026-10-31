@@ -208,6 +208,11 @@ pub struct PassiveTree {
     pub orbit_radii: Vec<f64>,
     /// 0-based: entry `o` is upstream's `orbitAnglesByOrbit[o + 1]` (L8).
     pub orbit_angles_by_orbit: Vec<Vec<f64>>,
+    /// `data.jewelRadius` as `main:LoadTree` set it for this tree's version (D7, `crate::radius`), and `data.maxJewelRadius`.
+    pub jewel_radius: Vec<crate::radius::RadiusInfo>,
+    pub max_jewel_radius: f64,
+    /// `node.nodesInRadius` of every socket and keystone, by node id (PassiveTree.lua:654-711, `crate::radius`).
+    pub(crate) nodes_in_radius: HashMap<u32, crate::radius::NodesInRadius>,
     /// Upstream branches this crate does not port; read by reports, never by the calc.
     pub unimplemented: Vec<String>,
 }
@@ -442,12 +447,14 @@ impl PassiveTree {
             orbit_angles_by_orbit: skills_per_orbit.iter().map(|&n| calc_orbit_angles(n)).collect(),
             skills_per_orbit,
             orbit_radii,
+            jewel_radius: Vec::new(),
+            max_jewel_radius: 0.0,
+            nodes_in_radius: HashMap::new(),
             unimplemented: vec![
                 "PassiveTree.lua:79-80 legion/tattoo passives (P5)".into(),
                 "PassiveTree.lua:131-172 alternate_ascendancies / secondaryAscendNameMap (P5)".into(),
                 "PassiveTree.lua:232-500 assets, sprites, node overlays (display only)".into(),
                 "PassiveTree.lua:623-640 connector polygons (display only)".into(),
-                "PassiveTree.lua:651-711 socket/keystone nodesInRadius (jewels, P5)".into(),
                 "PassiveTree.lua:723-787 legion additions / tattoo nodes (P5)".into(),
                 "PassiveTree.lua:790 buildTreeDependentUniques (P5)".into(),
             ],
@@ -455,6 +462,7 @@ impl PassiveTree {
         t.build_classes()?;
         t.build_nodes()?;
         t.build_links();
+        t.build_nodes_in_radius();
         t.add_class_start_conditions();
         Ok(t)
     }

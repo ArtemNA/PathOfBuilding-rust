@@ -21,6 +21,9 @@
 //! to ALLOWLIST (resistances, Dex/Int, Mana, mana leech), none left ALLOWLIST, no key newly emitted. The remaining reasons
 //! that name `cluster` are the pob-ts attribution; the env no longer differs from LuaJIT by any cluster mod (env gate
 //! (c): class `cluster` 0), so their real cause is one of the others they name.
+//! R5.5b re-measured with the radius jewels (`nodesInRadius`, `radiusJewelList`, `ParseMode::Full`): one key moved from
+//! EXCLUDED to ALLOWLIST (`Spec:EnergyShieldInc` -- Energy From Within), none left ALLOWLIST, none newly emitted. Env class
+//! `tree-jewel` is now only the Lethal Pride conquest (timeless, R5.5c); a reason naming `tree-jewel` means that.
 
 use indexmap::IndexMap;
 
@@ -101,13 +104,13 @@ const EST_SELF_STUN: &str =
     "estimation input: SelfStunChance = enemy hit damage taken (totalTakenHit: skills + buffs) over StunThreshold (cluster + buffs)";
 const RAGE: &str = "skills + buffs: RageEffect INC is added after initEnv (the LuaJIT initEnv modDB has no RageEffect mod; golden 39 = \
      floor(25 x 1.56)); Rage itself is emitted since R5.4 (Tree:32251 CanGainRage now parsed)";
-const SPEC: &str = "cluster + tree-jewel: tree-sourced INC follows cluster subgraphs and radius/timeless jewels";
+const SPEC: &str = "tree-jewel: tree-sourced INC follows the Lethal Pride conquest (timeless, R5.5c; mismatch on that golden only)";
 const EST_EHP: &str = "estimation input: NumberOfMitigatedDamagingHits and ConfiguredNotHitChance (flasks + buffs + cluster)";
 const EST_SKILL_TIME: &str = "estimation input: enemy action speed from Temporal Chains and Chill (curses + ailments)";
 const EST_GUARD: &str = "estimation input: GuardAbsorbRate (guards)";
 
-/// 353 keys, sorted (byte order): `ok` on every golden that emits them, on none `mismatch` or `extra` (R5.4: measured
-/// with `ParseMode::Full`, the default; R5.5a re-measured with the cluster-jewel subgraphs: +20).
+/// 354 keys, sorted (byte order): `ok` on every golden that emits them, on none `mismatch` or `extra` (R5.4: measured
+/// with `ParseMode::Full`, the default; R5.5a re-measured with the cluster-jewel subgraphs: +20; R5.5b radius jewels: +1).
 pub const ALLOWLIST: &[&str] = &[
     "AbsorptionCharges",
     "AbsorptionChargesMax",
@@ -403,6 +406,7 @@ pub const ALLOWLIST: &[&str] = &[
     "SiphoningChargesMax",
     "SoulLinkMitigation",
     "Spec:ArmourInc",
+    "Spec:EnergyShieldInc",
     "Spec:EvasionInc",
     "Spec:ManaInc",
     "SpectreAllyDamageMitigation",
@@ -647,7 +651,6 @@ pub const EXCLUDED: &[(&str, &str)] = &[
     ("SelfStunChance", EST_SELF_STUN),
     ("StunAvoidChance", EST_STUN),
     ("StunThreshold", EST_STUN),
-    ("Spec:EnergyShieldInc", SPEC),
     ("Spec:LifeInc", SPEC),
     ("TotalEHP", EST_EHP),
     ("TotalNumberOfHits", EST_EHP),
