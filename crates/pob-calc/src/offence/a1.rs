@@ -803,6 +803,8 @@ pub(super) fn setup(off: &mut Off<'_>) -> bool {
         }
     }
 
+    // :1052 `local isAttack = skillFlags.attack` (before `preSkillTypeFunc`)
+    off.is_attack = off.flag("attack");
     // :1054
     run_skill_func(off, "preSkillTypeFunc");
     true

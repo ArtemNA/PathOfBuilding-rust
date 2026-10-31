@@ -462,9 +462,10 @@ pub(super) fn skill_type_stats(off: &mut Off<'_>) {
             off.set_sd(&format!("{dt}Max"), Value::Num(base));
         }
     }
-    // :1932-1935 `canDeal` -- a local read from R7.4 on; the queries run here as upstream's do
+    // :1932-1935 `canDeal` (read by the damage passes, R7.5)
     for dt in DMG_TYPE_LIST {
-        let _ = q.flag(c, &[&format!("DealNo{dt}"), "DealNoDamage"]);
+        let v = !q.flag(c, &[&format!("DealNo{dt}"), "DealNoDamage"]);
+        off.can_deal.insert(dt, v);
     }
 }
 

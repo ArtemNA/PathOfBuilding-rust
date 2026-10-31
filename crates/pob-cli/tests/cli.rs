@@ -106,6 +106,8 @@ fn experimental_env_disables_the_filter() {
 /// 502/501, 512/511, 512/511, 526/525, 513/512, 535/534.
 /// R7.3 (offence part A, OC1/OC2 = LuaJIT where the top offence runs; allowlist 555 -> 598): OccVortex 578/577 (+43); the other five
 /// unchanged (their top offence stops at the unported triggers/mirages branch).
+/// R7.4 (offence part B, OC3 = LuaJIT on every offence run Rust executes; allowlist 598 -> 605): OccVortex 585/584 (+7: `Accuracy`,
+/// `AccuracyHitChance`, `CastRate`, `HitChance`, `Speed`, `Time`, `enemyBlockChance`); the other five unchanged (gated top offence).
 /// O9: `VaalArcticArmourMitigation` is `ok`, not `exact` (golden `+0`, Rust `-0`) -- hence exact = ok - 1.
 #[test]
 fn cli_stats_against_goldens() {
@@ -115,7 +117,7 @@ fn cli_stats_against_goldens() {
         ("Dual Wield Cospris CoC - Lethal Pride", 512, 511),
         ("Generals Perforate Zerker", 526, 525),
         ("Mirage Archer Toxic Rain", 513, 512),
-        ("OccVortex", 578, 577),
+        ("OccVortex", 585, 584),
     ];
     let mut got = Vec::new();
     for (g, (name, _, _)) in GOLDEN_BUILDS.iter().zip(pinned) {

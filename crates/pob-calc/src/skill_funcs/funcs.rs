@@ -1009,3 +1009,149 @@ pub(super) fn wintertide_brand(off: &mut Off<'_>) {
     off.q
         .nm("Damage", ModType::More, dps, "Wintertide Brand Average Multiplier", 0, 0, vec![]);
 }
+
+/// `explodeMod.<k>` of an `ExplodeMod` LIST value (`{ type, chance, amount }`, ModParser.lua:2116).
+fn explode_field(v: &Value, k: &str) -> Value {
+    match v {
+        Value::Table(t) => t.get(k).clone(),
+        other => panic!(
+            "Data/Skills/other.lua:6209: attempt to index local 'explodeMod' (a {} value)",
+            other.type_name()
+        ),
+    }
+}
+
+fn explode_num(v: &Value, k: &str, line: u32) -> f64 {
+    let x = explode_field(v, k);
+    x.as_num().unwrap_or_else(|| {
+        panic!(
+            "Data/Skills/other.lua:{line}: attempt to perform arithmetic on field '{k}' (a {} value)",
+            x.type_name()
+        )
+    })
+}
+
+fn explode_type(v: &Value, line: u32) -> String {
+    match explode_field(v, "type") {
+        Value::Str(s) => s.to_string(),
+        other => panic!(
+            "Data/Skills/other.lua:{line}: attempt to concatenate field 'type' (a {} value)",
+            other.type_name()
+        ),
+    }
+}
+
+/// `activeSkill.activeEffect.srcInstance.explodeSource.modSource or "Tree:"..explodeSource.id` (other.lua:6209).
+fn explode_source_name(off: &Off<'_>) -> String {
+    let st = off.env.skills.as_ref().expect("skills on");
+    let (g, k) = off
+        .sk()
+        .active_effect
+        .borrow()
+        .src_instance
+        .unwrap_or_else(|| panic!("Data/Skills/other.lua:6209: attempt to index field 'srcInstance' (a nil value)"));
+    let src = st.tab.socket_group_list()[g].gem_list[k]
+        .explode_source
+        .clone()
+        .unwrap_or_else(|| panic!("Data/Skills/other.lua:6209: attempt to index field 'explodeSource' (a nil value)"));
+    match src {
+        crate::skills_tab::ExplodeSource::Node(id) => format!("Tree:{id}"),
+        crate::skills_tab::ExplodeSource::Item(it) => match (&it.0.mod_source, it.0.id) {
+            (Some(s), _) => s.clone(),
+            (None, Some(id)) => format!("Tree:{}", pob_lua::tostring_num(id)),
+            (None, None) => panic!("Data/Skills/other.lua:6209: attempt to concatenate field 'id' (a nil value)"),
+        },
+    }
+}
+
+/// `skills.EnemyExplode.preDamageFunc` (other.lua:6204-6252, "On Kill Monster Explosion").
+///
+/// Part 3 ("Average Of All Sources") walks `pairs(typeAmountChances)` (string keys, R13) and `pairs(amountChance)` (number keys, R11);
+/// the products/sums there depend on that order. Rust walks both in insertion order (the `List` order) and records the gap whenever
+/// more than one (type, amount) pair exists -- with one pair the result is order-free.
+pub(super) fn enemy_explode(off: &mut Off<'_>) {
+    off.out().set_num("ExplodeChance", 0.0);
+    let part = off.sk().skill_part;
+    if part != Some(3.0) {
+        let all = off.q.tabulate(Some(ModType::List), Some(&off.cfg), &["ExplodeMod"]);
+        for e in &all {
+            let active_effect_source = explode_source_name(off);
+            if e.mod_.source.as_deref() == Some(active_effect_source.as_str()) {
+                let em = &e.value;
+                let ty = explode_type(em, 6212);
+                let amount = explode_num(em, "amount", 6213);
+                if ty == "RandomElement" {
+                    for t in ["Fire", "Cold", "Lightning"] {
+                        set(off, &format!("{t}EffectiveExplodePercentage"), amount / 3.0);
+                    }
+                } else {
+                    set(off, &format!("{ty}EffectiveExplodePercentage"), amount);
+                }
+                let chance = if part == Some(2.0) { 1.0 } else { explode_num(em, "chance", 6219) };
+                off.out().set_num("ExplodeChance", chance);
+            }
+        }
+    } else {
+        // type -> (amount -> summed chance), insertion order
+        let list = off.q.list(Some(&off.cfg), &["ExplodeMod"]);
+        let mut by_type: Vec<(String, Vec<(f64, f64)>)> = Vec::new();
+        for em in &list {
+            let ty = explode_type(em, 6226);
+            let amount = explode_num(em, "amount", 6227);
+            let chance = explode_num(em, "chance", 6227);
+            let i = match by_type.iter().position(|(t, _)| *t == ty) {
+                Some(i) => i,
+                None => {
+                    by_type.push((ty, Vec::new()));
+                    by_type.len() - 1
+                }
+            };
+            let ac = &mut by_type[i].1;
+            match ac.iter_mut().find(|(a, _)| *a == amount) {
+                Some(x) => x.1 += chance,
+                None => ac.push((amount, chance)),
+            }
+        }
+        if by_type.iter().map(|(_, ac)| ac.len()).sum::<usize>() > 1 {
+            off.note(
+                "Data/Skills/other.lua:6230-6247 skills.EnemyExplode.preDamageFunc: pairs over ExplodeMod types/amounts (R11/R13), insertion order used"
+                    .into(),
+            );
+        }
+        for (ty, ac) in &by_type {
+            let mut phys_explode_chance = 0.0;
+            for &(amount, chance) in ac {
+                let amount_x_chance = amount * chance;
+                if ty == "RandomElement" {
+                    for t in ["Fire", "Cold", "Lightning"] {
+                        let k = format!("{t}EffectiveExplodePercentage");
+                        let v = sd_or(off, &k, 0.0) + amount_x_chance / 3.0;
+                        set(off, &k, v);
+                    }
+                } else {
+                    let k = format!("{ty}EffectiveExplodePercentage");
+                    let v = sd_or(off, &k, 0.0) + amount_x_chance;
+                    set(off, &k, v);
+                }
+                if ty == "Physical" {
+                    phys_explode_chance = 1.0 - ((1.0 - phys_explode_chance) * (1.0 - chance));
+                }
+                let ec = 1.0 - ((1.0 - on(off, "ExplodeChance")) * (1.0 - chance));
+                off.out().set_num("ExplodeChance", ec);
+            }
+            if ty == "Physical" && phys_explode_chance != 0.0 {
+                off.q.new_mod(
+                    "CalcArmourAsThoughDealing",
+                    Some(ModType::More),
+                    Value::Num(100.0 / min2(phys_explode_chance, 1.0) - 100.0),
+                    None,
+                    0,
+                    0,
+                    vec![],
+                );
+            }
+        }
+    }
+    let ec = min2(on(off, "ExplodeChance") * 100.0, 100.0);
+    off.out().set_num("ExplodeChance", ec);
+}

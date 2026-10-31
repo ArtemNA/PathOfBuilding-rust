@@ -5,13 +5,16 @@
 //! Each entry is one of:
 //! * [`Body::Port`] -- a hand port in [`funcs`] (several skills share a body; the sha says which);
 //! * [`Body::Unported`] -- an explicit gap: calling it records `"<src>:<from>-<to> <path>: <why>"` in `env.unimplemented`;
-//! * [`Body::Later`] -- `postCritFunc` / `explosiveArrowFunc`, called from offence sections after :1936 (R7.4/R7.5).
+//! * [`Body::Later`] -- `postCritFunc` / `explosiveArrowFunc`, called from offence sections after :2605 (R7.5).
 //!
 //! `runSkillFunc` (CalcOffence.lua:509-514) looks the active effect's hook up here as `skills.<grantedEffect.id>.<hook>`.
 
 mod funcs;
 
 use crate::offence::Off;
+/// The offence checkpoint view of `output.MainHand` / `output.OffHand` (the offence module is crate-private; `lib.rs` is outside the
+/// R7.4 card's files, so the probe accessor is re-exported here).
+pub use crate::offence::{HandTable, checkpoint_hand_outputs};
 use funcs as f;
 
 /// What a registry entry does when called.
@@ -88,8 +91,8 @@ pub(crate) static SKILL_FUNCS: [SkillFuncEntry; 134] = [
     e("skills.DivineIreAltX.preDamageFunc", "act_int.lua", 4712, 4716, "25a809cb4fe5f0739cf8d3284c70e8dbdc2a3eef31f1ae187eab371f088f2ce8", Port(f::divine_ire_alt_x)),
     e("skills.DivineIreAltY.preDamageFunc", "act_int.lua", 4823, 4825, "7a4ba81a52f2a63bb6f18cda7ea66454dd7fb1ae2bc33adc50260434d39485f5", Port(f::divine_ire_alt_y)),
     e("skills.Earthquake.preDamageFunc", "act_str.lua", 3363, 3366, "f83e1ae0bdaf20278a8f98f4c547f3f91a4fbe9bd6074350753a14d1bf68d7fd", Port(f::earthquake)),
-    e("skills.EnemyExplode.preDamageFunc", "other.lua", 6204, 6252, "7e9905c62fd2940c2fa3a44316dc64e87f0c8502f602d0c16b061cbb04e58913", Unported("activeEffect.srcInstance.explodeSource + pairs over ExplodeMod amounts (float sums in hash order, R11/R13)")),
-    e("skills.ExplosiveArrow.explosiveArrowFunc", "act_dex.lua", 6699, 6778, "fcb10aac6ef439a9aeda38d6950f55f88ee90e682f5888b661c270c448f78105", Later("called from the speed section (R7.4)")),
+    e("skills.EnemyExplode.preDamageFunc", "other.lua", 6204, 6252, "7e9905c62fd2940c2fa3a44316dc64e87f0c8502f602d0c16b061cbb04e58913", Port(f::enemy_explode)),
+    e("skills.ExplosiveArrow.explosiveArrowFunc", "act_dex.lua", 6699, 6778, "fcb10aac6ef439a9aeda38d6950f55f88ee90e682f5888b661c270c448f78105", Later("called at CalcOffence.lua:3038 (R7.5)")),
     e("skills.ExplosiveTrap.preDamageFunc", "act_dex.lua", 7156, 7221, "d3c4aeaf80b651612cead32b56b5483cc01d01b91446d8cd1fb324ead204a510", Unported("pairs(output.AreaOfEffectRadiusTertiaryOccurrences): float sum in lj_tab order (R11)")),
     e("skills.ExplosiveTrap.statMap._grantedEffect.preDamageFunc", "act_dex.lua", 7156, 7221, "d3c4aeaf80b651612cead32b56b5483cc01d01b91446d8cd1fb324ead204a510", Unported("pairs(output.AreaOfEffectRadiusTertiaryOccurrences): float sum in lj_tab order (R11)")),
     e("skills.EyeOfWinter.preDamageFunc", "act_int.lua", 5518, 5520, "0a1071f37209aa0bde8bc91a7ab1bb25d949adf9554f2fc4afb04d0d4e96aa5f", Port(f::eye_of_winter)),

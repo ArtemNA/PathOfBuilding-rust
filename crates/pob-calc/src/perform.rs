@@ -146,6 +146,8 @@ pub enum Checkpoint {
     Oc1,
     /// `calcs.offence` before :1987 -- after skill type stats, durations, uptime, costs, `preDamageFunc`, explosions (R7.1 probe OC2).
     Oc2,
+    /// `calcs.offence` before :2606 -- after conversions, the pass list, speed/accuracy/block, misc DPS multipliers (R7.1 probe OC3).
+    Oc3,
 }
 
 /// Called at each [`Checkpoint`] with the env and the player's / enemy's perform state (`actor.output`).

@@ -61,6 +61,11 @@
 //! life flask scaling, `ManaCostPayablePool`); 2 newly emitted keys are EXCLUDED with the root `offence` ([`OFFENCE_TAIL_COST`]:
 //! `ManaPerSecondCost`/`ManaPerSecondHasCost`, = LuaJIT at OC2, rewritten by :5920-5948); none left ALLOWLIST; the other part B-E keys are
 //! not emitted (R7.4-R7.7).
+//! R7.4 re-measured with offence part B (CalcOffence.lua:1937-2605; OC3 = LuaJIT on OccVortex (top), Dual Savior (first nested) and all
+//! 56 offence runs Rust executes): 7 newly emitted keys, all `ok` (OccVortex only: the other tops are still gated), are ALLOWLIST
+//! (`Accuracy`, `AccuracyHitChance`, `CastRate`, `HitChance`, `Speed`, `Time`, `enemyBlockChance`); none left ALLOWLIST; no new EXCLUDED key;
+//! the 13 EXCLUDED keys and their measured classes are unchanged (Dual Savior `extra` x8 / `mismatch` x2, OccVortex `mismatch` x2,
+//! `ReqIntString` synthetic).
 
 use indexmap::IndexMap;
 
@@ -126,14 +131,16 @@ const MIRAGE_BREAKDOWN: &str = "offence: Dual Savior -- calcs.mirages (CalcMirag
 /// per-second cost of an upfront cost x use speed, R7.7): mismatch on OccVortex (OC2 `0`/`false`, OC6 and golden `240.00000000000003`/`true`).
 const OFFENCE_TAIL_COST: &str = "offence: CalcOffence.lua:5920-5948 (R7.7) rewrites the per-second cost from the upfront cost x speed after part A (:1805/:1813, = LuaJIT OC2); mismatch on OccVortex, not emitted on the other 5";
 
-/// 598 keys, sorted (byte order): `ok` on every golden that emits them, on none `mismatch` or `extra` (R5.4: measured
+/// 605 keys, sorted (byte order): `ok` on every golden that emits them, on none `mismatch` or `extra` (R5.4: measured
 /// with `ParseMode::Full`, the default; R5.5a re-measured with the cluster-jewel subgraphs: +20; R5.5b radius jewels: +1;
 /// R5.5c timeless jewels: +23; R6.3 gem requirements: +4; R6.5 skills + flasks in perform: +30; R6.6 reservations: +4, `ReqIntString` -1;
-/// R6.7 buffs/curses/guards: +128; R6.8 ailments/exposures/ally life: +13; R7.3 offence part A: +43).
+/// R6.7 buffs/curses/guards: +128; R6.8 ailments/exposures/ally life: +13; R7.3 offence part A: +43; R7.4 offence part B: +7).
 pub const ALLOWLIST: &[&str] = &[
     "AbsorptionCharges",
     "AbsorptionChargesMax",
     "AbsorptionChargesMin",
+    "Accuracy",
+    "AccuracyHitChance",
     "ActionSpeedMod",
     "ActiveGolemLimit",
     "ActiveMineLimit",
@@ -200,6 +207,7 @@ pub const ALLOWLIST: &[&str] = &[
     "BrutalCharges",
     "BrutalChargesMax",
     "BrutalChargesMin",
+    "CastRate",
     "ChallengerCharges",
     "ChallengerChargesMax",
     "ChaosAegis",
@@ -409,6 +417,7 @@ pub const ALLOWLIST: &[&str] = &[
     "GhostShrouds",
     "GuardSkillActive",
     "HexDoomLimit",
+    "HitChance",
     "IgniteAvoidChance",
     "ImpaleAvoidChance",
     "ImpaleDuration",
@@ -653,6 +662,7 @@ pub const ALLOWLIST: &[&str] = &[
     "Spec:LifeInc",
     "Spec:ManaInc",
     "SpectreAllyDamageMitigation",
+    "Speed",
     "SpellBlockChance",
     "SpellBlockChanceMax",
     "SpellBlockChanceOverCap",
@@ -674,6 +684,7 @@ pub const ALLOWLIST: &[&str] = &[
     "StunAvoidChance",
     "StunDuration",
     "StunThreshold",
+    "Time",
     "TotalAttr",
     "TotalCharges",
     "TotalEHP",
@@ -711,6 +722,7 @@ pub const ALLOWLIST: &[&str] = &[
     "WitherEffectOnSelf",
     "anyRecoup",
     "ehpSectionAnySpecificTypes",
+    "enemyBlockChance",
     "enemySkillTime",
     "noSplitEvade",
     "preventedLifeLoss",
