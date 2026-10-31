@@ -254,7 +254,7 @@ pub fn calc_orbit_angles(nodes_in_orbit: f64) -> Vec<f64> {
 }
 
 /// `tonumber(otherId)` of an `in`/`out` entry; a non-numeric one is `nil`, and `t_insert(t, nil)` is a no-op.
-fn node_ref_id(r: &NodeRef) -> Option<u32> {
+pub(crate) fn node_ref_id(r: &NodeRef) -> Option<u32> {
     match r {
         NodeRef::Num(n) => as_id(*n),
         NodeRef::Str(s) => pob_lua::tonumber(s).and_then(as_id),

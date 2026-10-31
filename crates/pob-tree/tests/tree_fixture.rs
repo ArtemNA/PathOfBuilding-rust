@@ -6,6 +6,8 @@
 //!       socket 61834's radius), keystoneMap legion keys (LuaJIT-only) -- per-build counts pinned, unclassified 0.
 //! (a)/(b) run in `ParseMode::CacheOnly` (pob-ts). R5.4 (c): (b) in `ParseMode::Full` -- `node-miss` 0 (every node line
 //! answered by the real parser equals LuaJIT), keystoneMap ModCache-miss 0, the rest pinned as in (b).
+//! These specs never see the build's items, so `PostLoad` (cluster graphs) does not run and the cluster classes stay as
+//! pinned; with the items they are 0 -- `pob-calc/tests/cluster_tree.rs` (R5.5a).
 
 use std::collections::{BTreeMap, BTreeSet};
 

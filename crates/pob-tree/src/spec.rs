@@ -1,5 +1,6 @@
 //! `Classes/PassiveSpec.lua` -- the subset a calculation needs (pob-ts `src/tree/spec.ts`, CALC-ARCH §3): which nodes a
-//! build has allocated, and with what mods. Jewels (cluster/timeless/abyss/tattoo/Intuitive Leap), the `path`/`pathDist`
+//! build has allocated, and with what mods. Cluster-jewel subgraphs are `crate::cluster` (R5.5a): their nodes are owned
+//! spec nodes appended after the Init nodes. Other jewels (timeless/abyss/tattoo/Intuitive Leap), the `path`/`pathDist`
 //! machinery that only tree editing uses, and the URL format are P5; each is listed in `unimplemented`.
 //!
 //! A spec node is upstream's `setmetatable({ linked = {}, power = {} }, treeNode)`: a view onto the tree node that only grows
@@ -39,9 +40,17 @@ pub struct AllocNodeCounts {
     pub sockets: u32,
 }
 
+/// What a spec node is a view of: a tree node (`setmetatable({...}, treeNode)`), or a node `BuildSubgraph` made (a plain
+/// table upstream, PassiveSpec.lua:2072/2160/2235/2284/2311) -- owned by the spec.
+#[derive(Clone)]
+pub(crate) enum NodeBase {
+    Tree(usize),
+    Owned(Rc<TreeNode>),
+}
+
 pub struct SpecNode {
     tree: Rc<PassiveTree>,
-    tree_idx: usize,
+    base: NodeBase,
     pub id: u32,
     pub alloc: bool,
     /// `node.linked` -- indices into `PassiveSpec::nodes`, in `linkedId` order, links into filtered-out nodes dropped (:65).
@@ -65,10 +74,19 @@ pub struct SpecNode {
 
 impl SpecNode {
     fn new(tree: &Rc<PassiveTree>, tree_idx: usize) -> SpecNode {
+        SpecNode::with_base(tree, tree.nodes[tree_idx].id, NodeBase::Tree(tree_idx))
+    }
+
+    /// A cluster-subgraph node (`BuildSubgraph`), `linked = {}`.
+    pub(crate) fn owned(tree: &Rc<PassiveTree>, node: TreeNode) -> SpecNode {
+        SpecNode::with_base(tree, node.id, NodeBase::Owned(Rc::new(node)))
+    }
+
+    fn with_base(tree: &Rc<PassiveTree>, id: u32, base: NodeBase) -> SpecNode {
         SpecNode {
-            id: tree.nodes[tree_idx].id,
+            id,
             tree: tree.clone(),
-            tree_idx,
+            base,
             alloc: false,
             linked: Vec::new(),
             depends: Vec::new(),
@@ -85,9 +103,18 @@ impl SpecNode {
         }
     }
 
-    /// The tree node this spec node is a view of (`getmetatable(node).__index`).
+    /// The tree node this spec node is a view of (`getmetatable(node).__index`); for a cluster-subgraph node, the node
+    /// `BuildSubgraph` made.
     pub fn tree_node(&self) -> &TreeNode {
-        &self.tree.nodes[self.tree_idx]
+        match &self.base {
+            NodeBase::Tree(i) => &self.tree.nodes[*i],
+            NodeBase::Owned(n) => n,
+        }
+    }
+
+    /// Made by `BuildSubgraph` (a cluster-jewel subgraph node, including the expansion sockets it puts back).
+    pub fn is_subgraph_node(&self) -> bool {
+        matches!(self.base, NodeBase::Owned(_))
     }
 
     pub fn ty(&self) -> NodeType {
@@ -150,12 +177,25 @@ impl SpecNode {
 pub struct PassiveSpec {
     pub tree: Rc<PassiveTree>,
     pub tree_version: String,
-    /// `self.nodes`, ascending id.
+    /// `self.nodes`: the Init nodes in ascending id, then the cluster-subgraph nodes in the order `BuildSubgraph` made them.
     pub nodes: Vec<SpecNode>,
-    index: std::collections::HashMap<u32, usize>,
+    pub(crate) index: std::collections::HashMap<u32, usize>,
+    /// How many of `nodes` Init made; everything after belongs to a subgraph (`BuildClusterJewelGraphs` drops and remakes them).
+    pub(crate) base_len: usize,
+    /// `self.subGraphs`: subgraph id -> the subgraph (insertion order).
+    pub(crate) sub_graphs: IndexMap<u32, crate::cluster::SubGraph>,
+    /// `self.clusterHashFormatVersion` (:97, :105): 1 = legacy cluster hashes, converted by the next graph rebuild.
+    pub cluster_hash_format_version: f64,
+    pub(crate) legacy_cluster_node_map: Option<IndexMap<u32, u32>>,
+    pub(crate) legacy_cluster_node_map_reverse: Option<IndexMap<u32, u32>>,
+    pub(crate) ignore_allocating_subgraph: bool,
+    pub(crate) check_node_links: bool,
+    /// `PostLoad` (:251) has run.
+    pub post_loaded: bool,
     /// `self.allocNodes`: id -> index into `nodes`, insertion order (deletes keep the order of the rest).
     pub alloc_nodes: IndexMap<u32, usize>,
-    /// Hash-list ids the spec has no node for -- cluster subgraph ids (>= 65536) and anything else (P5).
+    /// `self.allocSubgraphNodes`: hash-list ids the spec has no node for yet -- cluster subgraph ids (>= 65536) and the
+    /// expansion sockets; `BuildClusterJewelGraphs` allocates the ones it made and empties the list.
     pub alloc_subgraph_nodes: Vec<f64>,
     pub alloc_extended_nodes: Vec<u32>,
     /// `<Socket nodeId itemId>` (itemId > 0); the jewels themselves are R3.4/P5.
@@ -186,6 +226,14 @@ impl PassiveSpec {
             tree,
             nodes: Vec::new(),
             index: std::collections::HashMap::new(),
+            base_len: 0,
+            sub_graphs: IndexMap::new(),
+            cluster_hash_format_version: 2.0,
+            legacy_cluster_node_map: None,
+            legacy_cluster_node_map_reverse: None,
+            ignore_allocating_subgraph: false,
+            check_node_links: false,
+            post_loaded: false,
             alloc_nodes: IndexMap::new(),
             alloc_subgraph_nodes: Vec::new(),
             alloc_extended_nodes: Vec::new(),
@@ -230,7 +278,7 @@ impl PassiveSpec {
     fn init(&mut self) {
         self.unimplemented.extend(
             [
-                "PassiveSpec.lua:1111-1409 cluster/timeless/abyss/tattoo node replacement (P5)",
+                "PassiveSpec.lua:1111-1409 timeless/abyss/tattoo node replacement (P5)",
                 "PassiveSpec.lua:1444 AddMasteryEffectOptionsToNode (unallocated mastery display, P5)",
                 "PassiveSpec.lua:1520-1560 Intuitive Leap-like dependency bookkeeping (P5)",
                 "PassiveSpec.lua:1591-1695 node paths / pathDist (tree editing only, P5)",
@@ -247,6 +295,7 @@ impl PassiveSpec {
                 self.nodes.push(SpecNode::new(&tree, ti));
             }
         }
+        self.base_len = self.nodes.len();
         for i in 0..self.nodes.len() {
             // :65 `t_insert(node.linked, self.nodes[otherId])` -- inserting nil is a no-op.
             let linked: Vec<usize> = self.nodes[i]
@@ -259,12 +308,12 @@ impl PassiveSpec {
         }
     }
 
-    fn alloc(&mut self, i: usize) {
+    pub(crate) fn alloc(&mut self, i: usize) {
         self.nodes[i].alloc = true;
         self.alloc_nodes.insert(self.nodes[i].id, i);
     }
 
-    fn dealloc(&mut self, i: usize) {
+    pub(crate) fn dealloc(&mut self, i: usize) {
         self.nodes[i].alloc = false;
         self.alloc_nodes.shift_remove(&self.nodes[i].id);
     }
@@ -442,10 +491,10 @@ impl PassiveSpec {
 
     fn alloc_nodes_in_order(&self) -> Vec<usize> {
         let mut list: Vec<usize> = self.alloc_nodes.values().copied().collect();
-        // `nodes` is in ascending id, so the index order is the id order.
+        // Subgraph nodes follow the Init nodes in `nodes`, so the index order is not the id order.
         match self.alloc_order {
-            AllocOrder::IdAsc => list.sort_unstable(),
-            AllocOrder::IdDesc => list.sort_unstable_by(|a, b| b.cmp(a)),
+            AllocOrder::IdAsc => list.sort_unstable_by_key(|&i| self.nodes[i].id),
+            AllocOrder::IdDesc => list.sort_unstable_by_key(|&i| std::cmp::Reverse(self.nodes[i].id)),
             AllocOrder::Insertion => {}
         }
         list
@@ -456,8 +505,22 @@ impl PassiveSpec {
     pub fn build_all_depends_and_paths(&mut self) {
         let mut visited: Vec<usize> = Vec::new();
 
-        // :1141-1209 -- one pass over every node (ascending id, D13).
+        // :1141-1209 -- one pass over every node (ascending id, then the subgraph nodes, D13).
         for i in 0..self.nodes.len() {
+            if self.check_node_links {
+                // :1146-1159 -- drop links to nodes a subgraph rebuild removed, point the rest at the canonical node.
+                let mut linked = std::mem::take(&mut self.nodes[i].linked);
+                for k in (0..linked.len()).rev() {
+                    let other = linked[k];
+                    match self.nodes.get(other).and_then(|o| self.index.get(&o.id)).copied() {
+                        None => {
+                            linked.remove(k);
+                        }
+                        Some(canonical) => linked[k] = canonical,
+                    }
+                }
+                self.nodes[i].linked = linked;
+            }
             let n = &mut self.nodes[i];
             n.depends.clear();
             n.intuitive_leap_likes_affecting.clear();
@@ -467,6 +530,7 @@ impl PassiveSpec {
                 self.nodes[i].depends.push(i); // :1207 "All nodes depend on themselves"
             }
         }
+        self.check_node_links = false;
 
         // :1409-1466 -- mastery effects and the allocation counters.
         self.allocated_mastery_count = 0;
@@ -681,6 +745,8 @@ impl PassiveSpec {
     /// `load` against an already built tree.
     pub fn load_with_tree(model: &SpecModel, tree: Rc<PassiveTree>) -> Result<PassiveSpec, TreeError> {
         let mut spec = PassiveSpec::new(tree)?;
+        // :105 `tonumber(xml.attrib.clusterHashFormatVersion) or (xml.attrib.nodes and 1 or 2)` (pob-build).
+        spec.cluster_hash_format_version = model.cluster_hash_format_version;
         spec.jewels = model.jewels.clone();
         if !model.overrides.is_empty() {
             spec.unimplemented.push(format!(

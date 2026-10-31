@@ -36,10 +36,11 @@ pub use pob_parser::ParseMode;
 
 /// `getStats()._meta` (boot.lua:806-816) of a built env -- pob-ts `metaOf` (`src/calc/output.ts`).
 ///
-/// Two fields cannot match upstream before P5 and are reported as they are, not faked: `alloc_nodes` is
-/// `#build.spec.allocNodes`, which on a cluster-jewel build also holds the nodes `BuildClusterJewelGraphs` generates (D16);
-/// `socket_groups` is `#build.skillsTab.socketGroupList`, which upstream also counts the groups the skill phase appends
-/// for item/tree-granted skills (CalcSetup.lua:1461-1490).
+/// `alloc_nodes` is `#build.spec.allocNodes`, which on a cluster-jewel build also holds the nodes `BuildClusterJewelGraphs`
+/// generates and the expansion sockets it puts back (D16; built in `ParseMode::Full` since R5.5a). One field cannot match
+/// upstream before the skill phase and is reported as it is, not faked: `socket_groups` is
+/// `#build.skillsTab.socketGroupList`, which upstream also counts the groups the skill phase appends for item/tree-granted
+/// skills (CalcSetup.lua:1461-1490).
 #[derive(Clone, Debug, PartialEq)]
 pub struct EnvMeta {
     pub alloc_nodes: usize,

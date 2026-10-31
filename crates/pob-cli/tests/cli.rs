@@ -35,7 +35,7 @@ fn calc_file_json_has_meta_and_allowlisted_stats() {
     let parsed = CandidateOutput::from_json(std::str::from_utf8(&out.stdout).unwrap()).unwrap();
     assert_eq!(
         parsed.stats.len(),
-        296,
+        316,
         "Dual Savior: every ALLOWLIST key it emits (= oracle ok count)"
     );
     assert!(
@@ -74,17 +74,18 @@ fn experimental_env_disables_the_filter() {
 /// R4-ARCH gate (в) at the CLI boundary: for each golden, `pob-cli calc --json` stats against `snapshot.stats` (exact doubles, O8).
 /// Pinned `ok` / `exact` = the pob-ts candidate run on the same goldens (measured 2026-10-31: 266/265, 268/267, 268/267, 274/273, 269/268, 285/284; not the 492/.. of the task card).
 /// R5.4 (`ParseMode::Full`, the real ModParser, re-measured allowlist): 296/295, 303/302, 303/302, 314/313, 302/301, 320/319 -- the same
-/// numbers `npm run oracle -- <golden> --cand tools/oracle-adapter/candidate.ts` prints.
+/// numbers `npm run oracle -- <golden> --cand tools/oracle-adapter/candidate.ts` prints. R5.5a (cluster-jewel subgraphs,
+/// allowlist re-measured 333 -> 353): 316/315, 323/322, 323/322, 334/333, 322/321, 340/339 (the same `npm run oracle`).
 /// O9: `VaalArcticArmourMitigation` is `ok`, not `exact` (golden `+0`, Rust `-0`) -- hence exact = ok - 1.
 #[test]
 fn cli_stats_against_goldens() {
     let pinned: [(&str, usize, usize); 6] = [
-        ("Dual Savior", 296, 295),
-        ("Dual Wield Cospris CoC", 303, 302),
-        ("Dual Wield Cospris CoC - Lethal Pride", 303, 302),
-        ("Generals Perforate Zerker", 314, 313),
-        ("Mirage Archer Toxic Rain", 302, 301),
-        ("OccVortex", 320, 319),
+        ("Dual Savior", 316, 315),
+        ("Dual Wield Cospris CoC", 323, 322),
+        ("Dual Wield Cospris CoC - Lethal Pride", 323, 322),
+        ("Generals Perforate Zerker", 334, 333),
+        ("Mirage Archer Toxic Rain", 322, 321),
+        ("OccVortex", 340, 339),
     ];
     for (g, (name, ok, exact)) in GOLDEN_BUILDS.iter().zip(pinned) {
         assert_eq!(g.name, name);
@@ -161,11 +162,12 @@ fn usage_and_unknown_args() {
 
 /// R3-ARCH §3 (c): `meta` against `_meta` of the six goldens (`compare_meta`, field by field, O7).
 ///
-/// NOT 0 diffs: two fields cannot match before P5 without faking (pob-ts `metaOf` reports the same numbers):
-///  * `allocNodes` = `#build.spec.allocNodes`, which upstream also holds the nodes `BuildClusterJewelGraphs` generates and
-///    the expansion sockets it re-adds (D16) -- 4 cluster builds;
+/// NOT 0 diffs: one field cannot match before the skill phase (R6) without faking:
 ///  * `socketGroups` = `#socketGroupList`, which upstream also counts the groups the skill phase appends for item/tree
 ///    granted skills (CalcSetup.lua:1461-1490) -- 2 builds.
+///
+/// `allocNodes` (`#build.spec.allocNodes`, with the nodes `BuildClusterJewelGraphs` generates and the expansion sockets it
+/// puts back, D16) matches on all six since R5.5a (was 98/98/97/103 on the 4 cluster builds).
 ///
 /// The diffs are pinned one by one (field, golden value, ours), so any other drift fails.
 #[test]
@@ -173,10 +175,10 @@ fn meta_against_goldens() {
     type Diffs = &'static [(&'static str, i64, i64)];
     let pinned: [(&str, Diffs); 6] = [
         ("Dual Savior", &[]),
-        ("Dual Wield Cospris CoC", &[("allocNodes", 120, 98)]),
-        ("Dual Wield Cospris CoC - Lethal Pride", &[("allocNodes", 120, 98)]),
-        ("Generals Perforate Zerker", &[("allocNodes", 126, 97)]),
-        ("Mirage Archer Toxic Rain", &[("allocNodes", 117, 103), ("socketGroups", 9, 8)]),
+        ("Dual Wield Cospris CoC", &[]),
+        ("Dual Wield Cospris CoC - Lethal Pride", &[]),
+        ("Generals Perforate Zerker", &[]),
+        ("Mirage Archer Toxic Rain", &[("socketGroups", 9, 8)]),
         ("OccVortex", &[("socketGroups", 7, 6)]),
     ];
     let mut zero = 0;
@@ -196,5 +198,5 @@ fn meta_against_goldens() {
         assert_eq!(got, want, "{name}: _meta diffs");
         zero += usize::from(diffs.is_empty());
     }
-    assert_eq!(zero, 1, "builds with 0 _meta diffs");
+    assert_eq!(zero, 4, "builds with 0 _meta diffs");
 }

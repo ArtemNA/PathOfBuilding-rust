@@ -17,7 +17,7 @@ use pob_data::rules::rules;
 use pob_items::{DataTable, Item, ItemOptions, NumKey};
 use pob_lua::number::{max2, min2};
 use pob_mods::{Actor, Mod, ModStore, ModType, StoreRef, Value};
-use pob_tree::{PassiveSpec, TreeError};
+use pob_tree::{ClusterJewel, PassiveSpec, TreeError};
 
 use crate::calc_lib;
 use crate::env::{CalcActor, Env, GrantedSkill, MainSkillStub, ReqEntry, Slot};
@@ -173,6 +173,62 @@ pub fn parse_items(build: &BuildModel, mode: pob_parser::ParseMode) -> IndexMap<
     items
 }
 
+/// What `BuildSubgraph` reads off `build.itemsTab.items[itemId]` -- `GetJewel` (PassiveSpec.lua:901-910) returns the item
+/// only when it has `jewelData`; the `clusterJewel*` fields are Item.lua's (`BuildModList`, :2495-2520).
+pub fn cluster_jewel_of(item: &Item) -> Option<ClusterJewel> {
+    let jd = item.jewel_data.as_ref()?;
+    let text = |k: &str| -> Option<String> {
+        let v = jd.get(k);
+        match v.as_str() {
+            Some(s) => Some(s.to_owned()),
+            None if !v.truthy() => None,
+            None => panic!(
+                "Classes/PassiveSpec.lua:1970: jewelData.{k} is a {} (expected a string)",
+                v.type_name()
+            ),
+        }
+    };
+    let list = |k: &str| -> Vec<String> {
+        let v = jd.get(k);
+        if !v.is_table() {
+            return Vec::new();
+        }
+        v.ipairs()
+            .into_iter()
+            .map(|x| {
+                x.as_str()
+                    .map(str::to_owned)
+                    .unwrap_or_else(|| panic!("Classes/PassiveSpec.lua:1970: jewelData.{k} holds a {}", x.type_name()))
+            })
+            .collect()
+    };
+    Some(ClusterJewel {
+        cluster_jewel: item.cluster_jewel,
+        valid: jd.get("clusterJewelValid").truthy(),
+        keystone: text("clusterJewelKeystone"),
+        notables: list("clusterJewelNotables"),
+        skill: text("clusterJewelSkill"),
+        socket_count_override: jd.num("clusterJewelSocketCountOverride"),
+        socket_count: jd.num("clusterJewelSocketCount"),
+        node_count: jd.num("clusterJewelNodeCount"),
+        nothingness_count: jd.num("clusterJewelNothingnessCount"),
+        added_mods: list("clusterJewelAddedMods"),
+        inc_effect: jd.num("clusterJewelIncEffect"),
+    })
+}
+
+/// `spec:PostLoad()` (PassiveSpec.lua:251, run by Build.lua:680 once the items tab has loaded): the cluster-jewel subgraphs
+/// of the spec, built from the build's items.
+pub fn post_load_spec(spec: &mut PassiveSpec, items: &IndexMap<u64, Rc<Item>>) -> Result<(), TreeError> {
+    let lookup = |item_id: f64| -> Option<Rc<ClusterJewel>> {
+        if item_id < 0.0 || item_id.fract() != 0.0 {
+            return None;
+        }
+        items.get(&(item_id as u64)).and_then(|i| cluster_jewel_of(i)).map(Rc::new)
+    };
+    spec.post_load(&lookup)
+}
+
 /// The `<Item>` attributes as `Item::parse` wants them.
 pub fn item_options(im: &pob_build::ItemModel, mode: pob_parser::ParseMode) -> ItemOptions {
     ItemOptions {
@@ -324,10 +380,20 @@ fn new_actor(mod_db: &StoreRef, level: f64) -> Rc<RefCell<CalcActor>> {
 #[allow(clippy::too_many_lines)]
 pub fn init_env(build: Rc<BuildModel>, opts: InitEnvOptions) -> Result<Env, InitEnvError> {
     // --- (1) env + the three ModDBs + the actors (:490-547) ---------------------------------------------------------
-    let spec = match opts.spec {
+    let mut spec = match opts.spec {
         Some(s) => s,
         None => PassiveSpec::load_mode(active_spec(&build), opts.parse_mode)?,
     };
+    // `build.itemsTab.items` (ItemsTab:Load) exists before any calculation; the spec's PostLoad needs it.
+    let parsed_items = match opts.items {
+        Some(i) => i,
+        None => parse_items(&build, opts.parse_mode),
+    };
+    // Build.lua:680 `PostLoad` -> BuildClusterJewelGraphs (R5.5a). `ParseMode::CacheOnly` reproduces pob-ts, which has no
+    // cluster graphs (its gates -- env (a), perform/defence/full fixtures -- are pinned without them).
+    if opts.parse_mode == pob_parser::ParseMode::Full && !spec.post_loaded {
+        post_load_spec(&mut spec, &parsed_items)?;
+    }
     let mut config = ConfigState::from_build(&build);
     config.parse_mode = opts.parse_mode;
     // `build.configTab.modList`/`.enemyModList` are what `ConfigTab:BuildModList` left behind at load; it also runs
@@ -761,20 +827,18 @@ pub fn init_env(build: Rc<BuildModel>, opts: InitEnvOptions) -> Result<Env, Init
     // --- (12) items (:800-1370) --------------------------------------------------------------------------------------
     let item_set = active_item_set(&build);
     env.ordered_slots = build_ordered_slots(&env.spec, item_set);
-    env.items = match opts.items {
-        Some(i) => i,
-        None => parse_items(&build, opts.parse_mode),
-    };
+    env.items = parsed_items;
     let use_second_weapon_set = item_set.use_second_weapon_set;
     let mut items: IndexMap<String, Rc<Item>> = IndexMap::new();
     let mut jewel_limits: IndexMap<String, f64> = IndexMap::new();
 
     // An expansion socket (`expansionJewel.parent`) is dropped by `PassiveSpec:Init` and put back by
-    // `BuildClusterJewelGraphs` (P5, D16) -- a jewel sitting in one is never equipped here, nor are the nodes its cluster
-    // would generate. Said per item.
+    // `BuildClusterJewelGraphs` (D16). In `CacheOnly` (pob-ts) the graphs are not built -- a jewel sitting in one is never
+    // equipped here, nor are the nodes its cluster would generate. Said per item. In `Full` a socket still missing is
+    // missing upstream too (its parent is not allocated) and the slot is skipped like there.
     for &(node_id, item_id) in &env.spec.jewels.0 {
         let in_spec = node_id >= 0.0 && node_id.fract() == 0.0 && env.spec.node(node_id as u32).is_some();
-        if in_spec || item_id == 0.0 {
+        if in_spec || item_id == 0.0 || opts.parse_mode == pob_parser::ParseMode::Full {
             continue;
         }
         let what = env

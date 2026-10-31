@@ -7,8 +7,8 @@
 //!       item-miss / node-miss / cluster / granted-passive / alloc-count / tree-jewel by the SOURCE of the mod, the gem
 //!       multipliers (`Socketed*`/`Empty*Socket*`) excluded by name; per-build counts = R3.1, unclassified 0.
 //! (a) and (b) run in `ParseMode::CacheOnly` (pob-ts). R5.4 adds (c): (b) in `ParseMode::Full` (the desktop: ModCache, else
-//! the real ModParser) -- `item-miss`/`node-miss`/`granted-passive` 0, the rest (cluster, alloc-count, tree-jewel: R5.5)
-//! pinned as measured.
+//! the real ModParser) -- `item-miss`/`node-miss`/`granted-passive` 0, and since R5.5a (cluster graphs, `Full` only)
+//! `cluster`/`alloc-count` 0; `tree-jewel` (R5.5b/c) pinned as measured.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::rc::Rc;
@@ -434,13 +434,15 @@ fn env_vs_luajit_classified_as_pob_ts() {
     env_vs_luajit(ParseMode::CacheOnly, &EXPECTED_CLASSES);
 }
 
-/// R5.4 measured, `ParseMode::Full`: [item-miss, node-miss, cluster, granted-passive, alloc-count, tree-jewel].
+/// `ParseMode::Full`: [item-miss, node-miss, cluster, granted-passive, alloc-count, tree-jewel]. R5.4 measured cluster
+/// 66/66/84/21 and alloc-count 2/2/4/2; R5.5a (BuildClusterJewelGraphs in `PostLoad`) closes both. What is left is
+/// `tree-jewel` -- radius jewels (R5.5b) and the Lethal Pride conquest (R5.5c).
 const EXPECTED_CLASSES_FULL: [(&str, [usize; 6]); 6] = [
     ("Dual Savior", [0, 0, 0, 0, 0, 0]),
-    ("Dual Wield Cospris CoC", [0, 0, 66, 0, 2, 12]),
-    ("Dual Wield Cospris CoC - Lethal Pride", [0, 0, 66, 0, 2, 29]),
-    ("Generals Perforate Zerker", [0, 0, 84, 0, 4, 0]),
-    ("Mirage Archer Toxic Rain", [0, 0, 21, 0, 2, 0]),
+    ("Dual Wield Cospris CoC", [0, 0, 0, 0, 0, 12]),
+    ("Dual Wield Cospris CoC - Lethal Pride", [0, 0, 0, 0, 0, 29]),
+    ("Generals Perforate Zerker", [0, 0, 0, 0, 0, 0]),
+    ("Mirage Archer Toxic Rain", [0, 0, 0, 0, 0, 0]),
     ("OccVortex", [0, 0, 0, 0, 0, 0]),
 ];
 

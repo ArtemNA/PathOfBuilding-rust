@@ -17,6 +17,10 @@
 //! (`ParseMode::Full`, the default): `item-miss` is closed -- 44 keys moved to ALLOWLIST (39 from EXCLUDED, 5 newly
 //! emitted rage/elusive keys), one newly emitted key (`RageEffect`) is EXCLUDED, no key left ALLOWLIST; no reason names
 //! `item-miss` any more (it stays in `ROOT_CAUSES`, the pob-ts vocabulary).
+//! R5.5a re-measured with the cluster-jewel subgraphs built (`PostLoad`, `ParseMode::Full`): 20 keys moved from EXCLUDED
+//! to ALLOWLIST (resistances, Dex/Int, Mana, mana leech), none left ALLOWLIST, no key newly emitted. The remaining reasons
+//! that name `cluster` are the pob-ts attribution; the env no longer differs from LuaJIT by any cluster mod (env gate
+//! (c): class `cluster` 0), so their real cause is one of the others they name.
 
 use indexmap::IndexMap;
 
@@ -102,8 +106,8 @@ const EST_EHP: &str = "estimation input: NumberOfMitigatedDamagingHits and Confi
 const EST_SKILL_TIME: &str = "estimation input: enemy action speed from Temporal Chains and Chill (curses + ailments)";
 const EST_GUARD: &str = "estimation input: GuardAbsorbRate (guards)";
 
-/// 333 keys, sorted (byte order): `ok` on every golden that emits them, on none `mismatch` or `extra` (R5.4: measured
-/// with `ParseMode::Full`, the default).
+/// 353 keys, sorted (byte order): `ok` on every golden that emits them, on none `mismatch` or `extra` (R5.4: measured
+/// with `ParseMode::Full`, the default; R5.5a re-measured with the cluster-jewel subgraphs: +20).
 pub const ALLOWLIST: &[&str] = &[
     "AbsorptionCharges",
     "AbsorptionChargesMax",
@@ -187,7 +191,12 @@ pub const ALLOWLIST: &[&str] = &[
     "ColdLifeRecoup",
     "ColdManaRecoup",
     "ColdMindOverMatter",
+    "ColdResist",
     "ColdResistOver75",
+    "ColdResistOverCap",
+    "ColdResistOverTime",
+    "ColdResistTakenHitMulti",
+    "ColdResistTotal",
     "ColdtakenFlat",
     "CorruptedBloodImmunity",
     "CrabBarriers",
@@ -198,6 +207,7 @@ pub const ALLOWLIST: &[&str] = &[
     "DebuffExpirationModifier",
     "DebuffExpirationRate",
     "Devotion",
+    "Dex",
     "EffectiveAttackDodgeChance",
     "EffectiveAverageBlockChance",
     "EffectiveBlockChance",
@@ -271,6 +281,7 @@ pub const ALLOWLIST: &[&str] = &[
     "InherentRageLossDelay",
     "InspirationCharges",
     "InspirationChargesMax",
+    "Int",
     "InterruptStunAvoidChance",
     "LifeCancellableReservation",
     "LifeDegen",
@@ -300,10 +311,18 @@ pub const ALLOWLIST: &[&str] = &[
     "LightningLifeRecoup",
     "LightningManaRecoup",
     "LightningMindOverMatter",
+    "LightningResist",
+    "LightningResistOver75",
+    "LightningResistOverCap",
+    "LightningResistOverTime",
+    "LightningResistTakenHitMulti",
+    "LightningResistTotal",
     "LightningtakenFlat",
     "LootQuantityNormalEnemies",
     "LootRarityMagicEnemies",
     "LowLifePercentage",
+    "LowestOfMaximumLifeAndMaximumMana",
+    "Mana",
     "ManaCancellableReservation",
     "ManaDegen",
     "ManaOnBlock",
@@ -312,11 +331,16 @@ pub const ALLOWLIST: &[&str] = &[
     "ManaRecoveryRateMod",
     "ManaUncancellableReservation",
     "MaxLifeLeechRatePercent",
+    "MaxManaLeechInstance",
+    "MaxManaLeechRate",
     "MaximumFortification",
     "MaximumRage",
     "MinimumBypass",
     "MinimumFortification",
     "MinionAllyDamageMitigation",
+    "MissingColdResist",
+    "MissingFireResist",
+    "MissingLightningResist",
     "MissingTotemChaosResist",
     "MissingTotemColdResist",
     "MissingTotemFireResist",
@@ -561,28 +585,14 @@ pub const EXCLUDED: &[(&str, &str)] = &[
     ("ChaosResist", RESISTS),
     ("ChaosResistOverTime", RESISTS),
     ("ChaosResistTotal", RESISTS),
-    ("ColdResist", RESISTS),
-    ("ColdResistOverCap", RESISTS),
-    ("ColdResistOverTime", RESISTS),
-    ("ColdResistTotal", RESISTS),
     ("FireResist", RESISTS),
     ("FireResistOver75", RESISTS),
     ("FireResistOverCap", RESISTS),
     ("FireResistOverTime", RESISTS),
     ("FireResistTotal", RESISTS),
-    ("LightningResist", RESISTS),
-    ("LightningResistOver75", RESISTS),
-    ("LightningResistOverCap", RESISTS),
-    ("LightningResistOverTime", RESISTS),
-    ("LightningResistTotal", RESISTS),
     ("MissingChaosResist", RESISTS),
-    ("MissingColdResist", RESISTS),
-    ("MissingFireResist", RESISTS),
-    ("MissingLightningResist", RESISTS),
     ("ChaosResistTakenHitMulti", EST_RES),
-    ("ColdResistTakenHitMulti", EST_RES),
     ("FireResistTakenHitMulti", EST_RES),
-    ("LightningResistTakenHitMulti", EST_RES),
     ("ChaosTakenDotMult", EST_DOT),
     ("ColdTakenDotMult", EST_DOT),
     ("FireTakenDotMult", EST_DOT),
@@ -595,8 +605,6 @@ pub const EXCLUDED: &[(&str, &str)] = &[
     ("PhysicalTotalHitPool", EST_HIT_POOL),
     ("ConfiguredDamageChance", EST_DAMAGE_CHANCE),
     ("CurseEffectOnSelf", CURSE),
-    ("Dex", ATTR),
-    ("Int", ATTR),
     ("LowestAttribute", ATTR),
     ("Str", ATTR),
     ("TotalAttr", ATTR),
@@ -611,8 +619,6 @@ pub const EXCLUDED: &[(&str, &str)] = &[
     ("GuardSkillActive", GUARDS),
     ("Life", POOLS),
     ("LifeUnreserved", POOLS),
-    ("LowestOfMaximumLifeAndMaximumMana", POOLS),
-    ("Mana", POOLS),
     ("LifeRegen", REGEN),
     ("LifeRegenPercent", REGEN),
     ("LifeRegenRecovery", REGEN),
@@ -628,8 +634,6 @@ pub const EXCLUDED: &[(&str, &str)] = &[
     ("MaxEnergyShieldLeechRate", LEECH),
     ("MaxLifeLeechInstance", LEECH),
     ("MaxLifeLeechRate", LEECH),
-    ("MaxManaLeechInstance", LEECH),
-    ("MaxManaLeechRate", LEECH),
     ("NumberOfDamagingHits", EST_HITS),
     ("NumberOfMitigatedDamagingHits", EST_MITIGATED),
     ("PhysicalDamageReduction", EST_ARMOUR),

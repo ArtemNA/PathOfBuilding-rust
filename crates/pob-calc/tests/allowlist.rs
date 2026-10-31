@@ -95,9 +95,9 @@ fn allowlist_is_the_measured_set() {
         EXCLUDED.len(),
         seen.len()
     );
-    // R4.5: 289 / 246 (ModCache only); R5.4 (ParseMode::Full): 333 / 208
-    assert_eq!(ALLOWLIST.len(), 333, "pinned size of the measured allowlist");
-    assert_eq!(EXCLUDED.len(), 208, "pinned size of the measured exclusions");
+    // R4.5: 289 / 246 (ModCache only); R5.4 (ParseMode::Full): 333 / 208; R5.5a (cluster subgraphs): 353 / 188
+    assert_eq!(ALLOWLIST.len(), 353, "pinned size of the measured allowlist");
+    assert_eq!(EXCLUDED.len(), 188, "pinned size of the measured exclusions");
 }
 
 #[test]
