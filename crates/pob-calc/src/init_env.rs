@@ -1,5 +1,5 @@
-//! `calcs.initEnv(build, "MAIN")` -- Modules/CalcSetup.lua:475-1975 without `override`/`specEnv` (no accelerators, no
-//! minions, no CALCS mode) and without the skill half (:1461-1946 bar the three pieces CALC-ARCH §7 (18) names).
+//! `calcs.initEnv(build, "MAIN")` -- Modules/CalcSetup.lua:475-1975 without `override` (no minions, no CALCS mode; `specEnv` and the
+//! accelerated re-init: [`SpecDbs`], [`reinit_accelerated`], R7.2b) and without the skill half (:1461-1946 bar the three pieces CALC-ARCH §7 (18) names).
 //! Executable spec: pob-ts `src/calc/initEnv.ts`; truth: LuaJIT (fixtures `tests/fixtures/<build>.luajit.json`, key `env`).
 //!
 //! The phase order IS the mod insertion order, and the insertion order is the summation order (MINEFIELD L10): nothing
@@ -695,7 +695,7 @@ pub fn init_env_seeded(
     let parse_mode = opts.parse_mode;
     let (spec, parsed_items) = load_spec(&build, opts)?;
     prof.mark("spec: load + PostLoad");
-    init_env_core(build, spec, parsed_items, parse_mode, None, skills, carry)
+    init_env_core(build, spec, parsed_items, parse_mode, None, skills, carry, None).map(|(env, _)| env)
 }
 
 /// The build state upstream keeps on `build` and every initEnv reads unchanged (R7-perf): `build.spec` after `PostLoad`,
@@ -754,6 +754,19 @@ pub fn init_env_shared(
     parse_mode: pob_parser::ParseMode,
     carry: Option<&crate::session::SkillsCarry>,
 ) -> Result<Env, InitEnvError> {
+    init_env_shared_spec(build, shared, parse_mode, carry, None).map(|(env, _)| env)
+}
+
+/// [`init_env_shared`] with upstream's `specEnv` (R7.2b, CalcSetup.lua:475-482): `spec` = `{ cachedPlayerDB, cachedEnemyDB,
+/// cachedMinionDB, env = nil }` -- the base / config mods are then read through the cached DBs as `parent`s (:688-693) instead of being
+/// added again. Returns the env and the three DBs initEnv returns (:1974): the ones passed in, or `specCopy` of this env (:687).
+pub fn init_env_shared_spec(
+    build: Rc<BuildModel>,
+    shared: &BuildShared,
+    parse_mode: pob_parser::ParseMode,
+    carry: Option<&crate::session::SkillsCarry>,
+    spec: Option<&SpecDbs>,
+) -> Result<(Env, SpecDbs), InitEnvError> {
     init_env_core(
         build,
         shared.spec.clone(),
@@ -762,6 +775,7 @@ pub fn init_env_shared(
         Some(shared),
         true,
         carry,
+        spec,
     )
 }
 
@@ -796,7 +810,7 @@ fn load_spec(build: &BuildModel, opts: InitEnvOptions) -> Result<(Rc<PassiveSpec
     Ok((Rc::new(spec), parsed_items))
 }
 
-#[allow(clippy::too_many_lines)]
+#[allow(clippy::too_many_lines, clippy::too_many_arguments)]
 fn init_env_core(
     build: Rc<BuildModel>,
     spec: Rc<PassiveSpec>,
@@ -805,7 +819,8 @@ fn init_env_core(
     shared: Option<&BuildShared>,
     skills: bool,
     carry: Option<&crate::session::SkillsCarry>,
-) -> Result<Env, InitEnvError> {
+    spec_in: Option<&SpecDbs>,
+) -> Result<(Env, SpecDbs), InitEnvError> {
     let mut prof = profile::Marker::new();
     let opts = InitEnvMode { parse_mode };
     // --- (1) env + the three ModDBs + the actors (:490-547) ---------------------------------------------------------
@@ -896,6 +911,7 @@ fn init_env_core(
         node_granted_skills: IndexMap::new(),
         node_final_mod_list: IndexMap::new(),
         jewel_limit_disabled: Vec::new(),
+        item_class_restrictions: IndexMap::new(),
         ordered_slots: Vec::new(),
         items: IndexMap::new(),
         skills: None,
@@ -932,326 +948,317 @@ fn init_env_core(
         }
     };
 
-    // --- (4) the base modifier database (:590-650) --------------------------------------------------------------------
-    for (stat, v) in [("Str", base_str), ("Dex", base_dex), ("Int", base_int)] {
-        let v = v.ok_or_else(|| {
-            InitEnvError(format!(
-                "Modules/CalcSetup.lua:590: classStats[\"base_{}\"] is nil for class {class_id} of tree {}",
-                stat.to_lowercase(),
-                env.spec.tree_version
-            ))
-        })?;
-        base(&mod_db, stat, ModType::Base, n(v), vec![]);
-    }
-    set_mult(&mod_db, "Level", max2(1.0, min2(100.0, build.level)));
-    init_mod_db(modes, &mod_db);
-    {
-        use ModType::{Base, Flag, Inc, More};
-        let db = &mod_db;
-        let b = |name: &str, v: f64| base(db, name, Base, n(v), vec![]);
-        let level_mult = |b: f64| tag(&[("type", s("Multiplier")), ("var", s("Level")), ("base", n(b))]);
-        base(db, "Life", Base, n(cc("life_per_level")), vec![level_mult(38.0)]);
-        base(db, "Mana", Base, n(cc("mana_per_level")), vec![level_mult(34.0)]);
-        base(
-            db,
-            "ManaRegen",
-            Base,
-            n(misc("ManaRegenBase")),
-            vec![tag(&[("type", s("PerStat")), ("stat", s("Mana")), ("div", n(1.0))])],
-        );
-        b("Devotion", 0.0);
-        b("Evasion", cc("base_evasion_rating"));
-        base(
-            db,
-            "Accuracy",
-            Base,
-            n(cc("accuracy_rating_per_level")),
-            vec![level_mult(-cc("accuracy_rating_per_level"))],
-        );
-        b("CritMultiplier", cc("base_critical_strike_multiplier") - 100.0);
-        base(
-            db,
-            "DotMultiplier",
-            Base,
-            n(cc("critical_ailment_dot_multiplier_+")),
-            vec![cond("CriticalStrike")],
-        );
-        // L4: `env.configInput.resistancePenalty or -60` -- a configured 0 wins over the -60.
-        let penalty = match env.config.input.get("resistancePenalty") {
-            None | Some(InputValue::Bool(false)) => n(-60.0),
-            Some(InputValue::Num(x)) => n(*x),
-            Some(InputValue::Str(x)) => Value::str(x),
-            Some(InputValue::Bool(true)) => Value::Bool(true),
-        };
-        for name in ["FireResist", "ColdResist", "LightningResist", "ChaosResist"] {
-            base(db, name, Base, penalty.clone(), vec![]);
+    // --- (4)-(8) only without a `specEnv` (:590 `if not cachedPlayerDB`), then `specCopy` (:687); with one, the cached DBs
+    // become the parents (:688-693) and the base / bandit / pantheon / enemy / config mods are read through them.
+    let spec_dbs = match spec_in {
+        Some(sp) => {
+            mod_db.borrow_mut().parent = Some(sp.player.clone());
+            enemy_db.borrow_mut().parent = Some(sp.enemy.clone());
+            // :691 `if cachedMinionDB and env.minion` -- a fresh env has no `env.minion` yet.
+            sp.clone()
         }
-        b("TotemFireResist", 40.0);
-        b("TotemColdResist", 40.0);
-        b("TotemLightningResist", 40.0);
-        b("TotemChaosResist", 20.0);
-        let attack = mod_flag("Attack");
-        base(
-            db,
-            "CritChance",
-            Inc,
-            n(cc("critical_strike_chance_+%_per_power_charge")),
-            vec![mult("PowerCharge")],
-        );
-        new_mod(
-            db,
-            "Speed",
-            Inc,
-            n(cc("base_attack_speed_+%_per_frenzy_charge")),
-            Some("Base"),
-            attack,
-            0,
-            vec![mult("FrenzyCharge")],
-        );
-        new_mod(
-            db,
-            "Speed",
-            Inc,
-            n(cc("base_cast_speed_+%_per_frenzy_charge")),
-            Some("Base"),
-            mod_flag("Cast"),
-            0,
-            vec![mult("FrenzyCharge")],
-        );
-        base(
-            db,
-            "Damage",
-            More,
-            n(cc("object_inherent_damage_+%_final_per_frenzy_charge")),
-            vec![mult("FrenzyCharge")],
-        );
-        base(
-            db,
-            "PhysicalDamageReduction",
-            Base,
-            n(cc("physical_damage_reduction_%_per_endurance_charge")),
-            vec![mult("EnduranceCharge")],
-        );
-        base(
-            db,
-            "ElementalDamageReduction",
-            Base,
-            n(cc("elemental_damage_reduction_%_per_endurance_charge")),
-            vec![mult("EnduranceCharge")],
-        );
-        b("MaximumRage", cc("maximum_rage"));
-        b("Multiplier:GaleForce", 0.0);
-        b("MaximumGaleForce", 10.0);
-        b("MaximumFortification", cc("base_max_fortification"));
-        b("MaximumValour", 50.0);
-        b("Multiplier:IntensityLimit", 3.0);
-        let rampage = || {
-            tag(&[
-                ("type", s("Multiplier")),
-                ("var", s("Rampage")),
-                ("limit", n(cc("max_rampage_stacks") / 20.0)),
-                ("div", n(20.0)),
-            ])
-        };
-        base(db, "Damage", Inc, n(cc("damage_+%_per_10_rampage_stacks")), vec![rampage()]);
-        base(
-            db,
-            "MovementSpeed",
-            Inc,
-            n(cc("movement_velocity_+%_per_10_rampage_stacks")),
-            vec![rampage()],
-        );
-        b("ActiveTrapLimit", cc("base_number_of_traps_allowed"));
-        b("ActiveMineLimit", cc("base_number_of_remote_mines_allowed"));
-        b("MineThrowCount", 1.0);
-        b("TrapThrowCount", 1.0);
-        b("ActiveBrandLimit", 3.0);
-        b("EnemyCurseLimit", 1.0);
-        b("SocketedCursesHexLimitValue", 1.0);
-        b("ProjectileCount", 1.0);
-        let dw_speed = cc("dual_wield_inherent_attack_speed_+%_final");
-        new_mod(
-            db,
-            "Speed",
-            More,
-            n(dw_speed),
-            Some("Base"),
-            attack,
-            0,
-            vec![cond("DualWielding"), cond_neg("DoubledInherentDualWieldingSpeed")],
-        );
-        new_mod(
-            db,
-            "Speed",
-            More,
-            n(2.0 * dw_speed),
-            Some("Base"),
-            attack,
-            0,
-            vec![cond("DualWielding"), cond("DoubledInherentDualWieldingSpeed")],
-        );
-        let dw_block = cc("inherent_block_while_dual_wielding_%");
-        base(
-            db,
-            "BlockChance",
-            Base,
-            n(dw_block),
-            vec![
-                cond("DualWielding"),
-                cond_neg("NoInherentBlock"),
-                cond_neg("DoubledInherentDualWieldingBlock"),
-            ],
-        );
-        base(
-            db,
-            "BlockChance",
-            Base,
-            n(2.0 * dw_block),
-            vec![
-                cond("DualWielding"),
-                cond_neg("NoInherentBlock"),
-                cond("DoubledInherentDualWieldingBlock"),
-            ],
-        );
-        new_mod(
-            db,
-            "Damage",
-            More,
-            n(200.0),
-            Some("Base"),
-            0,
-            keyword_flag("Bleed"),
-            vec![
-                tag(&[("type", s("ActorCondition")), ("actor", s("enemy")), ("var", s("Moving"))]),
-                cond_neg("NoExtraBleedDamageToMovingEnemy"),
-            ],
-        );
-        base(db, "Condition:BloodStance", Flag, Value::Bool(true), vec![cond_neg("SandStance")]);
-        base(
-            db,
-            "Condition:PrideMinEffect",
-            Flag,
-            Value::Bool(true),
-            vec![cond_neg("PrideMaxEffect")],
-        );
-        b(
-            "PerBrutalTripleDamageChance",
-            cc("chance_to_deal_triple_damage_%_per_brutal_charge"),
-        );
-        b("PerAfflictionAilmentDamage", cc("ailment_damage_+%_final_per_affliction_charge"));
-        b(
-            "PerAfflictionNonDamageEffect",
-            cc("non_damaging_ailment_effect_+%_final_per_affliction_charge"),
-        );
-        b(
-            "PerAbsorptionElementalEnergyShieldRecoup",
-            cc("elemental_damage_taken_goes_to_energy_shield_over_4_seconds_%_per_absorption_charge"),
-        );
-        b("TinctureLimit", 1.0);
-        base(db, "ManaDegenPercentTincture", Base, n(1.0), vec![mult("EffectiveManaBurnStacks")]);
-        base(db, "LifeDegenPercentTincture", Base, n(1.0), vec![mult("WeepingWoundsStacks")]);
-        b("PresenceRadius", cc("base_presence_radius"));
-    }
+        None => {
+            // --- (4) the base modifier database (:590-650) --------------------------------------------------------------------
+            for (stat, v) in [("Str", base_str), ("Dex", base_dex), ("Int", base_int)] {
+                let v = v.ok_or_else(|| {
+                    InitEnvError(format!(
+                        "Modules/CalcSetup.lua:590: classStats[\"base_{}\"] is nil for class {class_id} of tree {}",
+                        stat.to_lowercase(),
+                        env.spec.tree_version
+                    ))
+                })?;
+                base(&mod_db, stat, ModType::Base, n(v), vec![]);
+            }
+            set_mult(&mod_db, "Level", max2(1.0, min2(100.0, build.level)));
+            init_mod_db(modes, &mod_db);
+            {
+                use ModType::{Base, Flag, Inc, More};
+                let db = &mod_db;
+                let b = |name: &str, v: f64| base(db, name, Base, n(v), vec![]);
+                let level_mult = |b: f64| tag(&[("type", s("Multiplier")), ("var", s("Level")), ("base", n(b))]);
+                base(db, "Life", Base, n(cc("life_per_level")), vec![level_mult(38.0)]);
+                base(db, "Mana", Base, n(cc("mana_per_level")), vec![level_mult(34.0)]);
+                base(
+                    db,
+                    "ManaRegen",
+                    Base,
+                    n(misc("ManaRegenBase")),
+                    vec![tag(&[("type", s("PerStat")), ("stat", s("Mana")), ("div", n(1.0))])],
+                );
+                b("Devotion", 0.0);
+                b("Evasion", cc("base_evasion_rating"));
+                base(
+                    db,
+                    "Accuracy",
+                    Base,
+                    n(cc("accuracy_rating_per_level")),
+                    vec![level_mult(-cc("accuracy_rating_per_level"))],
+                );
+                b("CritMultiplier", cc("base_critical_strike_multiplier") - 100.0);
+                base(
+                    db,
+                    "DotMultiplier",
+                    Base,
+                    n(cc("critical_ailment_dot_multiplier_+")),
+                    vec![cond("CriticalStrike")],
+                );
+                // L4: `env.configInput.resistancePenalty or -60` -- a configured 0 wins over the -60.
+                let penalty = match env.config.input.get("resistancePenalty") {
+                    None | Some(InputValue::Bool(false)) => n(-60.0),
+                    Some(InputValue::Num(x)) => n(*x),
+                    Some(InputValue::Str(x)) => Value::str(x),
+                    Some(InputValue::Bool(true)) => Value::Bool(true),
+                };
+                for name in ["FireResist", "ColdResist", "LightningResist", "ChaosResist"] {
+                    base(db, name, Base, penalty.clone(), vec![]);
+                }
+                b("TotemFireResist", 40.0);
+                b("TotemColdResist", 40.0);
+                b("TotemLightningResist", 40.0);
+                b("TotemChaosResist", 20.0);
+                let attack = mod_flag("Attack");
+                base(
+                    db,
+                    "CritChance",
+                    Inc,
+                    n(cc("critical_strike_chance_+%_per_power_charge")),
+                    vec![mult("PowerCharge")],
+                );
+                new_mod(
+                    db,
+                    "Speed",
+                    Inc,
+                    n(cc("base_attack_speed_+%_per_frenzy_charge")),
+                    Some("Base"),
+                    attack,
+                    0,
+                    vec![mult("FrenzyCharge")],
+                );
+                new_mod(
+                    db,
+                    "Speed",
+                    Inc,
+                    n(cc("base_cast_speed_+%_per_frenzy_charge")),
+                    Some("Base"),
+                    mod_flag("Cast"),
+                    0,
+                    vec![mult("FrenzyCharge")],
+                );
+                base(
+                    db,
+                    "Damage",
+                    More,
+                    n(cc("object_inherent_damage_+%_final_per_frenzy_charge")),
+                    vec![mult("FrenzyCharge")],
+                );
+                base(
+                    db,
+                    "PhysicalDamageReduction",
+                    Base,
+                    n(cc("physical_damage_reduction_%_per_endurance_charge")),
+                    vec![mult("EnduranceCharge")],
+                );
+                base(
+                    db,
+                    "ElementalDamageReduction",
+                    Base,
+                    n(cc("elemental_damage_reduction_%_per_endurance_charge")),
+                    vec![mult("EnduranceCharge")],
+                );
+                b("MaximumRage", cc("maximum_rage"));
+                b("Multiplier:GaleForce", 0.0);
+                b("MaximumGaleForce", 10.0);
+                b("MaximumFortification", cc("base_max_fortification"));
+                b("MaximumValour", 50.0);
+                b("Multiplier:IntensityLimit", 3.0);
+                let rampage = || {
+                    tag(&[
+                        ("type", s("Multiplier")),
+                        ("var", s("Rampage")),
+                        ("limit", n(cc("max_rampage_stacks") / 20.0)),
+                        ("div", n(20.0)),
+                    ])
+                };
+                base(db, "Damage", Inc, n(cc("damage_+%_per_10_rampage_stacks")), vec![rampage()]);
+                base(
+                    db,
+                    "MovementSpeed",
+                    Inc,
+                    n(cc("movement_velocity_+%_per_10_rampage_stacks")),
+                    vec![rampage()],
+                );
+                b("ActiveTrapLimit", cc("base_number_of_traps_allowed"));
+                b("ActiveMineLimit", cc("base_number_of_remote_mines_allowed"));
+                b("MineThrowCount", 1.0);
+                b("TrapThrowCount", 1.0);
+                b("ActiveBrandLimit", 3.0);
+                b("EnemyCurseLimit", 1.0);
+                b("SocketedCursesHexLimitValue", 1.0);
+                b("ProjectileCount", 1.0);
+                let dw_speed = cc("dual_wield_inherent_attack_speed_+%_final");
+                new_mod(
+                    db,
+                    "Speed",
+                    More,
+                    n(dw_speed),
+                    Some("Base"),
+                    attack,
+                    0,
+                    vec![cond("DualWielding"), cond_neg("DoubledInherentDualWieldingSpeed")],
+                );
+                new_mod(
+                    db,
+                    "Speed",
+                    More,
+                    n(2.0 * dw_speed),
+                    Some("Base"),
+                    attack,
+                    0,
+                    vec![cond("DualWielding"), cond("DoubledInherentDualWieldingSpeed")],
+                );
+                let dw_block = cc("inherent_block_while_dual_wielding_%");
+                base(
+                    db,
+                    "BlockChance",
+                    Base,
+                    n(dw_block),
+                    vec![
+                        cond("DualWielding"),
+                        cond_neg("NoInherentBlock"),
+                        cond_neg("DoubledInherentDualWieldingBlock"),
+                    ],
+                );
+                base(
+                    db,
+                    "BlockChance",
+                    Base,
+                    n(2.0 * dw_block),
+                    vec![
+                        cond("DualWielding"),
+                        cond_neg("NoInherentBlock"),
+                        cond("DoubledInherentDualWieldingBlock"),
+                    ],
+                );
+                new_mod(
+                    db,
+                    "Damage",
+                    More,
+                    n(200.0),
+                    Some("Base"),
+                    0,
+                    keyword_flag("Bleed"),
+                    vec![
+                        tag(&[("type", s("ActorCondition")), ("actor", s("enemy")), ("var", s("Moving"))]),
+                        cond_neg("NoExtraBleedDamageToMovingEnemy"),
+                    ],
+                );
+                base(db, "Condition:BloodStance", Flag, Value::Bool(true), vec![cond_neg("SandStance")]);
+                base(
+                    db,
+                    "Condition:PrideMinEffect",
+                    Flag,
+                    Value::Bool(true),
+                    vec![cond_neg("PrideMaxEffect")],
+                );
+                b(
+                    "PerBrutalTripleDamageChance",
+                    cc("chance_to_deal_triple_damage_%_per_brutal_charge"),
+                );
+                b("PerAfflictionAilmentDamage", cc("ailment_damage_+%_final_per_affliction_charge"));
+                b(
+                    "PerAfflictionNonDamageEffect",
+                    cc("non_damaging_ailment_effect_+%_final_per_affliction_charge"),
+                );
+                b(
+                    "PerAbsorptionElementalEnergyShieldRecoup",
+                    cc("elemental_damage_taken_goes_to_energy_shield_over_4_seconds_%_per_absorption_charge"),
+                );
+                b("TinctureLimit", 1.0);
+                base(db, "ManaDegenPercentTincture", Base, n(1.0), vec![mult("EffectiveManaBurnStacks")]);
+                base(db, "LifeDegenPercentTincture", Base, n(1.0), vec![mult("WeepingWoundsStacks")]);
+                b("PresenceRadius", cc("base_presence_radius"));
+            }
 
-    // --- (5) bandit (:651-660). D17: this reads configInput, NOT `<Build bandit=...>`. ------------------------------
-    match env.config.input.get("bandit") {
-        Some(InputValue::Str(b)) if b == "Alira" => {
-            new_mod(&mod_db, "ElementalResist", ModType::Base, n(15.0), Some("Bandit"), 0, 0, vec![]);
+            // --- (5) bandit (:651-660). D17: this reads configInput, NOT `<Build bandit=...>`. ------------------------------
+            match env.config.input.get("bandit") {
+                Some(InputValue::Str(b)) if b == "Alira" => {
+                    new_mod(&mod_db, "ElementalResist", ModType::Base, n(15.0), Some("Bandit"), 0, 0, vec![]);
+                }
+                Some(InputValue::Str(b)) if b == "Kraityn" => {
+                    new_mod(&mod_db, "MovementSpeed", ModType::Inc, n(8.0), Some("Bandit"), 0, 0, vec![]);
+                }
+                Some(InputValue::Str(b)) if b == "Oak" => {
+                    new_mod(&mod_db, "Life", ModType::Base, n(40.0), Some("Bandit"), 0, 0, vec![]);
+                }
+                _ => new_mod(&mod_db, "ExtraPoints", ModType::Base, n(1.0), Some("Bandit"), 0, 0, vec![]),
+            }
+
+            // --- (6) pantheons (:663-673). D17 again: "None" on every build with a <Config> section. --------------------------
+            for key in ["pantheonMajorGod", "pantheonMinorGod"] {
+                let god_name = match env.config.input.get(key) {
+                    Some(InputValue::Str(g)) => g.clone(),
+                    Some(InputValue::Num(x)) => pob_lua::tostring_num(*x),
+                    Some(InputValue::Bool(b)) => b.to_string(),
+                    None => "nil".into(),
+                };
+                if god_name == "None" {
+                    continue;
+                }
+                let god = pantheons()
+                    .get(god_name.as_str())
+                    .ok_or_else(|| InitEnvError(format!("Modules/PantheonTools.lua:7: data.pantheons[\"{god_name}\"] is nil")))?;
+                apply_soul_mod(&mod_db, god, opts.parse_mode);
+            }
+
+            // --- (7) the enemy database (:676-678) -----------------------------------------------------------------------------
+            init_mod_db(modes, &enemy_db);
+            // `data.monsterAccuracyTable[env.enemyLevel]` -- a 1-based Lua sequence (L8).
+            let accuracy = monster_table_at(&constants().monster_accuracy_table, enemy_level).ok_or_else(|| {
+                InitEnvError(format!(
+                    "Modules/CalcSetup.lua:677: data.monsterAccuracyTable[{}] is nil",
+                    pob_lua::tostring_num(enemy_level)
+                ))
+            })?;
+            base(&enemy_db, "Accuracy", ModType::Base, n(accuracy), vec![]);
+            new_mod(
+                &enemy_db,
+                "Condition:AgainstDamageOverTime",
+                ModType::Flag,
+                Value::Bool(true),
+                Some("Base"),
+                mod_flag("Dot"),
+                0,
+                vec![tag(&[("type", s("ActorCondition")), ("actor", s("player")), ("var", s("Combat"))])],
+            );
+
+            // --- (8) the config tab's two lists (:681-685); the party tab's is empty ------------------------------------------
+            mod_db.borrow_mut().add_list(&config_lists.mod_list.mods);
+            enemy_db.borrow_mut().add_list(&config_lists.enemy_mod_list.mods);
+            // :685 `enemyDB:AddList(build.partyTab.enemyModList)` -- the Party tab is not modelled; only a build whose XML carries
+            // a <Party> section can lose anything here.
+            if build.unknown_sections.iter().any(|s| s == "Party") {
+                env.unimplemented
+                    .push("CalcSetup.lua:685 build.partyTab.enemyModList (<Party> section present, PartyTab is P5)".into());
+            }
+            // :687 `cachedPlayerDB, cachedEnemyDB, cachedMinionDB = specCopy(env)`
+            spec_copy(&env)
         }
-        Some(InputValue::Str(b)) if b == "Kraityn" => {
-            new_mod(&mod_db, "MovementSpeed", ModType::Inc, n(8.0), Some("Bandit"), 0, 0, vec![]);
-        }
-        Some(InputValue::Str(b)) if b == "Oak" => {
-            new_mod(&mod_db, "Life", ModType::Base, n(40.0), Some("Bandit"), 0, 0, vec![]);
-        }
-        _ => new_mod(&mod_db, "ExtraPoints", ModType::Base, n(1.0), Some("Bandit"), 0, 0, vec![]),
-    }
+    };
 
-    // --- (6) pantheons (:663-673). D17 again: "None" on every build with a <Config> section. --------------------------
-    for key in ["pantheonMajorGod", "pantheonMinorGod"] {
-        let god_name = match env.config.input.get(key) {
-            Some(InputValue::Str(g)) => g.clone(),
-            Some(InputValue::Num(x)) => pob_lua::tostring_num(*x),
-            Some(InputValue::Bool(b)) => b.to_string(),
-            None => "nil".into(),
-        };
-        if god_name == "None" {
-            continue;
-        }
-        let god = pantheons()
-            .get(god_name.as_str())
-            .ok_or_else(|| InitEnvError(format!("Modules/PantheonTools.lua:7: data.pantheons[\"{god_name}\"] is nil")))?;
-        apply_soul_mod(&mod_db, god, opts.parse_mode);
-    }
-
-    // --- (7) the enemy database (:676-678) -----------------------------------------------------------------------------
-    init_mod_db(modes, &enemy_db);
-    // `data.monsterAccuracyTable[env.enemyLevel]` -- a 1-based Lua sequence (L8).
-    let accuracy = monster_table_at(&constants().monster_accuracy_table, enemy_level).ok_or_else(|| {
-        InitEnvError(format!(
-            "Modules/CalcSetup.lua:677: data.monsterAccuracyTable[{}] is nil",
-            pob_lua::tostring_num(enemy_level)
-        ))
-    })?;
-    base(&enemy_db, "Accuracy", ModType::Base, n(accuracy), vec![]);
-    new_mod(
-        &enemy_db,
-        "Condition:AgainstDamageOverTime",
-        ModType::Flag,
-        Value::Bool(true),
-        Some("Base"),
-        mod_flag("Dot"),
-        0,
-        vec![tag(&[("type", s("ActorCondition")), ("actor", s("player")), ("var", s("Combat"))])],
-    );
-
-    // --- (8) the config tab's two lists (:681-685); the party tab's is empty ------------------------------------------
-    mod_db.borrow_mut().add_list(&config_lists.mod_list.mods);
-    enemy_db.borrow_mut().add_list(&config_lists.enemy_mod_list.mods);
-    // :685 `enemyDB:AddList(build.partyTab.enemyModList)` -- the Party tab is not modelled; only a build whose XML carries
-    // a <Party> section can lose anything here.
-    if build.unknown_sections.iter().any(|s| s == "Party") {
-        env.unimplemented
-            .push("CalcSetup.lua:685 build.partyTab.enemyModList (<Party> section present, PartyTab is P5)".into());
-    }
-
-    // (9) `override.conditions` (:696-700) -- no override in MAIN.
+    // (9) `override.conditions` (:696-700) -- no override in this port.
 
     prof.mark("(1)-(9) env, base modDB, enemy, config lists");
 
     // --- (10) allocated nodes (:702-776) -------------------------------------------------------------------------------
-    let allocated_notable_count = f64::from(env.spec.allocated_notable_count);
-    let allocated_keystone_count = f64::from(env.spec.allocated_keystone_count);
-    let allocated_mastery_count = f64::from(env.spec.allocated_mastery_count);
-    let allocated_mastery_type_count = f64::from(env.spec.allocated_mastery_type_count);
-    let allocated_mastery_types = env.spec.allocated_mastery_types.clone();
-
+    // :702-707 the allocation counts are read from `env.spec` by `alloc_multipliers` (no override changes them here).
     // `copyTable(env.spec.allocNodes, true)` -- a shallow copy: the same nodes.
     env.alloc_nodes = env.spec.alloc_nodes.clone();
     let (initial, _) = build_mod_list_for_node_list(&mut env, true);
     env.initial_node_mod_db = initial.clone();
     merge_keystones(&mut env, &initial);
 
-    // --- (11) the allocation multipliers (:778-797) -- deliberately WITHOUT a source ----------------------------------
-    let alloc_mult = |name: &str, v: f64| new_mod(&mod_db, name, ModType::Base, n(v), None, 0, 0, vec![]);
-    if allocated_notable_count > 0.0 {
-        alloc_mult("Multiplier:AllocatedNotable", allocated_notable_count);
-    }
-    if allocated_keystone_count > 0.0 {
-        alloc_mult("Multiplier:AllocatedKeystone", allocated_keystone_count);
-    }
-    if allocated_mastery_count > 0.0 {
-        alloc_mult("Multiplier:AllocatedMastery", allocated_mastery_count);
-    }
-    if allocated_mastery_type_count > 0.0 {
-        alloc_mult("Multiplier:AllocatedMasteryType", allocated_mastery_type_count);
-    }
-    if let Some(&life) = allocated_mastery_types.get("Life Mastery")
-        && life > 0
-    {
-        alloc_mult("Multiplier:AllocatedLifeMastery", f64::from(life));
-    }
-    // :792-796 `allocatedTattooTypes` -- tattoos are P5; the table is always empty.
+    // --- (11) the allocation multipliers (:778-797)
+    alloc_multipliers(&env);
 
     prof.mark("(10)-(11) allocated nodes");
 
@@ -1505,7 +1512,6 @@ fn init_env_core(
         .push("CalcSetup.lua:1011 getMissingAnointCount / missingAnointWarning (UI only)".into());
 
     // :1025-1370 -- flask bookkeeping, then every item's mods into itemModDB -----------------------------------------------
-    let mut class_restrictions: IndexMap<String, String> = IndexMap::new();
     for slot in &slots {
         let slot_name = slot.slot_name.clone();
         let mut item = items.get(&slot_name).cloned();
@@ -1738,7 +1744,7 @@ fn init_env_core(
         if let Some(cr) = &item.class_restriction {
             let key = no_spaces(item.title.as_deref().unwrap_or("nil"));
             set_cond(&item_mod_db, &key, true);
-            class_restrictions.insert(key.clone(), cr.clone());
+            env.item_class_restrictions.insert(key.clone(), cr.clone());
             env.unimplemented.push(format!(
                 "CalcSetup.lua:1273 itemModDB.conditions[\"{key}\"] = \"{cr}\" stored as true (ModStore.conditions is boolean)"
             ));
@@ -1892,48 +1898,11 @@ fn init_env_core(
         env.granted_passives.insert(id, true);
         env.extra_radius_node_list.shift_remove(&id);
     }
-    // :1403-1418 Forbidden Flame/Flesh. `pairs` over the List sequence = in order.
-    let mut matched_name: IndexMap<String, (Value, bool)> = IndexMap::new();
-    for asc in ok(mod_db.borrow().list(None, &["GrantedAscendancyNode"])) {
-        let name = match asc.get("name") {
-            Value::Str(x) => x.to_string(),
-            other => format!("{other:?}"),
-        };
-        let side = asc.get("side");
-        let prev = matched_name.get(&name).cloned();
-        if let Some((prev_side, false)) = prev
-            && !prev_side.raw_eq(&side)
-        {
-            matched_name.insert(name.clone(), (prev_side, true));
-            if let Some(&tree_idx) = env.spec.tree.ascendancy_map.get(&name) {
-                let cls = &env.spec.cur_class_name;
-                if class_restrictions.get("ForbiddenFlesh") == Some(cls) && class_restrictions.get("ForbiddenFlame") == Some(cls) {
-                    let id = env.spec.tree.nodes[tree_idx].id;
-                    // `env.allocNodes[node.id] = node` -- the TREE node upstream; the spec node here (same mods).
-                    if let Some(spec_idx) = env.spec.node_idx(id) {
-                        env.alloc_nodes.insert(id, spec_idx);
-                        env.granted_passives.insert(id, true);
-                    }
-                }
-            } else {
-                env.unimplemented.push(format!(
-                    "CalcSetup.lua:1408 GrantedAscendancyNode \"{name}\" not in this tree (latestTree fallback, P5)"
-                ));
-            }
-        } else {
-            matched_name.insert(name, (side, false));
-        }
-    }
+    // :1403-1418 Forbidden Flame/Flesh
+    granted_ascendancy_nodes(&mut env);
 
-    // --- (15) the allocated nodes' mods, into modDB (:1420-1425) -------------------------------------------------------
-    {
-        let (node_mod_list, node_explode) = build_mod_list_for_node_list(&mut env, true);
-        mod_db.borrow_mut().add_list(&list_mods(&node_mod_list));
-        // `env.explodeSources = tableConcat(explodeSources, env.explodeSources)` -- nodes first.
-        let mut all: Vec<ExplodeSource> = node_explode.into_iter().map(ExplodeSource::Node).collect();
-        all.append(&mut env.explode_sources);
-        env.explode_sources = all;
-    }
+    // --- (15) the allocated nodes' mods, into modDB (:1420-1425)
+    merge_node_mods(&mut env);
 
     // --- (16) ExtraJewelFunc (:1426-1437) ------------------------------------------------------------------------------
     let extra_jewel_funcs = ok(mod_db.borrow().tabulate(Some(ModType::List), None, &["ExtraJewelFunc"]));
@@ -1954,15 +1923,7 @@ fn init_env_core(
             env.granted_skills_nodes.push(skill);
         }
     }
-    env.granted_skills = env
-        .granted_skills_nodes
-        .iter()
-        .chain(env.granted_skills_items.iter())
-        .cloned()
-        .collect();
-    env.granted_skills_extra = std::iter::repeat_n(GrantedSkillExtra::default(), env.granted_skills_nodes.len())
-        .chain(env.granted_skills_items_extra.iter().cloned())
-        .collect();
+    concat_granted_skills(&mut env);
 
     prof.mark("(13)-(17) mergeDB, granted passives, node mods");
 
@@ -2148,5 +2109,223 @@ fn init_env_core(
     }
     prof.mark("(18d)-(19) rest");
 
-    Ok(env)
+    Ok((env, spec_dbs))
+}
+
+// --- specEnv (R7.2b) ------------------------------------------------------------------------------------------------
+
+/// The three ModDBs `calcs.initEnv` returns (CalcSetup.lua:1974) and takes back in `specEnv` (:478-480): `cachedPlayerDB`,
+/// `cachedEnemyDB`, `cachedMinionDB`. `calcs.buildOutput` / `getMiscCalculator` hand MAIN's (CALCULATOR's) to `calcFullDPS`
+/// (Calcs.lua:93/:107/:392), whose envs read the base / bandit / pantheon / config mods through them as `parent`s.
+#[derive(Clone)]
+pub struct SpecDbs {
+    pub player: StoreRef,
+    pub enemy: StoreRef,
+    /// Always `None` here: `specCopy` copies `env.minion.modDB` only when `env.minion` exists, and initEnv calls it (:687) before
+    /// any minion is made.
+    pub minion: Option<StoreRef>,
+}
+
+/// Common.lua:524-543 `specCopy(env)`: new ModDBs with the env's own mods (`AddDB`: the same mod objects), and copies of its
+/// `conditions` / `multipliers`.
+fn spec_copy(env: &Env) -> SpecDbs {
+    let copy = |src: &StoreRef| {
+        let db = ModStore::new_db(None);
+        {
+            let s = src.borrow();
+            let pob_mods::StoreKind::Db(mods) = &s.kind else {
+                unreachable!("specCopy of a ModList")
+            };
+            let mut d = db.borrow_mut();
+            ok(d.add_db(mods));
+            d.conditions = s.conditions.clone();
+            d.multipliers = s.multipliers.clone();
+        }
+        db
+    };
+    SpecDbs {
+        player: copy(&env.mod_db),
+        enemy: copy(&env.enemy_db),
+        minion: None,
+    }
+}
+
+/// CalcSetup.lua:778-797 -- the allocation multipliers, deliberately WITHOUT a source. The counts are `env.spec`'s (`override.addNodes`
+/// / `removeNodes`, :711-770, are not ported).
+fn alloc_multipliers(env: &Env) {
+    let alloc_mult = |name: &str, v: f64| new_mod(&env.mod_db, name, ModType::Base, n(v), None, 0, 0, vec![]);
+    let spec = &env.spec;
+    for (name, count) in [
+        ("Multiplier:AllocatedNotable", spec.allocated_notable_count),
+        ("Multiplier:AllocatedKeystone", spec.allocated_keystone_count),
+        ("Multiplier:AllocatedMastery", spec.allocated_mastery_count),
+        ("Multiplier:AllocatedMasteryType", spec.allocated_mastery_type_count),
+    ] {
+        if count > 0 {
+            alloc_mult(name, f64::from(count));
+        }
+    }
+    if let Some(&life) = spec.allocated_mastery_types.get("Life Mastery")
+        && life > 0
+    {
+        alloc_mult("Multiplier:AllocatedLifeMastery", f64::from(life));
+    }
+    // :792-796 `allocatedTattooTypes` -- tattoos are P5; the table is always empty.
+}
+
+/// CalcSetup.lua:1403-1418 Forbidden Flame/Flesh. `pairs` over the List sequence = in order.
+fn granted_ascendancy_nodes(env: &mut Env) {
+    let mut matched_name: IndexMap<String, (Value, bool)> = IndexMap::new();
+    let granted = ok(env.mod_db.borrow().list(None, &["GrantedAscendancyNode"]));
+    for asc in granted {
+        let name = match asc.get("name") {
+            Value::Str(x) => x.to_string(),
+            other => format!("{other:?}"),
+        };
+        let side = asc.get("side");
+        let prev = matched_name.get(&name).cloned();
+        if let Some((prev_side, false)) = prev
+            && !prev_side.raw_eq(&side)
+        {
+            matched_name.insert(name.clone(), (prev_side, true));
+            if let Some(&tree_idx) = env.spec.tree.ascendancy_map.get(&name) {
+                let cls = &env.spec.cur_class_name;
+                let cr = &env.item_class_restrictions;
+                if cr.get("ForbiddenFlesh") == Some(cls) && cr.get("ForbiddenFlame") == Some(cls) {
+                    let id = env.spec.tree.nodes[tree_idx].id;
+                    // `env.allocNodes[node.id] = node` -- the TREE node upstream; the spec node here (same mods).
+                    if let Some(spec_idx) = env.spec.node_idx(id) {
+                        env.alloc_nodes.insert(id, spec_idx);
+                        env.granted_passives.insert(id, true);
+                    }
+                }
+            } else {
+                env.unimplemented.push(format!(
+                    "CalcSetup.lua:1408 GrantedAscendancyNode \"{name}\" not in this tree (latestTree fallback, P5)"
+                ));
+            }
+        } else {
+            matched_name.insert(name, (side, false));
+        }
+    }
+}
+
+/// CalcSetup.lua:1420-1425 -- the allocated nodes' mods into modDB; `env.explodeSources = tableConcat(explodeSources,
+/// env.explodeSources)` (nodes first, onto whatever the env already holds).
+fn merge_node_mods(env: &mut Env) {
+    let (node_mod_list, node_explode) = build_mod_list_for_node_list(env, true);
+    env.mod_db.borrow_mut().add_list(&list_mods(&node_mod_list));
+    let mut all: Vec<ExplodeSource> = node_explode.into_iter().map(ExplodeSource::Node).collect();
+    all.append(&mut env.explode_sources);
+    env.explode_sources = all;
+}
+
+/// CalcSetup.lua:1448 `env.grantedSkills = tableConcat(env.grantedSkillsNodes, env.grantedSkillsItems)`.
+fn concat_granted_skills(env: &mut Env) {
+    env.granted_skills = env
+        .granted_skills_nodes
+        .iter()
+        .chain(env.granted_skills_items.iter())
+        .cloned()
+        .collect();
+    env.granted_skills_extra = std::iter::repeat_n(GrantedSkillExtra::default(), env.granted_skills_nodes.len())
+        .chain(env.granted_skills_items_extra.iter().cloned())
+        .collect();
+}
+
+/// CalcSetup.lua:1946-1968 (`accelerate.skills`): every active skill's `skillData` rebuilt from the `SkillData` mods of `env.modDB` and
+/// of `activeSkill.skillModList` -- the child list the last perform gave it (CalcPerform.lua:1296) -- and ten keys put back from the
+/// old table. `activeSkill.soulPreventionDuration` (:1963) is a field nothing sets: that key ends up nil.
+fn rebuild_skill_data(env: &mut Env) {
+    let mod_db = env.mod_db.clone();
+    let lists = env.skill_mod_lists.clone();
+    let Some(st) = env.skills.as_mut() else { return };
+    let skills = st.skills.clone();
+    for (i, sk) in st.active_skill_list.iter_mut().enumerate() {
+        let old = std::mem::take(&mut sk.skill_data);
+        let cfg = sk.skill_cfg.as_ref().map(|c| c.mod_cfg(&skills, &sk.skill_types, None));
+        let list = lists.get(i).unwrap_or_else(|| {
+            panic!(
+                "Modules/CalcSetup.lua:1954: activeSkill.skillModList of skill {} is not perform's list",
+                i + 1
+            )
+        });
+        let mut data: IndexMap<String, Value> = IndexMap::new();
+        let mut put = |v: Value| {
+            let key = v.get("key");
+            let key = key
+                .as_str()
+                .unwrap_or_else(|| unimplemented!("CalcSetup.lua:1952 SkillData with a non-string key"))
+                .to_owned();
+            match v.get("value") {
+                Value::Nil => data.shift_remove(&key),
+                x => data.insert(key, x),
+            };
+        };
+        for v in ok(mod_db.borrow().list(cfg.as_ref(), &["SkillData"])) {
+            put(v);
+        }
+        crate::perform::skill_guard(&sk.malformed_mods, &["SkillData"]);
+        for v in ok(list.borrow().list(cfg.as_ref(), &["SkillData"])) {
+            put(v);
+        }
+        for k in [
+            "manaReservationPercent",
+            "cooldown",
+            "storedUses",
+            "CritChance",
+            "attackTime",
+            "attackSpeedMultiplier",
+            "soulPreventionDuration",
+            "totemLevel",
+            "damageEffectiveness",
+            "stagesMax",
+        ] {
+            match old.get(k).filter(|_| k != "soulPreventionDuration") {
+                Some(v) => data.insert(k.to_owned(), v.clone()),
+                None => data.shift_remove(k),
+            };
+        }
+        sk.skill_data = data;
+    }
+}
+
+/// `calcs.initEnv(build, mode, override, { cachedPlayerDB, cachedEnemyDB, cachedMinionDB, env = env, accelerate = { nodeAlloc,
+/// requirementsItems, requirementsGems, skills, everything } })` -- the re-init `calcFullDPS` makes of its env after every skill
+/// (Calcs.lua:337-344), on that env in place: what CalcSetup.lua:475-1975 still does with every accelerator on.
+pub fn reinit_accelerated(env: &mut Env, spec: &SpecDbs) {
+    // :306-326 `wipeEnv`: the mods, conditions and multipliers of modDB and enemyDB (`env.minion`: none, R7.10), then
+    // `accelerate.everything` returns -- allocNodes, itemModDB, the item/flask/radius-jewel lists, the active skills are kept.
+    for db in [&env.mod_db, &env.enemy_db] {
+        let mut d = db.borrow_mut();
+        let pob_mods::StoreKind::Db(mods) = &mut d.kind else {
+            unreachable!("wipeEnv of a ModList")
+        };
+        mods.mods.clear();
+        d.conditions.clear();
+        d.multipliers.clear();
+    }
+    // :562-586 the buff mode: unchanged (`EFFECTIVE` outside CALCS). :688-693 the cached DBs as parents.
+    env.mod_db.borrow_mut().parent = Some(spec.player.clone());
+    env.enemy_db.borrow_mut().parent = Some(spec.enemy.clone());
+    // :696-700 `override.conditions` -- no override in this port. :711-776 skipped (`accelerate.nodeAlloc`).
+    alloc_multipliers(env);
+    // :800-1382 skipped (`accelerate.requirementsItems`) -- with it the item code's own modDB writes (Widowhail, :1231).
+    // :1385 `mergeDB(env.modDB, env.itemModDB)` -- the kept itemModDB.
+    merge_db(&env.mod_db, &env.item_mod_db);
+    // :1388-1400 skipped (`accelerate.nodeAlloc`).
+    granted_ascendancy_nodes(env);
+    merge_node_mods(env);
+    // :1426-1437: the first initEnv of calcFullDPS set `override.extraJewelFuncs` on the `override` table every re-init shares -- the
+    // block is skipped. :1439-1446 skipped (`accelerate.nodeAlloc`).
+    concat_granted_skills(env);
+    // :1451-1944 skipped (`accelerate.skills`); :1945-1968
+    rebuild_skill_data(env);
+    // :1972
+    env.requirements_table = env
+        .requirements_table_items
+        .iter()
+        .chain(env.requirements_table_gems.iter())
+        .cloned()
+        .collect();
 }

@@ -2767,9 +2767,10 @@ pub fn perform_skip_ehp(
     }
     // --- :3797-3801 triggers / mirages / offence ([`crate::offence`]) -------------------------------------------------------
     if skills_on {
-        match crate::offence::triggers_gate(env) {
-            crate::offence::Gate::Unported(what) => env.unimplemented.push(what),
-            crate::offence::Gate::Pass => match crate::offence::mirages_gate(env) {
+        // :3797 `calcs.triggers(env, env.player)` (R7.8); an `Err` is a boundary of the port: offence is not run on that state
+        match crate::triggers::triggers(env, &mut state) {
+            Err(what) => env.unimplemented.push(what),
+            Ok(()) => match crate::offence::mirages_gate(env) {
                 crate::offence::Gate::Unported(what) => env.unimplemented.push(what),
                 crate::offence::Gate::Pass => {
                     crate::offence::offence(env, &mut state, hook);

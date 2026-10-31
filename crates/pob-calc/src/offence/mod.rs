@@ -47,7 +47,7 @@ use crate::active_skill::ActiveSkill;
 use crate::env::Env;
 use crate::output::{OutValue, Output};
 use crate::perform::{ActorState, Checkpoint, PerformState, skill_cfg_of, skill_list_of};
-pub(crate) use gates::{Gate, mirages_gate, triggers_gate};
+pub(crate) use gates::{Gate, mirages_gate};
 use helpers::ConversionTable;
 pub(crate) use helpers::{Q, calc_skill_duration, calc_totem_life};
 

@@ -151,10 +151,19 @@ fn nested_runs_follow_luajit() {
         let rust_top = log.perform.iter().find(|p| p.top).expect("top perform");
         assert_eq!(rust_top.uuid, lj_top_uuid, "{}: top perform main skill", g.name);
         assert!(!rust_top.skip_ehp && rust_top.depth == 0 && rust_top.mode == CalcMode::Main);
-        let rust_loop: Vec<String> = log.bas.iter().map(|b| b.target_uuid.clone()).collect();
-        let rust_expected: Vec<String> = skills.iter().filter(|u| **u != rust_top.uuid).cloned().collect();
+        // R7.8: calcs.triggers builds its source skill inside the top perform (depth > 0), as LuaJIT does; the MAIN loop is
+        // the depth-0 entries and obeys the same law as LuaJIT's (every skill without a MAIN entry from before the loop)
+        let rust_loop: Vec<String> = log.bas.iter().filter(|b| b.depth == 0).map(|b| b.target_uuid.clone()).collect();
+        let rust_nested: BTreeSet<String> = log.bas.iter().filter(|b| b.depth > 0).map(|b| b.target_uuid.clone()).collect();
+        assert!(
+            rust_nested.is_subset(&lj_nested_bas),
+            "{}: Rust nested buildActiveSkill {rust_nested:?} not among LuaJIT's {lj_nested_bas:?}",
+            g.name
+        );
+        let rust_pre: BTreeSet<String> = std::iter::once(rust_top.uuid.clone()).chain(rust_nested.iter().cloned()).collect();
+        let rust_expected: Vec<String> = skills.iter().filter(|u| !rust_pre.contains(*u)).cloned().collect();
         assert_eq!(rust_loop, rust_expected, "{}: Rust MAIN loop", g.name);
-        for b in &log.bas {
+        for b in log.bas.iter().filter(|b| b.depth == 0) {
             assert_eq!(
                 b,
                 &BasEntry {
@@ -169,15 +178,17 @@ fn nested_runs_follow_luajit() {
                 g.name
             );
         }
-        // every buildActiveSkill ran one perform(fullEnv, true) of that skill, in order
+        // every buildActiveSkill ran one perform(fullEnv, true) of that skill
         let nested: Vec<_> = log.perform.iter().filter(|p| !p.top).collect();
         assert_eq!(nested.len(), log.bas.len(), "{}: one perform per buildActiveSkill", g.name);
-        for (p, b) in nested.iter().zip(&log.bas) {
-            assert!(p.skip_ehp && p.depth == 0 && p.mode == CalcMode::Main && p.uuid == b.target_uuid);
+        for p in &nested {
+            assert!(p.skip_ehp && p.mode == CalcMode::Main && log.bas.iter().any(|b| b.target_uuid == p.uuid));
         }
         // cache writes: the top, then one per nested run, each under its own uuid
         assert_eq!(log.cache_writes.len(), log.perform.len());
-        assert!(log.cache_writes[0].top && log.cache_writes[0].uuid == rust_top.uuid);
+        // a run nested in the top perform (calcs.triggers) writes its cacheData before the top's, as in LuaJIT
+        let tops: Vec<_> = log.cache_writes.iter().filter(|c| c.top).collect();
+        assert!(tops.len() == 1 && tops[0].uuid == rust_top.uuid, "{}: one top cacheData", g.name);
         let main_keys: BTreeSet<String> = sess.cache().uuids(CalcMode::Main).into_iter().collect();
         assert_eq!(
             main_keys,

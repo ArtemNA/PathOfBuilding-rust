@@ -324,7 +324,7 @@ fn json_diff(prefix: &str, lj: &Json, rust: &Json, out: &mut Vec<String>) {
 
 /// The scenarios whose `calcFullDPS` Rust cannot finish yet, and the boundary it must report (measured R7.7: the roll-up stops at the
 /// first included skill whose run needs an unported triggers / mirages branch, or at a minion skill -- R7.8/R7.9/R7.10).
-const FULLDPS_BOUNDARY: [(&str, &str); 7] = [
+const FULLDPS_BOUNDARY: [(&str, &str); 6] = [
     (
         "fd-all-cos",
         "Calcs.lua:178-212 calcFullDPS roll-up of the minion skill Summon Ice Golem",
@@ -332,7 +332,6 @@ const FULLDPS_BOUNDARY: [(&str, &str); 7] = [
     ("fd-all-ds", "CalcMirages.lua:120-164 Reflection (The Saviour)"),
     ("fd-all-gen", "CalcMirages.lua:346-426 General's Cry"),
     ("fd-all-mir", "CalcMirages.lua:67-119 Mirage Archer"),
-    ("fd-cos-coc", "CalcTriggers.lua:1156 configTable[\"cast on critical strike\"]"),
     ("fd-mir-mirage", "CalcMirages.lua:67-119 Mirage Archer"),
     (
         "fd-occ-minions",
@@ -340,31 +339,66 @@ const FULLDPS_BOUNDARY: [(&str, &str); 7] = [
     ),
 ];
 
-/// A scenario whose roll-up runs to the end but differs from LuaJIT, with the measured cause (not a part E defect; R7.7 report):
-/// `fd-gen-melee` -- upstream's `calcFullDPS` initEnv gets `specEnv.cachedPlayerDB` (Calcs.lua:392 -> CalcSetup.lua:478-481/:688-690),
-/// so the config / base mods sit in the PARENT ModDB of every full-DPS env; `modDB:Override(nil, "WarcryPower")` then finds the own
-/// `OVERRIDE 999999` ("Warcries have infinite power", Redblade Banner, CalcPerform.lua:1344-1347) before the config `OVERRIDE 50`
-/// (LuaJIT probe: MAIN own = `50@Config; 20@Boss; 999999@...` -> 50; CALCULATOR own = `999999@...`, parent = `50@Config; 20@Boss` ->
-/// 999999). Rust's fresh initEnv keeps the config mods in the env's own list -> 50 -> bleed / poison of every skill +0.13 %. Fix belongs
-/// to initEnv (`specEnv` / `cachedPlayerDB`), outside this card. The differing keys are pinned so a change shows up.
-const FULLDPS_KNOWN: [(&str, &[&str]); 1] = [(
-    "fd-gen-melee",
-    &[
-        "fullDPS.TotalDotDPS",
-        "fullDPS.TotalPoisonDPS",
-        "fullDPS.bleedDPS",
-        "fullDPS.combinedDPS",
-        "fullDPS.cullingDPS",
-        "fullDPS.skills.5.dps",
-        "fullDPS.skills.6.dps",
-        "fullDPS.skills.8.dps",
-        "output.FullDPS",
-        "output.FullDotDPS",
-        "output.SkillDPS.5.dps",
-        "output.SkillDPS.6.dps",
-        "output.SkillDPS.8.dps",
-    ],
-)];
+/// A scenario whose roll-up runs to the end but differs from LuaJIT, with the measured cause.
+/// `fd-cos-coc` (R7.8, `calcs.triggers` ported: every number = LuaJIT) -- `skills[2].trigger` = `activeSkill.infoTrigger` (Calcs.lua:254), which
+/// `calcs.triggers` now writes (`ActiveSkill::info_trigger` = "Cast On Critical Strike"); `CalcSession::calc_full_dps` (session.rs, outside
+/// the R7.8 card files) still takes `trigger` only from the Saviour note -- a one-line read of `info_trigger` there closes it.
+/// (`fd-gen-melee`, the R7.7 `specEnv` / `cachedPlayerDB` class, = LuaJIT since R7.2b.)
+const FULLDPS_KNOWN: [(&str, &[&str]); 0] = [];
+
+/// The class every R7-synth scenario shares that is not the trigger code's: `output.GemHasLevel` / `GemLevel` / `GemHasQuality` /
+/// `GemQuality` are written by CalcPerform.lua:3935-3975 (the perform tail after offence, "3803-3990 minion output, buff export, party
+/// export (P5)") -- MISSING in Rust on all 186 scenarios.
+const PERFORM_TAIL_GEM: [&str; 4] = ["GemHasLevel", "GemHasQuality", "GemLevel", "GemQuality"];
+
+/// R7.8 gate (card p. 2): the 21 `trigger` scenarios of R7-synth (CoC, CoMK, CWC, CWDT, Cospri's, Mjolner, Arcanist Brand, Spellslinger,
+/// Hextouch, cast on death / stun / block, spell on (bow) attack, traps / mines) against LuaJIT, EVERY scalar key exactly (bit for bit);
+/// the only allowed divergence is [`PERFORM_TAIL_GEM`] missing.
+#[test]
+fn trigger_scenarios_match_luajit() {
+    let mut equal = Vec::new();
+    let mut bad = Vec::new();
+    let mut compared = 0;
+    for name in scenario_names() {
+        if fixture(&name)["category"].as_str() != Some("trigger") {
+            continue;
+        }
+        let r = run_scenario(&name);
+        compared += r.compared;
+        let other: Vec<&String> = r
+            .bad
+            .iter()
+            .filter(|b| {
+                let mut f = b.split(" | ");
+                let key = f.nth(1).unwrap_or("");
+                !(PERFORM_TAIL_GEM.contains(&key) && b.contains("| MISSING |"))
+            })
+            .collect();
+        println!(
+            "{name}: compared {} ok {} exact {} missing {} extra {} -- outside the perform-tail class: {}",
+            r.compared,
+            r.ok,
+            r.exact,
+            r.missing,
+            r.extra,
+            other.len()
+        );
+        if other.is_empty() && r.missing == PERFORM_TAIL_GEM.len() {
+            equal.push(name);
+        } else {
+            bad.extend(other.into_iter().cloned());
+            if r.missing != PERFORM_TAIL_GEM.len() {
+                bad.push(format!("{name}: {} missing", r.missing));
+            }
+        }
+    }
+    println!(
+        "trigger: {} scenarios = LuaJIT (but {PERFORM_TAIL_GEM:?}); {compared} keys compared",
+        equal.len()
+    );
+    assert!(bad.is_empty(), "trigger scenarios != LuaJIT ({}):\n{}", bad.len(), bad.join("\n"));
+    assert_eq!(equal.len(), 21, "pinned: all 21 trigger scenarios");
+}
 
 /// R7.7 gate (card p. 2): `calcs.calcFullDPS` (Calcs.lua:142-356) and the buildOutput tail (`SkillDPS` / `FullDPS` / `FullDotDPS`,
 /// :395-397) against LuaJIT on the 15 `fulldps` R7-synth scenarios: the whole `fullDPS` table (every number `%.17g`, every `skills`
@@ -453,7 +487,7 @@ fn fulldps_matches_luajit() {
     assert!(bad.is_empty(), "calcFullDPS != LuaJIT ({}):\n{}", bad.len(), bad.join("\n"));
     assert_eq!(
         (done.len(), bounded.len(), known.len()),
-        (7, 7, 1),
+        (9, 6, 0),
         "pinned split of the 15 fulldps scenarios"
     );
 }

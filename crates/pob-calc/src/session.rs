@@ -6,7 +6,7 @@
 //! Ownership (R7-ARCH §1 p. 1): a [`CalcSession`] holds what upstream keeps on the `build` object between runs -- the build model and
 //! the parsed items (`build.itemsTab.items`) -- plus the process-global state a run leaves behind: the cache and the writes into the
 //! shared `data.skills` tables ([`SkillsCarry`]; the warcry tag cell already lives in the thread-local `pob_data::skills()`). Every
-//! `initEnv` makes a fresh [`Env`] (upstream does too). R7-perf: the passive spec (after `PostLoad`) and the loaded
+//! `initEnv` makes a fresh [`Env`] (upstream does too), except `calcFullDPS`'s re-inits, which reuse its one env (R7.2b). R7-perf: the passive spec (after `PostLoad`) and the loaded
 //! `build.skillsTab` are made once per session ([`BuildShared`]): every env shares the spec, and each initEnv merges the granted
 //! skills into its own copy of the loaded tab -- which is what upstream's shared tab holds after the first MAIN initEnv (see
 //! [`CalcSession::init_env`]).
@@ -30,7 +30,7 @@ use pob_items::Item;
 
 use crate::calculate::{CalcError, CalculateOptions};
 use crate::env::Env;
-use crate::init_env::{BuildShared, init_env_shared, parse_items};
+use crate::init_env::{BuildShared, SpecDbs, init_env_shared_spec, parse_items, reinit_accelerated};
 use crate::output::{FullDpsSkill, OutTable};
 use crate::perform::{ActorState, Checkpoint, PerformState, finish_output_spec, perform_skip_ehp};
 
@@ -416,8 +416,8 @@ impl CalcSession {
         }
     }
 
-    /// `calcs.initEnv(build, mode)` (CalcSetup.lua:475) -- a fresh env every call, as upstream (no `override`, no `specEnv`
-    /// accelerators). The data writes of earlier runs are carried in ([`SkillsCarry`]) and the new ones carried out.
+    /// `calcs.initEnv(build, mode)` (CalcSetup.lua:475) -- a fresh env every call, as upstream (no `override`, no `specEnv`: see
+    /// [`CalcSession::init_env_spec`]). The data writes of earlier runs are carried in ([`SkillsCarry`]) and the new ones carried out.
     ///
     /// Modes: MAIN is the ported path. CALCULATOR differs from MAIN in initEnv only by `env.buildBreakdown = false` (:500) and by
     /// branches that write display state onto shared tables and are read by no calc module (`node.finalModList` /
@@ -428,6 +428,13 @@ impl CalcSession {
     /// run in the session (else the merge would be one upstream does not do). CALCS (`misc_buffMode`, `*Calcs` gem fields,
     /// CalcActiveSkill.lua:250/623/649/694/736/924) is not ported.
     pub fn init_env(&self, mode: CalcMode) -> Result<Env, SessionError> {
+        self.init_env_spec(mode, None).map(|(env, _)| env)
+    }
+
+    /// [`CalcSession::init_env`] with upstream's `specEnv` (R7.2b): `calcs.initEnv(build, mode, override, { cachedPlayerDB = ..,
+    /// cachedEnemyDB = .., cachedMinionDB = .., env = nil })` (CalcSetup.lua:475-482) -- the base and config mods are read through the
+    /// cached DBs as `parent`s (:688-693). Returns the env and the DBs initEnv returns (:1974): `spec`'s, or `specCopy` of the new env.
+    pub fn init_env_spec(&self, mode: CalcMode, spec: Option<&SpecDbs>) -> Result<(Env, SpecDbs), SessionError> {
         match mode {
             CalcMode::Main => {}
             CalcMode::Calculator if self.core.main_init_done.get() => {}
@@ -448,7 +455,7 @@ impl CalcSession {
         let t0 = std::time::Instant::now();
         let shared = self.shared().map_err(|e| SessionError::Calc(CalcError(format!("initEnv: {e}"))))?;
         let carry = self.core.carry.borrow().clone();
-        let mut env = init_env_shared(self.core.build.clone(), &shared, self.core.opts.parse_mode, Some(&carry))
+        let (mut env, cached) = init_env_shared_spec(self.core.build.clone(), &shared, self.core.opts.parse_mode, Some(&carry), spec)
             .map_err(|e| SessionError::Calc(CalcError(format!("initEnv: {e}"))))?;
         if let Some(st) = &env.skills {
             let mut c = self.core.carry.borrow_mut();
@@ -467,7 +474,7 @@ impl CalcSession {
             self.core.main_init_done.set(true);
         }
         self.core.log.borrow_mut().init_env_ms.push(t0.elapsed().as_secs_f64() * 1000.0);
-        Ok(env)
+        Ok((env, cached))
     }
 
     /// The session's [`BuildShared`], made on first use (a load error is returned, and retried by the next initEnv).
@@ -494,8 +501,32 @@ impl CalcSession {
     }
 
     fn perform_inner(&self, mut env: Env, skip_ehp: bool, top: bool) -> RunRef {
+        let state = self.perform_env(&mut env, skip_ehp, top);
+        let offence_ran = state.offence_ran;
+        let run = Rc::new(RefCell::new(CalcRun { env, state, offence_ran }));
+        self.cache_data(&run, top);
+        run
+    }
+
+    /// `calcs.perform(env, skipEHP)` again on the env a cached run holds (R7.2b: `calcFullDPS` performs its one env once per skill,
+    /// Calcs.lua:172-174, re-initialising it in place in between). The run's output is replaced -- upstream's `env.player.output = { }`
+    /// (CalcPerform.lua:1305), seen by every cache entry that holds this env -- then `cacheData`. The run stays mutably borrowed for
+    /// the whole perform: a nested read of this very run through the cache (upstream: the env being performed) panics instead of
+    /// reading a stale run.
+    fn perform_in_place(&self, run: &RunRef, skip_ehp: bool) {
+        {
+            let mut guard = run.borrow_mut();
+            let r = &mut *guard;
+            let state = self.perform_env(&mut r.env, skip_ehp, false);
+            r.offence_ran = state.offence_ran;
+            r.state = state;
+        }
+        self.cache_data(run, false);
+    }
+
+    fn perform_env(&self, env: &mut Env, skip_ehp: bool, top: bool) -> PerformState {
         let depth = self.core.depth.get();
-        let mode = CalcMode::of(&env);
+        let mode = CalcMode::of(env);
         let at = {
             let mut log = self.core.log.borrow_mut();
             log.perform.push(PerformEntry {
@@ -503,7 +534,7 @@ impl CalcSession {
                 mode,
                 skip_ehp,
                 top,
-                uuid: cache_skill_uuid(&env, main_skill_of(&env)),
+                uuid: cache_skill_uuid(env, main_skill_of(env)),
                 ms: 0.0,
             });
             log.perform.len() - 1
@@ -512,24 +543,15 @@ impl CalcSession {
         self.core.depth.set(depth + 1);
         let mut hook = self.core.hook.borrow_mut().take();
         let state = match hook.as_mut() {
-            Some(h) => perform_skip_ehp(
-                &mut env,
-                self.core.opts.defence,
-                self.core.opts.estimations,
-                Some(&mut **h),
-                skip_ehp,
-            ),
-            None => perform_skip_ehp(&mut env, self.core.opts.defence, self.core.opts.estimations, None, skip_ehp),
+            Some(h) => perform_skip_ehp(env, self.core.opts.defence, self.core.opts.estimations, Some(&mut **h), skip_ehp),
+            None => perform_skip_ehp(env, self.core.opts.defence, self.core.opts.estimations, None, skip_ehp),
         };
         if hook.is_some() && self.core.hook.borrow().is_none() {
             *self.core.hook.borrow_mut() = hook;
         }
         self.core.depth.set(depth);
         self.core.log.borrow_mut().perform[at].ms = t0.elapsed().as_secs_f64() * 1000.0;
-        let offence_ran = state.offence_ran;
-        let run = Rc::new(RefCell::new(CalcRun { env, state, offence_ran }));
-        self.cache_data(&run, top);
-        run
+        state
     }
 
     /// `cacheData(uuid, env)` (Common.lua:924-941) with `uuid = cacheSkillUUID(env.player.mainSkill, env)`.
@@ -635,7 +657,7 @@ impl CalcSession {
 
     /// `calcs.calcFullDPS(build, mode, {}, specEnv)` (Calcs.lua:142-356): initEnv, every enabled skill of an `includeInFullDPS` group as
     /// `mainSkill` + `perform(fullEnv, true)` and the roll-up of its output (:176-336), a new initEnv after each (upstream: the
-    /// accelerated `wipeEnv` re-init, :337-344 -- here a fresh one: the accelerators are upstream's shortcut to the same env), then the
+    /// accelerated `wipeEnv` re-init of the same env, :337-344), then the
     /// ailment re-adds and the caps (:297-353).
     ///
     /// Boundaries (the roll-up stops, [`FullDpsOutcome::Unimplemented`]): a skill whose run did not reach `calcs.offence` (the triggers /
@@ -646,7 +668,16 @@ impl CalcSession {
     /// first of equal values wins, as upstream).
     #[allow(clippy::too_many_lines)]
     pub fn calc_full_dps(&self, mode: CalcMode) -> Result<FullDpsOutcome, CalcError> {
-        let mut full_env = match self.init_env(mode) {
+        self.calc_full_dps_spec(mode, None)
+    }
+
+    /// `calcs.calcFullDPS(build, mode, {}, specEnv)` with upstream's `specEnv` (R7.2b): `spec` = the DBs the caller's initEnv returned
+    /// (Calcs.lua:392 / :93 / :107), `None` = `specEnv` nil. The first initEnv reads the base / config mods through them (:143); after each
+    /// skill the SAME env is re-initialised in place with every accelerator on (:337-344, [`reinit_accelerated`]) and performed again --
+    /// so every cache entry this makes holds that one env, as upstream's `cacheData` (`Env = env`).
+    #[allow(clippy::too_many_lines)]
+    pub fn calc_full_dps_spec(&self, mode: CalcMode, spec: Option<SpecDbs>) -> Result<FullDpsOutcome, CalcError> {
+        let (full_env, cached) = match self.init_env_spec(mode, spec.as_ref()) {
             Ok(e) => e,
             Err(SessionError::Calc(e)) => return Err(e),
             Err(SessionError::Unimplemented(what)) => {
@@ -665,9 +696,20 @@ impl CalcSession {
         let mut caustic_ground_source = String::new();
         let mut processed = 0;
         // :168 `ipairs(fullEnv.player.activeSkillList)` -- the list of the first env; the accelerated re-init keeps it
-        // (`accelerate.skills`, CalcSetup.lua:372), a fresh one rebuilds the same list.
+        // (`accelerate.skills`, CalcSetup.lua:372).
         let n = full_env.skills.as_ref().map_or(0, |s| s.active_skill_list.len());
+        // The env's own notes from initEnv: a re-init drops the ones its last perform added (a fresh env would not hold them).
+        let init_notes = full_env.unimplemented.len();
+        // `fullEnv` before its first perform; from then on it lives in `run` (the cache holds it too).
+        let mut fresh = Some(full_env);
+        let mut run: Option<RunRef> = None;
         for i in 0..n {
+            let guard = run.as_ref().map(|r| r.borrow());
+            let full_env: &Env = match (&fresh, &guard) {
+                (Some(e), _) => e,
+                (None, Some(r)) => &r.env,
+                (None, None) => unreachable!("the env is either fresh or in the run"),
+            };
             let included = {
                 let st = full_env.skills.as_ref().expect("skills on");
                 st.active_skill_list[i]
@@ -677,13 +719,26 @@ impl CalcSession {
             if !included {
                 continue;
             }
-            let (count, enabled) = get_active_skill_count(&full_env, i);
+            let (count, enabled) = get_active_skill_count(full_env, i);
+            drop(guard);
             if !enabled {
                 continue;
             }
             // :172-174
-            full_env.skills.as_mut().expect("skills on").main_skill = Some(i);
-            let run = self.perform_inner(full_env, true, false);
+            let run = match fresh.take() {
+                Some(mut env) => {
+                    env.skills.as_mut().expect("skills on").main_skill = Some(i);
+                    let r = self.perform_inner(env, true, false);
+                    run = Some(r.clone());
+                    r
+                }
+                None => {
+                    let r = run.clone().expect("the env is in the run");
+                    r.borrow_mut().env.skills.as_mut().expect("skills on").main_skill = Some(i);
+                    self.perform_in_place(&r, true);
+                    r
+                }
+            };
             processed += 1;
             {
                 let r = run.borrow();
@@ -714,15 +769,16 @@ impl CalcSession {
                         note: format!("Calcs.lua:176-336 calcFullDPS roll-up of {name}: {why}"),
                     });
                 }
-                // `activeSkill.infoTrigger`: with the dispatch passed, only CalcPerform.lua:1487-1490 (The Saviour) sets it; that
-                // assignment is recorded by the skill loop under this note (perform/skills_loop.rs).
+                // `activeSkill.infoTrigger`: calcs.triggers (R7.8, `ActiveSkill::info_trigger`) runs after CalcPerform.lua:1487-1490
+                // (The Saviour, recorded by the skill loop under this note -- perform/skills_loop.rs), so its value wins.
                 let saviour = format!("CalcPerform.lua:1488-1489 activeSkill.infoMessage/infoTrigger of skill {} (", i + 1);
-                let trigger = r
-                    .env
-                    .unimplemented
-                    .iter()
-                    .any(|u| u.starts_with(&saviour))
-                    .then(|| "Saviour".to_owned());
+                let trigger = sk.info_trigger.clone().or_else(|| {
+                    r.env
+                        .unimplemented
+                        .iter()
+                        .any(|u| u.starts_with(&saviour))
+                        .then(|| "Saviour".to_owned())
+                });
                 let o = &r.state.player.output;
                 let pos = |k: &str| o.opt_num(k).is_some_and(|v| v > 0.0);
                 let num = |k: &str, line: u32| {
@@ -781,17 +837,16 @@ impl CalcSession {
                     fd.culling_multi = num("CullMultiplier", 290);
                 }
             }
-            // :337-344 re-init
-            full_env = match self.init_env(mode) {
-                Ok(e) => e,
-                Err(SessionError::Calc(e)) => return Err(e),
-                Err(SessionError::Unimplemented(what)) => {
-                    return Ok(FullDpsOutcome::Unimplemented {
-                        processed,
-                        note: format!("Calcs.lua:344 {what}"),
-                    });
-                }
-            };
+            // :337-344 `calcs.initEnv(build, mode, override, { cached DBs, env = fullEnv, accelerate = everything })`
+            {
+                let t0 = std::time::Instant::now();
+                let mut r = run.borrow_mut();
+                r.env.unimplemented.truncate(init_notes);
+                reinit_accelerated(&mut r.env, &cached);
+                let mut log = self.core.log.borrow_mut();
+                log.init_env_calls += 1;
+                log.init_env_ms.push(t0.elapsed().as_secs_f64() * 1000.0);
+            }
         }
         // :297-353 re-add the ailment DPS components
         let cap = crate::setup::misc("DotDpsCap");
@@ -864,11 +919,42 @@ impl CalcSession {
         Ok(FullDpsOutcome::Done(fd))
     }
 
+    /// `calcs.getMiscCalculator(build)` (Calcs.lua:89-115), its base pass (:91-98): `initEnv(build, "CALCULATOR")`, perform, then
+    /// `calcFullDPS(build, "CALCULATOR", {}, specEnv)` with the DBs that initEnv returned (:93), whose result goes into the output when
+    /// it has skills (`usedFullDPS`, :94-98). The calculator closure it returns (:99-114) needs `override` (nodes / items / gems) and
+    /// `build.viewMode`, neither ported: not here.
+    pub fn misc_calculator_base(&self) -> Result<BuildOutput, CalcError> {
+        let (env, cached) = match self.init_env_spec(CalcMode::Calculator, None) {
+            Ok(e) => e,
+            Err(SessionError::Calc(e)) => return Err(e),
+            Err(SessionError::Unimplemented(what)) => return Err(CalcError(format!("Calcs.lua:91 {what}"))),
+        };
+        // :92 `calcs.perform(env)`
+        let run = self.perform_inner(env, false, true);
+        let full_dps = self.calc_full_dps_spec(CalcMode::Calculator, Some(cached))?;
+        match &full_dps {
+            // :94-98 `usedFullDPS = #fullDPS.skills > 0`
+            FullDpsOutcome::Done(fd) if !fd.skills.is_empty() => {
+                let mut r = run.borrow_mut();
+                let o = &mut r.state.player.output;
+                o.set_table("SkillDPS", OutTable::SkillDps(fd.skills.clone()));
+                o.set_num("FullDPS", fd.combined_dps);
+                o.set_num("FullDotDPS", fd.total_dot_dps);
+            }
+            FullDpsOutcome::Done(_) => {}
+            FullDpsOutcome::Unimplemented { processed, note } => {
+                let what = format!("Calcs.lua:93-98 calcFullDPS ({processed} skills performed): {note}");
+                run.borrow_mut().env.unimplemented.push(what);
+            }
+        }
+        Ok(BuildOutput { run, full_dps })
+    }
+
     /// `calcs.buildOutput(build, mode)` (Calcs.lua:384-470) up to the display tables. Only MAIN is ported (the caller's mode).
     #[allow(clippy::too_many_lines)]
     pub fn build_output(&self, mode: CalcMode) -> Result<BuildOutput, CalcError> {
         // :386-387
-        let env = match self.init_env(mode) {
+        let (env, cached) = match self.init_env_spec(mode, None) {
             Ok(e) => e,
             Err(SessionError::Calc(e)) => return Err(e),
             Err(SessionError::Unimplemented(what)) => return Err(CalcError(format!("Calcs.lua:386 {what}"))),
@@ -876,7 +962,7 @@ impl CalcSession {
         let run = self.perform_inner(env, false, true);
 
         // :392 `calcs.calcFullDPS(build, "CALCULATOR", {}, ...)`
-        let full_dps = self.calc_full_dps(CalcMode::Calculator)?;
+        let full_dps = self.calc_full_dps_spec(CalcMode::Calculator, Some(cached))?;
         // :395-397 `env.player.output.SkillDPS/FullDPS/FullDotDPS`
         {
             let mut r = run.borrow_mut();

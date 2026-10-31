@@ -114,13 +114,15 @@ fn experimental_env_disables_the_filter() {
 /// OccVortex 740/739 (+49: ailment chances, ignite / chill / freeze / shock, knockback, impale chances, enemy stun); the other five unchanged.
 /// R7.7 (offence part E + calcFullDPS + buildOutput tail, OC6 = LuaJIT on the same runs; allowlist 760 -> 778): every golden +2 (`FullDPS`,
 /// `FullDotDPS` = 0: no `includeInFullDPS` group), OccVortex +16 more (758/757: skill DoT, combined DPS, per-second mana cost).
+/// R7.8 (calcs.triggers; allowlist 778 -> 796): both Cospris goldens 514/513 -> 734/733 (the CoC-triggered Ice Spear now runs offence:
+/// trigger rates, projectiles, the whole offence output); the other four unchanged.
 /// O9: `VaalArcticArmourMitigation` is `ok`, not `exact` (golden `+0`, Rust `-0`) -- hence exact = ok - 1.
 #[test]
 fn cli_stats_against_goldens() {
     let pinned: [(&str, usize, usize); 6] = [
         ("Dual Savior", 504, 503),
-        ("Dual Wield Cospris CoC", 514, 513),
-        ("Dual Wield Cospris CoC - Lethal Pride", 514, 513),
+        ("Dual Wield Cospris CoC", 734, 733),
+        ("Dual Wield Cospris CoC - Lethal Pride", 734, 733),
         ("Generals Perforate Zerker", 528, 527),
         ("Mirage Archer Toxic Rain", 515, 514),
         ("OccVortex", 758, 757),

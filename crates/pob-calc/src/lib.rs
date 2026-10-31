@@ -30,6 +30,7 @@ pub mod skill_funcs;
 pub mod skill_modlist;
 pub mod skills;
 pub mod skills_tab;
+pub(crate) mod triggers;
 
 pub use allowlist::{ALLOWLIST, EXCLUDED, filter_stats, is_allowed};
 pub use calculate::{CalcError, CalculateOptions, CalculateResult, Timings, calculate, calculate_file, calculate_with};

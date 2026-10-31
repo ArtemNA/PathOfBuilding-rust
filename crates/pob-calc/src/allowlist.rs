@@ -85,6 +85,11 @@
 //! `ManaPerSecondHasCost`, now `240.00000000000003` / `true` = golden) and `FullDPS` / `FullDotDPS` (`0` on all six: no
 //! `includeInFullDPS` group); EXCLUDED 13 -> 11 (the `offence` root of the cost keys is gone; Dual Savior `extra` x8 / `mismatch` x2 and
 //! `ReqIntString` synthetic unchanged); none left ALLOWLIST.
+//! R7.8 re-measured with `calcs.triggers` (CalcTriggers.lua; the two Cospris goldens now run offence for the CoC-triggered Ice Spear, OC1-OC6
+//! = LuaJIT): 18 keys newly ALLOWLIST, all emitted (and ok) on both Cospris goldens -- `SkillTriggerRate`, `TriggerRateCap`,
+//! `EffectiveSourceRate`, `TriggerTime`, `StoredUses`, `ManaCostWarning`, the projectile keys `Chain`, `ChainMax`, `ChainMaxString`,
+//! `ChainRemaining`, `ForkCountString`, `PierceCount`, `PierceCountString`, `PiercedCount`, `ProjectileCount`, `ProjectileSpeedMod`,
+//! `SplitCount`, `SplitCountString`; none left ALLOWLIST; EXCLUDED 11 unchanged (Dual Savior mirage class + `ReqIntString`).
 
 use indexmap::IndexMap;
 
@@ -146,11 +151,12 @@ pub const SYNTH_EXCLUDED: &[&str] = &["ReqIntString"];
 /// with the output of a nested `calcs.perform` on a CALCULATOR env (CalcMirages.lua:52/:157, `buildBreakdown` false) -- R7.
 const MIRAGE_BREAKDOWN: &str = "offence: Dual Savior -- calcs.mirages (CalcMirages.lua:157) replaces the output with a CALCULATOR perform (no breakdown, no flask breakdown keys); ok on the other 5";
 
-/// 778 keys, sorted (byte order): `ok` on every golden that emits them, on none `mismatch` or `extra` (R5.4: measured
+/// 796 keys, sorted (byte order): `ok` on every golden that emits them, on none `mismatch` or `extra` (R5.4: measured
 /// with `ParseMode::Full`, the default; R5.5a re-measured with the cluster-jewel subgraphs: +20; R5.5b radius jewels: +1;
 /// R5.5c timeless jewels: +23; R6.3 gem requirements: +4; R6.5 skills + flasks in perform: +30; R6.6 reservations: +4, `ReqIntString` -1;
 /// R6.7 buffs/curses/guards: +128; R6.8 ailments/exposures/ally life: +13; R7.3 offence part A: +43; R7.4 offence part B: +7;
-/// R7.5 offence part C: +106; R7.6 offence part D (ailments): +49; R7.7 offence part E + calcFullDPS: +18).
+/// R7.5 offence part C: +106; R7.6 offence part D (ailments): +49; R7.7 offence part E + calcFullDPS: +18;
+/// R7.8 triggers: +18).
 pub const ALLOWLIST: &[&str] = &[
     "AbsorptionCharges",
     "AbsorptionChargesMax",
@@ -234,6 +240,10 @@ pub const ALLOWLIST: &[&str] = &[
     "BrutalChargesMax",
     "BrutalChargesMin",
     "CastRate",
+    "Chain",
+    "ChainMax",
+    "ChainMaxString",
+    "ChainRemaining",
     "ChallengerCharges",
     "ChallengerChargesMax",
     "ChaosAegis",
@@ -376,6 +386,7 @@ pub const ALLOWLIST: &[&str] = &[
     "EffectiveBlockChance",
     "EffectiveMovementSpeedMod",
     "EffectiveProjectileBlockChance",
+    "EffectiveSourceRate",
     "EffectiveSpellBlockChance",
     "EffectiveSpellDodgeChance",
     "EffectiveSpellProjectileBlockChance",
@@ -481,6 +492,7 @@ pub const ALLOWLIST: &[&str] = &[
     "FiretakenFlat",
     "FistOfWarCooldown",
     "FistOfWarDamageEffect",
+    "ForkCountString",
     "FortificationEffect",
     "FortificationStacks",
     "FortificationStacksOver20",
@@ -637,6 +649,7 @@ pub const ALLOWLIST: &[&str] = &[
     "ManaCost",
     "ManaCostPayablePool",
     "ManaCostRaw",
+    "ManaCostWarning",
     "ManaDegen",
     "ManaHasCost",
     "ManaLeech",
@@ -744,6 +757,9 @@ pub const ALLOWLIST: &[&str] = &[
     "PhysicalTotalHitPool",
     "PhysicalTotalPool",
     "PhysicaltakenFlat",
+    "PierceCount",
+    "PierceCountString",
+    "PiercedCount",
     "PoisonAvoidChance",
     "PoisonChanceOnCrit",
     "PoisonChanceOnHit",
@@ -754,9 +770,11 @@ pub const ALLOWLIST: &[&str] = &[
     "PreBifurcateCritChance",
     "PreEffectiveCritChance",
     "ProjectileBlockChance",
+    "ProjectileCount",
     "ProjectileEvadeChance",
     "ProjectileEvasion",
     "ProjectileNotHitChance",
+    "ProjectileSpeedMod",
     "RadianceSentinelAllyDamageMitigation",
     "Rage",
     "RageCost",
@@ -824,6 +842,7 @@ pub const ALLOWLIST: &[&str] = &[
     "SilenceAvoidChance",
     "SiphoningCharges",
     "SiphoningChargesMax",
+    "SkillTriggerRate",
     "SoulCost",
     "SoulHasCost",
     "SoulLinkMitigation",
@@ -850,7 +869,10 @@ pub const ALLOWLIST: &[&str] = &[
     "SpiritChargesMax",
     "SpiritInfusions",
     "SpiritInfusionsMax",
+    "SplitCount",
+    "SplitCountString",
     "StoneGolemAllyDamageMitigation",
+    "StoredUses",
     "Str",
     "StunAvoidChance",
     "StunDuration",
@@ -891,6 +913,8 @@ pub const ALLOWLIST: &[&str] = &[
     "TotemLightningResistOverCap",
     "TotemLightningResistTotal",
     "TotemsSummoned",
+    "TriggerRateCap",
+    "TriggerTime",
     "TripleDamageChance",
     "TripleDamageChanceOnCrit",
     "TripleDamageEffect",

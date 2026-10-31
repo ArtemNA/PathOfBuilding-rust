@@ -168,6 +168,11 @@ pub struct ActiveSkill {
     pub disable_reason: Option<String>,
     pub active_mine_count: Option<f64>,
     pub active_stage_count: Option<f64>,
+    /// `activeSkill.infoMessage` / `infoMessage2` / `infoTrigger` -- written by `calcs.triggers` (CalcTriggers.lua, R7.8); `infoTrigger` is
+    /// the `trigger` of a `calcFullDPS` entry (Calcs.lua:179/:254), `infoMessage*` are read by `calcs.mirages` (R7.9) and the UI.
+    pub info_message: Option<String>,
+    pub info_message2: Option<String>,
+    pub info_trigger: Option<String>,
 }
 
 impl std::fmt::Debug for ActiveSkill {
@@ -457,5 +462,8 @@ pub fn create_active_skill(
         disable_reason: None,
         active_mine_count: None,
         active_stage_count: None,
+        info_message: None,
+        info_message2: None,
+        info_trigger: None,
     })
 }

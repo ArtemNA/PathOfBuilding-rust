@@ -180,6 +180,10 @@ pub struct Env {
     pub node_final_mod_list: IndexMap<u32, StoreRef>,
     /// `jewelData.limitDisabled = true` (upstream writes it onto the shared item table; kept here, by item id).
     pub jewel_limit_disabled: Vec<f64>,
+    /// The class-name VALUES of `env.itemModDB.conditions[<unique title>]` (CalcSetup.lua:1272-1274; `ModStore.conditions` holds
+    /// booleans, so the store keeps `true`). Read by the Forbidden Flame/Flesh check (:1408), which an accelerated re-init repeats
+    /// on the kept `itemModDB` (R7.2b).
+    pub item_class_restrictions: IndexMap<String, String>,
 
     /// `build.itemsTab.orderedSlots`.
     pub ordered_slots: Vec<Slot>,
