@@ -179,6 +179,18 @@ pub struct TreeJson {
     pub max_y: Option<f64>,
     pub alternate_ascendancies: Option<Json>,
     pub points: Option<Json>,
+    /// 3.06 trees only: the class base attributes live here, keyed by classId (`"0".."6"`), not on `classes[i]`
+    /// (CalcSetup.lua:588 `tree.characterData and tree.characterData[classId] or tree.classes[classId]`, MINEFIELD D19.5).
+    #[serde(rename = "characterData")]
+    pub character_data: Option<OrderedMap<CharacterData>>,
+}
+
+/// One `tree.characterData[classId]` entry of a 3.06 tree.
+#[derive(Clone, Debug, Deserialize)]
+pub struct CharacterData {
+    pub base_str: Option<f64>,
+    pub base_dex: Option<f64>,
+    pub base_int: Option<f64>,
 }
 
 impl TreeJson {

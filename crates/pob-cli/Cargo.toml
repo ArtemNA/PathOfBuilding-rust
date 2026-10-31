@@ -9,6 +9,8 @@ publish.workspace = true
 
 [dependencies]
 pob-golden.workspace = true
+pob-build.workspace = true
+pob-calc = { path = "../pob-calc" }
 serde_json.workspace = true
 
 [lints]

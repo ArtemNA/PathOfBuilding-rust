@@ -60,11 +60,25 @@ dependencies = [
 [[package]]
 name = "pob-calc"
 version = "0.1.0"
+dependencies = [
+ "indexmap",
+ "pob-build",
+ "pob-data",
+ "pob-golden",
+ "pob-items",
+ "pob-lua",
+ "pob-mods",
+ "pob-parser",
+ "pob-tree",
+ "serde_json",
+]
 
 [[package]]
 name = "pob-cli"
 version = "0.1.0"
 dependencies = [
+ "pob-build",
+ "pob-calc",
  "pob-golden",
  "serde_json",
 ]
