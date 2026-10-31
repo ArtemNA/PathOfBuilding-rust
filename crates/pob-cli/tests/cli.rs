@@ -35,7 +35,7 @@ fn calc_file_json_has_meta_and_allowlisted_stats() {
     let parsed = CandidateOutput::from_json(std::str::from_utf8(&out.stdout).unwrap()).unwrap();
     assert_eq!(
         parsed.stats.len(),
-        369,
+        372,
         "Dual Savior: every ALLOWLIST key it emits (= oracle ok count)"
     );
     assert!(
@@ -43,13 +43,14 @@ fn calc_file_json_has_meta_and_allowlisted_stats() {
         "stats are filtered by ALLOWLIST"
     );
     assert!(parsed.meta.is_some());
-    // R6.5: the skills are handed to perform; the next phase (R6.6, reservations) is the first one still recorded.
+    // R6.6: the reservation loop runs; the next phase (R6.7, buffs/auras) is the first one still recorded.
     assert!(!parsed.unimplemented.iter().any(|u| u.contains("not handed to perform yet")));
+    assert!(!parsed.unimplemented.iter().any(|u| u.contains("per-skill reservation loop")));
     assert!(
         parsed
             .unimplemented
             .iter()
-            .any(|u| u == "CalcPerform.lua:1978-2089 per-skill reservation loop (R6.6)")
+            .any(|u| u == "CalcPerform.lua:2193-3120 combine buffs/debuffs/auras, alternate charges (R6.7)")
     );
 }
 
@@ -90,16 +91,18 @@ fn experimental_env_disables_the_filter() {
 /// 368/367 -- +3 on Dual Savior (`ReqDex`, `ReqIntString`, `ReqStr`; it emits no `ReqInt`), +4 elsewhere.
 /// R6.5 (skills + flasks in perform, CP1 = LuaJIT; allowlist 381 -> 411): 369/368, 379/378, 379/378, 390/389, 380/379, 394/393 (the same
 /// `npm run oracle`).
+/// R6.6 (per-skill reservations, CP2 = LuaJIT; allowlist 411 -> 414: +4 `Mana(Un)Reserved*`, -1 `ReqIntString` on synthetic evidence): 372/371,
+/// 382/381, 382/381, 393/392, 383/382, 397/396 (the same `npm run oracle`).
 /// O9: `VaalArcticArmourMitigation` is `ok`, not `exact` (golden `+0`, Rust `-0`) -- hence exact = ok - 1.
 #[test]
 fn cli_stats_against_goldens() {
     let pinned: [(&str, usize, usize); 6] = [
-        ("Dual Savior", 369, 368),
-        ("Dual Wield Cospris CoC", 379, 378),
-        ("Dual Wield Cospris CoC - Lethal Pride", 379, 378),
-        ("Generals Perforate Zerker", 390, 389),
-        ("Mirage Archer Toxic Rain", 380, 379),
-        ("OccVortex", 394, 393),
+        ("Dual Savior", 372, 371),
+        ("Dual Wield Cospris CoC", 382, 381),
+        ("Dual Wield Cospris CoC - Lethal Pride", 382, 381),
+        ("Generals Perforate Zerker", 393, 392),
+        ("Mirage Archer Toxic Rain", 383, 382),
+        ("OccVortex", 397, 396),
     ];
     let mut got = Vec::new();
     for (g, (name, _, _)) in GOLDEN_BUILDS.iter().zip(pinned) {

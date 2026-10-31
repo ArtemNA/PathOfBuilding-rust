@@ -41,6 +41,10 @@
 //! `*AvoidChance`: their missing input was the FLASK mods (Ruby/Amethyst/Quartz/Granite/... flasks), not the auras the pob-ts attribution
 //! named; 4 newly emitted keys are ALLOWLIST (`ActiveGolemLimit`, `ActiveTotemLimit`, `HexDoomLimit`, `TotemsSummoned`); none left
 //! ALLOWLIST; 8 newly emitted keys are EXCLUDED with the new root `offence` ([`MIRAGE_BREAKDOWN`]).
+//! R6.6 re-measured with the per-skill reservation loop (CalcPerform.lua:1978-2090; CP2 = LuaJIT on all six goldens): 4 keys moved from
+//! EXCLUDED to ALLOWLIST (`ManaReserved`, `ManaReservedPercent`, `ManaUnreserved`, `ManaUnreservedPercent`; the root `reservation` is now
+//! closed), none newly emitted, none measured out of ALLOWLIST; `ReqIntString` moved from ALLOWLIST to EXCLUDED on synthetic evidence
+//! ([`SYNTH_EXCLUDED`]); `ReqDexString`/`ReqStrString` re-rooted to `offence` by measurement ([`REQ_STRING`]).
 
 use indexmap::IndexMap;
 
@@ -105,14 +109,21 @@ const EST_CRIT: &str = "estimation input: ConfiguredEvadeChance (buffs)";
 const EVADE: &str = "buffs: evade chance follows Evasion and enemy accuracy changed by the buff phase";
 const GUARDS: &str = "guards: guard-skill block (CalcPerform.lua:3300-3341) needs the skill phase";
 const REGEN: &str = "buffs: Vitality/Clarity";
-const RESERVE: &str = "reservation: per-skill reservation loop (CalcPerform.lua:1978-2089) has no active skills yet";
 const LEECH: &str = "buffs: leech cap is a percentage of an undercounted pool";
 const EST_HITS: &str = "estimation input: taken hits and drained pools (buffs)";
 const EST_MITIGATED: &str = "estimation input: hit-simulation inputs and block/suppression mitigation (buffs)";
 const EST_ARMOUR: &str = "estimation input: Armour (buffs)";
-/// R6.3 closed the gem half of `requirementsTable` (`ReqDex`/`ReqInt`/`ReqStr` ok on every golden); what is left of these two is the
-/// colour branch of CalcPerform.lua:2158 (`out.val > output[attr]` mid-perform).
-const REQ_STRING: &str = "skills + buffs: Req*String takes the NEGATIVE-colour branch (CalcPerform.lua:2158) on Dual Savior -- Rust's output.Dex/Str at that point is below the requirement, LuaJIT's is not (the final Dex/Str are ok)";
+/// R6.6 measured (R-L5): on Dual Savior the MAIN perform of LuaJIT itself takes the NEGATIVE-colour branch of CalcPerform.lua:2158
+/// (probe CP3/CP4: `ReqDexString` `^xDD0022155`, `ReqStrString` `^xDD0022122`, Dex 14 / Str 52 -- Rust is equal at both checkpoints);
+/// the golden's numbers 155/122 are written later by `calcs.mirages` (CalcMirages.lua:52/:157: the output of a nested CALCULATOR
+/// perform, `buildBreakdown` false). `ReqIntString` has the same mechanism but no unmet Int requirement on any golden (ok on all six, the
+/// value is the number there); it is excluded on the evidence of the synthetic Dual Savior variants (R4-synth, `tests/defence_synth.rs`:
+/// Rust `^xDD0022194`, LuaJIT 194) -- see [`SYNTH_EXCLUDED`].
+const REQ_STRING: &str = "offence: Dual Savior -- the MAIN perform writes the NEGATIVE-coloured Req*String (CalcPerform.lua:2158, LuaJIT CP4 = Rust), calcs.mirages (CalcMirages.lua:157) replaces the output with a CALCULATOR perform (no breakdown) that writes the number; ok on the other 5";
+
+/// Keys in [`EXCLUDED`] that are `ok` on all six goldens but wrong on a measured LuaJIT input outside them (the goldens do not reach the
+/// branch). `tests/allowlist.rs` checks they are still measured `ok` on the goldens (once one is not, it is an ordinary EXCLUDED key).
+pub const SYNTH_EXCLUDED: &[&str] = &["ReqIntString"];
 const EST_STUN: &str = "estimation input: StunAvoidChance (buffs; R5.5c: Life and StunThreshold are ok on every golden, StunAvoidChance still mismatches on both Cospris builds)";
 const EST_SELF_STUN: &str =
     "estimation input: SelfStunChance = enemy hit damage taken (totalTakenHit: skills + buffs) over StunThreshold (buffs)";
@@ -126,9 +137,9 @@ const EST_GUARD: &str = "estimation input: GuardAbsorbRate (guards)";
 /// with the output of a nested `calcs.perform` on a CALCULATOR env (CalcMirages.lua:52/:157, `buildBreakdown` false) -- R7.
 const MIRAGE_BREAKDOWN: &str = "offence: Dual Savior -- calcs.mirages (CalcMirages.lua:157) replaces the output with a CALCULATOR perform (no breakdown, no flask breakdown keys); ok on the other 5";
 
-/// 411 keys, sorted (byte order): `ok` on every golden that emits them, on none `mismatch` or `extra` (R5.4: measured
+/// 414 keys, sorted (byte order): `ok` on every golden that emits them, on none `mismatch` or `extra` (R5.4: measured
 /// with `ParseMode::Full`, the default; R5.5a re-measured with the cluster-jewel subgraphs: +20; R5.5b radius jewels: +1;
-/// R5.5c timeless jewels: +23; R6.3 gem requirements: +4; R6.5 skills + flasks in perform: +30).
+/// R5.5c timeless jewels: +23; R6.3 gem requirements: +4; R6.5 skills + flasks in perform: +30; R6.6 reservations: +4, `ReqIntString` -1).
 pub const ALLOWLIST: &[&str] = &[
     "AbsorptionCharges",
     "AbsorptionChargesMax",
@@ -385,7 +396,11 @@ pub const ALLOWLIST: &[&str] = &[
     "ManaRecoup",
     "ManaRecovery",
     "ManaRecoveryRateMod",
+    "ManaReserved",
+    "ManaReservedPercent",
     "ManaUncancellableReservation",
+    "ManaUnreserved",
+    "ManaUnreservedPercent",
     "MaxLifeLeechInstance",
     "MaxLifeLeechRate",
     "MaxLifeLeechRatePercent",
@@ -442,7 +457,6 @@ pub const ALLOWLIST: &[&str] = &[
     "RemovableTotalCharges",
     "ReqDex",
     "ReqInt",
-    "ReqIntString",
     "ReqStr",
     "SapAvoidChance",
     "ScorchAvoidChance",
@@ -660,10 +674,6 @@ pub const EXCLUDED: &[(&str, &str)] = &[
     ("ManaRegenInc", REGEN),
     ("ManaRegenPercent", REGEN),
     ("ManaRegenRecovery", REGEN),
-    ("ManaReserved", RESERVE),
-    ("ManaReservedPercent", RESERVE),
-    ("ManaUnreserved", RESERVE),
-    ("ManaUnreservedPercent", RESERVE),
     ("MaxEnergyShieldLeechInstance", LEECH),
     ("MaxEnergyShieldLeechRate", LEECH),
     ("NumberOfDamagingHits", EST_HITS),
@@ -671,6 +681,7 @@ pub const EXCLUDED: &[(&str, &str)] = &[
     ("PhysicalDamageReduction", EST_ARMOUR),
     ("PhysicalEffectiveAppliedArmour", EST_ARMOUR),
     ("ReqDexString", REQ_STRING),
+    ("ReqIntString", REQ_STRING),
     ("ReqStrString", REQ_STRING),
     ("SelfStunChance", EST_SELF_STUN),
     ("StunAvoidChance", EST_STUN),

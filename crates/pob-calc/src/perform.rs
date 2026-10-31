@@ -20,6 +20,7 @@
 //! The R6 checkpoints of the LuaJIT probe (`tools/lua-corpus/export-skills.ts`) are a hook ([`Checkpoint`], [`perform_with`]).
 
 mod flasks;
+mod reservation;
 mod skills_loop;
 
 use std::rc::Rc;
@@ -2290,7 +2291,22 @@ pub fn perform_with(
     player.uncancellable_life_reservation = Some(base(&mod_db, &["ExtraLifeReserved"]));
     player.uncancellable_mana_reservation = Some(base(&mod_db, &["ExtraManaReserved"]));
     if skills_on {
-        skip(env, "1978-2089 per-skill reservation loop (R6.6)");
+        // :1978-2090 the per-skill loop ([`reservation`]).
+        let mut acc = reservation::Acc {
+            life_base: player.reserved_life_base.unwrap_or(0.0),
+            life_percent: player.reserved_life_percent.unwrap_or(0.0),
+            mana_base: player.reserved_mana_base.unwrap_or(0.0),
+            mana_percent: player.reserved_mana_percent.unwrap_or(0.0),
+            uncancellable_life: player.uncancellable_life_reservation.unwrap_or(0.0),
+            uncancellable_mana: player.uncancellable_mana_reservation.unwrap_or(0.0),
+        };
+        reservation::reservation_loop(env, &player.output, &mut acc);
+        player.reserved_life_base = Some(acc.life_base);
+        player.reserved_life_percent = Some(acc.life_percent);
+        player.reserved_mana_base = Some(acc.mana_base);
+        player.reserved_mana_percent = Some(acc.mana_percent);
+        player.uncancellable_life_reservation = Some(acc.uncancellable_life);
+        player.uncancellable_mana_reservation = Some(acc.uncancellable_mana);
     } else {
         skip(env, "1978-2089 per-skill reservation loop (activeSkillList is empty; P5)");
     }

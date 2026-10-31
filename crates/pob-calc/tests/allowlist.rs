@@ -6,7 +6,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use pob_calc::allowlist::{ALLOWLIST, EXCLUDED, ROOT_CAUSES, filter_stats, is_allowed, root_causes};
+use pob_calc::allowlist::{ALLOWLIST, EXCLUDED, ROOT_CAUSES, SYNTH_EXCLUDED, filter_stats, is_allowed, root_causes};
 use pob_calc::{CalculateOptions, StatValue, calculate_file};
 use pob_golden::{GOLDEN_BUILDS, StatClass, compare_stats, value};
 
@@ -60,7 +60,14 @@ fn dump() {
 fn allowlist_is_the_measured_set() {
     let seen = measure();
     let measured_allow: BTreeSet<&str> = seen.iter().filter(|(_, s)| s.bad.is_empty()).map(|(k, _)| k.as_str()).collect();
-    let measured_excl: BTreeSet<&str> = seen.iter().filter(|(_, s)| !s.bad.is_empty()).map(|(k, _)| k.as_str()).collect();
+    let mut measured_excl: BTreeSet<&str> = seen.iter().filter(|(_, s)| !s.bad.is_empty()).map(|(k, _)| k.as_str()).collect();
+    // R6.6: `SYNTH_EXCLUDED` keys are ok on every golden but measured wrong on synthetic LuaJIT inputs: excluded on that evidence. Each must
+    // still be emitted and ok here (once it mismatches on a golden it is an ordinary EXCLUDED key and leaves the list).
+    let mut measured_allow = measured_allow;
+    for k in SYNTH_EXCLUDED {
+        assert!(measured_allow.remove(k), "{k}: SYNTH_EXCLUDED but not measured ok on every golden");
+        measured_excl.insert(k);
+    }
     let allow: BTreeSet<&str> = ALLOWLIST.iter().copied().collect();
     let excl: BTreeSet<&str> = EXCLUDED.iter().map(|(k, _)| *k).collect();
 
@@ -97,9 +104,9 @@ fn allowlist_is_the_measured_set() {
     );
     // R4.5: 289 / 246 (ModCache only); R5.4 (ParseMode::Full): 333 / 208; R5.5a (cluster subgraphs): 353 / 188;
     // R5.5b (radius jewels): 354 / 187; R5.5c (timeless jewels): 377 / 164; R6.3 (skills in initEnv, gem requirements): 381 / 160;
-    // R6.5 (skills + flasks in perform, CP1 = LuaJIT): 411 / 142
-    assert_eq!(ALLOWLIST.len(), 411, "pinned size of the measured allowlist");
-    assert_eq!(EXCLUDED.len(), 142, "pinned size of the measured exclusions");
+    // R6.5 (skills + flasks in perform, CP1 = LuaJIT): 411 / 142; R6.6 (reservations, CP2 = LuaJIT; ReqIntString -> SYNTH_EXCLUDED): 414 / 139
+    assert_eq!(ALLOWLIST.len(), 414, "pinned size of the measured allowlist");
+    assert_eq!(EXCLUDED.len(), 139, "pinned size of the measured exclusions");
 }
 
 #[test]
@@ -114,6 +121,8 @@ fn every_excluded_key_names_a_root_cause() {
         assert!(!causes.contains(&"tree-jewel"), "{k}: tree-jewel is closed since R5.5c: {reason}");
         // R5.6 closed `cluster` (env Full = LuaJIT on every golden, every class 0)
         assert!(!causes.contains(&"cluster"), "{k}: cluster is closed since R5.5a/R5.6: {reason}");
+        // R6.6 closed `reservation` (CP2 = LuaJIT on every golden)
+        assert!(!causes.contains(&"reservation"), "{k}: reservation is closed since R6.6: {reason}");
         for c in causes {
             *tally.get_mut(c).unwrap() += 1;
         }

@@ -7,8 +7,9 @@
 //! bucket comes from `pairs` over string-keyed tables in LuaJIT -- per process, MINEFIELD-RUST R13), the mod count, `conditions`,
 //! `multipliers` (`%.17g`) and `output` (`%.17g` / string / boolean). No tolerance, no skipped key, no pin.
 //!
-//! The checkpoints are taken through `perform_with`'s hook (`Checkpoint`), not a copy of perform. CP2..CP4 (later phases, R6.6+) are
-//! counted for information only (`PERFORM_CP_VERBOSE=1` prints them).
+//! The checkpoints are taken through `perform_with`'s hook (`Checkpoint`), not a copy of perform. R6.6: CP2 -- after the first
+//! `doActorLifeManaReservation(env.player)` (:2092; attributes/pools :1943-1966 and the per-skill reservation loop :1978-2090) -- is gated
+//! the same way. CP3/CP4 (later phases, R6.7+) are counted for information only (`PERFORM_CP_VERBOSE=1` prints them).
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::rc::Rc;
@@ -122,7 +123,7 @@ fn diff_actor(who: &str, lj: &Json, rust: &Json) -> Vec<String> {
 }
 
 #[test]
-fn cp1_equals_luajit_on_six_goldens() {
+fn cp1_cp2_equal_luajit_on_six_goldens() {
     let mut all_bad = Vec::new();
     let mut later: BTreeMap<String, usize> = BTreeMap::new();
     for g in GOLDEN_BUILDS {
@@ -139,9 +140,9 @@ fn cp1_equals_luajit_on_six_goldens() {
             };
             let mut d = diff_actor("player", &w["player"], &r["player"]);
             d.extend(diff_actor("enemy", &w["enemy"], &r["enemy"]));
-            if cp == "CP1" {
+            if cp == "CP1" || cp == "CP2" {
                 println!(
-                    "{}: CP1 player {} mods / {} conditions / {} multipliers / {} output, enemy {} mods / {} conditions / {} multipliers -- differences {}",
+                    "{}: {cp} player {} mods / {} conditions / {} multipliers / {} output, enemy {} mods / {} conditions / {} multipliers -- differences {}",
                     g.name,
                     r["player"]["modCount"].as_str().unwrap(),
                     r["player"]["conditions"].as_object().unwrap().len(),
@@ -152,7 +153,7 @@ fn cp1_equals_luajit_on_six_goldens() {
                     r["enemy"]["multipliers"].as_object().unwrap().len(),
                     d.len()
                 );
-                all_bad.extend(d.into_iter().map(|x| format!("{}: CP1 {x}", g.name)));
+                all_bad.extend(d.into_iter().map(|x| format!("{}: {cp} {x}", g.name)));
             } else {
                 if std::env::var_os("PERFORM_CP_VERBOSE").is_some() {
                     for x in &d {
@@ -163,11 +164,11 @@ fn cp1_equals_luajit_on_six_goldens() {
             }
         }
     }
-    println!("later checkpoints (information, R6.6+): differences {later:#?}");
-    assert!(all_bad.is_empty(), "CP1 != LuaJIT ({}):\n{}", all_bad.len(), all_bad.join("\n"));
+    println!("later checkpoints (information, R6.7+): differences {later:#?}");
+    assert!(all_bad.is_empty(), "CP1/CP2 != LuaJIT ({}):\n{}", all_bad.len(), all_bad.join("\n"));
 }
 
-/// `cargo test --release -p pob-calc --test perform_cp perf -- --ignored --nocapture`: wall time of `perform` from its entry to CP1 and to
+/// `cargo test --release -p pob-calc --test perform_cp perf -- --ignored --nocapture`: wall time of `perform` from its entry to CP1, to CP2 and to
 /// CP4 (median of 50 runs after a warm-up, a fresh `initEnv` per run) -- the Rust side of `tools/.scratch/perf-skills.json` (LuaJIT
 /// perform -> CP4).
 #[test]
@@ -175,7 +176,7 @@ fn cp1_equals_luajit_on_six_goldens() {
 fn perf_perform_to_checkpoints() {
     for g in GOLDEN_BUILDS {
         let text = std::fs::read_to_string(g.xml_path()).expect("xml");
-        let (mut cp1, mut cp4) = (Vec::new(), Vec::new());
+        let (mut cp1, mut cp2, mut cp4) = (Vec::new(), Vec::new(), Vec::new());
         for run in 0..51 {
             let model = pob_build::load_build_xml(&text).expect("xml parses");
             let opts = InitEnvOptions {
@@ -184,15 +185,17 @@ fn perf_perform_to_checkpoints() {
             };
             let mut env = init_env_with(Rc::new(model), opts, true).expect("initEnv");
             let t0 = std::time::Instant::now();
-            let (mut t1, mut t4) = (None, None);
+            let (mut t1, mut t2, mut t4) = (None, None, None);
             let mut hook = |cp: Checkpoint, _: &Env, _: &ActorState, _: &ActorState| match cp {
                 Checkpoint::Cp1 => t1 = Some(t0.elapsed()),
+                Checkpoint::Cp2 => t2 = Some(t0.elapsed()),
                 Checkpoint::Cp4 => t4 = Some(t0.elapsed()),
                 _ => {}
             };
             let _ = perform_with(&mut env, Some(pob_calc::defence), Some(pob_calc::estimations), Some(&mut hook));
             if run > 0 {
                 cp1.push(t1.unwrap().as_secs_f64() * 1000.0);
+                cp2.push(t2.unwrap().as_secs_f64() * 1000.0);
                 cp4.push(t4.unwrap().as_secs_f64() * 1000.0);
             }
         }
@@ -201,9 +204,10 @@ fn perf_perform_to_checkpoints() {
             v[v.len() / 2]
         };
         println!(
-            "{}: perform -> CP1 {:.3} ms, perform -> CP4 {:.3} ms (median of {})",
+            "{}: perform -> CP1 {:.3} ms, perform -> CP2 {:.3} ms, perform -> CP4 {:.3} ms (median of {})",
             g.name,
             med(&mut cp1),
+            med(&mut cp2),
             med(&mut cp4),
             cp1.len()
         );
