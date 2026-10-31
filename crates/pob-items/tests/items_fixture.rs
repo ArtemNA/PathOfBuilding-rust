@@ -81,6 +81,19 @@ fn apply_range_against_luajit(mode: ParseMode) {
     assert_eq!(total, 117, "94 `{{range:}}` lines + 23 synthetic cases");
 }
 
+/// Class `pob-ts-no-mutatedLines` (R5.5d): (build, item id) whose CacheOnly dump differs from pob-ts only by `rangeLineCount`.
+const MUTATED_LINES_ITEMS: [(&str, usize); 9] = [
+    ("Dual Wield Cospris CoC", 17),
+    ("Dual Wield Cospris CoC", 24),
+    ("Dual Wield Cospris CoC", 25),
+    ("Dual Wield Cospris CoC", 28),
+    ("Dual Wield Cospris CoC - Lethal Pride", 17),
+    ("Dual Wield Cospris CoC - Lethal Pride", 24),
+    ("Dual Wield Cospris CoC - Lethal Pride", 25),
+    ("Dual Wield Cospris CoC - Lethal Pride", 28),
+    ("Generals Perforate Zerker", 20),
+];
+
 #[test]
 fn items_equal_pob_ts_and_classified_against_luajit() {
     let mut report = Vec::new();
@@ -93,6 +106,21 @@ fn items_equal_pob_ts_and_classified_against_luajit() {
         // (a) = pob-ts, exactly
         let mut d = Vec::new();
         diff_exact("items", &ts["items"], &dump, &mut d);
+        // `pob-ts-no-mutatedLines`: pob-ts never ported Item.lua:1551-1600, so the foulborn items it sees have
+        // `rangeLineCount` one short (no `modId`/`newModId` line); pinned item by item, nothing else may differ.
+        let pinned: Vec<String> = MUTATED_LINES_ITEMS
+            .iter()
+            .filter(|(b, _)| *b == g.name)
+            .map(|(_, id)| format!("items.{id}.rangeLineCount: pob-ts \"0\", rust \"1\""))
+            .collect();
+        let before = d.len();
+        d.retain(|x| !pinned.contains(x));
+        assert_eq!(
+            before - d.len(),
+            pinned.len(),
+            "{}: pob-ts-no-mutatedLines pin not fully hit",
+            g.name
+        );
         if !d.is_empty() {
             failures.push(format!(
                 "{}: {} differences from pob-ts, first: {}",
@@ -136,9 +164,9 @@ fn items_full_against_luajit_item_miss_zero() {
     // (build, items, tree-jewel, mutated-lines, nested-table) -- measured
     const PINNED: [(&str, usize, usize, usize, usize); 6] = [
         ("Dual Savior", 3, 0, 0, 0),
-        ("Dual Wield Cospris CoC", 28, 1, 4, 0),
-        ("Dual Wield Cospris CoC - Lethal Pride", 28, 1, 4, 1),
-        ("Generals Perforate Zerker", 29, 0, 1, 0),
+        ("Dual Wield Cospris CoC", 28, 1, 0, 0),
+        ("Dual Wield Cospris CoC - Lethal Pride", 28, 1, 0, 1),
+        ("Generals Perforate Zerker", 29, 0, 0, 0),
         ("Mirage Archer Toxic Rain", 22, 0, 0, 0),
         ("OccVortex", 18, 0, 0, 0),
     ];

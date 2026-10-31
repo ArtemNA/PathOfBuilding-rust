@@ -426,13 +426,24 @@ fn get_catalyst_scalar(catalyst_id: Option<f64>, m: &ModLine, quality: Option<f6
     }
 }
 
-/// `data.foulbornMap` keys (Item.lua:1025) -- only to flag the skipped `mutatedLines` branch.
-fn foulborn_titles() -> &'static BTreeSet<String> {
-    static S: OnceLock<BTreeSet<String>> = OnceLock::new();
-    S.get_or_init(|| {
-        let j: serde_json::Value = pob_data::read_json("foulborn-map.json").unwrap_or_else(|e| panic!("{e}"));
-        j.as_object().map(|o| o.keys().cloned().collect()).unwrap_or_default()
-    })
+/// `data.foulbornMap` (Item.lua:1028): title -> `{ origModId = foulModId }`. File order stands for `pairs` order (D13: the
+/// converter writes keys sorted); it only matters if two pairs of one item matched the same mod line.
+fn foulborn_map() -> &'static pob_data::wire::OrderedMap<pob_data::wire::OrderedMap<String>> {
+    static S: OnceLock<pob_data::wire::OrderedMap<pob_data::wire::OrderedMap<String>>> = OnceLock::new();
+    S.get_or_init(|| pob_data::read_json("foulborn-map.json").unwrap_or_else(|e| panic!("{e}")))
+}
+
+/// Item.lua:64 `normaliseModLine` (first return value only, as every caller takes).
+fn normalise_mod_line(line: &str) -> String {
+    let s = gsub(line, "%d+%.?%d*", "#", None);
+    let s = gsub(&s, "%(%-?#%-#%)", "#", None);
+    gsub(
+        &lower(&s),
+        "
+",
+        " ",
+        None,
+    )
 }
 
 /// `data.rareLikeUniques` keys (Item.lua:1036) -- whether a crafted unique keeps `crafted` (Item.lua:1462-1484).
@@ -664,6 +675,47 @@ impl Item {
         }
     }
 
+    /// Item.lua:1553-1596 `checkMod(modId, newModId, mutated)`.
+    fn check_mutated_mod(&mut self, mod_id: &str, new_mod_id: &str, mutated: bool) {
+        let table = if mutated {
+            pob_data::item_mods::foulborn()
+        } else {
+            pob_data::item_mods::item_exclusive()
+        };
+        // "mod not found while testing mutated mods" is a ConPrintf only.
+        let Some(original_mod) = table.get(mod_id) else { return };
+        let lines = &original_mod.lines;
+        // Some modifier descriptions are represented by separate lines in PoB.
+        let matching = self
+            .find_matching_mod_lines(&[lines.join(" ")])
+            .or_else(|| self.find_matching_mod_lines(lines));
+        if let Some(matching) = matching {
+            for i in matching {
+                let ml = &mut self.explicit_mod_lines[i];
+                ml.mod_id = Some(mod_id.to_owned());
+                ml.new_mod_id = Some(new_mod_id.to_owned());
+                if mutated {
+                    ml.set_flag("mutated");
+                }
+            }
+        }
+    }
+
+    /// Item.lua:1558-1578 `findMatchingLines`: indices into `explicit_mod_lines`, or None unless every line matched.
+    fn find_matching_mod_lines(&self, lines: &[String]) -> Option<Vec<usize>> {
+        let mut matching = Vec::new();
+        for line in lines {
+            let stat_line = normalise_mod_line(line);
+            for (i, ml) in self.explicit_mod_lines.iter().enumerate() {
+                if !matching.contains(&i) && normalise_mod_line(&ml.line) == stat_line && self.check_mod_line_variant(ml) {
+                    matching.push(i);
+                    break;
+                }
+            }
+        }
+        (lines.len() == matching.len()).then_some(matching)
+    }
+
     // --- Item.lua:2120-2180 -------------------------------------------------------------------------------------
 
     pub fn check_mod_line_variant(&self, ml: &ModLine) -> bool {
@@ -815,7 +867,7 @@ impl Item {
         self.foulborn = false;
         self.vestigial = false;
         self.unimplemented = Vec::new();
-        let mut mutated_title = false;
+        let mut mutated_lines: Option<&'static pob_data::wire::OrderedMap<String>> = None;
         let mut imported_level_req: Option<f64> = None;
         let mut flask_buff_lines: Option<Vec<String>> = None;
         let mut tincture_buff_lines: Option<Vec<String>> = None;
@@ -1072,7 +1124,7 @@ impl Item {
                                 && let Some(title) = &self.title
                                 && !find(&lower(title), "might of the meek", ITEM)
                             {
-                                mutated_title = foulborn_titles().contains(&gsub(title, "^[Ff]oulborn ", "", None));
+                                mutated_lines = foulborn_map().get(&gsub(title, "^[Ff]oulborn ", "", None));
                             }
                             // Item.lua:1029-1046 `affixes` / `rareLikeUnique` / `enchantments` feed the crafting UI only.
                             self.ty = Some(base.ty.clone());
@@ -1285,10 +1337,12 @@ impl Item {
                 }
             }
         }
-        if mutated_title {
-            // Item.lua:1543-1596 `mutatedLines` needs data.itemMods.ItemExclusive / .Foulborn -- P5.
-            self.unimplemented
-                .push(format!("{ITEM}:1543 mutatedLines (foulborn transformation)"));
+        if let Some(pairs) = mutated_lines {
+            // Item.lua:1551-1600: match both sides so the same checkbox can apply or revert the transformation.
+            for (orig_mod_id, foul_mod_id) in pairs.iter() {
+                self.check_mutated_mod(orig_mod_id, foul_mod_id, false);
+                self.check_mutated_mod(foul_mod_id, orig_mod_id, true);
+            }
         }
         if self.explicit_mod_lines.iter().any(|v| v.flag("mutated")) {
             self.foulborn = true;
