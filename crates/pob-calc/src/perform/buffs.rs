@@ -27,7 +27,7 @@ use pob_mods::{Mod, ModCfg, ModStore, ModType, StoreRef, Value, compare_mod_para
 use super::{flag, flag_cfg, nm, set_cond, skill_cfg_of, skill_guard, skill_list_of, skill_type_u32};
 use crate::calc_lib;
 use crate::env::Env;
-use crate::setup::{keyword_flag, list_mods, misc, n, ok, s, tag};
+use crate::setup::{keyword_flag, list_mods, n, ok, s, tag};
 
 const CP: &str = "Modules/CalcPerform.lua";
 
@@ -252,45 +252,6 @@ fn ok_pat(name: &str, pattern: &str) -> bool {
     pob_lua::match_(name.as_bytes(), pattern.as_bytes(), None)
         .unwrap_or_else(|e| panic!("{CP}: pattern {pattern:?}: {e:?}"))
         .is_some()
-}
-
-/// CalcOffence.lua:322-336 `calcSkillDuration(skillModList, skillCfg, skillData, env, enemyDB)`.
-fn calc_skill_duration(
-    q: &SkillQ<'_>,
-    cfg: &ModCfg,
-    skill_data: &IndexMap<String, Value>,
-    mode_effective: bool,
-    enemy_db: &StoreRef,
-) -> f64 {
-    let truthy = |k: &str| skill_data.get(k).is_some_and(Value::truthy);
-    let mut names = vec!["Duration", "PrimaryDuration"];
-    if truthy("mineDurationAppliesToSkill") {
-        names.push("MineDuration");
-    }
-    let duration_mod = max2(q.calc_mod(Some(cfg), &names), 0.0);
-    let data_duration = match skill_data.get("duration") {
-        Some(v) if v.truthy() => v.as_num().unwrap_or_else(|| {
-            panic!(
-                "Modules/CalcOffence.lua:325: attempt to perform arithmetic on a {} value",
-                v.type_name()
-            )
-        }),
-        _ => 0.0,
-    };
-    let duration_base = data_duration + q.sum(ModType::Base, Some(cfg), &["Duration", "PrimaryDuration"]);
-    let mut duration = duration_base * duration_mod;
-    let mut debuff_duration_mult = 1.0;
-    if mode_effective {
-        debuff_duration_mult = 1.0
-            / max2(
-                misc("BuffExpirationSlowCap"),
-                ok(calc_lib::mod_(&enemy_db.borrow(), Some(cfg), &["BuffExpireFaster"])),
-            );
-    }
-    if truthy("debuff") {
-        duration *= debuff_duration_mult;
-    }
-    duration
 }
 
 /// :587-614 `determineCursePriority(curseName, activeSkill)`; `skill` = (socket group index, has Aura type).
@@ -687,7 +648,7 @@ fn warcry(
             t0.set_warcry_power_bonus(Value::Num((power / div).floor()));
         }
     }
-    let full_duration = calc_skill_duration(q, skill_cfg, &sk.skill_data, env.mode_effective, enemy_db);
+    let full_duration = crate::offence::calc_skill_duration(&q.list, q.malformed, skill_cfg, &sk.skill_data, env.mode_effective, enemy_db);
     let actual_cooldown = match q.override_(Some(skill_cfg), &["CooldownRecovery"]) {
         Some(v) if v.truthy() => num_of(&v, 2387, "cooldownOverride"),
         _ => {

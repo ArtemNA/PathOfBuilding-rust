@@ -72,6 +72,9 @@ pub struct ActorState {
     applied_enemy_modifiers: Option<Vec<Rc<Mod>>>,
     /// `env.player.allyLifeList` (:3669); nil on the enemy.
     pub(crate) ally_life_list: Option<ally::AllyLifeList>,
+    /// `actor.weaponRange1` / `weaponRange2` (CalcOffence.lua:1159/:1162).
+    pub weapon_range1: Option<f64>,
+    pub weapon_range2: Option<f64>,
 }
 
 impl ActorState {
@@ -87,6 +90,8 @@ impl ActorState {
             str_dmg_bonus: None,
             applied_enemy_modifiers: None,
             ally_life_list: None,
+            weapon_range1: None,
+            weapon_range2: None,
         }
     }
 }
@@ -135,6 +140,12 @@ pub enum Checkpoint {
     Cp3,
     /// Entry of `calcs.defence(env, env.player)` (:3792).
     Cp4,
+    /// Entry of `calcs.offence(env, env.player, env.player.mainSkill)` (CalcPerform.lua:3799) -- not a probe checkpoint (timing).
+    OcEntry,
+    /// `calcs.offence` (CalcOffence.lua) before :1057 -- after the setup and `preSkillTypeFunc` (R7.1 probe OC1).
+    Oc1,
+    /// `calcs.offence` before :1987 -- after skill type stats, durations, uptime, costs, `preDamageFunc`, explosions (R7.1 probe OC2).
+    Oc2,
 }
 
 /// Called at each [`Checkpoint`] with the env and the player's / enemy's perform state (`actor.output`).
@@ -2732,7 +2743,18 @@ pub fn perform_skip_ehp(
             }
         }
     }
-    skip(env, "3797-3801 triggers / mirages / offence (P5)");
+    // --- :3797-3801 triggers / mirages / offence ([`crate::offence`]) -------------------------------------------------------
+    if skills_on {
+        match crate::offence::triggers_gate(env) {
+            crate::offence::Gate::Unported(what) => env.unimplemented.push(what),
+            crate::offence::Gate::Pass => match crate::offence::mirages_gate(env) {
+                crate::offence::Gate::Unported(what) => env.unimplemented.push(what),
+                crate::offence::Gate::Pass => crate::offence::offence(env, &mut state, hook),
+            },
+        }
+    } else {
+        skip(env, "3797-3801 triggers / mirages / offence (P5)");
+    }
     skip(env, "3803-3990 minion output, buff export, party export (P5)");
     state
 }

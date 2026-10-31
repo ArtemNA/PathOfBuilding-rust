@@ -29,7 +29,7 @@ use pob_items::Item;
 use crate::calculate::{CalcError, CalculateOptions};
 use crate::env::Env;
 use crate::init_env::{InitEnvOptions, init_env_seeded, parse_items};
-use crate::perform::{PerformState, finish_output_spec, mod_db_flag, perform_skip_ehp};
+use crate::perform::{ActorState, Checkpoint, PerformState, finish_output_spec, mod_db_flag, perform_skip_ehp};
 
 /// `env.mode` -- the three keys of `GlobalCache.cachedData`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -225,7 +225,13 @@ pub struct SessionCore {
     depth: Cell<usize>,
     /// A MAIN initEnv has run (it is what fills the shared `build.skillsTab`, CalcSetup.lua:1452).
     main_init_done: Cell<bool>,
+    /// The checkpoint hook every perform of the session runs with ([`CalcSession::set_hook`]); taken out while a perform runs, so a
+    /// perform nested inside it runs without one.
+    hook: RefCell<Option<SessionHook>>,
 }
+
+/// A checkpoint hook owned by the session (R7.3: the offence checkpoints of nested runs, e.g. Dual Savior's first nested env).
+pub type SessionHook = Box<dyn FnMut(Checkpoint, &Env, &ActorState, &ActorState)>;
 
 /// One build's calculator: `calcs.*` entry points over a shared [`GlobalCache`]. Cheap to clone (a handle).
 #[derive(Clone)]
@@ -361,6 +367,7 @@ impl CalcSession {
                 log: RefCell::new(SessionLog::default()),
                 depth: Cell::new(0),
                 main_init_done: Cell::new(false),
+                hook: RefCell::new(None),
             }),
         }
     }
@@ -380,6 +387,12 @@ impl CalcSession {
 
     pub fn log(&self) -> Ref<'_, SessionLog> {
         self.core.log.borrow()
+    }
+
+    /// Every `calcs.perform` the session runs from now on calls `hook` at the [`Checkpoint`]s (the outermost one only while
+    /// performs nest). `None` removes it.
+    pub fn set_hook(&self, hook: Option<SessionHook>) {
+        *self.core.hook.borrow_mut() = hook;
     }
 
     /// `wipeGlobalCache()` (Common.lua:944-948).
@@ -475,7 +488,20 @@ impl CalcSession {
         };
         let t0 = std::time::Instant::now();
         self.core.depth.set(depth + 1);
-        let state = perform_skip_ehp(&mut env, self.core.opts.defence, self.core.opts.estimations, None, skip_ehp);
+        let mut hook = self.core.hook.borrow_mut().take();
+        let state = match hook.as_mut() {
+            Some(h) => perform_skip_ehp(
+                &mut env,
+                self.core.opts.defence,
+                self.core.opts.estimations,
+                Some(&mut **h),
+                skip_ehp,
+            ),
+            None => perform_skip_ehp(&mut env, self.core.opts.defence, self.core.opts.estimations, None, skip_ehp),
+        };
+        if hook.is_some() && self.core.hook.borrow().is_none() {
+            *self.core.hook.borrow_mut() = hook;
+        }
         self.core.depth.set(depth);
         self.core.log.borrow_mut().perform[at].ms = t0.elapsed().as_secs_f64() * 1000.0;
         let run = Rc::new(RefCell::new(CalcRun {

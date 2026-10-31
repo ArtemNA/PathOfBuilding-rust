@@ -105,9 +105,10 @@ fn allowlist_is_the_measured_set() {
     // R4.5: 289 / 246 (ModCache only); R5.4 (ParseMode::Full): 333 / 208; R5.5a (cluster subgraphs): 353 / 188;
     // R5.5b (radius jewels): 354 / 187; R5.5c (timeless jewels): 377 / 164; R6.3 (skills in initEnv, gem requirements): 381 / 160;
     // R6.5 (skills + flasks in perform, CP1 = LuaJIT): 411 / 142; R6.6 (reservations, CP2 = LuaJIT; ReqIntString -> SYNTH_EXCLUDED): 414 / 139;
-    // R6.7 (buffs/debuffs/curses/guards, CP3 = LuaJIT): 542 / 14; R6.8 (ailments/exposures/ally life, CP4 = LuaJIT): 555 / 11
-    assert_eq!(ALLOWLIST.len(), 555, "pinned size of the measured allowlist");
-    assert_eq!(EXCLUDED.len(), 11, "pinned size of the measured exclusions");
+    // R6.7 (buffs/debuffs/curses/guards, CP3 = LuaJIT): 542 / 14; R6.8 (ailments/exposures/ally life, CP4 = LuaJIT): 555 / 11;
+    // R7.3 (offence part A; OC1/OC2 = LuaJIT where the top offence runs): 598 / 13
+    assert_eq!(ALLOWLIST.len(), 598, "pinned size of the measured allowlist");
+    assert_eq!(EXCLUDED.len(), 13, "pinned size of the measured exclusions");
 }
 
 #[test]

@@ -1,0 +1,1011 @@
+//! Hand ports of the skill functions of `Data/Skills/*.lua` (`initialFunc`, `preSkillTypeFunc`, `preDamageFunc`) -- one Rust function
+//! per distinct body (several skills share a body: the registry maps each `<src>:<from>` to one of these). Breakdown tables (R8) are not
+//! built; an output write under `if breakdown` is (MINEFIELD-RUST R8).
+
+use pob_lua::number::{max2, min2};
+use pob_mods::{ModType, Table, Value};
+
+use crate::offence::Off;
+use crate::setup::{misc, mod_flag, tag};
+
+/// `activeSkill.skillPart == n`.
+fn part(off: &Off<'_>, n: f64) -> bool {
+    off.sk().skill_part == Some(n)
+}
+
+/// `skillData[k]` in arithmetic (nil is the Lua error at `src`).
+fn sdn(off: &Off<'_>, k: &str, src: &str) -> f64 {
+    off.sd_num(k, 0)
+        .unwrap_or_else(|| panic!("{src}: attempt to perform arithmetic on field '{k}' (a nil value)"))
+}
+
+/// `skillData[k] or d`.
+fn sd_or(off: &Off<'_>, k: &str, d: f64) -> f64 {
+    off.sd_num(k, 0).unwrap_or(d)
+}
+
+/// `output[k]` in arithmetic.
+fn on(off: &Off<'_>, k: &str) -> f64 {
+    off.out_num(k, 0)
+}
+
+fn set(off: &mut Off<'_>, k: &str, v: f64) {
+    off.set_sd(k, Value::Num(v));
+}
+
+/// `skillModList:Sum(type, skillCfg, ...)`.
+fn sum(off: &Off<'_>, ty: ModType, names: &[&str]) -> f64 {
+    off.q.sum(ty, Some(&off.cfg), names)
+}
+
+fn more(off: &Off<'_>, names: &[&str]) -> f64 {
+    off.q.more(Some(&off.cfg), names)
+}
+
+/// `{ type = "DistanceRamp", ramp = {{a,b},{c,d}} }`.
+fn distance_ramp(pts: [(f64, f64); 2]) -> pob_mods::Tag {
+    let arr = pts
+        .iter()
+        .map(|(a, b)| {
+            Value::table(Table {
+                array: vec![Value::Num(*a), Value::Num(*b)],
+                ..Table::default()
+            })
+        })
+        .collect();
+    tag(&[
+        ("type", Value::str("DistanceRamp")),
+        (
+            "ramp",
+            Value::table(Table {
+                array: arr,
+                ..Table::default()
+            }),
+        ),
+    ])
+}
+
+/// `(skillData.dpsMultiplier or 1) * m`.
+fn mul_dps(off: &mut Off<'_>, m: f64) {
+    let v = sd_or(off, "dpsMultiplier", 1.0) * m;
+    set(off, "dpsMultiplier", v);
+}
+
+/// `skillData.dpsMultiplier = ... ; output.SkillDPSMultiplier = (output.SkillDPSMultiplier or 1) * m` (the `~= 1` guard is the caller's).
+fn mul_dps_out(off: &mut Off<'_>, m: f64) {
+    mul_dps(off, m);
+    let o = off.st.player.output.opt_num("SkillDPSMultiplier").unwrap_or(1.0) * m;
+    off.out().set_num("SkillDPSMultiplier", o);
+}
+
+// --- shared bodies ----------------------------------------------------------------------------------------------------------
+
+/// act_int.lua:715 (ArmageddonBrand, BrandSupport, PenanceBrandAltX/Y, StormBrand/AltX): brand activation frequency.
+pub(super) fn brand_activation(off: &mut Off<'_>) {
+    let v = sdn(off, "repeatFrequency", "act_int.lua:716")
+        / (1.0 + sum(off, ModType::Inc, &["Speed", "BrandActivationFrequency"]) / 100.0)
+        / more(off, &["BrandActivationFrequency"]);
+    set(off, "hitTimeOverride", v);
+}
+
+/// spectre.lua:7277 AzmeriHydraBarrage.
+pub(super) fn dps_eq_projectile_count(off: &mut Off<'_>) {
+    let v = on(off, "ProjectileCount");
+    set(off, "dpsMultiplier", v);
+}
+
+/// act_dex.lua:1026 (Barrage/AltX, BlastRain, VaalLightningArrow).
+pub(super) fn part2_dps_eq_projectile_count(off: &mut Off<'_>) {
+    if part(off, 2.0) {
+        dps_eq_projectile_count(off);
+    }
+}
+
+/// act_int.lua:1086 BallLightning (the `NormalHitsPerCast` output is written under `if breakdown`, R8).
+pub(super) fn ball_lightning(off: &mut Off<'_>) {
+    let mut dps = 0.0;
+    if part(off, 1.0) {
+        dps = 1.0;
+    } else if part(off, 2.0) {
+        let secs = sdn(off, "strikeInterval", "act_int.lua:1116");
+        let duration = sdn(off, "duration", "act_int.lua:1122");
+        let max_strikes = (duration / secs).floor();
+        let base_speed = sdn(off, "projectileSpeed", "act_int.lua:1125");
+        let (inc, more_) = off.q.calc_mods(Some(&off.cfg), &["ProjectileSpeed"]);
+        let ball_dist_per_sec = base_speed * (inc * more_);
+        let per_strike = ball_dist_per_sec * secs;
+        let enemy_radius = off
+            .q
+            .override_num(Some(&off.cfg), &["EnemyRadius"], "act_int.lua:1132")
+            .unwrap_or_else(|| sum(off, ModType::Base, &["EnemyRadius"]));
+        let base_strike_radius = on(off, "AreaOfEffectRadius");
+        let strike_radius = base_strike_radius + enemy_radius;
+        let cast_dist = if let Some(d) = off.cfg.skill_dist {
+            d
+        } else if off.flag("triggered") {
+            (base_strike_radius / 2.0).floor()
+        } else {
+            base_strike_radius
+        };
+        let first = max2(1.0, ((cast_dist - strike_radius) / per_strike).ceil());
+        let last = (min2(misc("ProjectileDistanceCap"), cast_dist + strike_radius) / per_strike).floor();
+        let num = max2(0.0, min2(max_strikes, last + 1.0 - first));
+        dps = num;
+        if off.breakdown {
+            off.out().set_num("NormalHitsPerCast", num);
+        }
+    }
+    if dps != 1.0 {
+        mul_dps_out(off, dps);
+    }
+}
+
+/// act_int.lua:1252 BallLightningAltX.
+pub(super) fn ball_lightning_alt_x(off: &mut Off<'_>) {
+    if part(off, 2.0) || part(off, 3.0) {
+        let n = (sdn(off, "duration", "act_int.lua:1259") / sdn(off, "strikeInterval", "act_int.lua:1258")).floor();
+        if n != 1.0 {
+            mul_dps_out(off, n);
+        }
+        off.out().set_num("NormalHitsPerCast", n);
+    }
+}
+
+/// act_int.lua:1375 BallLightningAltY.
+pub(super) fn ball_lightning_alt_y(off: &mut Off<'_>) {
+    let n = (sdn(off, "duration", "act_int.lua:1380") / sdn(off, "strikeInterval", "act_int.lua:1379")).floor();
+    mul_dps(off, n);
+    off.out().set_num("NormalHitsPerCast", n);
+    let o = off.st.player.output.opt_num("SkillDPSMultiplier").unwrap_or(1.0) * n;
+    off.out().set_num("SkillDPSMultiplier", o);
+}
+
+/// act_int.lua:1470 Bane / BaneAltX (preSkillTypeFunc).
+pub(super) fn bane(off: &mut Off<'_>) {
+    let limit = off.st.player.output.opt_num("EnemyCurseLimit");
+    let mut count = 0.0;
+    let st = off.env.skills.as_ref().expect("skills on");
+    let me = st.active_skill_list[off.i].socket_group;
+    for (j, sk) in st.active_skill_list.iter().enumerate() {
+        if sk.socket_group == me {
+            let list = crate::perform::skill_list_of(off.env, j);
+            // `skill.skillModList:GetCondition("AppliedByBane")` -- no cfg
+            crate::perform::skill_guard(&sk.malformed_mods, &["Condition:AppliedByBane"]);
+            if crate::setup::ok(list.borrow().get_condition("AppliedByBane", None, false)) == Some(true) {
+                count += 1.0;
+                if Some(count) == limit {
+                    break;
+                }
+            }
+        }
+    }
+    off.q.nm("Multiplier:CurseApplied", ModType::Base, count, "Base", 0, 0, vec![]);
+}
+
+/// act_dex.lua:1374 BladeBlast / AltX.
+pub(super) fn blade_blast(off: &mut Off<'_>) {
+    let m = sdn(off, "dpsBaseMultiplier", "act_dex.lua:1375");
+    mul_dps(off, m);
+    if part(off, 2.0) {
+        set(off, "hitTimeOverride", 1.0);
+    }
+}
+
+/// act_dex.lua:1906 BladeFlurry / AltX.
+pub(super) fn blade_flurry(off: &mut Off<'_>) {
+    if part(off, 2.0) && sdn(off, "numStages", "act_dex.lua:1907") > 0.0 {
+        let n = sdn(off, "numStages", "act_dex.lua:1908");
+        let mut multi = 0.0;
+        let mut i = 1.0;
+        while i <= n {
+            multi += 0.8 + 0.2 * i;
+            i += 1.0;
+        }
+        multi /= 0.8 + 0.2 * n;
+        set(off, "dpsMultiplier", multi / n + 1.0);
+    }
+}
+
+/// act_dex.lua:2209 BladeVortex.
+pub(super) fn blade_vortex(off: &mut Off<'_>) {
+    let v = sdn(off, "hitFrequency", "act_dex.lua:2210")
+        / (1.0 + sum(off, ModType::Base, &["Multiplier:BladeVortexBlade"]) * sdn(off, "hitFrequencyPerBlade", "act_dex.lua:2210"));
+    set(off, "hitTimeOverride", v);
+}
+
+/// act_dex.lua:2787 BladefallAltZ.
+pub(super) fn bladefall_alt_z(off: &mut Off<'_>) {
+    let v = sdn(off, "hitFrequency", "act_dex.lua:2788") / (1.0 + sdn(off, "incVolleyFrequency", "act_dex.lua:2788") / 100.0);
+    set(off, "hitTimeOverride", v);
+}
+
+/// act_int.lua:1823 BlazingSalvo.
+pub(super) fn blazing_salvo(off: &mut Off<'_>) {
+    if part(off, 2.0) {
+        let pc = on(off, "ProjectileCount");
+        mul_dps(off, pc);
+    }
+}
+
+/// other.lua:669 BloodSacramentUnique (initialFunc).
+pub(super) fn blood_sacrament(off: &mut Off<'_>) {
+    if on(off, "LifeReservedPercent") >= 100.0 {
+        return;
+    }
+    let pct = sd_or(off, "LifeReservedPercent", 3.0);
+    let base = sd_or(off, "LifeReservedBase", f64::INFINITY);
+    off.q.nm(
+        "Multiplier:ChannelledLifeReservedPercentPerStage",
+        ModType::Base,
+        pct,
+        "Blood Sacrament",
+        0,
+        0,
+        vec![],
+    );
+    off.q.nm(
+        "Multiplier:ChannelledLifeReservedPerStage",
+        ModType::Base,
+        base,
+        "Blood Sacrament",
+        0,
+        0,
+        vec![],
+    );
+}
+
+/// act_int.lua:2298 Bodyswap / AltX.
+pub(super) fn bodyswap(off: &mut Off<'_>) {
+    if part(off, 1.0) {
+        let pool = if off.flag("totem") { on(off, "TotemLife") } else { on(off, "Life") };
+        let v = pool * sdn(off, "selfFireExplosionLifeMultiplier", "act_int.lua:2302");
+        set(off, "FireBonusMin", v);
+        set(off, "FireBonusMax", v);
+    }
+}
+
+fn charged_dash_with(off: &mut Off<'_>, src: &str) {
+    if part(off, 3.0) {
+        let v = sum(off, ModType::Inc, &["chargedDashFinalDamageModifier"]);
+        let t = tag(&[("type", Value::str("Release Damage")), ("skillPart", Value::Num(3.0))]);
+        off.q.nm("Damage", ModType::More, v, src, mod_flag("Attack"), 0, vec![t]);
+    }
+}
+
+/// act_dex.lua:3939 ChargedDash.
+pub(super) fn charged_dash(off: &mut Off<'_>) {
+    charged_dash_with(off, "Skill:ChargedDash");
+}
+
+/// act_dex.lua:4064 ChargedDashAltX.
+pub(super) fn charged_dash_alt_x(off: &mut Off<'_>) {
+    charged_dash_with(off, "Skill:ChargedDashAltX");
+}
+
+fn cremation_rate(off: &mut Off<'_>) {
+    let v = sdn(off, "cremationFireRate", "act_dex.lua:4357") / (1.0 + sd_or(off, "cremationFireRateIncrease", 0.0));
+    set(off, "hitTimeOverride", v);
+}
+
+/// act_dex.lua:4355 Cremation / AltX.
+pub(super) fn cremation_part1(off: &mut Off<'_>) {
+    if part(off, 1.0) {
+        cremation_rate(off);
+    }
+}
+
+/// act_dex.lua:4592 CremationAltY.
+pub(super) fn cremation(off: &mut Off<'_>) {
+    cremation_rate(off);
+}
+
+fn cyclone_with(off: &mut Off<'_>, src: &str) {
+    let w = |off: &Off<'_>, n: u8, k: &str| -> Value {
+        let p = off.env.player.borrow();
+        if n == 1 { p.weapon_data1.get(k) } else { p.weapon_data2.get(k) }
+    };
+    let num = |v: Value, site: &str| {
+        v.as_num()
+            .unwrap_or_else(|| panic!("{site}: attempt to perform arithmetic on field 'rangeBonus'"))
+    };
+    let range = if off.flag("weapon1Attack") && w(off, 1, "range").truthy() {
+        let c1 = off.weapon_cfg(1);
+        let b1 = off.q.base(c1.as_ref(), &["MeleeWeaponRange"])
+            + 10.0 * off.q.base(c1.as_ref(), &["MeleeWeaponRangeMetre"])
+            + num(w(off, 1, "rangeBonus"), "act_dex.lua:4706");
+        if off.flag("weapon2Attack") && w(off, 2, "range").truthy() {
+            let c2 = off.weapon_cfg(2);
+            (b1 + off.q.base(c2.as_ref(), &["MeleeWeaponRange"])
+                + 10.0 * off.q.base(c2.as_ref(), &["MeleeWeaponRangeMetre"])
+                + num(w(off, 2, "rangeBonus"), "act_dex.lua:4708"))
+                / 2.0
+        } else {
+            b1
+        }
+    } else {
+        sum(off, ModType::Base, &["UnarmedRange"]) + 10.0 * sum(off, ModType::Base, &["UnarmedRangeMetre"])
+    };
+    off.q.nm("Multiplier:AdditionalMeleeRange", ModType::Base, range, src, 0, 0, vec![]);
+}
+
+/// act_dex.lua:4703 Cyclone / VaalCyclone (initialFunc).
+pub(super) fn cyclone(off: &mut Off<'_>) {
+    cyclone_with(off, "Skill:Cyclone");
+}
+
+/// act_dex.lua:4809 CycloneAltX (initialFunc).
+pub(super) fn cyclone_alt_x(off: &mut Off<'_>) {
+    cyclone_with(off, "Skill:CycloneAltX");
+}
+
+/// act_int.lua:3889 DarkPact.
+pub(super) fn dark_pact(off: &mut Off<'_>) {
+    let life = if part(off, 1.0) {
+        if off.flag("totem") { on(off, "TotemLife") } else { on(off, "Life") }
+    } else {
+        sd_or(off, "skeletonLife", 0.0)
+    };
+    let add = life * sdn(off, "lifeDealtAsChaos", "act_int.lua:3901") / 100.0;
+    let (mn, mx) = (sdn(off, "ChaosMin", "act_int.lua:3902"), sdn(off, "ChaosMax", "act_int.lua:3903"));
+    set(off, "ChaosMin", mn + add);
+    set(off, "ChaosMax", mx + add);
+}
+
+/// act_int.lua:4006 DarkPactAltX.
+pub(super) fn dark_pact_alt_x(off: &mut Off<'_>) {
+    let life = if off.flag("totem") { on(off, "TotemLife") } else { on(off, "Life") };
+    let add = life * sdn(off, "percentageLifeSacrificed", "act_int.lua:4013") / 100.0
+        * (sdn(off, "percentageSacrificedDealtAsChaos", "act_int.lua:4013") / 100.0);
+    let (mn, mx) = (sdn(off, "ChaosMin", "act_int.lua:4015"), sdn(off, "ChaosMax", "act_int.lua:4016"));
+    let a = if part(off, 2.0) {
+        add.floor()
+    } else {
+        let casts = 7.0 / (1.0 + min2(100.0, sd_or(off, "additionalRuinChance", 0.0)) / 100.0);
+        (add / casts).floor()
+    };
+    set(off, "ChaosMin", mn + a);
+    set(off, "ChaosMax", mx + a);
+}
+
+/// other.lua:1282 DeathWish.
+pub(super) fn death_wish(off: &mut Off<'_>) {
+    if part(off, 2.0) {
+        let v = on(off, "Life") * sdn(off, "selfFireExplosionLifeMultiplier", "other.lua:1285");
+        set(off, "FireBonusMin", v);
+        set(off, "FireBonusMax", v);
+    }
+}
+
+fn divine_ire_with(off: &mut Off<'_>, var: &str) {
+    let v = sum(off, ModType::Base, &[var]);
+    set(off, "hitTimeMultiplier", v);
+}
+
+/// act_int.lua:4602 DivineIre.
+pub(super) fn divine_ire(off: &mut Off<'_>) {
+    if part(off, 2.0) {
+        divine_ire_with(off, "Multiplier:DivineIreStage");
+    }
+}
+
+/// act_int.lua:4712 DivineIreAltX.
+pub(super) fn divine_ire_alt_x(off: &mut Off<'_>) {
+    if part(off, 2.0) {
+        divine_ire_with(off, "Multiplier:DivineIreofHolyLightningStage");
+    }
+}
+
+/// act_int.lua:4823 DivineIreAltY.
+pub(super) fn divine_ire_alt_y(off: &mut Off<'_>) {
+    divine_ire_with(off, "Multiplier:DivineIreofDisintegrationStage");
+}
+
+/// `math.floor(skillData.duration * output.DurationMod * 10)`.
+fn duration_100ms(off: &Off<'_>, site: &str) -> f64 {
+    (sdn(off, "duration", site) * on(off, "DurationMod") * 10.0).floor()
+}
+
+/// act_str.lua:3363 Earthquake.
+pub(super) fn earthquake(off: &mut Off<'_>) {
+    let d = duration_100ms(off, "act_str.lua:3364");
+    let v = sum(off, ModType::Inc, &["EarthquakeDurationIncDamage"]) * d;
+    off.q.nm("Damage", ModType::Inc, v, "Skill:Earthquake", 0, 0, vec![]);
+}
+
+fn eye_of_winter_with(off: &mut Off<'_>, src: &str) {
+    let v = sum(off, ModType::Base, &["EyeOfWinterRamp"]);
+    let t = distance_ramp([(0.0, 0.0), (60.0 * on(off, "ProjectileSpeedMod"), 1.0)]);
+    off.q.nm("Damage", ModType::More, v, src, 0, 0, vec![t]);
+}
+
+pub(super) fn eye_of_winter(off: &mut Off<'_>) {
+    eye_of_winter_with(off, "Skill:EyeOfWinter");
+}
+pub(super) fn eye_of_winter_alt_x(off: &mut Off<'_>) {
+    eye_of_winter_with(off, "Skill:EyeOfWinterAltX");
+}
+pub(super) fn eye_of_winter_alt_y(off: &mut Off<'_>) {
+    eye_of_winter_with(off, "Skill:EyeOfWinterAltY");
+}
+
+fn flameblast_with(off: &mut Off<'_>, var: &str) {
+    let v = max2(
+        sum(off, ModType::Base, &[var]) - sum(off, ModType::Base, &["Multiplier:FlameblastMinimumStage"]),
+        1.0,
+    );
+    set(off, "hitTimeMultiplier", v);
+}
+
+pub(super) fn flameblast(off: &mut Off<'_>) {
+    flameblast_with(off, "Multiplier:FlameblastStage");
+}
+pub(super) fn flameblast_alt_x(off: &mut Off<'_>) {
+    flameblast_with(off, "Multiplier:FlameblastofCelerityStage");
+}
+pub(super) fn flameblast_alt_y(off: &mut Off<'_>) {
+    flameblast_with(off, "Multiplier:FlameblastofContractionStage");
+}
+
+/// `output.Duration / output.TrapCooldown` -> `output.AverageActiveTraps`.
+fn average_active_traps(off: &mut Off<'_>) -> f64 {
+    let v = on(off, "Duration") / on(off, "TrapCooldown");
+    off.out().set_num("AverageActiveTraps", v);
+    v
+}
+
+/// act_dex.lua:7691 FlamethrowerTrap.
+pub(super) fn flamethrower_trap(off: &mut Off<'_>) {
+    let avg = average_active_traps(off);
+    let t = if part(off, 2.0) || part(off, 4.0) { 0.3 } else { 0.1 };
+    set(off, "hitTimeOverride", t);
+    if part(off, 3.0) || part(off, 4.0) {
+        mul_dps(off, avg);
+    }
+}
+
+/// act_dex.lua:7809 FlamethrowerTrapAltX.
+pub(super) fn flamethrower_trap_alt_x(off: &mut Off<'_>) {
+    let avg = average_active_traps(off);
+    set(off, "hitTimeOverride", 0.1);
+    mul_dps(off, avg);
+}
+
+/// act_int.lua:7686 FreezingPulse.
+pub(super) fn freezing_pulse(off: &mut Off<'_>) {
+    let psm = on(off, "ProjectileSpeedMod");
+    off.q.nm(
+        "Damage",
+        ModType::More,
+        -50.0,
+        "Skill:FreezingPulse",
+        0,
+        0,
+        vec![distance_ramp([(0.0, 0.0), (60.0 * psm, 1.0)])],
+    );
+    off.q.nm(
+        "EnemyFreezeChance",
+        ModType::Base,
+        25.0,
+        "Skill:FreezingPulse",
+        0,
+        0,
+        vec![distance_ramp([(0.0, 1.0), (15.0 * psm, 0.0)])],
+    );
+}
+
+/// act_int.lua:7933 FrostBombAltY.
+pub(super) fn frost_bomb_alt_y(off: &mut Off<'_>) {
+    let d = duration_100ms(off, "act_int.lua:7934");
+    off.q.nm(
+        "Multiplier:100msFrostBombDuration",
+        ModType::Base,
+        d,
+        "Skill:FrostBombAltY",
+        0,
+        0,
+        vec![],
+    );
+}
+
+/// act_int.lua:8543 GalvanicField / AltX.
+pub(super) fn hit_time_repeat_frequency(off: &mut Off<'_>) {
+    let v = sdn(off, "repeatFrequency", "act_int.lua:8544");
+    set(off, "hitTimeOverride", v);
+}
+
+/// act_str.lua:5743 HeraldOfAsh.
+pub(super) fn herald_of_ash(off: &mut Off<'_>) {
+    let v = sd_or(off, "hoaOverkill", 0.0)
+        * (1.0 + sdn(off, "hoaMoreBurn", "act_str.lua:5744") / 100.0)
+        * sdn(off, "hoaOverkillPercent", "act_str.lua:5744");
+    set(off, "FireDot", v);
+}
+
+/// `repeatFrequency / (1 + INC(var) / 100)`.
+fn repeat_over_inc(off: &mut Off<'_>, var: &str, site: &str) {
+    let v = sdn(off, "repeatFrequency", site) / (1.0 + sum(off, ModType::Inc, &[var]) / 100.0);
+    set(off, "hitTimeOverride", v);
+}
+
+pub(super) fn herald_of_the_breach(off: &mut Off<'_>) {
+    repeat_over_inc(off, "PulseFrequencyPerPressure", "other.lua:2259");
+}
+pub(super) fn herald_of_thunder(off: &mut Off<'_>) {
+    repeat_over_inc(off, "HeraldStormFrequency", "act_int.lua:9384");
+}
+pub(super) fn hydrosphere(off: &mut Off<'_>) {
+    if part(off, 1.0) || part(off, 2.0) || part(off, 3.0) {
+        repeat_over_inc(off, "HydroSphereFrequency", "act_int.lua:8974");
+    }
+}
+pub(super) fn static_strike(off: &mut Off<'_>) {
+    if part(off, 2.0) {
+        repeat_over_inc(off, "StaticStrikeFrequency", "act_str.lua:10728");
+    }
+}
+pub(super) fn void_sphere(off: &mut Off<'_>) {
+    repeat_over_inc(off, "VoidSphereFrequency", "act_int.lua:20268");
+}
+
+/// act_int.lua:9805 IceSpear / AltX.
+pub(super) fn ice_spear(off: &mut Off<'_>) {
+    if part(off, 3.0) || part(off, 4.0) {
+        let pc = on(off, "ProjectileCount");
+        mul_dps(off, pc);
+    }
+}
+
+fn incinerate_with(off: &mut Off<'_>, var: &str) {
+    if part(off, 2.0) {
+        let v = max2(
+            sum(off, ModType::Base, &[var]) - sum(off, ModType::Base, &["Multiplier:IncinerateMinimumStage"]) - 0.4175,
+            0.5825,
+        );
+        set(off, "hitTimeMultiplier", v);
+    }
+}
+
+pub(super) fn incinerate(off: &mut Off<'_>) {
+    incinerate_with(off, "Multiplier:IncinerateStage");
+}
+pub(super) fn incinerate_alt_x(off: &mut Off<'_>) {
+    incinerate_with(off, "Multiplier:IncinerateofExpanseStage");
+}
+pub(super) fn incinerate_alt_y(off: &mut Off<'_>) {
+    incinerate_with(off, "Multiplier:IncinerateofVentingStage");
+}
+
+fn infernal_blow_with(off: &mut Off<'_>, src: &str) {
+    let effect = sum(off, ModType::Base, &["DebuffEffect"]);
+    if part(off, 2.0) || part(off, 3.0) {
+        let t = tag(&[
+            ("type", Value::str("Multiplier")),
+            ("var", Value::str("DebuffStack")),
+            ("base", Value::Num(-100.0 + effect)),
+        ]);
+        off.q.nm("Damage", ModType::More, effect, src, 0, 0, vec![t]);
+    }
+    if part(off, 3.0) {
+        set(off, "dpsMultiplier", 1.0 / 6.0);
+    }
+}
+
+pub(super) fn infernal_blow(off: &mut Off<'_>) {
+    infernal_blow_with(off, "Skill:InfernalBlow");
+}
+pub(super) fn infernal_blow_alt_x(off: &mut Off<'_>) {
+    infernal_blow_with(off, "Skill:InfernalBlowAltX");
+}
+
+fn kinetic_fusillade_with(off: &mut Off<'_>, src: &str) {
+    if part(off, 1.0) {
+        let pc = on(off, "ProjectileCount");
+        set(off, "dpsMultiplier", pc);
+        let per = sd_or(off, "damagePerProjectile", 0.0);
+        if per != 0.0 && pc > 1.0 {
+            let avg = per * (pc - 1.0) / 2.0;
+            off.q.nm("Damage", ModType::More, avg, src, 0, 0, vec![]);
+            off.out().set_num("KineticFusilladeAvgMoreMult", avg);
+        }
+    }
+}
+
+pub(super) fn kinetic_fusillade(off: &mut Off<'_>) {
+    kinetic_fusillade_with(off, "Skill:KineticFusillade");
+}
+pub(super) fn kinetic_fusillade_alt_x(off: &mut Off<'_>) {
+    kinetic_fusillade_with(off, "Skill:KineticFusilladeAltX");
+}
+
+fn lancing_steel_with(off: &mut Off<'_>, src: &str) {
+    if part(off, 2.0) {
+        let pc = on(off, "ProjectileCount");
+        let pct = (pc - 1.0) / pc;
+        let mult = (more(off, &["LancingSteelSubsequentDamage"]) - 1.0) * 100.0 * pct;
+        set(off, "dpsMultiplier", pc);
+        off.q.nm("Damage", ModType::More, mult, src, 0, 0, vec![]);
+    }
+}
+
+pub(super) fn lancing_steel(off: &mut Off<'_>) {
+    lancing_steel_with(off, "Skill:LancingSteel");
+}
+pub(super) fn lancing_steel_alt_x(off: &mut Off<'_>) {
+    lancing_steel_with(off, "Skill:LancingSteelAltX");
+}
+
+/// other.lua:2596 LightningBolt, Vortex / AltX: `hitTimeOverride = output.Cooldown` (nil stays nil).
+pub(super) fn hit_time_cooldown(off: &mut Off<'_>) {
+    let v = off.out_val("Cooldown");
+    off.set_sd("hitTimeOverride", v);
+}
+
+/// act_int.lua:12642 LightningTendrilsAltX.
+pub(super) fn lightning_tendrils_alt_x(off: &mut Off<'_>) {
+    let interval = sdn(off, "pulseInterval", "act_int.lua:12644");
+    if part(off, 2.0) {
+        let t = tag(&[("type", Value::str("SkillPart")), ("skillPart", Value::Num(2.0))]);
+        off.q
+            .nm("DPS", ModType::More, -(1.0 / interval) * 100.0, "Normal pulse", 0, 0, vec![t]);
+    } else if part(off, 3.0) {
+        let t = tag(&[("type", Value::str("SkillPart")), ("skillPart", Value::Num(3.0))]);
+        off.q.nm(
+            "DPS",
+            ModType::More,
+            -(interval - 1.0) / interval * 100.0,
+            "Stronger pulse",
+            0,
+            0,
+            vec![t],
+        );
+    }
+}
+
+/// act_int.lua:13527 Manabond.
+pub(super) fn manabond(off: &mut Off<'_>) {
+    let missing = sd_or(off, "ManabondMissingUnreservedManaPercentage", 100.0);
+    let gain = sdn(off, "ManabondMissingManaGainPercent", "act_int.lua:13529");
+    let unreserved = off.st.player.output.opt_num("ManaUnreserved").unwrap_or(0.0);
+    let v = ((gain / 100.0) * (missing / 100.0) * unreserved).floor();
+    let src = "Manabond gain % missing unreserved mana as base lightning damage";
+    off.q.nm("LightningMin", ModType::Base, v, src, 0, 0, vec![]);
+    off.q.nm("LightningMax", ModType::Base, v, src, 0, 0, vec![]);
+}
+
+fn molten_shell_with(off: &mut Off<'_>, key: &str) {
+    let add = sd_or(off, key, 0.0) * sdn(off, "moltenShellReflect", "act_str.lua:7600") / 100.0;
+    set(off, "FireMin", add);
+    set(off, "FireMax", add);
+}
+
+pub(super) fn molten_shell(off: &mut Off<'_>) {
+    molten_shell_with(off, "MoltenShellDamageMitigated");
+}
+pub(super) fn vaal_molten_shell(off: &mut Off<'_>) {
+    molten_shell_with(off, "VaalMoltenShellDamageMitigated");
+}
+
+/// The overlap chance of MoltenStrike / AltX (:7842-7851); `None` on the melee part.
+fn molten_overlap(off: &mut Off<'_>) -> Option<f64> {
+    if part(off, 1.0) {
+        return None;
+    }
+    let enemy_radius = off
+        .q
+        .override_num(Some(&off.cfg), &["EnemyRadius"], "act_str.lua:7843")
+        .unwrap_or_else(|| sum(off, ModType::Base, &["EnemyRadius"]));
+    let ball = on(off, "AreaOfEffectRadius");
+    let inner = on(off, "AreaOfEffectRadiusSecondary");
+    let outer = on(off, "AreaOfEffectRadiusTertiary");
+    let overlap = min2(1.0, (enemy_radius + ball - inner) / (outer - inner));
+    off.out().set_num("OverlapChance", overlap * 100.0);
+    Some(overlap)
+}
+
+/// act_str.lua:7832 MoltenStrike.
+pub(super) fn molten_strike(off: &mut Off<'_>) {
+    let Some(overlap) = molten_overlap(off) else { return };
+    let n = on(off, "ProjectileCount");
+    let dps = if part(off, 3.0) { overlap * n } else { 1.0 };
+    if dps != 1.0 {
+        mul_dps_out(off, dps);
+    }
+}
+
+/// act_str.lua:8011 MoltenStrikeAltX.
+pub(super) fn molten_strike_alt_x(off: &mut Off<'_>) {
+    let Some(overlap) = molten_overlap(off) else { return };
+    let n = on(off, "ProjectileCount");
+    let mut dps = 1.0;
+    if part(off, 3.0) || part(off, 5.0) || part(off, 6.0) {
+        dps = overlap * n;
+        if part(off, 6.0) {
+            let fifth = 1.0 + sdn(off, "FifthStrikeDamage", "act_str.lua:8068") / 100.0;
+            let fifth_overall = fifth * overlap * (n + sdn(off, "FifthStrikeProjectiles", "act_str.lua:8069"));
+            dps = 0.8 * dps + 0.2 * fifth_overall;
+        }
+    }
+    if dps != 1.0 {
+        mul_dps_out(off, dps);
+    }
+}
+
+/// act_int.lua:13621 OrbOfStorms.
+pub(super) fn orb_of_storms(off: &mut Off<'_>) {
+    let v = sdn(off, "hitFrequency", "act_int.lua:13622") / off.q.calc_mod(Some(&off.cfg), &["Speed"]);
+    set(off, "hitTimeOverride", v);
+}
+
+/// act_int.lua:13809 PenanceBrand.
+pub(super) fn penance_brand(off: &mut Off<'_>) {
+    let v = sdn(off, "repeatFrequency", "act_int.lua:13810") * sum(off, ModType::Base, &["Multiplier:PenanceBrandMaxEnergy"])
+        / (1.0 + sum(off, ModType::Inc, &["Speed", "BrandActivationFrequency"]) / 100.0)
+        / more(off, &["BrandActivationFrequency"]);
+    set(off, "hitTimeOverride", v);
+}
+
+/// act_str.lua:8304 Perforate / AltX / AltY.
+pub(super) fn perforate(off: &mut Off<'_>) {
+    let v = max2(sd_or(off, "dpsMultiplier", 1.0), 1.0);
+    set(off, "dpsMultiplier", v);
+}
+
+/// act_dex.lua:17423 PoisonousConcoction / AltX.
+pub(super) fn poisonous_concoction(off: &mut Off<'_>) {
+    let multiplier = sum(off, ModType::Base, &["ChaosPerLifeFlaskPercent"]);
+    let added = off.st.player.output.opt_num("LifeFlaskRecovery").unwrap_or(0.0) * (multiplier / 100.0);
+    off.q
+        .nm("ChaosMin", ModType::Base, added, "Life Flask charges consumed", 0, 0, vec![]);
+    off.q
+        .nm("ChaosMax", ModType::Base, added, "Life Flask charges consumed", 0, 0, vec![]);
+}
+
+/// act_str.lua:9082 RageVortex (preSkillTypeFunc).
+pub(super) fn rage_vortex(off: &mut Off<'_>) {
+    if part(off, 2.0) {
+        let max_rage = sum(off, ModType::Base, &["MaximumRage"]);
+        let pct = sdn(off, "MaxRageVortexSacrificePercentage", "act_str.lua:9085") / 100.0;
+        let config_override = sum(off, ModType::Base, &["Multiplier:RageSacrificedStacks"]);
+        let max_sacrificed = (pct * max_rage).floor();
+        let stacks = min2(if config_override > 0.0 { config_override } else { max_sacrificed }, max_sacrificed);
+        off.q
+            .nm("Multiplier:RageSacrificed", ModType::Base, stacks, "Skill:RageVortex", 0, 0, vec![]);
+    }
+}
+
+/// act_int.lua:15428 RighteousFire.
+pub(super) fn righteous_fire(off: &mut Off<'_>) {
+    if off.flag("totem") && on(off, "TotemLife") > 1.0 {
+        let v = on(off, "TotemLife") * sdn(off, "RFLifeMultiplier", "act_int.lua:15430")
+            + on(off, "TotemEnergyShield") * sdn(off, "RFESMultiplier", "act_int.lua:15430");
+        set(off, "FireDot", v);
+    } else if on(off, "LifeUnreserved") > 1.0 {
+        let v = on(off, "Life") * sdn(off, "RFLifeMultiplier", "act_int.lua:15432")
+            + on(off, "EnergyShield") * sdn(off, "RFESMultiplier", "act_int.lua:15432");
+        set(off, "FireDot", v);
+    }
+}
+
+/// act_int.lua:15533 RighteousFireAltX.
+pub(super) fn righteous_fire_alt_x(off: &mut Off<'_>) {
+    if on(off, "LifeUnreserved") > 1.0 {
+        let v = on(off, "Mana") * sdn(off, "RFManaMultiplier", "act_int.lua:15535");
+        set(off, "FireDot", v);
+    }
+}
+
+/// act_int.lua:15625 VaalRighteousFire.
+pub(super) fn vaal_righteous_fire(off: &mut Off<'_>) {
+    let pool = if off.flag("totem") {
+        on(off, "TotemLife")
+    } else {
+        on(off, "Life") + on(off, "EnergyShield")
+    };
+    let v = pool * sdn(off, "percentSacrificed", "act_int.lua:15627") * sdn(off, "RFMultiplier", "act_int.lua:15627");
+    set(off, "FireDot", v);
+}
+
+/// act_dex.lua:12990 ScourgeArrow -- `cfg` is an undefined global (nil).
+pub(super) fn scourge_arrow(off: &mut Off<'_>) {
+    let v = max2(off.q.base(None, &["Multiplier:ScourgeArrowStage"]) - 0.5, 0.5);
+    set(off, "hitTimeMultiplier", v);
+}
+
+/// act_dex.lua:13779 ShrapnelBallista / AltX.
+pub(super) fn shrapnel_ballista(off: &mut Off<'_>) {
+    if !off.q.flag(None, &["SequentialProjectiles"]) {
+        let pc = on(off, "ProjectileCount");
+        let overlap = off
+            .sd_num("ShrapnelBallistaProjectileOverlap", 0)
+            .unwrap_or(if off.has_type("Rain") { pc } else { 1.0 });
+        mul_dps(off, min2(overlap, pc));
+    }
+    let split = off.st.player.output.opt_num("SplitCount").unwrap_or(0.0);
+    if split > 0.0 {
+        let t = tag(&[("type", Value::str("Condition")), ("var", Value::str("ReturningProjectile"))]);
+        off.q.nm("DPS", ModType::More, split * 100.0, "Split Return", 0, 0, vec![t]);
+    }
+}
+
+/// act_int.lua:16721 Spark / AltX / AltY.
+pub(super) fn spark(off: &mut Off<'_>) {
+    if part(off, 2.0) {
+        let n = 1.0 + (on(off, "Duration") / 0.66).floor();
+        mul_dps(off, n);
+        let v = sdn(off, "dpsMultiplier", "act_int.lua:16725");
+        off.out().set_num("SkillDPSMultiplier", v);
+    }
+}
+
+/// act_int.lua:18036 StormBurst.
+pub(super) fn storm_burst(off: &mut Off<'_>) {
+    if part(off, 2.0) {
+        let duration = sdn(off, "duration", "act_int.lua:18038") * on(off, "DurationMod");
+        let jump = sdn(off, "repeatFrequency", "act_int.lua:18040") * 10.0;
+        mul_dps(off, 1.0 + (duration * 10.0 / jump).floor());
+    } else if part(off, 3.0) {
+        storm_burst_remaining(off, "act_int.lua:18044");
+    }
+}
+
+fn storm_burst_remaining(off: &mut Off<'_>, site: &str) {
+    let jumps = ((sdn(off, "duration", site) * on(off, "DurationMod") + 0.001) / sdn(off, "repeatFrequency", site)).floor();
+    let v = max2(sdn(off, "remainingDurationDamage", site) * jumps - 100.0, 0.0);
+    off.q.nm("Damage", ModType::More, v, "Skill:StormBurst", 0, 0, vec![]);
+}
+
+/// act_int.lua:18151 StormBurstAltX.
+pub(super) fn storm_burst_alt_x(off: &mut Off<'_>) {
+    if part(off, 2.0) {
+        storm_burst_remaining(off, "act_int.lua:18153");
+    }
+}
+
+fn storm_rain_rate(off: &mut Off<'_>) {
+    let v = sdn(off, "hitFrequency", "act_dex.lua:11749") / (1.0 + sum(off, ModType::Inc, &["StormRainBeamFrequency"]) / 100.0);
+    set(off, "hitTimeOverride", v);
+}
+
+pub(super) fn storm_rain(off: &mut Off<'_>) {
+    if part(off, 2.0) {
+        storm_rain_rate(off);
+        let v = sd_or(off, "beamOverlapMultiplier", 1.0);
+        set(off, "dpsMultiplier", v);
+    }
+}
+pub(super) fn storm_rain_alt_x(off: &mut Off<'_>) {
+    if part(off, 2.0) {
+        storm_rain_rate(off);
+        let v = min2(
+            sd_or(off, "activeArrowMultiplier", 1.0),
+            sum(off, ModType::Base, &["StormRainAllowedStormArrows"]),
+        );
+        set(off, "dpsMultiplier", v);
+    }
+}
+pub(super) fn storm_rain_alt_y(off: &mut Off<'_>) {
+    if part(off, 2.0) {
+        storm_rain_rate(off);
+        let v = sum(off, ModType::Base, &["StormRainAllowedStormArrows"]);
+        set(off, "dpsMultiplier", v);
+    }
+}
+
+/// act_dex.lua:18034 Tornado.
+pub(super) fn tornado(off: &mut Off<'_>) {
+    let v = off.sd("damageInterval");
+    off.set_sd("hitTimeOverride", v);
+}
+
+/// act_dex.lua:18127 TornadoAltY.
+pub(super) fn tornado_alt_y(off: &mut Off<'_>) {
+    tornado(off);
+    let v = sum(off, ModType::Base, &["Multiplier:TornadoofElementalTurbulenceStage"]);
+    mul_dps(off, v);
+}
+
+/// act_dex.lua:16051 TornadoShot.
+pub(super) fn tornado_shot(off: &mut Off<'_>) {
+    if part(off, 2.0) && off.st.player.output.opt_num("ReturnChance").unwrap_or(0.0) == 0.0 {
+        let split = off.st.player.output.opt_num("SplitCount").unwrap_or(0.0);
+        let mut avg = on(off, "ProjectileCount") + split;
+        let q = &off.q;
+        if q.flag(None, &["SequentialProjectiles"])
+            && !q.flag(None, &["OneShotProj"])
+            && !q.flag(None, &["NoAdditionalProjectiles"])
+            && !q.flag(None, &["SingleProjectile"])
+            && !q.flag(None, &["TriggeredBySnipe"])
+        {
+            avg = 1.0 + split;
+        }
+        let chance = min2(
+            off.sd_num("tornadoShotSecondaryHitChance", 0)
+                .unwrap_or_else(|| 20.0 * sum(off, ModType::Base, &["tornadoShotSecondaryProjectiles"]))
+                / 100.0,
+            1.0,
+        );
+        mul_dps(off, 1.0 + chance * avg);
+    }
+}
+
+/// act_dex.lua:14935 ToxicRain / AltX / AltY.
+pub(super) fn toxic_rain(off: &mut Off<'_>) {
+    let v = min2(sd_or(off, "podOverlapMultiplier", 1.0), on(off, "ProjectileCount"));
+    set(off, "dpsMultiplier", v);
+}
+
+/// act_dex.lua:2428 VaalBladeVortex.
+pub(super) fn vaal_blade_vortex(off: &mut Off<'_>) {
+    let v = sdn(off, "hitFrequency", "act_dex.lua:2429")
+        / (1.0 + sdn(off, "VaalBladeVortexBlade", "act_dex.lua:2429") * sd_or(off, "hitFrequencyPerBlade", 0.0));
+    set(off, "hitTimeOverride", v);
+}
+
+/// act_int.lua:20445 VoltaxicBurst.
+pub(super) fn voltaxic_burst(off: &mut Off<'_>) {
+    let d = duration_100ms(off, "act_int.lua:20446");
+    let v = sum(off, ModType::Inc, &["VoltaxicDurationIncDamage"]) * d;
+    off.q.nm("Damage", ModType::Inc, v, "Skill:VoltaxicBurst", 0, 0, vec![]);
+}
+
+fn wave_of_conviction_with(off: &mut Off<'_>, src: &str) {
+    if let Some(d) = off.sd_num("duration", 0) {
+        let tick = misc("ServerTickRate");
+        let duration = ((d * tick).ceil() / tick * on(off, "DurationMod") * 10.0).floor();
+        let v = sum(off, ModType::Inc, &["WaveOfConvictionDurationDotMulti"]) * duration / 100.0;
+        let t = tag(&[("type", Value::str("Multiplier")), ("var", Value::str("WoCDurationExpired"))]);
+        off.q.nm("DotMultiplier", ModType::Base, v, src, 0, 0, vec![t]);
+    }
+}
+
+pub(super) fn wave_of_conviction(off: &mut Off<'_>) {
+    wave_of_conviction_with(off, "Skill:WaveOfConviction");
+}
+pub(super) fn wave_of_conviction_alt_y(off: &mut Off<'_>) {
+    wave_of_conviction_with(off, "Skill:WaveOfConvictionAltY");
+}
+
+/// act_int.lua:20983 WinterOrb.
+pub(super) fn winter_orb(off: &mut Off<'_>) {
+    let rate = 1.0 + sum(off, ModType::Inc, &["HitRate", "Speed"]) / 100.0;
+    let mult = more(off, &["HitRate"]);
+    let v = sdn(off, "repeatFrequency", "act_int.lua:20986") / rate / mult;
+    set(off, "hitTimeOverride", v);
+}
+
+/// act_int.lua:21107 WintertideBrand.
+pub(super) fn wintertide_brand(off: &mut Off<'_>) {
+    let p1 = part(off, 1.0);
+    off.set_sd("countsAttachedBrandsInDamage", Value::Bool(p1));
+    brand_activation(off);
+    if !p1 {
+        return;
+    }
+    let site = "act_int.lua:21112";
+    let hit_time = sdn(off, "hitTimeOverride", site);
+    let max_stages_cap = sum(off, ModType::Base, &["Multiplier:WintertideBrandMaxStages"]);
+    let debuff_mult = 1.0
+        / max2(
+            misc("BuffExpirationSlowCap"),
+            crate::setup::ok(crate::calc_lib::mod_(&off.enemy_db.borrow(), Some(&off.cfg), &["BuffExpireFaster"])),
+        );
+    // `calcSkillDuration(..., {})`: `env.mode_effective` of the empty table is nil
+    let duration = crate::offence::calc_skill_duration(&off.q.list, &off.q.malformed, &off.cfg, &off.sk().skill_data, false, &off.enemy_db)
+        * debuff_mult;
+    let max_stages = min2((duration / hit_time).floor(), max_stages_cap);
+    let time_to_max = max_stages * hit_time;
+    let time_at_max = max2(duration - time_to_max, 0.0);
+    let per_stage = sum(off, ModType::Base, &["Multiplier:WintertideBrandDamagePerStage"]);
+    let avg_stages = (max_stages * (max_stages - 1.0) / 2.0 * hit_time + max_stages * time_at_max) / duration;
+    let avg_mult = avg_stages * per_stage;
+    let end_base = sd_or(off, "durationTertiary", 0.0) + sum(off, ModType::Base, &["Duration", "TertiaryDuration"]);
+    let end_mod = max2(off.q.calc_mod(Some(&off.cfg), &["Duration", "TertiaryDuration"]), 0.0);
+    let tick = misc("ServerTickRate");
+    let end_duration = (end_base * end_mod * debuff_mult * tick).ceil() / tick;
+    let end_uptime = min2(end_duration / duration, 1.0);
+    let attached = sdn(off, "attachedBrandCount", site);
+    let end_mult = max_stages * per_stage;
+    let dps = attached * (100.0 + avg_mult) + end_uptime * (100.0 + end_mult) - 100.0;
+    off.q
+        .nm("Damage", ModType::More, dps, "Wintertide Brand Average Multiplier", 0, 0, vec![]);
+}

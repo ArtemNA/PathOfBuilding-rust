@@ -10,15 +10,11 @@
 
 use indexmap::IndexMap;
 use pob_build::ConfigValue;
-use pob_data::constants::{constants, monster_table_at};
-use pob_lua::number::{min2, round};
-use pob_lua::tostring_num;
+use pob_lua::number::min2;
 use pob_mods::ModType;
 
-use super::{ActorState, base, nm, nm_flag, override_, skill_cfg_of, skill_guard, skill_list_of, skill_type_u32};
-use crate::calc_lib;
+use super::{ActorState, base, nm, nm_flag, override_, skill_cfg_of, skill_list_of, skill_type_u32};
 use crate::env::Env;
-use crate::setup::ok;
 
 /// One pool of :1256-1266.
 struct Pool {
@@ -104,22 +100,15 @@ pub struct AllyLifeEntry {
 /// `env.player.allyLifeList`.
 pub type AllyLifeList = IndexMap<String, Vec<AllyLifeEntry>>;
 
-/// CalcOffence.lua:338-342 `calcs.calcTotemLife(env, activeSkill)` (the life only).
+/// CalcOffence.lua:338-342 `calcs.calcTotemLife(env, activeSkill)` (the life only; shared with offence, [`crate::offence::calc_totem_life`]).
 fn calc_totem_life(env: &Env, i: usize, level: f64, totem_id: f64) -> f64 {
     let st = env.skills.as_ref().expect("skills on");
     let sk = &st.active_skill_list[i];
-    skill_guard(&sk.malformed_mods, &["TotemLife"]);
-    let list = skill_list_of(env, i);
-    let life_mod = ok(calc_lib::mod_(&list.borrow(), Some(&skill_cfg_of(st, sk)), &["TotemLife"]));
-    let c = constants();
-    let ally_life = monster_table_at(&c.monster_ally_life_table, level)
-        .unwrap_or_else(|| panic!("Modules/CalcOffence.lua:340: attempt to perform arithmetic on a nil value (field '?')"));
-    let mult = *c
-        .totem_life_mult
-        .0
-        .get(&tostring_num(totem_id))
-        .unwrap_or_else(|| panic!("Modules/CalcOffence.lua:340: attempt to perform arithmetic on a nil value (field '?')"));
-    round((ally_life * mult).floor() * life_mod, None)
+    let q = crate::offence::Q {
+        list: skill_list_of(env, i),
+        malformed: sk.malformed_mods.clone(),
+    };
+    crate::offence::calc_totem_life(&q, &skill_cfg_of(st, sk), level, Some(totem_id)).0
 }
 
 struct Totem {

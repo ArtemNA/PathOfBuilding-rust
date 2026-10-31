@@ -55,6 +55,12 @@
 //! (CalcPerform.lua:3497-3790; CP4 = LuaJIT on all six goldens): the 3 `ailments` keys moved from EXCLUDED to ALLOWLIST (`EHPSurvivalTime`,
 //! `ManaRecoupRecoveryAvg`, `enemySkillTime` -- the OccVortex enemy Chill -19% action speed is now applied); 10 newly emitted keys are
 //! ALLOWLIST (`Current`/`Maximum` x `Brittle`/`Chill`/`Sap`/`Scorch`/`Shock`); none left ALLOWLIST; no reason names `ailments` any more.
+//! R7.3 re-measured with offence part A (CalcOffence.lua:348-1936; OC1/OC2 = LuaJIT on OccVortex (top) and Dual Savior (first nested); the
+//! top offence of Cospris x2 / Generals / Mirage Archer stops at the unported `calcs.triggers` / `calcs.mirages` branch, so no offence key
+//! is emitted there): 43 newly emitted keys, all `ok` (OccVortex only), are ALLOWLIST (area, durations, costs, `Repeats`, trap/mine limits,
+//! life flask scaling, `ManaCostPayablePool`); 2 newly emitted keys are EXCLUDED with the root `offence` ([`OFFENCE_TAIL_COST`]:
+//! `ManaPerSecondCost`/`ManaPerSecondHasCost`, = LuaJIT at OC2, rewritten by :5920-5948); none left ALLOWLIST; the other part B-E keys are
+//! not emitted (R7.4-R7.7).
 
 use indexmap::IndexMap;
 
@@ -116,17 +122,23 @@ pub const SYNTH_EXCLUDED: &[&str] = &["ReqIntString"];
 /// with the output of a nested `calcs.perform` on a CALCULATOR env (CalcMirages.lua:52/:157, `buildBreakdown` false) -- R7.
 const MIRAGE_BREAKDOWN: &str = "offence: Dual Savior -- calcs.mirages (CalcMirages.lua:157) replaces the output with a CALCULATOR perform (no breakdown, no flask breakdown keys); ok on the other 5";
 
-/// 555 keys, sorted (byte order): `ok` on every golden that emits them, on none `mismatch` or `extra` (R5.4: measured
+/// R7.3: written by offence part A (CalcOffence.lua:1805/:1813 -- `= LuaJIT` at OC2) and rewritten later in offence (:5920-5948, the
+/// per-second cost of an upfront cost x use speed, R7.7): mismatch on OccVortex (OC2 `0`/`false`, OC6 and golden `240.00000000000003`/`true`).
+const OFFENCE_TAIL_COST: &str = "offence: CalcOffence.lua:5920-5948 (R7.7) rewrites the per-second cost from the upfront cost x speed after part A (:1805/:1813, = LuaJIT OC2); mismatch on OccVortex, not emitted on the other 5";
+
+/// 598 keys, sorted (byte order): `ok` on every golden that emits them, on none `mismatch` or `extra` (R5.4: measured
 /// with `ParseMode::Full`, the default; R5.5a re-measured with the cluster-jewel subgraphs: +20; R5.5b radius jewels: +1;
 /// R5.5c timeless jewels: +23; R6.3 gem requirements: +4; R6.5 skills + flasks in perform: +30; R6.6 reservations: +4, `ReqIntString` -1;
-/// R6.7 buffs/curses/guards: +128; R6.8 ailments/exposures/ally life: +13).
+/// R6.7 buffs/curses/guards: +128; R6.8 ailments/exposures/ally life: +13; R7.3 offence part A: +43).
 pub const ALLOWLIST: &[&str] = &[
     "AbsorptionCharges",
     "AbsorptionChargesMax",
     "AbsorptionChargesMin",
     "ActionSpeedMod",
     "ActiveGolemLimit",
+    "ActiveMineLimit",
     "ActiveTotemLimit",
+    "ActiveTrapLimit",
     "AfflictionCharges",
     "AfflictionChargesMax",
     "AfflictionChargesMin",
@@ -135,6 +147,12 @@ pub const ALLOWLIST: &[&str] = &[
     "AnyGuard",
     "AnySpecificMindOverMatter",
     "AnyTakenReflect",
+    "AreaOfEffectMod",
+    "AreaOfEffectModSecondary",
+    "AreaOfEffectRadius",
+    "AreaOfEffectRadiusMetres",
+    "AreaOfEffectRadiusSecondary",
+    "AreaOfEffectRadiusSecondaryMetres",
     "Armour",
     "ArmourDefense",
     "ArmourOnBody Armour",
@@ -278,7 +296,15 @@ pub const ALLOWLIST: &[&str] = &[
     "DebuffExpirationRate",
     "Devotion",
     "Dex",
+    "Duration",
+    "DurationMod",
     "EHPSurvivalTime",
+    "ESCost",
+    "ESHasCost",
+    "ESPerSecondCost",
+    "ESPerSecondHasCost",
+    "ESPercentPerSecondCost",
+    "ESPercentPerSecondHasCost",
     "EffectiveAttackDodgeChance",
     "EffectiveAverageBlockChance",
     "EffectiveBlockChance",
@@ -385,6 +411,8 @@ pub const ALLOWLIST: &[&str] = &[
     "HexDoomLimit",
     "IgniteAvoidChance",
     "ImpaleAvoidChance",
+    "ImpaleDuration",
+    "ImpaleDurationMod",
     "InherentRageLoss",
     "InherentRageLossDelay",
     "InspirationCharges",
@@ -393,10 +421,20 @@ pub const ALLOWLIST: &[&str] = &[
     "InterruptStunAvoidChance",
     "Life",
     "LifeCancellableReservation",
+    "LifeCost",
     "LifeDegen",
+    "LifeFlaskCharges",
+    "LifeFlaskRecovery",
+    "LifeHasCost",
     "LifeHitPool",
     "LifeOnBlock",
     "LifeOnSuppress",
+    "LifePerSecondCost",
+    "LifePerSecondHasCost",
+    "LifePercentCost",
+    "LifePercentHasCost",
+    "LifePercentPerSecondCost",
+    "LifePercentPerSecondHasCost",
     "LifeRecoup",
     "LifeRecoupRecoveryAvg",
     "LifeRecoupRecoveryMax",
@@ -459,8 +497,16 @@ pub const ALLOWLIST: &[&str] = &[
     "LowestOfMaximumLifeAndMaximumMana",
     "Mana",
     "ManaCancellableReservation",
+    "ManaCost",
+    "ManaCostPayablePool",
+    "ManaCostRaw",
     "ManaDegen",
+    "ManaHasCost",
     "ManaOnBlock",
+    "ManaPercentCost",
+    "ManaPercentHasCost",
+    "ManaPercentPerSecondCost",
+    "ManaPercentPerSecondHasCost",
     "ManaRecoup",
     "ManaRecoupRecoveryAvg",
     "ManaRecoupRecoveryMax",
@@ -551,8 +597,10 @@ pub const ALLOWLIST: &[&str] = &[
     "ProjectileNotHitChance",
     "RadianceSentinelAllyDamageMitigation",
     "Rage",
+    "RageCost",
     "RageDegen",
     "RageEffect",
+    "RageHasCost",
     "RageRecovery",
     "RageRegen",
     "RageRegenInc",
@@ -563,6 +611,7 @@ pub const ALLOWLIST: &[&str] = &[
     "RemovableFrenzyCharges",
     "RemovablePowerCharges",
     "RemovableTotalCharges",
+    "Repeats",
     "ReqDex",
     "ReqInt",
     "ReqStr",
@@ -595,6 +644,8 @@ pub const ALLOWLIST: &[&str] = &[
     "SilenceAvoidChance",
     "SiphoningCharges",
     "SiphoningChargesMax",
+    "SoulCost",
+    "SoulHasCost",
     "SoulLinkMitigation",
     "Spec:ArmourInc",
     "Spec:EnergyShieldInc",
@@ -640,6 +691,8 @@ pub const ALLOWLIST: &[&str] = &[
     "TotemColdResist",
     "TotemColdResistOverCap",
     "TotemColdResistTotal",
+    "TotemDuration",
+    "TotemDurationMod",
     "TotemFireResist",
     "TotemFireResistOverCap",
     "TotemFireResistTotal",
@@ -678,12 +731,14 @@ pub const ALLOWLIST: &[&str] = &[
     "totalTakenHit",
 ];
 
-/// 11 keys the engine writes that fail on at least one golden (or, [`SYNTH_EXCLUDED`], on a synthetic LuaJIT input), each with its root
+/// 13 keys the engine writes that fail on at least one golden (or, [`SYNTH_EXCLUDED`], on a synthetic LuaJIT input), each with its root
 /// cause (pob-ts vocabulary).
 pub const EXCLUDED: &[(&str, &str)] = &[
     ("ReqDexString", REQ_STRING),
     ("ReqIntString", REQ_STRING),
     ("ReqStrString", REQ_STRING),
+    ("ManaPerSecondCost", OFFENCE_TAIL_COST),
+    ("ManaPerSecondHasCost", OFFENCE_TAIL_COST),
     ("FlaskChargeGen", MIRAGE_BREAKDOWN),
     ("FlaskChargeOnCritChance", MIRAGE_BREAKDOWN),
     ("FlaskEffect", MIRAGE_BREAKDOWN),

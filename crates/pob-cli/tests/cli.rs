@@ -43,8 +43,7 @@ fn calc_file_json_has_meta_and_allowlisted_stats() {
         "stats are filtered by ALLOWLIST"
     );
     assert!(parsed.meta.is_some());
-    // R6.7: the buff phase runs (no R6.7 note is left). R6.8: the ailment / exposure / ally life phases run too; the next phase (R7,
-    // triggers / mirages / offence) is the first one still recorded.
+    // R6.7: the buff phase runs (no R6.7 note is left). R6.8: the ailment / exposure / ally life phases run too.
     assert!(!parsed.unimplemented.iter().any(|u| u.contains("not handed to perform yet")));
     assert!(!parsed.unimplemented.iter().any(|u| u.contains("per-skill reservation loop")));
     assert!(!parsed.unimplemented.iter().any(|u| u.contains("(R6.7)") || u.contains("3124-3341")));
@@ -54,11 +53,12 @@ fn calc_file_json_has_meta_and_allowlisted_stats() {
             .iter()
             .any(|u| u.contains("3497-3620") || u.contains("3627-3665") || u.contains("3667-3789"))
     );
+    // R7.3: offence part A runs; on Dual Savior the top env stops at the unported `calcs.mirages` branch (R7.9) before it.
     assert!(
         parsed
             .unimplemented
             .iter()
-            .any(|u| u == "CalcPerform.lua:3797-3801 triggers / mirages / offence (P5)")
+            .any(|u| u == "CalcMirages.lua:120-164 Reflection (The Saviour) for Reflection (R7.9)")
     );
 }
 
@@ -104,6 +104,8 @@ fn experimental_env_disables_the_filter() {
 /// R6.7 (buffs/debuffs/curses/guards, CP3 = LuaJIT; allowlist 414 -> 542): 490/489, 500/499, 500/499, 514/513, 501/500, 522/521.
 /// R6.8 (ailments/exposures/ally life, CP4 = LuaJIT; allowlist 542 -> 555: +10 `Current*`/`Maximum*` ailments, +3 former `ailments` keys):
 /// 502/501, 512/511, 512/511, 526/525, 513/512, 535/534.
+/// R7.3 (offence part A, OC1/OC2 = LuaJIT where the top offence runs; allowlist 555 -> 598): OccVortex 578/577 (+43); the other five
+/// unchanged (their top offence stops at the unported triggers/mirages branch).
 /// O9: `VaalArcticArmourMitigation` is `ok`, not `exact` (golden `+0`, Rust `-0`) -- hence exact = ok - 1.
 #[test]
 fn cli_stats_against_goldens() {
@@ -113,7 +115,7 @@ fn cli_stats_against_goldens() {
         ("Dual Wield Cospris CoC - Lethal Pride", 512, 511),
         ("Generals Perforate Zerker", 526, 525),
         ("Mirage Archer Toxic Rain", 513, 512),
-        ("OccVortex", 535, 534),
+        ("OccVortex", 578, 577),
     ];
     let mut got = Vec::new();
     for (g, (name, _, _)) in GOLDEN_BUILDS.iter().zip(pinned) {
