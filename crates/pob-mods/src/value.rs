@@ -3,6 +3,7 @@
 //! same thing as a COW write, because the core never observes table identity (only `==` on values, and no two distinct
 //! tables ever meet in an `==` of the core). Truthiness is Lua's: only `nil` and `false` are false (MINEFIELD L4).
 
+use std::any::Any;
 use std::fmt;
 use std::rc::Rc;
 
@@ -24,7 +25,27 @@ pub enum Value {
     Table(Rc<Table>),
     /// A mod table nested in a value (`{ mod = modLib.createMod(...) }`, ModParser) or returned by a query.
     Mod(Rc<Mod>),
+    /// A Lua function value (R5.4: the radius-jewel visitors of ModParser's `jewelFuncList`, `{ func = f, type = ... }`):
+    /// DATA only -- the core never calls it; `pob-parser` executes it through its registry by `id`.
+    Func(Rc<ClosureRef>),
 }
+
+/// A reference to a Lua closure: the upstream definition (`"<src>:<line>"`) plus its upvalues, opaque to the core (the
+/// owner -- `pob-parser` -- downcasts `up`). Identity is the `Rc` (Lua compares functions by reference).
+pub struct ClosureRef {
+    pub id: Str,
+    pub up: Rc<dyn Any>,
+}
+
+impl fmt::Debug for ClosureRef {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "function<{}>", self.id)
+    }
+}
+
+/// LuaJIT `tostring(f)` is `function: 0x<address>`; the address is not reproducible, so every place a function reaches a
+/// string prints this placeholder (the R5.1 fixtures normalise LuaJIT's text the same way).
+pub const FUNCTION_TOSTRING: &str = "function: <addr>";
 
 /// A Lua table: the array part `1..n` (what `ipairs` and `#` see) plus string keys in insertion order.
 #[derive(Clone, Debug, Default)]
@@ -110,6 +131,7 @@ impl Value {
             Value::Num(_) => "number",
             Value::Str(_) => "string",
             Value::Table(_) | Value::Mod(_) => "table",
+            Value::Func(_) => "function",
         }
     }
 
@@ -122,6 +144,7 @@ impl Value {
             (Value::Str(a), Value::Str(b)) => a == b,
             (Value::Table(a), Value::Table(b)) => Rc::ptr_eq(a, b),
             (Value::Mod(a), Value::Mod(b)) => Rc::ptr_eq(a, b),
+            (Value::Func(a), Value::Func(b)) => Rc::ptr_eq(a, b),
             _ => false,
         }
     }

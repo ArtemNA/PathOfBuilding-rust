@@ -22,7 +22,11 @@ const RUNS: usize = 9;
 
 fn xml_to_env(xml: &str) -> usize {
     let model = Rc::new(load_build_xml(xml).expect("xml"));
-    let env = init_env(model, InitEnvOptions::default()).expect("init_env");
+    let opts = InitEnvOptions {
+        parse_mode: pob_calc::ParseMode::CacheOnly,
+        ..InitEnvOptions::default()
+    };
+    let env = init_env(model, opts).expect("init_env");
     env.alloc_nodes.len()
 }
 
@@ -58,10 +62,10 @@ fn main() {
             full.push(t.elapsed().as_secs_f64() * 1e3);
 
             let model = Rc::new(load_build_xml(&xml).expect("xml"));
-            let spec = PassiveSpec::load(active_spec(&model)).expect("spec");
+            let spec = PassiveSpec::load_mode(active_spec(&model), pob_calc::ParseMode::CacheOnly).expect("spec");
             let mut items = IndexMap::new();
             for im in &model.items {
-                let item = Item::parse(&im.raw, &item_options(im));
+                let item = Item::parse(&im.raw, &item_options(im, pob_calc::ParseMode::CacheOnly));
                 if item.base.is_some() {
                     items.insert(im.id as u64, Rc::new(item));
                 }
@@ -72,6 +76,7 @@ fn main() {
                 InitEnvOptions {
                     spec: Some(spec),
                     items: Some(items),
+                    parse_mode: pob_calc::ParseMode::CacheOnly,
                 },
             )
             .expect("init_env");

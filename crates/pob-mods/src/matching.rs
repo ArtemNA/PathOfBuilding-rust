@@ -63,6 +63,7 @@ fn tostring_scalar(v: &Value) -> String {
         Value::Bool(b) => b.to_string(),
         Value::Num(n) => tostring_num(*n),
         Value::Str(s) => s.to_string(),
+        Value::Func(_) => crate::value::FUNCTION_TOSTRING.to_owned(),
         Value::Table(_) | Value::Mod(_) => unreachable!("tables are formatted by format_table"),
     }
 }

@@ -219,7 +219,13 @@ fn formats_of(s: &ModScalabilityEntry) -> Formats {
 
 /// ItemTools.lua:96-355 `itemLib.applyRange(line, range, valueScalar, baseValueScalar)` for a numeric `range` (the table
 /// form is the ItemsTab affix UI's, not reachable from a parsed item).
-pub fn apply_range(line: &str, range: f64, value_scalar: Option<f64>, base_value_scalar: Option<f64>) -> String {
+pub fn apply_range(
+    line: &str,
+    range: f64,
+    value_scalar: Option<f64>,
+    base_value_scalar: Option<f64>,
+    mode: pob_parser::ParseMode,
+) -> String {
     let mut values: Vec<String> = Vec::new();
     let stripped = gsub_fn(line, "([%+-]?)%((%-?%d+%.?%d*)%-(%-?%d+%.?%d*)%)", None, |c| {
         let (sign, min, max) = (&c[0], &c[1], &c[2]);
@@ -300,9 +306,10 @@ pub fn apply_range(line: &str, range: f64, value_scalar: Option<f64>, base_value
         return test_line;
     }
 
-    // MINEFIELD D18: a ModCache miss here leaves `precision` unset and changes the number.
+    // MINEFIELD D18: in `CacheOnly` a ModCache miss here leaves `precision` unset and changes the number; `Full` parses
+    // the line like the desktop.
     let mut precision: Option<f64> = None;
-    let parsed = pob_parser::parse_mod_line(&test_line, false);
+    let parsed = pob_parser::parse_mod_line(&test_line, false, mode);
     if let (Some(mods), None) = (&parsed.mod_list, &parsed.extra) {
         // `pairs(modList)` over an array: 1..n
         for m in mods {

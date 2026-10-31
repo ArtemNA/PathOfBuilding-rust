@@ -358,10 +358,17 @@ pub fn extra_support(d: &ModParserData, name: &Value, level: &Value, slot: &Valu
 
 // --- ModParser.lua:18-39 getSimpleConv (radius jewels; the visitor is R5.4's caller) --------------------------------
 
-/// A node a radius-jewel visitor looks at (`node.modList`, `node.isTattoo`): the tree crate implements it (R5.4/R5.5).
+/// A node a radius-jewel visitor looks at (`node.modList`, `node.isTattoo`, `node.type`, `node.conqueredBy`): the tree
+/// crate implements it (R5.5).
 pub trait JewelNode {
     fn mod_list(&self) -> &[Rc<Mod>];
     fn is_tattoo(&self) -> bool;
+    /// `node.type` ("Normal", "Notable", "Keystone", "Socket", "ClassStart", "Mastery", ...).
+    fn node_type(&self) -> &str;
+    /// `node.conqueredBy` is truthy (a timeless jewel took the node).
+    fn conquered_by(&self) -> bool;
+    /// `node.modList:Sum("BASE", nil, stat)`.
+    fn sum_base(&self, stat: &str) -> Result<f64, LuaError>;
 }
 
 /// `getSimpleConv(srcList, dst, type, remove, factor, srcType)` -- the upvalues of the visitor at ModParser.lua:19.

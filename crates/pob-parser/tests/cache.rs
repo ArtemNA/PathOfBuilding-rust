@@ -4,7 +4,7 @@
 use std::rc::Rc;
 
 use pob_mods::{ModStore, ModType, Table, Tag, Value, create_mod};
-use pob_parser::{copy_table_mod, parse_mod_line, parse_mod_stats, reset_parse_mod_stats};
+use pob_parser::{ParseMode, copy_table_mod, parse_mod_line, parse_mod_stats, reset_parse_mod_stats};
 
 /// Structural equality of two mod values with Lua semantics where it matters (numbers by bits).
 fn same_value(a: &Value, b: &Value) -> bool {
@@ -44,7 +44,7 @@ fn every_cache_line_hits_with_an_equal_copy() {
     let cache = pob_data::mod_cache::mod_cache();
     let mut mods = 0;
     for e in &cache.entries {
-        let p = parse_mod_line(&e.line, false);
+        let p = parse_mod_line(&e.line, false, ParseMode::CacheOnly);
         assert!(p.hit, "{}", e.line);
         assert_eq!(p.extra.as_deref(), e.extra.as_deref(), "{}", e.line);
         match (&p.mod_list, &e.mods) {
@@ -67,7 +67,7 @@ fn every_cache_line_hits_with_an_equal_copy() {
 #[test]
 fn extra_survives_a_nil_mod_list() {
     // W16: `unpack(copyTable({nil, extra}))` -- LuaJIT keeps extra.
-    let p = parse_mod_line(" Wolf Alpha Talisman", false);
+    let p = parse_mod_line(" Wolf Alpha Talisman", false, ParseMode::CacheOnly);
     assert!(p.hit && p.mod_list.is_none());
     assert_eq!(p.extra.as_deref(), Some(" Wolf Alpha Talisman "));
 }
@@ -75,11 +75,11 @@ fn extra_survives_a_nil_mod_list() {
 #[test]
 fn a_copy_is_independent_of_the_cache() {
     let line = "+1 to Level of Socketed AoE Gems";
-    let mut a = parse_mod_line(line, false).mod_list.unwrap();
+    let mut a = parse_mod_line(line, false, ParseMode::CacheOnly).mod_list.unwrap();
     a[0].name = Rc::from("Mutated");
     a[0].value = Value::Num(99.0);
     a[0].tags.clear();
-    let b = parse_mod_line(line, false).mod_list.unwrap();
+    let b = parse_mod_line(line, false, ParseMode::CacheOnly).mod_list.unwrap();
     assert_eq!(&*b[0].name, "GemProperty");
     assert!(matches!(&b[0].value, Value::Table(t) if t.get("keyword").as_str() == Some("aoe")));
     assert_eq!(b[0].tags.len(), 1);
@@ -97,8 +97,8 @@ fn a_copy_is_independent_of_the_cache() {
                 .is_some_and(|m| matches!(&m.value, Value::Table(t) if matches!(t.get("mod"), Value::Mod(_))))
         })
         .expect("a LIST mod with a nested mod");
-    let x = parse_mod_line(&nested.line, false).mod_list.unwrap();
-    let y = parse_mod_line(&nested.line, false).mod_list.unwrap();
+    let x = parse_mod_line(&nested.line, false, ParseMode::CacheOnly).mod_list.unwrap();
+    let y = parse_mod_line(&nested.line, false, ParseMode::CacheOnly).mod_list.unwrap();
     let inner = |m: &pob_mods::Mod| match &m.value {
         Value::Table(t) => match t.get("mod") {
             Value::Mod(i) => i.clone(),
@@ -140,7 +140,7 @@ fn a_miss_answers_nil_and_the_line() {
     reset_parse_mod_stats();
     let line = "This line is not in ModCache, synthetic R3.2";
     for _ in 0..2 {
-        let p = parse_mod_line(line, true);
+        let p = parse_mod_line(line, true, ParseMode::CacheOnly);
         assert!(!p.hit && p.mod_list.is_none());
         assert_eq!(p.extra.as_deref(), Some(line));
     }

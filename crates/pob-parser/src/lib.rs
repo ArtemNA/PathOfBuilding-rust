@@ -14,16 +14,19 @@
 //! ```
 //!
 //! The cache is the truth for a line it holds (MINEFIELD W11/D9). Two entry points:
-//! * `parse_mod_line` -- what the calc uses today: cache only, a miss answers `nil, line` and is counted. Switching it to the
-//!   parser is R5.4 (once the closures of R5.3 are in, R5-ARCH §3).
+//! * `parse_mod_line(line, isComb, mode)` -- what the pipeline (tree, items, config, calc) calls. `ParseMode::Full` (the
+//!   default, R5.4 decision 1) is the desktop: cache, else the parser; `ParseMode::CacheOnly` is pob-ts (and R3/R4): a
+//!   miss answers `nil, line` and is counted.
 //! * `parse_mod` -- the full wrapper: cache, else the parser (`parse_mod_uncached`), memoised per thread like upstream's
-//!   `cache[line] = ...`; a line whose path needs a closure not ported yet is `Err(Unported(id))`.
+//!   `cache[line] = ...`; a line whose path needs a closure not ported is `Err(Unported(id))` (none since R5.4).
 
 #![forbid(unsafe_code)]
 
 pub mod closures;
 pub mod closures_gen;
+pub mod closures_manual;
 pub mod helpers;
+pub mod jewel;
 pub mod parse;
 pub mod scan;
 
@@ -73,12 +76,27 @@ pub struct ParsedLine {
     pub hit: bool,
 }
 
-/// Counters for the step reports: `miss_lines` de-duplicated, in first-seen order.
+/// How the pipeline reads a mod line (R5.4 decision 1).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub enum ParseMode {
+    /// ModCache only -- what pob-ts does (the R3/R4 "Rust = pob-ts" gates run in this mode).
+    CacheOnly,
+    /// ModCache, else the real ModParser -- the desktop (`modLib.parseMod`, ModParser.lua:6994-7021).
+    #[default]
+    Full,
+}
+
+/// Counters for the step reports: `miss_lines` de-duplicated, in first-seen order. A miss is a line nobody answered: in
+/// `CacheOnly` a cache miss, in `Full` a line the parser could not answer either (`ParseError`, `error_lines`).
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct ParseStats {
     pub hits: u64,
     pub misses: u64,
     pub miss_lines: Vec<String>,
+    /// `Full`: lines the parser answered (cache misses).
+    pub parsed: u64,
+    /// `Full`: lines whose parse failed, with the error (de-duplicated).
+    pub error_lines: Vec<String>,
 }
 
 #[derive(Default)]
@@ -111,22 +129,58 @@ pub fn copy_table_mod(m: &Mod) -> Mod {
     c
 }
 
+fn note_miss(line: &str, error: Option<&ParseError>) {
+    COUNTERS.with(|c| {
+        let mut c = c.borrow_mut();
+        c.stats.misses += 1;
+        if c.seen.insert(line.to_owned()) {
+            c.stats.miss_lines.push(line.to_owned());
+            if let Some(e) = error {
+                c.stats.error_lines.push(format!("{line}: {e}"));
+            }
+        }
+    });
+}
+
 /// `modLib.parseMod(line, isComb)`. `isComb` only drives upstream's `unsupported.txt` dev log, so it changes nothing
 /// here; it stays in the signature because every call site passes it (ProcessStats' line-combining loop).
 ///
-/// A miss returns `None, Some(line)` -- what the real parser returns for a line it cannot read
-/// (ModParser.lua:6991). `unimplemented`: the parser on a miss (ModParser.lua:6999-7005) -- R5.4 switches this to `parse_mod`.
-pub fn parse_mod_line(line: &str, is_comb: bool) -> ParsedLine {
-    let _ = is_comb;
+/// `CacheOnly`: a miss returns `None, Some(line)` -- what the real parser returns for a line it cannot read
+/// (ModParser.lua:6991). `Full`: a miss goes to the parser (`parse_mod`); a line the parser cannot answer (a Lua error
+/// upstream raises too, or a value the Rust model cannot hold) is counted in `error_lines` and reads as that same
+/// `None, Some(line)` -- explicit, never a guess. The L9 orphan tags of an answer are dropped here (never applied, as
+/// for the cache).
+pub fn parse_mod_line(line: &str, is_comb: bool, mode: ParseMode) -> ParsedLine {
+    if mode == ParseMode::Full {
+        return match parse_mod(line, is_comb) {
+            Ok(p) => {
+                COUNTERS.with(|c| {
+                    let mut c = c.borrow_mut();
+                    if p.hit {
+                        c.stats.hits += 1;
+                    } else {
+                        c.stats.parsed += 1;
+                    }
+                });
+                ParsedLine {
+                    mod_list: p.mod_list,
+                    extra: p.extra,
+                    hit: p.hit,
+                }
+            }
+            Err(e) => {
+                note_miss(line, Some(&e));
+                ParsedLine {
+                    mod_list: None,
+                    extra: Some(line.to_owned()),
+                    hit: false,
+                }
+            }
+        };
+    }
     let cache = pob_data::mod_cache::mod_cache();
     let Some(entry) = cache.get(line) else {
-        COUNTERS.with(|c| {
-            let mut c = c.borrow_mut();
-            c.stats.misses += 1;
-            if c.seen.insert(line.to_owned()) {
-                c.stats.miss_lines.push(line.to_owned());
-            }
-        });
+        note_miss(line, None);
         return ParsedLine {
             mod_list: None,
             extra: Some(line.to_owned()),

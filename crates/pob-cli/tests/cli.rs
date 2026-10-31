@@ -35,7 +35,7 @@ fn calc_file_json_has_meta_and_allowlisted_stats() {
     let parsed = CandidateOutput::from_json(std::str::from_utf8(&out.stdout).unwrap()).unwrap();
     assert_eq!(
         parsed.stats.len(),
-        266,
+        296,
         "Dual Savior: every ALLOWLIST key it emits (= oracle ok count)"
     );
     assert!(
@@ -72,17 +72,19 @@ fn experimental_env_disables_the_filter() {
 }
 
 /// R4-ARCH gate (в) at the CLI boundary: for each golden, `pob-cli calc --json` stats against `snapshot.stats` (exact doubles, O8).
-/// Pinned `ok` / `exact` = the pob-ts candidate run on the same goldens (measured 2026-10-31: 266/265, 268/267, 268/267, 274/273, 269/268, 285/284; not the 492/.. of the task card)
+/// Pinned `ok` / `exact` = the pob-ts candidate run on the same goldens (measured 2026-10-31: 266/265, 268/267, 268/267, 274/273, 269/268, 285/284; not the 492/.. of the task card).
+/// R5.4 (`ParseMode::Full`, the real ModParser, re-measured allowlist): 296/295, 303/302, 303/302, 314/313, 302/301, 320/319 -- the same
+/// numbers `npm run oracle -- <golden> --cand tools/oracle-adapter/candidate.ts` prints.
 /// O9: `VaalArcticArmourMitigation` is `ok`, not `exact` (golden `+0`, Rust `-0`) -- hence exact = ok - 1.
 #[test]
 fn cli_stats_against_goldens() {
     let pinned: [(&str, usize, usize); 6] = [
-        ("Dual Savior", 266, 265),
-        ("Dual Wield Cospris CoC", 268, 267),
-        ("Dual Wield Cospris CoC - Lethal Pride", 268, 267),
-        ("Generals Perforate Zerker", 274, 273),
-        ("Mirage Archer Toxic Rain", 269, 268),
-        ("OccVortex", 285, 284),
+        ("Dual Savior", 296, 295),
+        ("Dual Wield Cospris CoC", 303, 302),
+        ("Dual Wield Cospris CoC - Lethal Pride", 303, 302),
+        ("Generals Perforate Zerker", 314, 313),
+        ("Mirage Archer Toxic Rain", 302, 301),
+        ("OccVortex", 320, 319),
     ];
     for (g, (name, ok, exact)) in GOLDEN_BUILDS.iter().zip(pinned) {
         assert_eq!(g.name, name);

@@ -7,6 +7,7 @@ use std::collections::HashSet;
 use pob_data::mod_parser::mod_parser;
 use pob_parser::closures::{ClosureFn, HELPERS, drift, registry};
 use pob_parser::closures_gen::GENERATED;
+use pob_parser::closures_manual::MANUAL;
 
 #[test]
 fn generated_sha_matches_fns() {
@@ -15,7 +16,8 @@ fn generated_sha_matches_fns() {
     let ids: HashSet<&str> = GENERATED.iter().map(|e| e.id).collect();
     assert_eq!(ids.len(), GENERATED.len(), "a definition generated twice");
     assert!(HELPERS.iter().all(|h| !ids.contains(h.id)), "a hand-ported helper was generated");
-    assert_eq!(registry().len(), HELPERS.len() + GENERATED.len());
+    assert_eq!(registry().len(), HELPERS.len() + GENERATED.len() + MANUAL.len());
+    assert_eq!(registry().len(), d.fns.len(), "every definition of fns is registered (R5.4)");
     let kinds = |f: fn(&ClosureFn) -> bool| GENERATED.iter().filter(|e| f(&e.f)).count();
     println!(
         "generated: {}/{} sha = mod-parser.json fns (special {}, value {}, helper {})",
@@ -43,6 +45,8 @@ fn fns_are_helpers_generated_or_manual() {
     let md = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/../../KNOWLEDGE/drafts/R5-manual-closures.md"))
         .expect("KNOWLEDGE/drafts/R5-manual-closures.md (node tools/modparser-gen/gen.ts)");
     let manual: HashSet<&str> = md.lines().filter_map(|l| l.strip_prefix("| `")?.split('`').next()).collect();
+    // R5.4: the manual list is exactly the hand-ported `closures_manual::MANUAL`
+    assert_eq!(manual, MANUAL.iter().map(|e| e.id).collect::<HashSet<_>>());
     let generated: HashSet<&str> = GENERATED.iter().map(|e| e.id).collect();
     let helpers: HashSet<&str> = HELPERS.iter().map(|e| e.id).collect();
     for id in d.fns.keys() {

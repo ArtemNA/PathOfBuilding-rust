@@ -22,7 +22,7 @@ fn main() {
     let items: Vec<_> = models
         .iter()
         .flat_map(|m| m.items.iter())
-        .map(|im| (im.raw.clone(), dump::options_of(im)))
+        .map(|im| (im.raw.clone(), dump::options_of(im, pob_parser::ParseMode::CacheOnly)))
         .collect();
     let pass = || {
         let mut kept = 0usize;

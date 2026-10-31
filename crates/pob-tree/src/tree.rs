@@ -22,7 +22,7 @@ use pob_lua::pattern::gmatch;
 use pob_lua::string::lower;
 use pob_lua::tostring_num;
 use pob_mods::{Mod, ModList, ModType, Value, create_mod};
-use pob_parser::parse_mod_line;
+use pob_parser::{ParseMode, parse_mod_line};
 
 use pob_mods::format::{format_mod, set_source};
 
@@ -183,6 +183,8 @@ pub struct AscendEntry {
 }
 
 pub struct PassiveTree {
+    /// How `ProcessStats` read the node stats (R5.4); the spec reads its mastery effects the same way.
+    pub parse_mode: ParseMode,
     pub tree_version: String,
     pub version_num: f64,
     pub json: &'static TreeJson,
@@ -267,9 +269,9 @@ pub(crate) struct StatHolder<'a> {
 }
 
 /// PassiveTree.lua:795-873 `ProcessStats(node, startIndex)`, line for line. `sd` is the node's stat table (split in place);
-/// `stats` its `mods`/`modKey`/`modList`/markers. `parseMod` is the ModCache-backed `pob_parser::parse_mod_line`: a miss
-/// reads exactly like a line the parser cannot understand (`unimplemented`: ModParser.lua:6994 real parser, R5).
-pub(crate) fn process_stats(holder: &StatHolder<'_>, sd: &mut Vec<String>, stats: &mut NodeStats, start_index: usize) {
+/// `stats` its `mods`/`modKey`/`modList`/markers. `parseMod` is `pob_parser::parse_mod_line` in the tree's `ParseMode`
+/// (`Full`: the desktop's cache -> parser; `CacheOnly`: pob-ts, a miss reads like a line the parser cannot understand).
+pub(crate) fn process_stats(holder: &StatHolder<'_>, sd: &mut Vec<String>, stats: &mut NodeStats, start_index: usize, mode: ParseMode) {
     if start_index == 1 {
         stats.mod_key = String::new();
         stats.mods = Vec::new();
@@ -297,7 +299,7 @@ pub(crate) fn process_stats(holder: &StatHolder<'_>, sd: &mut Vec<String>, stats
             }
         }
         let line = sd[i - 1].clone();
-        let mut parsed = parse_mod_line(&line, false);
+        let mut parsed = parse_mod_line(&line, false, mode);
         if parsed.mod_list.is_none() || parsed.extra.is_some() {
             // :816-834 -- try to combine with one or more of the following lines.
             let mut end_i = i + 1;
@@ -307,7 +309,7 @@ pub(crate) fn process_stats(holder: &StatHolder<'_>, sd: &mut Vec<String>, stats
                     comb.push(' ');
                     comb.push_str(l);
                 }
-                parsed = parse_mod_line(&comb, true);
+                parsed = parse_mod_line(&comb, true, mode);
                 if parsed.mod_list.is_some() && parsed.extra.is_none() {
                     for ci in i + 1..=end_i {
                         set_mod(
@@ -384,22 +386,33 @@ pub(crate) fn process_stats(holder: &StatHolder<'_>, sd: &mut Vec<String>, stats
 }
 
 thread_local! {
-    static TREES: RefCell<HashMap<String, Rc<PassiveTree>>> = RefCell::new(HashMap::new());
+    static TREES: RefCell<HashMap<(String, ParseMode), Rc<PassiveTree>>> = RefCell::new(HashMap::new());
 }
 
-/// `main:LoadTree(treeVersion)` -- built once per version (per thread) and shared, like the desktop.
+/// `main:LoadTree(treeVersion)` -- built once per version (per thread) and shared, like the desktop; `ParseMode::Full`.
 pub fn load_passive_tree(version: &str) -> Result<Rc<PassiveTree>, TreeError> {
-    if let Some(t) = TREES.with(|c| c.borrow().get(version).cloned()) {
+    load_passive_tree_mode(version, ParseMode::Full)
+}
+
+/// `load_passive_tree` with the node stats read in `mode` (one shared tree per version and mode).
+pub fn load_passive_tree_mode(version: &str, mode: ParseMode) -> Result<Rc<PassiveTree>, TreeError> {
+    let key = (version.to_owned(), mode);
+    if let Some(t) = TREES.with(|c| c.borrow().get(&key).cloned()) {
         return Ok(t);
     }
-    let tree = Rc::new(PassiveTree::build(version)?);
-    TREES.with(|c| c.borrow_mut().insert(version.to_owned(), tree.clone()));
+    let tree = Rc::new(PassiveTree::build_mode(version, mode)?);
+    TREES.with(|c| c.borrow_mut().insert(key, tree.clone()));
     Ok(tree)
 }
 
 impl PassiveTree {
-    /// `PassiveTreeClass:PassiveTree(treeVersion)` without the cache (benchmarks build it repeatedly).
+    /// `PassiveTreeClass:PassiveTree(treeVersion)` without the cache (benchmarks build it repeatedly); `ParseMode::Full`.
     pub fn build(version: &str) -> Result<PassiveTree, TreeError> {
+        PassiveTree::build_mode(version, ParseMode::Full)
+    }
+
+    /// `build` with the node stats read in `mode`.
+    pub fn build_mode(version: &str, mode: ParseMode) -> Result<PassiveTree, TreeError> {
         let json = load_tree(version)?;
         let version_num = tree_version_num(version)?;
         let skills_per_orbit = json
@@ -409,6 +422,7 @@ impl PassiveTree {
             .unwrap_or_else(|| LEGACY_SKILLS_PER_ORBIT.to_vec());
         let orbit_radii = json.constants.orbit_radii.clone().unwrap_or_else(|| LEGACY_ORBIT_RADII.to_vec());
         let mut t = PassiveTree {
+            parse_mode: mode,
             tree_version: version.to_owned(),
             version_num,
             json,
@@ -662,7 +676,7 @@ impl PassiveTree {
                         ty: None,
                         dn: "",
                     };
-                    process_stats(&holder, &mut entry.sd, &mut entry.stats, 1);
+                    process_stats(&holder, &mut entry.sd, &mut entry.stats, 1, self.parse_mode);
                     self.mastery_effects.insert(key, entry);
                 }
                 // else :568 `effect.stats = <the earlier split list>` -- the node's own copy of the stats is display only.
@@ -778,7 +792,7 @@ impl PassiveTree {
         };
         let mut sd = std::mem::take(&mut node.sd);
         let mut stats = NodeStats::default();
-        process_stats(&holder, &mut sd, &mut stats, 1);
+        process_stats(&holder, &mut sd, &mut stats, 1, self.parse_mode);
         node.sd = sd;
         node.stats = stats;
         Ok(())

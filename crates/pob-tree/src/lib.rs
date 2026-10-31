@@ -12,8 +12,9 @@ pub mod modtools;
 pub mod spec;
 pub mod tree;
 
+pub use pob_parser::ParseMode;
 pub use spec::{AllocNodeCounts, AllocOrder, PassiveSpec, SpecNode};
 pub use tree::{
     AscendClass, AscendEntry, MasteryEffect, NodeModLine, NodeStats, NodeType, PassiveTree, TreeClass, TreeError, TreeGroup, TreeNode,
-    calc_orbit_angles, load_passive_tree,
+    calc_orbit_angles, load_passive_tree, load_passive_tree_mode,
 };

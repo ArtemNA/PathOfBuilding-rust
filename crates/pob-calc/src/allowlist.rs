@@ -12,8 +12,11 @@
 //! reports nothing and the harness counts the key as `unimplemented` (the progress metric). `POB_EXPERIMENTAL=1` in
 //! `pob-cli` turns the filter off.
 //!
-//! Reasons are the root causes pob-ts established for the same keys (the measurement here proves only ok/mismatch);
-//! the sets themselves were measured on this engine and are identical to pob-ts.
+//! Reasons are the root causes pob-ts established for the same keys (the measurement here proves only ok/mismatch).
+//! R4.5 measured 289/246 (identical to pob-ts, mod lines from ModCache only). R5.4 re-measured with the real ModParser
+//! (`ParseMode::Full`, the default): `item-miss` is closed -- 44 keys moved to ALLOWLIST (39 from EXCLUDED, 5 newly
+//! emitted rage/elusive keys), one newly emitted key (`RageEffect`) is EXCLUDED, no key left ALLOWLIST; no reason names
+//! `item-miss` any more (it stays in `ROOT_CAUSES`, the pob-ts vocabulary).
 
 use indexmap::IndexMap;
 
@@ -53,67 +56,76 @@ pub fn filter_stats(stats: &IndexMap<String, StatValue>) -> IndexMap<String, Sta
         .collect()
 }
 
-const ACTION: &str = "buffs + flasks: ActionSpeed moves with Onslaught/Tailwind and flasks";
-const EST_BYPASS: &str = "estimation input: ChaosNotBypassEnergyShield (item-miss, D9/W11)";
-const DEFENCES: &str = "buffs + item-miss + cluster: defence auras plus missing item/cluster defence mods";
-const ITEM: &str = "item-miss: slot defence read off armourData loses an item line that missed ModCache (D9/W11)";
-const SUPPRESS: &str = "item-miss + cluster: suppression and dodge from tree/item/cluster mods not yet reproduced (D9, D16)";
-const EST_TAKEN: &str = "estimation input: DamageTaken INC/MORE (item-miss + skills + buffs)";
-const EST_EVADE: &str = "estimation input: Melee/ProjectileEvadeChance (buffs + item-miss + cluster)";
-const EST_NOT_HIT: &str = "estimation input: avoid-all/evade/dodge chances (flasks + buffs + item-miss + cluster)";
+// R5.4: `item-miss` is closed (the real parser answers every item line, `ParseMode::Full`) -- no reason names it; the
+// keys it alone explained moved to ALLOWLIST by measurement.
+const DEFENCES: &str = "buffs + cluster: defence auras plus missing cluster defence mods";
+const SUPPRESS: &str = "cluster: suppression and dodge from cluster-jewel subgraphs not yet reproduced (D16)";
+const EST_TAKEN: &str = "estimation input: DamageTaken INC/MORE (skills + buffs)";
+const EST_EVADE: &str = "estimation input: Melee/ProjectileEvadeChance (buffs + cluster)";
+const EST_NOT_HIT: &str = "estimation input: avoid-all/evade/dodge chances (flasks + buffs + cluster)";
 const AVOID: &str = "flasks + buffs: ailment/curse immunity from flasks, pantheons and the buff phase";
-const EST_HIT: &str = "estimation input: resistances, Armour, taken-damage and DamageTaken mods (buffs + item-miss + cluster)";
-const EST_DOT_EHP: &str = "estimation input: total pools and DoT multipliers (buffs + item-miss + cluster + tree-jewel)";
-const EST_ENEMY: &str = "estimation input: EnemyCritEffect and enemy Damage INC/MORE (buffs + item-miss + cluster + curses)";
+const EST_HIT: &str = "estimation input: resistances, Armour, taken-damage and DamageTaken mods (buffs + cluster)";
+const EST_DOT_EHP: &str = "estimation input: total pools and DoT multipliers (buffs + cluster + tree-jewel)";
+const EST_ENEMY: &str = "estimation input: EnemyCritEffect and enemy Damage INC/MORE (buffs + cluster + curses)";
 const EST_ENEMY_MULT: &str = "estimation input: enemyDB Damage INC/MORE from curses";
-const EST_POOL: &str = "estimation input: Life pools and EnergyShieldRecoveryCap (item-miss + cluster + tree-jewel + buffs)";
-const EST_MAX_HIT: &str =
-    "estimation input: hit pools, resist multipliers, armour, enemy damage (buffs + curses + guards + item-miss + cluster)";
-const EST_RECOUP: &str = "estimation input: recoupable damage taken and hit-simulation pools (buffs + item-miss + cluster)";
-const RESISTS: &str = "buffs + item-miss + cluster: Purity auras plus missing item/cluster resistance mods";
-const EST_RES: &str = "estimation input: resistances (buffs + item-miss + cluster)";
-const EST_DOT: &str = "estimation input: resistances over time and DamageTaken INC/MORE (buffs + item-miss + cluster + skills)";
+const EST_POOL: &str = "estimation input: Life pools and EnergyShieldRecoveryCap (cluster + tree-jewel + buffs)";
+const EST_MAX_HIT: &str = "estimation input: hit pools, resist multipliers, armour, enemy damage (buffs + curses + guards + cluster)";
+const EST_RECOUP: &str = "estimation input: recoupable damage taken and hit-simulation pools (buffs + cluster)";
+const RESISTS: &str = "buffs + cluster: Purity auras plus missing cluster resistance mods";
+const EST_RES: &str = "estimation input: resistances (buffs + cluster)";
+const EST_DOT: &str = "estimation input: resistances over time and DamageTaken INC/MORE (buffs + cluster + skills)";
 const EST_HIT_POOL: &str =
-    "estimation input: MoM hit pools, EnergyShieldRecoveryCap, ward/aegis/guard pools (buffs + item-miss + cluster + tree-jewel + guards)";
-const EST_DAMAGE_CHANCE: &str = "estimation input: EffectiveSpellSuppressionChance (item-miss + cluster)";
-const CURSE: &str = "buffs + item-miss: curse effect on self from pantheon/item mods and the buff phase";
-const ATTR: &str = "item-miss + cluster: attributes follow missing item mods and cluster-jewel subgraphs (D9, D16)";
-const EST_SURVIVAL: &str = "estimation input: TotalNumberOfHits and enemySkillTime (buffs + curses + ailments + item-miss + cluster)";
+    "estimation input: MoM hit pools, EnergyShieldRecoveryCap, ward/aegis/guard pools (buffs + cluster + tree-jewel + guards)";
+const EST_DAMAGE_CHANCE: &str = "estimation input: EffectiveSpellSuppressionChance (cluster)";
+const CURSE: &str = "buffs: curse effect on self from pantheon mods and the buff phase";
+const ATTR: &str = "cluster: attributes follow cluster-jewel subgraphs (D16)";
+const EST_SURVIVAL: &str = "estimation input: TotalNumberOfHits and enemySkillTime (buffs + curses + ailments + cluster)";
 const MOVE: &str = "flasks + buffs: Quicksilver, Onslaught, Tailwind move MovementSpeed";
-const EST_CRIT: &str = "estimation input: ConfiguredEvadeChance (buffs + item-miss + cluster)";
-const EVADE: &str = "buffs + item-miss + cluster: evade chance follows Evasion and enemy accuracy changed by the buff phase";
-const CHARGES: &str = "item-miss + cluster: charge maximum follows missing item and cluster mods (D9, D16)";
+const EST_CRIT: &str = "estimation input: ConfiguredEvadeChance (buffs + cluster)";
+const EVADE: &str = "buffs + cluster: evade chance follows Evasion and enemy accuracy changed by the buff phase";
 const GUARDS: &str = "guards: guard-skill block (CalcPerform.lua:3300-3341) needs the skill phase";
-const POOLS: &str =
-    "item-miss + cluster + tree-jewel + buffs: life/mana pool follows item/cluster mods, radius/timeless jewels, life/mana auras";
-const REGEN: &str = "buffs + item-miss + cluster: Vitality/Clarity plus missing regeneration mods";
+const POOLS: &str = "cluster + tree-jewel + buffs: life/mana pool follows cluster mods, radius/timeless jewels, life/mana auras";
+const REGEN: &str = "buffs + cluster: Vitality/Clarity plus missing regeneration mods";
 const RESERVE: &str = "reservation: per-skill reservation loop (CalcPerform.lua:1978-2089) has no active skills yet";
-const LEECH: &str = "buffs + item-miss + cluster: leech cap is a percentage of an undercounted pool";
-const EST_HITS: &str = "estimation input: taken hits and drained pools (buffs + item-miss + cluster)";
-const EST_MITIGATED: &str = "estimation input: hit-simulation inputs and block/suppression mitigation (buffs + item-miss + cluster)";
-const EST_ARMOUR: &str = "estimation input: Armour (buffs + item-miss + cluster)";
+const LEECH: &str = "buffs + cluster: leech cap is a percentage of an undercounted pool";
+const EST_HITS: &str = "estimation input: taken hits and drained pools (buffs + cluster)";
+const EST_MITIGATED: &str = "estimation input: hit-simulation inputs and block/suppression mitigation (buffs + cluster)";
+const EST_ARMOUR: &str = "estimation input: Armour (buffs + cluster)";
 const GEMS: &str = "gems: requirementsTable gem half needs the skill phase (P5); Req*String also differs by R8 (no breakdown)";
-const EST_STUN: &str = "estimation input: Life/EnergyShield and AvoidStun (item-miss)";
-const SPEC: &str = "item-miss + cluster + tree-jewel: tree-sourced INC follows cluster subgraphs and radius/timeless jewels";
-const EST_EHP: &str = "estimation input: NumberOfMitigatedDamagingHits and ConfiguredNotHitChance (flasks + buffs + item-miss + cluster)";
+const EST_STUN: &str = "estimation input: StunThreshold/StunAvoidChance follow Life/EnergyShield (cluster + tree-jewel + buffs; mismatch exactly where Life does)";
+const EST_SELF_STUN: &str =
+    "estimation input: SelfStunChance = enemy hit damage taken (totalTakenHit: skills + buffs) over StunThreshold (cluster + buffs)";
+const RAGE: &str = "skills + buffs: RageEffect INC is added after initEnv (the LuaJIT initEnv modDB has no RageEffect mod; golden 39 = \
+     floor(25 x 1.56)); Rage itself is emitted since R5.4 (Tree:32251 CanGainRage now parsed)";
+const SPEC: &str = "cluster + tree-jewel: tree-sourced INC follows cluster subgraphs and radius/timeless jewels";
+const EST_EHP: &str = "estimation input: NumberOfMitigatedDamagingHits and ConfiguredNotHitChance (flasks + buffs + cluster)";
 const EST_SKILL_TIME: &str = "estimation input: enemy action speed from Temporal Chains and Chill (curses + ailments)";
 const EST_GUARD: &str = "estimation input: GuardAbsorbRate (guards)";
 
-/// 289 keys, sorted (byte order): `ok` on every golden that emits them, on none `mismatch` or `extra`.
+/// 333 keys, sorted (byte order): `ok` on every golden that emits them, on none `mismatch` or `extra` (R5.4: measured
+/// with `ParseMode::Full`, the default).
 pub const ALLOWLIST: &[&str] = &[
     "AbsorptionCharges",
     "AbsorptionChargesMax",
     "AbsorptionChargesMin",
+    "ActionSpeedMod",
     "AfflictionCharges",
     "AfflictionChargesMax",
     "AfflictionChargesMin",
     "AnyAegis",
+    "AnyBypass",
     "AnyGuard",
     "AnySpecificMindOverMatter",
     "AnyTakenReflect",
     "ArmourDefense",
     "ArmourOnBody Armour",
+    "ArmourOnBoots",
+    "ArmourOnGloves",
+    "ArmourOnHelmet",
+    "ArmourOnWeapon 2",
+    "AttackDodgeChance",
     "AttackDodgeChanceOverCap",
+    "AvoidAllDamageFromHitsChance",
     "AvoidChaosDamageChance",
     "AvoidColdDamageChance",
     "AvoidFireDamageChance",
@@ -143,6 +155,7 @@ pub const ALLOWLIST: &[&str] = &[
     "BloodChargesMax",
     "BrineCharges",
     "BrineChargesMax",
+    "BrittleAvoidChance",
     "BrutalCharges",
     "BrutalChargesMax",
     "BrutalChargesMin",
@@ -153,6 +166,7 @@ pub const ALLOWLIST: &[&str] = &[
     "ChaosEffectiveAppliedArmour",
     "ChaosEnemyOverwhelm",
     "ChaosEnemyPen",
+    "ChaosEnergyShieldBypass",
     "ChaosEnergyShieldRecoup",
     "ChaosGuardAbsorbRate",
     "ChaosLifeRecoup",
@@ -173,6 +187,7 @@ pub const ALLOWLIST: &[&str] = &[
     "ColdLifeRecoup",
     "ColdManaRecoup",
     "ColdMindOverMatter",
+    "ColdResistOver75",
     "ColdtakenFlat",
     "CorruptedBloodImmunity",
     "CrabBarriers",
@@ -183,17 +198,23 @@ pub const ALLOWLIST: &[&str] = &[
     "DebuffExpirationModifier",
     "DebuffExpirationRate",
     "Devotion",
+    "EffectiveAttackDodgeChance",
     "EffectiveAverageBlockChance",
     "EffectiveBlockChance",
     "EffectiveProjectileBlockChance",
     "EffectiveSpellBlockChance",
+    "EffectiveSpellDodgeChance",
     "EffectiveSpellProjectileBlockChance",
+    "ElusiveEffectMod",
     "EnduranceCharges",
     "EnduranceChargesDuration",
     "EnduranceChargesMax",
     "EnduranceChargesMin",
     "EnergyShieldDegen",
     "EnergyShieldOnBlock",
+    "EnergyShieldOnBody Armour",
+    "EnergyShieldOnBoots",
+    "EnergyShieldOnGloves",
     "EnergyShieldOnHelmet",
     "EnergyShieldOnSpellBlock",
     "EnergyShieldOnSuppress",
@@ -210,7 +231,9 @@ pub const ALLOWLIST: &[&str] = &[
     "EnergyShieldRegenPercent",
     "EnergyShieldRegenRecovery",
     "EvasionOnBody Armour",
+    "EvasionOnBoots",
     "EvasionOnGloves",
+    "EvasionOnHelmet",
     "ExposureEffectOnSelf",
     "ExtraPoints",
     "FireAegis",
@@ -230,14 +253,22 @@ pub const ALLOWLIST: &[&str] = &[
     "FortificationStacks",
     "FortificationStacksOver20",
     "FortifyDuration",
+    "FrenzyCharges",
     "FrenzyChargesDuration",
+    "FrenzyChargesMax",
     "FrenzyChargesMin",
     "FrostShieldDamageMitigation",
     "FrostShieldLife",
     "FullLifePercentage",
+    "Gear:Armour",
+    "Gear:EnergyShield",
+    "Gear:Evasion",
     "Gear:Ward",
     "GhostShrouds",
+    "IgniteAvoidChance",
     "ImpaleAvoidChance",
+    "InherentRageLoss",
+    "InherentRageLossDelay",
     "InspirationCharges",
     "InspirationChargesMax",
     "InterruptStunAvoidChance",
@@ -282,6 +313,7 @@ pub const ALLOWLIST: &[&str] = &[
     "ManaUncancellableReservation",
     "MaxLifeLeechRatePercent",
     "MaximumFortification",
+    "MaximumRage",
     "MinimumBypass",
     "MinimumFortification",
     "MinionAllyDamageMitigation",
@@ -302,9 +334,13 @@ pub const ALLOWLIST: &[&str] = &[
     "PhysicalResist",
     "PhysicalResistTakenHitMulti",
     "PhysicaltakenFlat",
+    "PowerCharges",
+    "PowerChargesDuration",
+    "PowerChargesMax",
     "PowerChargesMin",
     "ProjectileBlockChance",
     "RadianceSentinelAllyDamageMitigation",
+    "Rage",
     "RageDegen",
     "RageRecovery",
     "RageRegen",
@@ -313,6 +349,11 @@ pub const ALLOWLIST: &[&str] = &[
     "RageRegenRecovery",
     "RemovableEnduranceCharges",
     "RemovableFortification",
+    "RemovableFrenzyCharges",
+    "RemovablePowerCharges",
+    "RemovableTotalCharges",
+    "SapAvoidChance",
+    "ScorchAvoidChance",
     "SelfBleedDuration",
     "SelfBleedEffect",
     "SelfBlindDuration",
@@ -338,12 +379,17 @@ pub const ALLOWLIST: &[&str] = &[
     "SiphoningChargesMax",
     "SoulLinkMitigation",
     "Spec:ArmourInc",
+    "Spec:EvasionInc",
+    "Spec:ManaInc",
     "SpectreAllyDamageMitigation",
     "SpellBlockChance",
     "SpellBlockChanceMax",
     "SpellBlockChanceOverCap",
+    "SpellDodgeChance",
     "SpellDodgeChanceOverCap",
+    "SpellNotHitChance",
     "SpellProjectileBlockChance",
+    "SpellProjectileNotHitChance",
     "SpellSuppressionChanceOverCap",
     "SpellSuppressionEffect",
     "SpiritCharges",
@@ -352,6 +398,7 @@ pub const ALLOWLIST: &[&str] = &[
     "SpiritInfusionsMax",
     "StoneGolemAllyDamageMitigation",
     "StunDuration",
+    "TotalCharges",
     "TotalEnergyShieldPseudoRecoup",
     "TotalEnergyShieldRecoupRecovery",
     "TotalLifePseudoRecoup",
@@ -370,6 +417,7 @@ pub const ALLOWLIST: &[&str] = &[
     "TotemLightningResist",
     "TotemLightningResistOverCap",
     "TotemLightningResistTotal",
+    "UntypedNotHitChance",
     "VaalArcticArmourLife",
     "VaalArcticArmourMitigation",
     "VaalRejuvenationTotemAllyDamageMitigation",
@@ -392,11 +440,8 @@ pub const ALLOWLIST: &[&str] = &[
     "totalEnemyDamageIn",
 ];
 
-/// 246 keys the engine writes that fail on at least one golden, each with its root cause (pob-ts vocabulary).
+/// 208 keys the engine writes that fail on at least one golden, each with its root cause (pob-ts vocabulary).
 pub const EXCLUDED: &[(&str, &str)] = &[
-    ("ActionSpeedMod", ACTION),
-    ("AnyBypass", EST_BYPASS),
-    ("ChaosEnergyShieldBypass", EST_BYPASS),
     ("Armour", DEFENCES),
     ("EnergyShield", DEFENCES),
     ("EnergyShieldRecharge", DEFENCES),
@@ -405,23 +450,7 @@ pub const EXCLUDED: &[(&str, &str)] = &[
     ("LowestOfArmourAndEvasion", DEFENCES),
     ("MeleeEvasion", DEFENCES),
     ("ProjectileEvasion", DEFENCES),
-    ("ArmourOnBoots", ITEM),
-    ("ArmourOnGloves", ITEM),
-    ("ArmourOnHelmet", ITEM),
-    ("ArmourOnWeapon 2", ITEM),
-    ("EnergyShieldOnBody Armour", ITEM),
-    ("EnergyShieldOnBoots", ITEM),
-    ("EnergyShieldOnGloves", ITEM),
-    ("EvasionOnBoots", ITEM),
-    ("EvasionOnHelmet", ITEM),
-    ("Gear:Armour", ITEM),
-    ("Gear:EnergyShield", ITEM),
-    ("Gear:Evasion", ITEM),
-    ("AttackDodgeChance", SUPPRESS),
-    ("EffectiveAttackDodgeChance", SUPPRESS),
-    ("EffectiveSpellDodgeChance", SUPPRESS),
     ("EffectiveSpellSuppressionChance", SUPPRESS),
-    ("SpellDodgeChance", SUPPRESS),
     ("SpellSuppressionChance", SUPPRESS),
     ("AttackTakenHitMult", EST_TAKEN),
     ("ChaosAfterReductionTakenHitMulti", EST_TAKEN),
@@ -451,19 +480,11 @@ pub const EXCLUDED: &[(&str, &str)] = &[
     ("ConfiguredNotHitChance", EST_NOT_HIT),
     ("MeleeNotHitChance", EST_NOT_HIT),
     ("ProjectileNotHitChance", EST_NOT_HIT),
-    ("SpellNotHitChance", EST_NOT_HIT),
-    ("SpellProjectileNotHitChance", EST_NOT_HIT),
-    ("UntypedNotHitChance", EST_NOT_HIT),
-    ("AvoidAllDamageFromHitsChance", AVOID),
     ("BleedAvoidChance", AVOID),
-    ("BrittleAvoidChance", AVOID),
     ("ChillAvoidChance", AVOID),
     ("CurseAvoidChance", AVOID),
     ("FreezeAvoidChance", AVOID),
-    ("IgniteAvoidChance", AVOID),
     ("PoisonAvoidChance", AVOID),
-    ("SapAvoidChance", AVOID),
-    ("ScorchAvoidChance", AVOID),
     ("ShockAvoidChance", AVOID),
     ("SilenceAvoidChance", AVOID),
     ("ChaosBaseTakenHitMult", EST_HIT),
@@ -541,7 +562,6 @@ pub const EXCLUDED: &[(&str, &str)] = &[
     ("ChaosResistOverTime", RESISTS),
     ("ChaosResistTotal", RESISTS),
     ("ColdResist", RESISTS),
-    ("ColdResistOver75", RESISTS),
     ("ColdResistOverCap", RESISTS),
     ("ColdResistOverTime", RESISTS),
     ("ColdResistTotal", RESISTS),
@@ -588,15 +608,6 @@ pub const EXCLUDED: &[(&str, &str)] = &[
     ("EvadeChance", EVADE),
     ("MeleeEvadeChance", EVADE),
     ("ProjectileEvadeChance", EVADE),
-    ("FrenzyCharges", CHARGES),
-    ("FrenzyChargesMax", CHARGES),
-    ("PowerCharges", CHARGES),
-    ("PowerChargesDuration", CHARGES),
-    ("PowerChargesMax", CHARGES),
-    ("RemovableFrenzyCharges", CHARGES),
-    ("RemovablePowerCharges", CHARGES),
-    ("RemovableTotalCharges", CHARGES),
-    ("TotalCharges", CHARGES),
     ("GuardSkillActive", GUARDS),
     ("Life", POOLS),
     ("LifeUnreserved", POOLS),
@@ -629,15 +640,14 @@ pub const EXCLUDED: &[(&str, &str)] = &[
     ("ReqIntString", GEMS),
     ("ReqStr", GEMS),
     ("ReqStrString", GEMS),
-    ("SelfStunChance", EST_STUN),
+    ("SelfStunChance", EST_SELF_STUN),
     ("StunAvoidChance", EST_STUN),
     ("StunThreshold", EST_STUN),
     ("Spec:EnergyShieldInc", SPEC),
-    ("Spec:EvasionInc", SPEC),
     ("Spec:LifeInc", SPEC),
-    ("Spec:ManaInc", SPEC),
     ("TotalEHP", EST_EHP),
     ("TotalNumberOfHits", EST_EHP),
     ("enemySkillTime", EST_SKILL_TIME),
     ("sharedGuardAbsorbRate", EST_GUARD),
+    ("RageEffect", RAGE),
 ];

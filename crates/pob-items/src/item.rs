@@ -240,10 +240,14 @@ pub struct ItemOptions {
     pub variant_alt: [Option<f64>; 5],
     /// `<ModRange id range>` in document order.
     pub mod_ranges: Vec<(f64, f64)>,
+    /// How mod lines are read (R5.4): `Full` (desktop, default) or `CacheOnly` (pob-ts).
+    pub parse_mode: pob_parser::ParseMode,
 }
 
 #[derive(Clone, Debug, Default)]
 pub struct Item {
+    /// How this item's mod lines are read (`ItemOptions::parse_mode`).
+    pub parse_mode: pob_parser::ParseMode,
     pub id: Option<f64>,
     pub raw: String,
     pub name: String,
@@ -466,7 +470,10 @@ impl Item {
     /// ItemsTab.lua:1216-1266: `new("Item"):Item("")`, the XML attributes, `ParseRaw(text)`, `<ModRange>`, and
     /// `BuildModList` again when the base resolved (the caller keeps the item only then).
     pub fn parse(raw: &str, opts: &ItemOptions) -> Item {
-        let mut item = Item::default();
+        let mut item = Item {
+            parse_mode: opts.parse_mode,
+            ..Item::default()
+        };
         // Item.lua:91 `Item("")`: "" is truthy, so ParseRaw runs on the empty string first.
         item.parse_raw("", None, false);
         item.id = opts.id;
@@ -1118,20 +1125,20 @@ impl Item {
                     line = gsub(&line, "(%-?%d+%.?%d*)%((%-?%d+%.?%d*)%)", "%1", None);
                     // Item.lua:1083 `pendingAffixList` exists only after an advanced-copy `{ ... }` header (skipped above).
                     line = resolve_advanced_copy_ranges(&line, &mut ml);
-                    let mut ranged_line = apply_range(&line, 1.0, Some(catalyst_scalar), ml.corrupted_range);
-                    let mut parsed = pob_parser::parse_mod_line(&ranged_line, false);
+                    let mut ranged_line = apply_range(&line, 1.0, Some(catalyst_scalar), ml.corrupted_range, self.parse_mode);
+                    let mut parsed = pob_parser::parse_mod_line(&ranged_line, false, self.parse_mode);
                     let next_mod_group = at(l + 1).and_then(|n| match1(n, "{modGroup:([^}]+)}"));
                     if (parsed.mod_list.is_none() || parsed.extra.is_some()) && at(l + 1).is_some() && ml.mod_group == next_mod_group {
                         let next = gsub(at(l + 1).expect("checked"), "%b{}", "", None);
                         let next_line = gsub(&next, " ?%(%l+%)", "", None);
                         let comb_line = format!("{line} {next_line}");
-                        ranged_line = apply_range(&comb_line, 1.0, Some(catalyst_scalar), ml.corrupted_range);
-                        parsed = pob_parser::parse_mod_line(&ranged_line, true);
+                        ranged_line = apply_range(&comb_line, 1.0, Some(catalyst_scalar), ml.corrupted_range, self.parse_mode);
+                        parsed = pob_parser::parse_mod_line(&ranged_line, true, self.parse_mode);
                         if parsed.mod_list.is_some() && parsed.extra.is_none() {
                             line = format!("{line}\n{next_line}");
                             l += 1;
                         } else {
-                            parsed = pob_parser::parse_mod_line(&ranged_line, false);
+                            parsed = pob_parser::parse_mod_line(&ranged_line, false, self.parse_mode);
                         }
                     }
                     self.apply_line_flags(&ml, &line);
@@ -1311,7 +1318,7 @@ impl Item {
             let base = self.base.expect("checked");
             for (idx, c) in gmatch(enchant, "[^\n]+").into_iter().enumerate() {
                 let line = c[0].clone();
-                let p = pob_parser::parse_mod_line(&line, false);
+                let p = pob_parser::parse_mod_line(&line, false, self.parse_mode);
                 let mut ml = ModLine {
                     line,
                     extra: p.extra,
@@ -1345,7 +1352,7 @@ impl Item {
         let mut set = Vec::new();
         for line in buff {
             set.push(line.clone());
-            let p = pob_parser::parse_mod_line(line, false);
+            let p = pob_parser::parse_mod_line(line, false, self.parse_mode);
             self.buff_mod_lines.push(ModLine {
                 line: line.clone(),
                 extra: p.extra,
@@ -1630,6 +1637,7 @@ impl Item {
                 ml.range.unwrap_or(DEFAULT_ITEM_AFFIX_QUALITY),
                 Some(catalyst_scalar),
                 ml.corrupted_range,
+                self.parse_mode,
             );
             let Some(c) = match_(&lower(&rl), pattern, ITEM) else { continue };
             let (mut amount, mut inc_or_dec, mut tags_string) = (c.first().cloned(), c.get(1).cloned(), c.get(2).cloned());
@@ -1716,6 +1724,7 @@ impl Item {
                         matched = false;
                     }
                     let unscalable = m.flag("unscalable");
+                    let mode = self.parse_mode;
                     let m = &mut self.list_mut(lid)[idx];
                     if matched && !unscalable && !grants_skill {
                         m.value_scalar = Some(match mag.multiplier {
@@ -1726,8 +1735,8 @@ impl Item {
                     if let Some(vs) = m.value_scalar
                         && vs != 1.0
                     {
-                        let rl = apply_range(&m.line, m.range.unwrap_or(1.0), Some(vs), Some(1.0));
-                        let p = pob_parser::parse_mod_line(&rl, false);
+                        let rl = apply_range(&m.line, m.range.unwrap_or(1.0), Some(vs), Some(1.0), mode);
+                        let p = pob_parser::parse_mod_line(&rl, false, mode);
                         if let Some(mods) = p.mod_list {
                             m.display_value_scalar = Some(1.0);
                             m.mod_list = Some(mods);
@@ -1742,13 +1751,13 @@ impl Item {
     // --- Item.lua:2519-2704 ---------------------------------------------------------------------------------------
 
     /// Item.lua:2519-2531 `getRangedModList`: `None` = Lua nil/false (keep the parsed list).
-    fn get_ranged_mod_list(ml: &ModLine) -> Option<Vec<Mod>> {
+    fn get_ranged_mod_list(ml: &ModLine, mode: pob_parser::ParseMode) -> Option<Vec<Mod>> {
         let range = ml.range?;
         if !matches(&ml.line, "%((%-?%d+%.?%d*)%-(%-?%d+%.?%d*)%)") {
             return None;
         }
-        let line = apply_range(&gsub(&ml.line, "\n", " ", None), range, ml.value_scalar, ml.corrupted_range);
-        let p = pob_parser::parse_mod_line(&line, false);
+        let line = apply_range(&gsub(&ml.line, "\n", " ", None), range, ml.value_scalar, ml.corrupted_range, mode);
+        let p = pob_parser::parse_mod_line(&line, false, mode);
         if is_zero_value_line(&line) {
             return Some(Vec::new());
         }
@@ -1805,7 +1814,11 @@ impl Item {
                 let class_restriction = find_plain(&ml.line, "Requires Class")
                     .is_some()
                     .then(|| match1(&gsub(&ml.line, "{variant:([%d,]+)}", "", None), "Requires Class (.+)"));
-                let ranged = if ml.extra.is_none() { Self::get_ranged_mod_list(ml) } else { None };
+                let ranged = if ml.extra.is_none() {
+                    Self::get_ranged_mod_list(ml, self.parse_mode)
+                } else {
+                    None
+                };
                 let has_mod_ids = ml.mod_id.is_some() && ml.new_mod_id.is_some();
                 if let Some(cr) = class_restriction {
                     self.class_restriction = cr;

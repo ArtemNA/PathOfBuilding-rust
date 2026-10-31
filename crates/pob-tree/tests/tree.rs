@@ -4,7 +4,7 @@
 use pob_build::{NumMap, SpecModel, active_spec, load_build_xml};
 use pob_golden::registry::find_golden;
 use pob_tree::modtools::format_source_mod;
-use pob_tree::{NodeType, PassiveSpec, PassiveTree, calc_orbit_angles, load_passive_tree};
+use pob_tree::{NodeType, ParseMode, PassiveSpec, PassiveTree, calc_orbit_angles, load_passive_tree_mode};
 
 const DUAL_SAVIOR_ALLOC: [u32; 8] = [29294, 30335, 31628, 32480, 33988, 40535, 47175, 58449];
 
@@ -14,7 +14,7 @@ fn cached(line: &str) -> bool {
 
 #[test]
 fn tree_3_13_types_classes_maps() {
-    let t = load_passive_tree("3_13").unwrap();
+    let t = load_passive_tree_mode("3_13", ParseMode::CacheOnly).unwrap();
     assert_eq!(t.nodes.len(), 2706);
     assert!(t.node(0).is_none());
     let count = |ty| t.nodes.iter().filter(|n| n.ty == ty).count();
@@ -55,7 +55,7 @@ fn tree_3_13_types_classes_maps() {
 
 #[test]
 fn tree_3_13_node_6_stats_coords_links_flags() {
-    let t = load_passive_tree("3_13").unwrap();
+    let t = load_passive_tree_mode("3_13", ParseMode::CacheOnly).unwrap();
     let n = t.node(6).unwrap();
     assert_eq!(n.dn, "Twin Terrors");
     assert_eq!(n.ty, NodeType::Notable);
@@ -100,16 +100,16 @@ fn orbit_angles() {
 
 #[test]
 fn unknown_version_and_every_committed_tree() {
-    let e = load_passive_tree("3_99").err().unwrap();
+    let e = load_passive_tree_mode("3_99", ParseMode::CacheOnly).err().unwrap();
     assert!(e.0.contains("version '3_99'"), "{e}"); // W4: names the version
     for v in pob_data::tree::COMMITTED_TREE_VERSIONS {
-        let t = load_passive_tree(v).unwrap();
+        let t = load_passive_tree_mode(v, ParseMode::CacheOnly).unwrap();
         assert!(t.nodes.len() > 1000, "{v}");
         assert_eq!(t.classes.len(), 7, "{v}");
         assert_eq!(t.classes[1].name, "Marauder", "{v}");
         assert!(t.classes[1].start_node_id.is_some(), "{v}");
     }
-    let legacy = load_passive_tree("3_6").unwrap();
+    let legacy = load_passive_tree_mode("3_6", ParseMode::CacheOnly).unwrap();
     assert_eq!(legacy.version_num, 3.06);
     assert_eq!(legacy.node(47175).unwrap().ty, NodeType::ClassStart);
     assert_eq!(legacy.classes[1].start_node_id, Some(47175));
@@ -121,7 +121,7 @@ fn unknown_version_and_every_committed_tree() {
 fn parse_coverage_3_13() {
     std::thread::spawn(|| {
         pob_parser::reset_parse_mod_stats();
-        let t = PassiveTree::build("3_13").unwrap();
+        let t = PassiveTree::build_mode("3_13", ParseMode::CacheOnly).unwrap();
         let s = pob_parser::parse_mod_stats();
         let mut lines: Vec<&str> = t.nodes.iter().flat_map(|n| n.sd.iter().map(String::as_str)).collect();
         lines.sort_unstable();
@@ -136,6 +136,30 @@ fn parse_coverage_3_13() {
     .join()
     .unwrap();
 }
+
+/// R5.4: the same tree in `ParseMode::Full` -- every cache miss goes to the real parser, none fails.
+#[test]
+fn parse_coverage_3_13_full() {
+    std::thread::spawn(|| {
+        pob_parser::reset_parse_mod_stats();
+        let t = PassiveTree::build_mode("3_13", ParseMode::Full).unwrap();
+        let s = pob_parser::parse_mod_stats();
+        let unknown = t.nodes.iter().filter(|n| n.stats.unknown).count();
+        let extra = t.nodes.iter().filter(|n| n.stats.extra).count();
+        println!(
+            "Full: hits {} parsed {} misses {} errors {:?}; unknown {unknown} extra {extra}",
+            s.hits, s.parsed, s.misses, s.error_lines
+        );
+        assert_eq!((s.hits, s.parsed, s.misses), (3930, 1184, 0));
+        assert!(s.error_lines.is_empty());
+        assert_eq!((unknown, extra), (UNKNOWN_FULL, EXTRA_FULL));
+    })
+    .join()
+    .unwrap();
+}
+
+const UNKNOWN_FULL: usize = 134;
+const EXTRA_FULL: usize = 73;
 
 fn model(nodes: &[u32]) -> SpecModel {
     SpecModel {
@@ -161,7 +185,7 @@ fn sorted_alloc(s: &PassiveSpec) -> Vec<u32> {
 
 #[test]
 fn spec_init() {
-    let t = load_passive_tree("3_13").unwrap();
+    let t = load_passive_tree_mode("3_13", ParseMode::CacheOnly).unwrap();
     let s = PassiveSpec::new(t.clone()).unwrap();
     assert_eq!(s.nodes.len(), 2237);
     assert!(s.node(33).is_none()); // cluster-jewel notable, no group
@@ -189,7 +213,7 @@ fn spec_dual_savior() {
     let mut nodes: Vec<f64> = sm.nodes.clone();
     nodes.sort_by(f64::total_cmp);
     assert_eq!(nodes, DUAL_SAVIOR_ALLOC.map(f64::from));
-    let s = PassiveSpec::load(sm).unwrap();
+    let s = PassiveSpec::load_mode(sm, ParseMode::CacheOnly).unwrap();
     assert_eq!(sorted_alloc(&s), DUAL_SAVIOR_ALLOC);
     assert_eq!(
         (s.cur_class_name.as_str(), s.cur_ascend_class_name.as_str()),
@@ -213,7 +237,7 @@ fn spec_dual_savior() {
 fn spec_orphan_pruning() {
     let mut list = DUAL_SAVIOR_ALLOC.to_vec();
     list.extend([50904, 4184]);
-    let s = PassiveSpec::load(&model(&list)).unwrap();
+    let s = PassiveSpec::load_mode(&model(&list), ParseMode::CacheOnly).unwrap();
     assert!(s.node(4184).is_some());
     assert!(!s.node(4184).unwrap().alloc);
     let mut want = DUAL_SAVIOR_ALLOC.to_vec();
@@ -226,6 +250,6 @@ fn spec_orphan_pruning() {
 fn spec_refuses_url_only() {
     let mut m = model(&[]);
     m.url = Some("AAAABAMAAA==".into());
-    let e = PassiveSpec::load(&m).err().unwrap();
+    let e = PassiveSpec::load_mode(&m, ParseMode::CacheOnly).err().unwrap();
     assert!(e.0.contains("unimplemented: legacy URL spec"), "{e}");
 }

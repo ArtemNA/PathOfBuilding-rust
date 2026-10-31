@@ -534,10 +534,10 @@ pub(crate) fn merge_db(dst: &StoreRef, src: &StoreRef) {
 
 /// PantheonTools.lua:6-19 `pantheon.applySoulMod(db, parser, god)`: every soul line through `modLib.parseMod`; a line with
 /// mods and no `extra` (L4) gets the FIRST soul's name as its source.
-pub(crate) fn apply_soul_mod(db: &StoreRef, god: &pob_data::pantheons::Pantheon) {
+pub(crate) fn apply_soul_mod(db: &StoreRef, god: &pob_data::pantheons::Pantheon, mode: pob_parser::ParseMode) {
     for soul in &god.souls {
         for soul_mod in &soul.mods {
-            let parsed = pob_parser::parse_mod_line(&soul_mod.line, false);
+            let parsed = pob_parser::parse_mod_line(&soul_mod.line, false, mode);
             if let (Some(list), None) = (parsed.mod_list, parsed.extra) {
                 let god_name = &god.souls[0].name;
                 let source: Rc<str> = Rc::from(format!("Pantheon:{god_name}"));

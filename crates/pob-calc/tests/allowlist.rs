@@ -1,5 +1,5 @@
 //! R4.5 -- R4-ARCH gate (b): `ALLOWLIST` / `EXCLUDED` are MEASURED, not chosen. For the six goldens this re-runs the
-//! full engine (`calculate_file`, default options) and compares `stats` with `snapshot.stats` through
+//! full engine (`calculate_file`, default options -- since R5.4 `ParseMode::Full`, the real ModParser) and compares `stats` with `snapshot.stats` through
 //! `pob_golden::compare_stats` (round4, O3; exact doubles, O8). A key is in `ALLOWLIST` iff it is `ok` on every golden
 //! that emits it and `extra` on none; every key Rust emits on any golden is in exactly one of the two lists.
 //! Any drift -- a key that starts or stops matching -- fails here.
@@ -95,8 +95,9 @@ fn allowlist_is_the_measured_set() {
         EXCLUDED.len(),
         seen.len()
     );
-    assert_eq!(ALLOWLIST.len(), 289, "pinned size of the measured allowlist");
-    assert_eq!(EXCLUDED.len(), 246, "pinned size of the measured exclusions");
+    // R4.5: 289 / 246 (ModCache only); R5.4 (ParseMode::Full): 333 / 208
+    assert_eq!(ALLOWLIST.len(), 333, "pinned size of the measured allowlist");
+    assert_eq!(EXCLUDED.len(), 208, "pinned size of the measured exclusions");
 }
 
 #[test]
@@ -105,6 +106,8 @@ fn every_excluded_key_names_a_root_cause() {
     for (k, reason) in EXCLUDED {
         let causes = root_causes(reason);
         assert!(!causes.is_empty(), "{k}: reason names no root cause: {reason}");
+        // R5.4 closed `item-miss` (the real parser answers every item line): a key still excluded has another root
+        assert!(!causes.contains(&"item-miss"), "{k}: item-miss is closed since R5.4: {reason}");
         for c in causes {
             *tally.get_mut(c).unwrap() += 1;
         }

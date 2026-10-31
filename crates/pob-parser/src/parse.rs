@@ -123,7 +123,7 @@ pub(crate) fn mods_of(v: &Value) -> Result<Option<Vec<Mod>>, ParseError> {
     }
 }
 
-fn extra_of(v: &Value) -> Result<Option<String>, ParseError> {
+pub(crate) fn extra_of(v: &Value) -> Result<Option<String>, ParseError> {
     match v {
         Value::Nil | Value::Bool(false) => Ok(None),
         Value::Str(s) => Ok(Some(s.to_string())),
@@ -240,19 +240,37 @@ impl Parser {
                 && !caps.is_empty()
             {
                 jewel_hits += 1;
-                first_jewel.get_or_insert(i);
+                if first_jewel.is_none() {
+                    first_jewel = Some((i, crate::scan::caps_values(&lower, &caps)?));
+                }
             }
         }
         if jewel_hits > 1 {
             crate::note_jewel_multi(line_s);
         }
-        if let Some(i) = first_jewel {
-            return Err(unported_in(&jt.vals[i]));
+        if let Some((i, caps)) = first_jewel {
+            // :6644 `{ mod("JewelFunc", "LIST", { func = patternVal.func(cap1, .., cap5), type = patternVal.type }) }`
+            let pv = &jt.vals[i];
+            let func = match pv.field("func") {
+                Some(PVal::Fn(f)) => crate::jewel::data_func(&f)?,
+                _ => return Err(ParseError::Unrepresentable("a jewelFuncList entry without a function".into())),
+            };
+            let func = crate::jewel::call_caps(&func, &caps)?;
+            let ty = crate::jewel::pval_value(&pv.field("type").unwrap_or(PVal::Lua(Value::Nil)))?;
+            let m = mk("JewelFunc", "LIST", tbl([("func", func), ("type", ty)]), &[])?;
+            return Ok(RawParse {
+                mod_list: Some(vec![m]),
+                ..RawParse::default()
+            });
         }
         let lower_s = std::str::from_utf8(&lower).unwrap_or_default();
-        // :6649-6652 an exact jewel key: `{ mod("JewelFunc", "LIST", jewelFunc) }` -- a value holding a function (R5.4)
+        // :6649-6652 an exact jewel key: `{ mod("JewelFunc", "LIST", jewelFunc) }` -- the entry itself (a function value)
         if let Some(v) = jt.get(lower_s) {
-            return Err(unported_in(v));
+            let m = mk("JewelFunc", "LIST", crate::jewel::pval_value(v)?, &[])?;
+            return Ok(RawParse {
+                mod_list: Some(vec![m]),
+                ..RawParse::default()
+            });
         }
         // :6653-6656 clusterJewelSkills[lineLower] (the shared table itself; the wrapper copies)
         if let Some(v) = self.table(T_CLUSTER).get(lower_s) {
@@ -283,12 +301,7 @@ impl Parser {
                 PVal::Fn(f) => {
                     let mut args = vec![h.caps.first().map_or(Value::Nil, tonumber)];
                     args.extend(h.caps.iter().cloned());
-                    let (ml, ex) = call_special(d, f, &args)?;
-                    Ok(RawParse {
-                        mod_list: mods_of(&ml)?,
-                        extra: extra_of(&ex)?,
-                        ..RawParse::default()
-                    })
+                    call_special(d, f, &args)
                 }
                 PVal::Lua(v) => Ok(RawParse {
                     // `copyTable(specialMod)`

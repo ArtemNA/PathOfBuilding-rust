@@ -177,6 +177,7 @@ pub fn ser(v: &Value) -> O {
         Value::Str(s) => O::S(s.to_string()),
         Value::Table(t) => ser_table(t),
         Value::Mod(m) => ser_mod(m),
+        Value::Func(_) => O::S(pob_mods::FUNCTION_TOSTRING.to_owned()),
     }
 }
 

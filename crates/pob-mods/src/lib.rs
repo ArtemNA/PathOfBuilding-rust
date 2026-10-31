@@ -18,4 +18,4 @@ pub mod value;
 pub use matching::{compare_mod_params, format_tag, format_tags, match_keyword_flags};
 pub use store::{GlobalLimits, ModDb, ModList, ModStore, StoreKind, StoreRef, TabEntry};
 pub use types::{ActiveSkill, Actor, ActorLink, ActorRef, Gem, GrantedEffect, ItemLike, Mod, ModCfg, ModType, Tag, TagKind, create_mod};
-pub use value::{LuaError, LuaResult, Str, Table, Value};
+pub use value::{ClosureRef, FUNCTION_TOSTRING, LuaError, LuaResult, Str, Table, Value};

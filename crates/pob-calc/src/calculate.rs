@@ -27,6 +27,9 @@ use crate::{EnvMeta, meta_of};
 pub struct CalculateOptions {
     pub defence: Option<PhaseFn>,
     pub estimations: Option<PhaseFn>,
+    /// How mod lines are read (R5.4 decision 1): `Full` = the desktop (ModCache, else the real ModParser) -- the default;
+    /// `CacheOnly` = pob-ts (the R3/R4 "Rust = pob-ts" gates).
+    pub parse_mode: pob_parser::ParseMode,
 }
 
 impl Default for CalculateOptions {
@@ -34,6 +37,7 @@ impl Default for CalculateOptions {
         CalculateOptions {
             defence: Some(crate::defence::defence),
             estimations: Some(crate::estimations::estimations),
+            parse_mode: pob_parser::ParseMode::Full,
         }
     }
 }
@@ -100,7 +104,11 @@ pub fn calculate_with(xml: &str, opts: CalculateOptions) -> Result<CalculateResu
     let load_ms = ms(t0);
 
     let t1 = Instant::now();
-    let mut env = init_env(Rc::new(model), InitEnvOptions::default()).map_err(|e| CalcError(format!("initEnv: {e}")))?;
+    let env_opts = InitEnvOptions {
+        parse_mode: opts.parse_mode,
+        ..InitEnvOptions::default()
+    };
+    let mut env = init_env(Rc::new(model), env_opts).map_err(|e| CalcError(format!("initEnv: {e}")))?;
     let init_env_ms = ms(t1);
 
     let t2 = Instant::now();

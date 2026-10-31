@@ -4,13 +4,15 @@
 //!   (b) Rust <-> LuaJIT dump classified exactly as pob-ts classifies it (export-env.ts `selfTreeGlobal`/`selfTree`):
 //!       cluster ids (>= 65536) / expansion sockets, node-miss (a ModCache miss on the node), tree-jewel (Lethal Pride, inside
 //!       socket 61834's radius), keystoneMap legion keys (LuaJIT-only) -- per-build counts pinned, unclassified 0.
+//! (a)/(b) run in `ParseMode::CacheOnly` (pob-ts). R5.4 (c): (b) in `ParseMode::Full` -- `node-miss` 0 (every node line
+//! answered by the real parser equals LuaJIT), keystoneMap ModCache-miss 0, the rest pinned as in (b).
 
 use std::collections::{BTreeMap, BTreeSet};
 
 use pob_build::{active_spec, load_build_xml};
 use pob_golden::registry::GOLDEN_BUILDS;
 use pob_tree::modtools::format_source_mod;
-use pob_tree::{AllocOrder, PassiveSpec, PassiveTree, load_passive_tree};
+use pob_tree::{AllocOrder, ParseMode, PassiveSpec, PassiveTree, load_passive_tree_mode};
 use serde_json::{Map, Value as Json, json};
 
 fn fixture(name: &str, kind: &str) -> Json {
@@ -28,10 +30,14 @@ fn fixture(name: &str, kind: &str) -> Json {
 }
 
 fn spec_for(name: &str, order: AllocOrder) -> PassiveSpec {
+    spec_for_mode(name, order, ParseMode::CacheOnly)
+}
+
+fn spec_for_mode(name: &str, order: AllocOrder, mode: ParseMode) -> PassiveSpec {
     let g = GOLDEN_BUILDS.iter().find(|g| g.name == name).unwrap();
     let m = load_build_xml(&std::fs::read_to_string(g.xml_path()).unwrap()).unwrap();
     let sm = active_spec(&m);
-    let mut s = PassiveSpec::new(load_passive_tree(&sm.tree_version).unwrap()).unwrap();
+    let mut s = PassiveSpec::new(load_passive_tree_mode(&sm.tree_version, mode).unwrap()).unwrap();
     s.alloc_order = order;
     s.import_from_node_list(
         sm.class_id,
@@ -134,7 +140,8 @@ struct Classes {
 }
 
 /// export-env.ts `selfTree`: Rust spec vs the LuaJIT dump. Returns the class counts; unclassified differences panic.
-fn classify(name: &str, tree: &PassiveTree, spec: &PassiveSpec, rust: &Json, lj: &Json) -> Classes {
+/// `full`: the real parser read the nodes, so a ModCache miss explains nothing (`node-miss` cannot occur).
+fn classify(name: &str, tree: &PassiveTree, spec: &PassiveSpec, rust: &Json, lj: &Json, full: bool) -> Classes {
     let mut c = Classes::default();
     let lj_alloc = lj["alloc"].as_object().unwrap();
     let lj_ids: BTreeSet<u32> = lj_alloc.keys().map(|k| k.parse().unwrap()).collect();
@@ -170,7 +177,7 @@ fn classify(name: &str, tree: &PassiveTree, spec: &PassiveSpec, rust: &Json, lj:
         );
         if o["mods"] == r["mods"] {
             c.mods_identical += 1;
-        } else if uncached(tree, id) {
+        } else if !full && uncached(tree, id) {
             c.node_miss += 1;
         } else if radius_all.contains(&id) {
             c.tree_jewel += 1;
@@ -246,7 +253,7 @@ fn tree_dump_equals_pob_ts_and_classifies_against_luajit() {
         ("Mirage Archer Toxic Rain", [10, 4, 12, 0]),
         ("OccVortex", [0, 0, 11, 0]),
     ];
-    let tree = load_passive_tree("3_13").unwrap();
+    let tree = load_passive_tree_mode("3_13", ParseMode::CacheOnly).unwrap();
     for (i, g) in GOLDEN_BUILDS.iter().enumerate() {
         let spec = spec_for(g.name, AllocOrder::IdAsc);
         let rust = dump(&tree, &spec);
@@ -259,10 +266,39 @@ fn tree_dump_equals_pob_ts_and_classifies_against_luajit() {
             eprintln!("keystoneMap: LuaJIT-only (legion) {legion}, common identical {same}, ModCache-miss {miss}, unexplained 0");
             assert_eq!((legion, same + miss), (22, 90));
         }
-        let c = classify(g.name, &tree, &spec, &rust, &lj);
+        let c = classify(g.name, &tree, &spec, &rust, &lj, false);
         eprintln!("{}: {c:?} (alloc rust {})", g.name, spec.alloc_nodes.len());
         let got = [c.cluster_ids, c.expansion_sockets, c.node_miss, c.tree_jewel];
         assert_eq!((g.name, got), pinned[i], "class counts");
+    }
+}
+
+/// R5.4 gate (c): the LuaJIT classification with the real parser behind `ProcessStats`.
+#[test]
+fn tree_full_classifies_against_luajit_node_miss_zero() {
+    // (cluster ids, expansion sockets, node-miss, tree-jewel) per build
+    let pinned: [(&str, [usize; 4]); 6] = [
+        ("Dual Savior", [0, 0, 0, 0]),
+        ("Dual Wield Cospris CoC", [16, 6, 0, 0]),
+        ("Dual Wield Cospris CoC - Lethal Pride", [16, 6, 0, 17]),
+        ("Generals Perforate Zerker", [21, 8, 0, 0]),
+        ("Mirage Archer Toxic Rain", [10, 4, 0, 0]),
+        ("OccVortex", [0, 0, 0, 0]),
+    ];
+    let tree = load_passive_tree_mode("3_13", ParseMode::Full).unwrap();
+    for (i, g) in GOLDEN_BUILDS.iter().enumerate() {
+        let spec = spec_for_mode(g.name, AllocOrder::IdAsc, ParseMode::Full);
+        let rust = dump(&tree, &spec);
+        let lj = fixture(g.name, "luajit");
+        if i == 0 {
+            let (legion, miss, same) = classify_global(&tree, &rust, &lj);
+            eprintln!("Full keystoneMap: LuaJIT-only (legion) {legion}, common identical {same}, ModCache-miss {miss}");
+            assert_eq!((legion, same, miss), (22, 90, 0));
+        }
+        let c = classify(g.name, &tree, &spec, &rust, &lj, true);
+        eprintln!("Full {}: {c:?} (alloc rust {})", g.name, spec.alloc_nodes.len());
+        let got = [c.cluster_ids, c.expansion_sockets, c.node_miss, c.tree_jewel];
+        assert_eq!((g.name, got), pinned[i], "class counts (Full)");
     }
 }
 

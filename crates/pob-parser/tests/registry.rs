@@ -3,6 +3,7 @@
 
 use pob_data::mod_parser::{PVal, mod_parser};
 use pob_parser::closures::{HELPERS, all_entries, drift};
+use pob_parser::closures_manual::MANUAL;
 
 #[test]
 fn tables_and_fns_count_as_upstream() {
@@ -57,7 +58,7 @@ fn tables_and_fns_count_as_upstream() {
 fn registered_sha_matches_fns() {
     let d = mod_parser();
     let entries = all_entries();
-    assert_eq!(entries.len(), HELPERS.len());
+    assert_eq!(entries.len(), HELPERS.len() + MANUAL.len());
     assert_eq!(drift(&entries, &d), Vec::<String>::new());
     println!("registry: {}/{} sha = mod-parser.json fns", entries.len(), entries.len());
 }

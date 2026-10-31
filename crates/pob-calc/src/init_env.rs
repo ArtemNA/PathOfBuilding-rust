@@ -32,6 +32,8 @@ use crate::setup::{
 pub struct InitEnvOptions {
     pub spec: Option<PassiveSpec>,
     pub items: Option<IndexMap<u64, Rc<Item>>>,
+    /// How every mod line of the build is read (R5.4): `Full` (desktop, default) or `CacheOnly` (pob-ts).
+    pub parse_mode: pob_parser::ParseMode,
 }
 
 #[derive(Debug)]
@@ -159,10 +161,10 @@ fn build_ordered_slots(spec: &PassiveSpec, set: &pob_build::ItemSetModel) -> Vec
 }
 
 /// `build.itemsTab.items` -- ItemsTab.lua:1216-1266; only items whose base resolved are kept (:1264).
-pub fn parse_items(build: &BuildModel) -> IndexMap<u64, Rc<Item>> {
+pub fn parse_items(build: &BuildModel, mode: pob_parser::ParseMode) -> IndexMap<u64, Rc<Item>> {
     let mut items = IndexMap::new();
     for im in &build.items {
-        let item = Item::parse(&im.raw, &item_options(im));
+        let item = Item::parse(&im.raw, &item_options(im, mode));
         if item.base.is_none() {
             continue;
         }
@@ -172,8 +174,9 @@ pub fn parse_items(build: &BuildModel) -> IndexMap<u64, Rc<Item>> {
 }
 
 /// The `<Item>` attributes as `Item::parse` wants them.
-pub fn item_options(im: &pob_build::ItemModel) -> ItemOptions {
+pub fn item_options(im: &pob_build::ItemModel, mode: pob_parser::ParseMode) -> ItemOptions {
     ItemOptions {
+        parse_mode: mode,
         id: Some(im.id),
         variant: im.variant,
         variant_alt: [im.variant_alt, im.variant_alt2, im.variant_alt3, im.variant_alt4, im.variant_alt5],
@@ -323,9 +326,10 @@ pub fn init_env(build: Rc<BuildModel>, opts: InitEnvOptions) -> Result<Env, Init
     // --- (1) env + the three ModDBs + the actors (:490-547) ---------------------------------------------------------
     let spec = match opts.spec {
         Some(s) => s,
-        None => PassiveSpec::load(active_spec(&build))?,
+        None => PassiveSpec::load_mode(active_spec(&build), opts.parse_mode)?,
     };
     let mut config = ConfigState::from_build(&build);
+    config.parse_mode = opts.parse_mode;
     // `build.configTab.modList`/`.enemyModList` are what `ConfigTab:BuildModList` left behind at load; it also runs
     // `UpdateLevel`, which sets `configTab.enemyLevel`.
     let config_lists = config.build_mod_list(build.level).map_err(|e| InitEnvError(e.to_string()))?;
@@ -684,7 +688,7 @@ pub fn init_env(build: Rc<BuildModel>, opts: InitEnvOptions) -> Result<Env, Init
         let god = pantheons()
             .get(god_name.as_str())
             .ok_or_else(|| InitEnvError(format!("Modules/PantheonTools.lua:7: data.pantheons[\"{god_name}\"] is nil")))?;
-        apply_soul_mod(&mod_db, god);
+        apply_soul_mod(&mod_db, god, opts.parse_mode);
     }
 
     // --- (7) the enemy database (:676-678) -----------------------------------------------------------------------------
@@ -759,7 +763,7 @@ pub fn init_env(build: Rc<BuildModel>, opts: InitEnvOptions) -> Result<Env, Init
     env.ordered_slots = build_ordered_slots(&env.spec, item_set);
     env.items = match opts.items {
         Some(i) => i,
-        None => parse_items(&build),
+        None => parse_items(&build, opts.parse_mode),
     };
     let use_second_weapon_set = item_set.use_second_weapon_set;
     let mut items: IndexMap<String, Rc<Item>> = IndexMap::new();

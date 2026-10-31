@@ -124,9 +124,14 @@ const EXPECTED: [(&str, [usize; 2], &[&str]); 6] = [
 fn config_dump_equals_pobts_and_luajit_on_six_goldens() {
     assert_eq!(GOLDEN_BUILDS.len(), 6);
     let mut problems = Vec::new();
-    for g in GOLDEN_BUILDS.iter() {
+    // R5.4: CacheOnly (pob-ts) and Full (the desktop's parser) both give the dump both oracles have
+    for (mode, g) in [pob_parser::ParseMode::CacheOnly, pob_parser::ParseMode::Full]
+        .into_iter()
+        .flat_map(|mode| GOLDEN_BUILDS.iter().map(move |g| (mode, g)))
+    {
         let m = model(g.name);
         let mut state = ConfigState::from_build(&m);
+        state.parse_mode = mode;
         let lists = state.build_mod_list(m.level).unwrap();
         let got = dump(&m, &state, &lists);
         for kind in ["pobts", "luajit"] {

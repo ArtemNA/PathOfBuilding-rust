@@ -174,6 +174,8 @@ fn enc(v: &Value) -> J {
         Value::Bool(b) => J::Bool(*b),
         Value::Num(n) => num(*n),
         Value::Str(s) => bstr(s),
+        // the fixture encodes any Lua function as "<function>" (decision 2: compared as "is a function")
+        Value::Func(_) => J::Str("<function>".into()),
         Value::Table(t) => {
             let mut o = Vec::new();
             if !t.array.is_empty() {
@@ -399,5 +401,7 @@ fn parser_equals_luajit_inner_parse_mod() {
     );
     for s in [&inner, &wrapped] {
         assert_eq!(s.equal + s.unported_lines, lines);
+        // R5.4: every closure is ported -- the whole corpus is answered
+        assert_eq!(s.unported_lines, 0, "unported closures {:?}", s.unported);
     }
 }

@@ -6,7 +6,7 @@ use std::time::Instant;
 
 use pob_build::{active_spec, load_build_xml};
 use pob_golden::registry::GOLDEN_BUILDS;
-use pob_tree::{PassiveSpec, PassiveTree, load_passive_tree};
+use pob_tree::{ParseMode, PassiveSpec, PassiveTree, load_passive_tree_mode};
 
 fn ms(t: Instant) -> f64 {
     t.elapsed().as_secs_f64() * 1000.0
@@ -20,12 +20,12 @@ fn median(mut v: Vec<f64>) -> f64 {
 fn main() {
     let runs = 7;
     let t = Instant::now();
-    let _ = load_passive_tree("3_13").unwrap();
+    let _ = load_passive_tree_mode("3_13", ParseMode::CacheOnly).unwrap();
     println!("cold 3_13 (data load + build): {:.2} ms", ms(t));
     let warm: Vec<f64> = (0..runs)
         .map(|_| {
             let t = Instant::now();
-            let _ = PassiveTree::build("3_13").unwrap();
+            let _ = PassiveTree::build_mode("3_13", ParseMode::CacheOnly).unwrap();
             ms(t)
         })
         .collect();
@@ -36,7 +36,7 @@ fn main() {
         let v: Vec<f64> = (0..runs)
             .map(|_| {
                 let t = Instant::now();
-                let _ = PassiveSpec::load(sm).unwrap();
+                let _ = PassiveSpec::load_mode(sm, ParseMode::CacheOnly).unwrap();
                 ms(t)
             })
             .collect();

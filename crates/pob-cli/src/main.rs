@@ -2,10 +2,11 @@ use std::io::Read;
 use std::path::PathBuf;
 use std::process::ExitCode;
 
-const USAGE: &str = "usage: pob-cli calc <path.xml | -> [--json]\n  \
+const USAGE: &str = "usage: pob-cli calc <path.xml | -> [--json] [--cache-only]\n  \
      '-' reads the build XML (UTF-8) from stdin; POB_EXPERIMENTAL=1 disables the stats allowlist\n       \
-     pob-cli bench <path.xml | golden name | all> [--runs N]\n  \
-     median [min-max] ms of the full calculate_file over N runs (default 10, one untimed warm-up)";
+     pob-cli bench <path.xml | golden name | all> [--runs N] [--cache-only]\n  \
+     median [min-max] ms of the full calculate_file over N runs (default 10, one untimed warm-up)\n  \
+     mod lines: ModCache, else the real ModParser (desktop); --cache-only = ModCache only (pob-ts)";
 
 fn fail(msg: &str) -> ExitCode {
     eprintln!("pob-cli: {msg}");
@@ -46,10 +47,12 @@ fn main() -> ExitCode {
 
 fn run_calc(args: &[String]) -> ExitCode {
     let mut json = false;
+    let mut mode = pob_cli::ParseMode::Full;
     let mut input: Option<&str> = None;
     for a in args {
         match a.as_str() {
             "--json" => json = true,
+            "--cache-only" => mode = pob_cli::ParseMode::CacheOnly,
             "--help" | "-h" => {
                 println!("{USAGE}");
                 return ExitCode::SUCCESS;
@@ -71,7 +74,7 @@ fn run_calc(args: &[String]) -> ExitCode {
         return fail(&format!("calc: missing input\n{USAGE}"));
     };
 
-    let out = match read_input(src).and_then(|xml| pob_cli::calc(&xml)) {
+    let out = match read_input(src).and_then(|xml| pob_cli::calc_mode(&xml, pob_cli::experimental_from_env(), mode)) {
         Ok(out) => out,
         Err(e) => return fail(&e),
     };
@@ -93,10 +96,12 @@ fn fmt_row(name: &str, v: &[f64]) -> String {
 
 fn run_bench(args: &[String]) -> ExitCode {
     let mut runs = 10usize;
+    let mut mode = pob_cli::ParseMode::Full;
     let mut target: Option<&str> = None;
     let mut it = args.iter();
     while let Some(a) = it.next() {
         match a.as_str() {
+            "--cache-only" => mode = pob_cli::ParseMode::CacheOnly,
             "--runs" => match it.next().and_then(|n| n.parse::<usize>().ok()).filter(|n| *n > 0) {
                 Some(n) => runs = n,
                 None => return fail("--runs needs a positive integer"),
@@ -126,9 +131,9 @@ fn run_bench(args: &[String]) -> ExitCode {
     } else {
         vec![(target.to_owned(), PathBuf::from(target))]
     };
-    println!("full calculate_file, {runs} runs (+1 warm-up), ms: median [min-max]");
+    println!("full calculate_file ({mode:?}), {runs} runs (+1 warm-up), ms: median [min-max]");
     for (name, path) in jobs {
-        match pob_cli::bench(&path, runs) {
+        match pob_cli::bench(&path, runs, mode) {
             Ok(r) => println!(
                 "{name}: {} | {} | {} | {} | {}",
                 fmt_row("total", &r.total),

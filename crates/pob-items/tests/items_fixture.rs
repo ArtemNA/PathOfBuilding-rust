@@ -2,14 +2,17 @@
 //!  * `applyRange`: every case (the `{range:}` lines of the 6 goldens + the 23 synthetic ones) = LuaJIT, string for string;
 //!  * `items`: the Rust dump in the shape of the TS half of `ITEM_DUMP` (pob-ts `test/items/oracle.test.ts:303-362`) is
 //!    EQUAL to pob-ts' dump; against LuaJIT, every difference falls in a pob-ts class (`item-miss`: the item has a ModCache
-//!    miss; `tree-jewel`: `jewelData.funcList`), with the R3.1 counters.
+//!    miss; `tree-jewel`: `jewelData.funcList`), with the R3.1 counters -- all of this in `ParseMode::CacheOnly` (pob-ts);
+//!  * R5.4, `ParseMode::Full` (the desktop: ModCache, else the real ModParser): `applyRange` = LuaJIT, and the items against
+//!    LuaJIT with `item-miss` = 0 -- the only class left is `tree-jewel` (R5.5).
 
 #[path = "support/dump.rs"]
 mod dump;
 
-use dump::{GoldenRun, Json, diff_exact, fixture, items_vs_luajit, run_golden};
+use dump::{GoldenRun, Json, diff_exact, fixture, items_vs_luajit, items_vs_luajit_with, run_golden, run_golden_mode};
 use pob_golden::registry::GOLDEN_BUILDS;
 use pob_items::apply_range;
+use pob_parser::ParseMode;
 
 /// R3.1 report: (build, items, clean, with miss, distinct miss lines).
 const EXPECTED: [(&str, usize, usize, usize, usize); 6] = [
@@ -27,6 +30,16 @@ fn opt_num(j: &Json, k: &str) -> Option<f64> {
 
 #[test]
 fn apply_range_equals_luajit_line_for_line() {
+    apply_range_against_luajit(ParseMode::CacheOnly);
+}
+
+/// R5.4: the same cases with the real parser behind `applyRange` (D18 now reads like the desktop).
+#[test]
+fn apply_range_full_equals_luajit_line_for_line() {
+    apply_range_against_luajit(ParseMode::Full);
+}
+
+fn apply_range_against_luajit(mode: ParseMode) {
     let (mut total, mut bad) = (0, Vec::new());
     for g in GOLDEN_BUILDS {
         let lj = fixture(g.name, "luajit");
@@ -47,6 +60,7 @@ fn apply_range_equals_luajit_line_for_line() {
                 c["range"].as_f64().expect("range"),
                 opt_num(c, "valueScalar"),
                 opt_num(c, "baseValueScalar"),
+                mode,
             );
             let want = lj_results[i].as_str().expect("luajit result");
             if got != want {
@@ -107,6 +121,60 @@ fn items_equal_pob_ts_and_classified_against_luajit() {
                 g.name,
                 (r.items, r.clean, r.with_miss, r.miss_lines),
                 (n_items, clean, with_miss, miss_lines)
+            ));
+        }
+    }
+    println!("{}", report.join("\n"));
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
+}
+
+/// R5.4 gate (`ParseMode::Full`) against LuaJIT: no item has an unanswered line (`item-miss` = 0); what is left is
+/// `tree-jewel` (`jewelData.funcList`: the radius-jewel functions, R5.5) and the two gaps `item-miss` used to hide:
+/// `mutated-lines` (Item.lua:1543, P5 marker on the item) and `nested-table` (probe encoding of `conqueredBy.conqueror`).
+#[test]
+fn items_full_against_luajit_item_miss_zero() {
+    // (build, items, tree-jewel, mutated-lines, nested-table) -- measured
+    const PINNED: [(&str, usize, usize, usize, usize); 6] = [
+        ("Dual Savior", 3, 0, 0, 0),
+        ("Dual Wield Cospris CoC", 28, 1, 4, 0),
+        ("Dual Wield Cospris CoC - Lethal Pride", 28, 1, 4, 1),
+        ("Generals Perforate Zerker", 29, 0, 1, 0),
+        ("Mirage Archer Toxic Rain", 22, 0, 0, 0),
+        ("OccVortex", 18, 0, 0, 0),
+    ];
+    let mut report = Vec::new();
+    let mut failures = Vec::new();
+    for (g, (name, n_items, tree_jewel, mutated_lines, nested_table)) in GOLDEN_BUILDS.iter().zip(PINNED) {
+        assert_eq!(g.name, name);
+        let GoldenRun { dump, misses, mutated, .. } = run_golden_mode(g, ParseMode::Full);
+        let lj = fixture(g.name, "luajit");
+        let r = items_vs_luajit_with(&lj["items"], &dump, &misses, &mutated);
+        report.push(format!(
+            "{}: items {}, lines {}, clean {}, item-miss {} ({} lines), tree-jewel {}, mutated-lines {}, nested-table {}",
+            g.name, r.items, r.lines, r.clean, r.with_miss, r.miss_lines, r.tree_jewel, r.mutated_lines, r.nested_table
+        ));
+        if !r.violations.is_empty() {
+            failures.push(format!(
+                "{}: {} unclassified, first: {}",
+                g.name,
+                r.violations.len(),
+                r.violations[..r.violations.len().min(10)].join("\n  ")
+            ));
+        }
+        let got = (
+            r.items,
+            r.clean,
+            r.with_miss,
+            r.miss_lines,
+            r.tree_jewel,
+            r.mutated_lines,
+            r.nested_table,
+        );
+        let want = (n_items, n_items, 0, 0, tree_jewel, mutated_lines, nested_table);
+        if got != want {
+            failures.push(format!(
+                "{}: (items, clean, item-miss, miss lines, tree-jewel, mutated-lines, nested-table) = {got:?}, want {want:?}",
+                g.name
             ));
         }
     }

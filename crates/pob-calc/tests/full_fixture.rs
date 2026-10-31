@@ -26,7 +26,12 @@ fn fixture(name: &str) -> Json {
 
 fn run(name: &str) -> CalculateResult {
     let g = GOLDEN_BUILDS.iter().find(|g| g.name == name).expect("golden");
-    calculate_file(g.xml_path(), CalculateOptions::default()).unwrap_or_else(|e| panic!("{name}: {e}"))
+    // R5.4: the "= pob-ts" gate reads mod lines like pob-ts
+    let o = CalculateOptions {
+        parse_mode: pob_calc::ParseMode::CacheOnly,
+        ..CalculateOptions::default()
+    };
+    calculate_file(g.xml_path(), o).unwrap_or_else(|e| panic!("{name}: {e}"))
 }
 
 /// The fixture's encoding: number -> `%.17g`, string -> `{ "s": .. }`, boolean as is.

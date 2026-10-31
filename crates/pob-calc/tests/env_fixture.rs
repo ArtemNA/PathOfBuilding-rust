@@ -6,13 +6,16 @@
 //!   (b) Rust <-> LuaJIT classified exactly as pob-ts classifies it (`selfEnv` in export-env.ts = `initEnv-oracle.test.ts`):
 //!       item-miss / node-miss / cluster / granted-passive / alloc-count / tree-jewel by the SOURCE of the mod, the gem
 //!       multipliers (`Socketed*`/`Empty*Socket*`) excluded by name; per-build counts = R3.1, unclassified 0.
+//! (a) and (b) run in `ParseMode::CacheOnly` (pob-ts). R5.4 adds (c): (b) in `ParseMode::Full` (the desktop: ModCache, else
+//! the real ModParser) -- `item-miss`/`node-miss`/`granted-passive` 0, the rest (cluster, alloc-count, tree-jewel: R5.5)
+//! pinned as measured.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::rc::Rc;
 
 use indexmap::IndexMap;
 use pob_build::{BuildModel, active_spec, load_build_xml};
-use pob_calc::{Env, InitEnvOptions, init_env, item_options};
+use pob_calc::{Env, InitEnvOptions, ParseMode, init_env, item_options};
 use pob_golden::registry::GOLDEN_BUILDS;
 use pob_items::{DataTable, Item};
 use pob_lua::format_g;
@@ -48,13 +51,18 @@ struct Run {
 }
 
 fn run(name: &str) -> Run {
+    run_mode(name, ParseMode::CacheOnly)
+}
+
+/// `run` with every mod line read in `mode`; in `Full` a "miss" item is one with a line the parser could not answer.
+fn run_mode(name: &str, mode: ParseMode) -> Run {
     let g = GOLDEN_BUILDS.iter().find(|g| g.name == name).expect("golden");
     let model = Rc::new(load_build_xml(&std::fs::read_to_string(g.xml_path()).expect("xml")).expect("xml parses"));
     let mut items = IndexMap::new();
     let mut miss_items = BTreeSet::new();
     for im in &model.items {
         pob_parser::reset_parse_mod_stats();
-        let item = Item::parse(&im.raw, &item_options(im));
+        let item = Item::parse(&im.raw, &item_options(im, mode));
         if !pob_parser::parse_mod_stats().miss_lines.is_empty() {
             miss_items.insert(im.id as u64);
         }
@@ -62,12 +70,13 @@ fn run(name: &str) -> Run {
             items.insert(im.id as u64, Rc::new(item));
         }
     }
-    let spec = PassiveSpec::load(active_spec(&model)).expect("spec");
+    let spec = PassiveSpec::load_mode(active_spec(&model), mode).expect("spec");
     let env = init_env(
         model.clone(),
         InitEnvOptions {
             spec: Some(spec),
             items: Some(items),
+            parse_mode: mode,
         },
     )
     .expect("init_env");
@@ -422,9 +431,30 @@ fn classify_db(label: &str, ours: &Json, lj: &Json, gaps: &Gaps, cls: &mut BTree
 
 #[test]
 fn env_vs_luajit_classified_as_pob_ts() {
+    env_vs_luajit(ParseMode::CacheOnly, &EXPECTED_CLASSES);
+}
+
+/// R5.4 measured, `ParseMode::Full`: [item-miss, node-miss, cluster, granted-passive, alloc-count, tree-jewel].
+const EXPECTED_CLASSES_FULL: [(&str, [usize; 6]); 6] = [
+    ("Dual Savior", [0, 0, 0, 0, 0, 0]),
+    ("Dual Wield Cospris CoC", [0, 0, 66, 0, 2, 12]),
+    ("Dual Wield Cospris CoC - Lethal Pride", [0, 0, 66, 0, 2, 29]),
+    ("Generals Perforate Zerker", [0, 0, 84, 0, 4, 0]),
+    ("Mirage Archer Toxic Rain", [0, 0, 21, 0, 2, 0]),
+    ("OccVortex", [0, 0, 0, 0, 0, 0]),
+];
+
+/// R5.4 gate (c): the classification of (b) with the real parser behind every line.
+#[test]
+fn env_full_vs_luajit_classified() {
+    env_vs_luajit(ParseMode::Full, &EXPECTED_CLASSES_FULL);
+}
+
+fn env_vs_luajit(mode: ParseMode, expected_classes: &[(&str, [usize; 6]); 6]) {
     let mut table = Vec::new();
-    for (name, expected) in EXPECTED_CLASSES {
-        let r = run(name);
+    let mut failures = Vec::new();
+    for &(name, expected) in expected_classes {
+        let r = run_mode(name, mode);
         let ours = env_dump(&r);
         let lj = fixture(name, "luajit");
         let env = &r.env;
@@ -549,16 +579,22 @@ fn env_vs_luajit_classified_as_pob_ts() {
             lj_count(&lj["modDB"]),
             lj_count(&lj["enemyDB"]),
         ));
-        assert!(
-            unexplained.is_empty(),
-            "{name}: {} UNEXPLAINED:\n{}",
-            unexplained.len(),
-            unexplained.join("\n")
-        );
-        assert!(violations.is_empty(), "{name}: {violations:?}");
-        assert_eq!(counts, expected, "{name}: class counts");
+        if !unexplained.is_empty() {
+            failures.push(format!(
+                "{name}: {} UNEXPLAINED:\n{}",
+                unexplained.len(),
+                unexplained[..unexplained.len().min(40)].join("\n")
+            ));
+        }
+        if !violations.is_empty() {
+            failures.push(format!("{name}: {violations:?}"));
+        }
+        if counts != expected {
+            failures.push(format!("{name}: class counts {counts:?} != {expected:?}"));
+        }
     }
-    println!("{}", table.join("\n"));
+    println!("{mode:?}\n{}", table.join("\n"));
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
 }
 
 /// A Lua table dumped as JSON: an EMPTY table comes out of the LuaJIT probe as `[]`.

@@ -2,12 +2,14 @@
 //!
 //! R4.5: XML -> [`pob_calc::calculate`] (initEnv + perform + defence + estimations) -> `stats` filtered by the measured
 //! [`pob_calc::ALLOWLIST`] (like pob-ts `candidate.ts`); `POB_EXPERIMENTAL=1` publishes the unfiltered output.
+//! R5.4: mod lines are read like the desktop (`ParseMode::Full`, ModCache then the real ModParser) unless `--cache-only`.
 
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::path::Path;
 use std::time::Instant;
 
-use pob_calc::{CalculateOptions, CalculateResult, StatValue, Timings, calculate, calculate_file, filter_stats};
+pub use pob_calc::ParseMode;
+use pob_calc::{CalculateOptions, CalculateResult, StatValue, Timings, calculate_file, calculate_with, filter_stats};
 use pob_golden::{CandidateOutput, PartialMeta, Stats, value};
 
 /// `POB_EXPERIMENTAL=1`: skip the allowlist (how a key is measured before it may be claimed).
@@ -66,10 +68,19 @@ pub fn candidate_output(res: &CalculateResult, experimental: bool) -> CandidateO
 
 /// Computes the build output from the build text as given (the oracle adapter pipes the file's content on stdin).
 pub fn calc_with(xml: &str, experimental: bool) -> Result<CandidateOutput, String> {
+    calc_mode(xml, experimental, ParseMode::Full)
+}
+
+/// [`calc_with`] with an explicit [`ParseMode`].
+pub fn calc_mode(xml: &str, experimental: bool, mode: ParseMode) -> Result<CandidateOutput, String> {
     if xml.is_empty() {
         return Err("empty XML".into());
     }
-    let res = guarded("calculate", || calculate(xml))?;
+    let opts = CalculateOptions {
+        parse_mode: mode,
+        ..CalculateOptions::default()
+    };
+    let res = guarded("calculate", || calculate_with(xml, opts))?;
     Ok(candidate_output(&res, experimental))
 }
 
@@ -98,9 +109,13 @@ pub fn median_min_max(samples: &[f64]) -> (f64, f64, f64) {
 }
 
 /// Full `calculate_file` (read file + load + initEnv + perform/defence/estimations + EstimatePlayerProgress), no process start.
-pub fn bench(path: &Path, runs: usize) -> Result<BenchRow, String> {
+pub fn bench(path: &Path, runs: usize, mode: ParseMode) -> Result<BenchRow, String> {
     assert!(runs > 0);
-    guarded("bench warm-up", || calculate_file(path, CalculateOptions::default()))?;
+    let opts = CalculateOptions {
+        parse_mode: mode,
+        ..CalculateOptions::default()
+    };
+    guarded("bench warm-up", || calculate_file(path, opts))?;
     let mut row = BenchRow {
         total: vec![],
         load: vec![],
@@ -110,7 +125,7 @@ pub fn bench(path: &Path, runs: usize) -> Result<BenchRow, String> {
     };
     for _ in 0..runs {
         let t = Instant::now();
-        let res = guarded("bench", || calculate_file(path, CalculateOptions::default()))?;
+        let res = guarded("bench", || calculate_file(path, opts))?;
         row.total.push(t.elapsed().as_secs_f64() * 1000.0);
         let Timings {
             load_ms,

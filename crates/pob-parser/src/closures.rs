@@ -8,8 +8,8 @@
 //!   `parseMod`'s `(modList, extra)`: `Special`, args `[tonumber(cap1), cap1, .., capN]`.
 //! * `modTagList` :6697/:6706 `modTag(tonumber(tagCap[1]) | tagCap[1], unpack(tagCap))` and `preFlagList` :6682
 //!   `preFlag(unpack(preFlagCap))` -- one value kept: `Value`.
-//! * `jewelFuncList` :6644 `patternVal.func(cap1, .., cap5)` -> a visitor `function(node, out, data)` -- declared only
-//!   (`Jewel`); the jewel side is R5.4 (`helpers::{SimpleConv, Threshold}` are the two factories already ported).
+//! * `jewelFuncList` :6644 `patternVal.func(cap1, .., cap5)` -> a visitor `function(node, out, data)` (`Jewel`): the
+//!   bodies are in `jewel.rs` (R5.4), dispatched by definition line.
 //! * `Helper`: a named helper the Rust closures call directly (`helpers.rs`); registered for the drift contract only.
 //!
 //! `args` follow L11: `unpack(cap)` of the 5-slot capture table is exactly the captures the pattern has (captures are never
@@ -31,12 +31,16 @@ pub type Ret2 = (Value, Value);
 
 pub type SpecialFn = fn(&ModParserData, &FnRef, &[Value]) -> Result<Ret2, ParseError>;
 pub type ValueFn = fn(&ModParserData, &FnRef, &[Value]) -> Result<Value, ParseError>;
+/// A `specialModList` closure whose result carries L9 orphan tags (decision R5.4/3): the whole `parseMod` answer.
+pub type SpecialOrphanFn = fn(&ModParserData, &FnRef, &[Value]) -> Result<crate::parse::RawParse, ParseError>;
 
 #[derive(Clone, Copy)]
 pub enum ClosureFn {
     Special(SpecialFn),
+    /// `Special` whose `mod(...)` calls put a tag after a hole (`mod(n, t, v, nil, {tag})`, L9).
+    SpecialOrphan(SpecialOrphanFn),
     Value(ValueFn),
-    /// A radius-jewel visitor (or its factory) -- the jewel interface is R5.4.
+    /// A radius-jewel visitor or factory: run by `jewel::{call_caps, visit}` by definition line.
     Jewel,
     Helper,
 }
@@ -131,22 +135,27 @@ pub const HELPERS: [Registered; 11] = [
     ),
 ];
 
-/// Every registered definition, by id: the hand-ported helpers and the generated closures (`closures_gen.rs`, R5.3a);
-/// the hand-ported class C joins in R5.3b.
+/// Every registered definition, by id: the hand-ported helpers, the generated closures (`closures_gen.rs`, R5.3a) and
+/// the hand-ported rest (`closures_manual.rs`, R5.4) -- all 1 263 of `fns`.
 pub fn registry() -> &'static HashMap<&'static str, Registered> {
     static R: OnceLock<HashMap<&'static str, Registered>> = OnceLock::new();
     R.get_or_init(|| {
         let mut m = HashMap::new();
-        for e in HELPERS.iter().chain(&crate::closures_gen::GENERATED) {
+        for e in HELPERS
+            .iter()
+            .chain(&crate::closures_gen::GENERATED)
+            .chain(&crate::closures_manual::MANUAL)
+        {
             assert!(m.insert(e.id, *e).is_none(), "{} registered twice", e.id);
         }
         m
     })
 }
 
-/// The hand-ported entries in declaration order (the generated ones: `closures_gen::GENERATED`).
+/// The hand-ported entries in declaration order: the helpers, then `closures_manual::MANUAL` (the generated ones:
+/// `closures_gen::GENERATED`).
 pub fn all_entries() -> Vec<Registered> {
-    HELPERS.to_vec()
+    HELPERS.iter().chain(&crate::closures_manual::MANUAL).copied().collect()
 }
 
 /// Every entry whose `to`/`sha` differ from `fns`, or whose id `fns` does not know (empty = no drift).
@@ -172,9 +181,18 @@ pub(crate) fn lookup(f: &FnRef) -> Result<ClosureFn, ParseError> {
     }
 }
 
-pub(crate) fn call_special(d: &ModParserData, f: &FnRef, args: &[Value]) -> Result<Ret2, ParseError> {
+/// A `specialModList` closure call (ModParser.lua:6663) as the `parseMod` answer it is.
+pub(crate) fn call_special(d: &ModParserData, f: &FnRef, args: &[Value]) -> Result<crate::parse::RawParse, ParseError> {
     match lookup(f)? {
-        ClosureFn::Special(g) => g(d, f, args),
+        ClosureFn::Special(g) => {
+            let (ml, ex) = g(d, f, args)?;
+            Ok(crate::parse::RawParse {
+                mod_list: crate::parse::mods_of(&ml)?,
+                extra: crate::parse::extra_of(&ex)?,
+                orphan_tags: Vec::new(),
+            })
+        }
+        ClosureFn::SpecialOrphan(g) => g(d, f, args),
         _ => Err(ParseError::Unported(f.id.clone())),
     }
 }

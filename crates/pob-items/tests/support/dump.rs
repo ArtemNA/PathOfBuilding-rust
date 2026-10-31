@@ -49,8 +49,9 @@ pub fn fixture(name: &str, side: &str) -> Json {
     serde_json::from_str(&std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("{}: {e}", p.display()))).expect("fixture json")
 }
 
-pub fn options_of(im: &ItemModel) -> ItemOptions {
+pub fn options_of(im: &ItemModel, mode: pob_parser::ParseMode) -> ItemOptions {
     ItemOptions {
+        parse_mode: mode,
         id: Some(im.id),
         variant: im.variant,
         variant_alt: [im.variant_alt, im.variant_alt2, im.variant_alt3, im.variant_alt4, im.variant_alt5],
@@ -108,6 +109,7 @@ fn js_string(v: &Value) -> String {
         Value::Str(s) => s.to_string(),
         Value::Table(t) if t.hash.is_empty() => t.array.iter().map(js_string).collect::<Vec<_>>().join(","),
         Value::Table(_) | Value::Mod(_) => "[object Object]".into(),
+        Value::Func(_) => pob_mods::FUNCTION_TOSTRING.into(),
     }
 }
 
@@ -336,10 +338,18 @@ pub struct GoldenRun {
     /// Per item id: the ModCache miss lines of its parse (pob-ts `missesByItem`).
     pub misses: Map<String, Json>,
     pub items: Vec<Item>,
+    /// Ids of the items that recorded `Item.lua:1543 mutatedLines` as unimplemented.
+    pub mutated: BTreeSet<String>,
 }
 
-/// pob-ts `tsItems`: parse every `<Item>` of the build (counting ModCache misses per item), keep those with a base.
+/// pob-ts `tsItems`: parse every `<Item>` of the build (counting ModCache misses per item), keep those with a base --
+/// `ParseMode::CacheOnly`, as pob-ts.
 pub fn run_golden(g: &GoldenBuild) -> GoldenRun {
+    run_golden_mode(g, pob_parser::ParseMode::CacheOnly)
+}
+
+/// `run_golden` in `mode`; in `Full` the per-item "misses" are the lines the parser could not answer either (R5.4).
+pub fn run_golden_mode(g: &GoldenBuild, mode: pob_parser::ParseMode) -> GoldenRun {
     let xml = std::fs::read_to_string(g.xml_path()).unwrap_or_else(|e| panic!("{}: {e}", g.name));
     let model = load_build_xml(&xml).unwrap_or_else(|e| panic!("{}: {e}", g.name));
     let mut out = Map::new();
@@ -347,7 +357,7 @@ pub fn run_golden(g: &GoldenBuild) -> GoldenRun {
     let mut items = Vec::new();
     for im in &model.items {
         pob_parser::reset_parse_mod_stats();
-        let item = Item::parse(&im.raw, &options_of(im));
+        let item = Item::parse(&im.raw, &options_of(im, mode));
         let key = js_string(&Value::Num(im.id));
         misses.insert(key.clone(), json!(pob_parser::parse_mod_stats().miss_lines));
         if item.base.is_none() {
@@ -356,10 +366,16 @@ pub fn run_golden(g: &GoldenBuild) -> GoldenRun {
         out.insert(key, dump_item(&item));
         items.push(item);
     }
+    let mutated = items
+        .iter()
+        .filter(|i| i.unimplemented.iter().any(|u| u.contains(":1543 mutatedLines")))
+        .map(|i| js_string(&Value::Num(i.id.unwrap_or(-1.0))))
+        .collect();
     GoldenRun {
         dump: Json::Object(out),
         misses,
         items,
+        mutated,
     }
 }
 
@@ -455,6 +471,13 @@ pub struct LuajitReport {
     /// Items with a `jewelData.funcList` difference (LuaJIT-only radius-jewel functions, P5); on a clean item it is the
     /// only difference allowed.
     pub tree_jewel: usize,
+    /// R5.4 (visible once `item-miss` no longer hides it): items whose `rangeLineCount` differs AND that carry the
+    /// explicit `Item.lua:1543 mutatedLines` unimplemented marker (foulborn transformation, P5 -- `modId`/`newModId` lines
+    /// count as range lines upstream).
+    pub mutated_lines: usize,
+    /// R5.4: items whose only other difference is a NESTED table in `jewelData` (`conqueredBy.conqueror`): the LuaJIT probe
+    /// prints `tostring(t)` = `table: <addr>`, the pob-ts-shaped dump `String(t)` = `[object Object]` -- both "a table".
+    pub nested_table: usize,
     pub violations: Vec<String>,
 }
 
@@ -511,6 +534,12 @@ fn line_texts(l: Option<&Json>) -> String {
 
 /// export-env.ts `selfItems` (= oracle.test.ts:449-510) with the `tree-jewel` class split out of the clean items.
 pub fn items_vs_luajit(lj: &Json, rust: &Json, misses: &Map<String, Json>) -> LuajitReport {
+    items_vs_luajit_with(lj, rust, misses, &BTreeSet::new())
+}
+
+/// `items_vs_luajit` knowing which items carry the `Item.lua:1543 mutatedLines` marker (R5.4 classes `mutated-lines`,
+/// `nested-table`; both only apply to an exact path with the exact values below).
+pub fn items_vs_luajit_with(lj: &Json, rust: &Json, misses: &Map<String, Json>, mutated: &BTreeSet<String>) -> LuajitReport {
     let mut r = LuajitReport::default();
     let empty = Map::new();
     let lj = lj.as_object().unwrap_or(&empty);
@@ -562,9 +591,21 @@ pub fn items_vs_luajit(lj: &Json, rust: &Json, misses: &Map<String, Json>) -> Lu
             .and_then(Json::as_array)
             .map(|a| a.iter().filter_map(|x| x.as_str().map(str::to_owned)).collect())
             .unwrap_or_default();
-        let rest: Vec<&String> = differences.iter().filter(|d| !d.contains(".jewelData.funcList")).collect();
+        let mut rest: Vec<&String> = differences.iter().filter(|d| !d.contains(".jewelData.funcList")).collect();
         if rest.len() < differences.len() {
             r.tree_jewel += 1;
+        }
+        let range_path = format!("{id}.rangeLineCount");
+        if mutated.contains(id.as_str()) && rest.iter().any(|d| **d == range_path) {
+            rest.retain(|d| **d != range_path);
+            r.mutated_lines += 1;
+        }
+        let nested = format!("{id}.jewelData.conqueredBy.conqueror");
+        let lj_nested = l.pointer("/jewelData/conqueredBy/conqueror").and_then(Json::as_str);
+        let rs_nested = t.pointer("/jewelData/conqueredBy/conqueror").and_then(Json::as_str);
+        if rest.iter().any(|d| **d == nested) && lj_nested == Some("table: <addr>") && rs_nested == Some("[object Object]") {
+            rest.retain(|d| **d != nested);
+            r.nested_table += 1;
         }
         if m.is_empty() {
             r.clean += 1;

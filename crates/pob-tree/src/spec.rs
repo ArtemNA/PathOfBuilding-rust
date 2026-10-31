@@ -14,7 +14,7 @@ use indexmap::IndexMap;
 use pob_build::{NumMap, SpecModel};
 use pob_mods::ModList;
 
-use crate::tree::{NodeStats, NodeType, PassiveTree, StatHolder, TreeError, TreeNode, as_id, load_passive_tree, process_stats};
+use crate::tree::{NodeStats, NodeType, PassiveTree, StatHolder, TreeError, TreeNode, as_id, process_stats};
 
 /// PassiveSpec.lua:1415 -- one shared table upstream.
 pub const MASTERY_REMINDER_TEXT: &str = "Tip: Right click to select a different effect";
@@ -596,7 +596,7 @@ impl PassiveSpec {
             ty: Some(node.ty()),
             dn: node.dn(),
         };
-        process_stats(&holder, &mut sd, &mut stats, 1);
+        process_stats(&holder, &mut sd, &mut stats, 1, tree.parse_mode);
         debug_assert_eq!(sd, effect.sd, "a second ProcessStats split a mastery effect again");
         if stats.unknown {
             node.own_unknown = Some(true);
@@ -664,12 +664,17 @@ impl PassiveSpec {
     /// `PassiveSpecClass:Load` (:103-195) from the parsed `<Spec>` -- the "new format" (a `nodes` attribute), the only one the
     /// 3.13 goldens use. A legacy URL-only spec needs DecodeURL (P5) and is refused instead of yielding an empty tree.
     pub fn load(model: &SpecModel) -> Result<PassiveSpec, TreeError> {
+        PassiveSpec::load_mode(model, pob_parser::ParseMode::Full)
+    }
+
+    /// `load` on the tree whose stats were read in `mode` (R5.4).
+    pub fn load_mode(model: &SpecModel, mode: pob_parser::ParseMode) -> Result<PassiveSpec, TreeError> {
         if model.nodes.is_empty() && model.url.is_some() {
             return Err(TreeError(
                 "unimplemented: legacy URL spec (Classes/PassiveSpec.lua:191 DecodeURL)".into(),
             ));
         }
-        let tree = load_passive_tree(&model.tree_version)?;
+        let tree = crate::tree::load_passive_tree_mode(&model.tree_version, mode)?;
         PassiveSpec::load_with_tree(model, tree)
     }
 

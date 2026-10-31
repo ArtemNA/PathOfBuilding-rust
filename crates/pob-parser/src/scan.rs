@@ -248,7 +248,7 @@ pub fn reset_tie_stats() {
     TIES.with(|t| *t.borrow_mut() = TieStats::default());
 }
 
-fn caps_values(lower: &[u8], caps: &Captures) -> Result<Vec<Value>, ParseError> {
+pub(crate) fn caps_values(lower: &[u8], caps: &Captures) -> Result<Vec<Value>, ParseError> {
     caps.iter()
         .take(5)
         .map(|c| match c {
@@ -356,6 +356,8 @@ pub fn value_eq(a: &Value, b: &Value) -> bool {
                 && x.hash.iter().all(|(k, v)| y.hash.get(k).is_some_and(|w| value_eq(v, w)))
         }
         (Value::Mod(x), Value::Mod(y)) => mod_eq(x, y),
+        // a function compares as "is a function" (decision R5.4/2: the fixtures print `<function>`)
+        (Value::Func(_), Value::Func(_)) => true,
         _ => false,
     }
 }

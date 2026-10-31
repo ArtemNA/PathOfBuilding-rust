@@ -52,6 +52,8 @@ pub struct ConfigState {
     /// `ConfigTab.enemyLevel` -- 1 until the first `UpdateLevel` (ConfigTab.lua:145).
     pub enemy_level: f64,
     pub controls: ConfigControls,
+    /// How the custom-modifier lines are read (R5.4): `Full` (desktop, default) or `CacheOnly` (pob-ts).
+    pub parse_mode: pob_parser::ParseMode,
 }
 
 /// The output of `BuildModList`: `configTab.modList`/`.enemyModList` plus what was consciously not done.
@@ -162,6 +164,7 @@ impl ConfigState {
             custom_mods_list: vec![CustomModsBlockModel::default_block()],
             enemy_level: 1.0,
             controls: ConfigControls::default(),
+            parse_mode: pob_parser::ParseMode::Full,
         }
     }
 
@@ -334,7 +337,7 @@ impl ConfigState {
                 BlockText::Str(text) if text.is_empty() => {}
                 BlockText::Str(text) => {
                     has_block_text = true;
-                    add_custom_lines(&mut mod_list, text, &format!("Custom:{}", block.title));
+                    add_custom_lines(&mut mod_list, text, &format!("Custom:{}", block.title), self.parse_mode);
                 }
                 BlockText::Bool(false) => {}
                 BlockText::Num(_) | BlockText::Bool(_) => {
@@ -359,7 +362,7 @@ impl ConfigState {
         // Fallback for tests/headless (:1187-1202). `ConfigTab:Load` nils `input.customMods` of every listed set (:934).
         if !has_block_text {
             match self.input.get("customMods") {
-                Some(InputValue::Str(legacy)) if !legacy.is_empty() => add_custom_lines(&mut mod_list, legacy, "Custom"),
+                Some(InputValue::Str(legacy)) if !legacy.is_empty() => add_custom_lines(&mut mod_list, legacy, "Custom", self.parse_mode),
                 Some(v @ (InputValue::Num(_) | InputValue::Bool(true))) => {
                     return Err(LuaError(format!(
                         "Classes/ConfigTab.lua:1187: attempt to get length of field 'customMods' (a {} value)",
@@ -416,7 +419,7 @@ fn strip_escapes(text: &[u8]) -> Vec<u8> {
 
 /// `for line in text:gmatch("([^\n]*)\n?")` -> `StripEscapes(line):match("^%s*(.-)%s*$")` -> `modLib.parseMod` ->
 /// `if mods and not extra` (an `extra` of "" is truthy, L4) -> `modLib.setSource` + `AddMod` (:1166-1183).
-fn add_custom_lines(mod_list: &mut ModList, text: &str, source: &str) {
+fn add_custom_lines(mod_list: &mut ModList, text: &str, source: &str, mode: pob_parser::ParseMode) {
     let text = text.as_bytes();
     for caps in gmatch(text, b"([^\n]*)\n?") {
         let caps = caps.expect("BuildModList line pattern");
@@ -430,7 +433,7 @@ fn add_custom_lines(mod_list: &mut ModList, text: &str, source: &str) {
             None => Vec::new(),
         };
         let line = String::from_utf8_lossy(&trimmed);
-        let parsed = pob_parser::parse_mod_line(&line, false);
+        let parsed = pob_parser::parse_mod_line(&line, false, mode);
         if let (Some(mods), None) = (parsed.mod_list, parsed.extra) {
             for mut m in mods {
                 set_source(&mut m, source);
