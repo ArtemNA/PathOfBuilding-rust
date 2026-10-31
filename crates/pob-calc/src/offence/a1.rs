@@ -69,9 +69,7 @@ fn config_str(off: &Off<'_>, key: &str) -> Option<String> {
 
 /// `actor.itemList[slot] and .weaponData and .weaponData[1]` truthy.
 fn has_weapon(off: &Off<'_>, slot: &str) -> bool {
-    off.env
-        .player
-        .borrow()
+    off.actor()
         .item_list
         .get(slot)
         .and_then(|it| it.weapon_data.as_ref())
@@ -80,7 +78,7 @@ fn has_weapon(off: &Off<'_>, slot: &str) -> bool {
 
 /// `actor.weaponData<n>[key] or 0`.
 fn wd(off: &Off<'_>, n: u8, key: &str) -> f64 {
-    let p = off.env.player.borrow();
+    let p = off.actor();
     let d = if n == 1 { &p.weapon_data1 } else { &p.weapon_data2 };
     match d.get(key) {
         Value::Nil | Value::Bool(false) => 0.0,
@@ -92,7 +90,7 @@ fn wd(off: &Off<'_>, n: u8, key: &str) -> f64 {
 
 /// `actor.weaponData<n>[key]` as a Lua value.
 fn wd_val(off: &Off<'_>, n: u8, key: &str) -> Value {
-    let p = off.env.player.borrow();
+    let p = off.actor();
     if n == 1 { p.weapon_data1.get(key) } else { p.weapon_data2.get(key) }
 }
 
@@ -702,12 +700,14 @@ pub(super) fn setup(off: &mut Off<'_>) -> bool {
                         tags_of(m),
                     );
                 }
+                // :961-962 `env.player.mainSkill.skillData`
                 let dps = 1.0 + seal_max * q.calc_mod(Some(&cfg), &["SealRepeatPenalty"]);
-                off.set_sd("dpsMultiplier", Value::Num(dps));
-                off.set_sd("hitTimeOverride", Value::Num(max2(seal_cooldown * seal_max, rate)));
+                off.set_player_main_sd("dpsMultiplier", Value::Num(dps));
+                off.set_player_main_sd("hitTimeOverride", Value::Num(max2(seal_cooldown * seal_max, rate)));
             } else {
+                // :964 `env.player.mainSkill.skillData`
                 let dps = 1.0 + 1.0 / seal_cooldown / rate * q.calc_mod(Some(&cfg), &["SealRepeatPenalty"]);
-                off.set_sd("dpsMultiplier", Value::Num(dps));
+                off.set_player_main_sd("dpsMultiplier", Value::Num(dps));
             }
         }
     }

@@ -130,13 +130,14 @@ impl Off<'_> {
     }
 }
 
-/// `value` of `for _, value in ipairs(actor.activeSkillList)`: its skill list query, `skillCfg` and `skillData`.
+/// `value` of `for _, value in ipairs(actor.activeSkillList)` (`j` = the position): its skill list query, `skillCfg` and `skillData`.
 fn other_skill(off: &Off<'_>, j: usize) -> (Q, ModCfg, indexmap::IndexMap<String, Value>) {
     let st = off.env.skills.as_ref().expect("skills on");
-    let sk = &st.active_skill_list[j];
+    let id = off.actor_skill(j);
+    let sk = st.skill(id);
     (
         Q {
-            list: skill_list_of(off.env, j),
+            list: skill_list_of(off.env, id),
             malformed: sk.malformed_mods.clone(),
         },
         skill_cfg_of(st, sk),
@@ -147,9 +148,9 @@ fn other_skill(off: &Off<'_>, j: usize) -> (Q, ModCfg, indexmap::IndexMap<String
 /// `value.activeEffect.grantedEffect.name` and `value.skillFlags.disable` of every active skill.
 fn skill_names(off: &Off<'_>) -> Vec<(String, bool)> {
     let st = off.env.skills.as_ref().expect("skills on");
-    st.active_skill_list
-        .iter()
-        .map(|sk| {
+    (0..off.actor_skill_count())
+        .map(|j| {
+            let sk = st.skill(off.actor_skill(j));
             (
                 st.skills.effects[sk.active_effect.borrow().granted_effect].name.clone(),
                 sk.flag("disable"),
@@ -182,7 +183,7 @@ fn warcry_times(off: &mut Off<'_>, j: usize, prefix: &str) {
 /// The uptime of warcry `j` (`<Prefix>` keys): `<count_key>` exerts, writes `<up_key>` and adds it to `GlobalWarcryUptimeRatio`.
 #[allow(clippy::too_many_arguments)]
 fn warcry_uptime(off: &mut Off<'_>, j: usize, prefix: &str, count_key: &str, count_mod: &str, up_key: &str, line: u32) {
-    let count = dsum(&off.mod_db, ModType::Base, None, &[count_mod]);
+    let count = dsum(&off.env_db, ModType::Base, None, &[count_mod]);
     off.gset(count_key, count);
     let speed = num_at(off.gval("Speed"), "Speed", line);
     let (cd_key, ct_key) = (format!("{prefix}CryCooldown"), format!("{prefix}CryCastTime"));
@@ -286,10 +287,10 @@ fn exerts_and_pacts(off: &mut Off<'_>, pi: usize, exerted_double_damage: f64, ex
                     2731,
                 );
                 let allies = min2(
-                    dsum(&off.mod_db, ModType::Base, Some(off.pcfg(pi)), &["Multiplier:NearbyAlly"]),
+                    dsum(&off.env_db, ModType::Base, Some(off.pcfg(pi)), &["Multiplier:NearbyAlly"]),
                     5.0,
                 );
-                let avg = allies * (dsum(&off.mod_db, ModType::Base, None, &["RallyingExertMoreDamagePerAlly"]) / 100.0);
+                let avg = allies * (dsum(&off.env_db, ModType::Base, None, &["RallyingExertMoreDamagePerAlly"]) / 100.0);
                 off.gset("RallyingAvgDmg", avg);
                 let up = off.g_or("RallyingUpTimeRatio", 0.0, 2757);
                 let hit = 1.0 + avg * up / 100.0;
@@ -318,10 +319,10 @@ fn exerts_and_pacts(off: &mut Off<'_>, pi: usize, exerted_double_damage: f64, ex
                     2778,
                 );
                 if q.flag(None, &["Condition:WarcryMaxHit"]) {
-                    let more_aoe = dsum(&off.mod_db, ModType::Base, None, &["SeismicMoreAoE"]);
+                    let more_aoe = dsum(&off.env_db, ModType::Base, None, &["SeismicMoreAoE"]);
                     q.nm("AreaOfEffect", ModType::More, more_aoe, "Max Seismic Exert AoE", 0, 0, vec![]);
                 } else {
-                    let more_aoe = dsum(&off.mod_db, ModType::Base, None, &["SeismicMoreAoE"]);
+                    let more_aoe = dsum(&off.env_db, ModType::Base, None, &["SeismicMoreAoE"]);
                     let up = off.g_or("SeismicUpTimeRatio", 0.0, 2786);
                     q.nm(
                         "AreaOfEffect",
@@ -507,7 +508,7 @@ fn exerts_and_pacts(off: &mut Off<'_>, pi: usize, exerted_double_damage: f64, ex
             let (cooldown, _, _) = calc_skill_cooldown(&vq, &vcfg, &vsd);
             let cast_time = {
                 let st = off.env.skills.as_ref().expect("skills on");
-                let sk = &st.active_skill_list[j];
+                let sk = st.skill(off.actor_skill(j));
                 st.skills.effects[sk.active_effect.borrow().granted_effect]
                     .cast_time
                     .unwrap_or_else(|| panic!("{LUA}:2907: attempt to perform arithmetic on field 'castTime' (a nil value)"))
@@ -712,8 +713,26 @@ fn crits(off: &mut Off<'_>, pi: usize) {
     } else {
         let mut crit_override = q.override_(Some(off.pcfg(pi)), &["CritChance"]).filter(Value::truthy);
         if q.flag(Some(off.pcfg(pi)), &["MainHandCritIsEqualToParent"]) {
-            panic!("{LUA}:3079: attempt to index field 'parent' (a nil value)");
+            // :3079 `actor.parent.output.MainHand and actor.parent.output.MainHand.CritChance or actor.parent.weaponData1.CritChance`
+            if off.who != crate::perform::Who::Minion {
+                panic!("{LUA}:3079: attempt to index field 'parent' (a nil value)");
+            }
+            let from_hand = off.player_state().hands.as_ref().map(|h| {
+                h[0].map.get("CritChance").map(|v| match v {
+                    OutValue::Num(x) => Value::Num(*x),
+                    OutValue::Bool(b) => Value::Bool(*b),
+                    OutValue::Str(s) => Value::Str(s.clone()),
+                })
+            });
+            crit_override = from_hand
+                .flatten()
+                .filter(Value::truthy)
+                .or_else(|| Some(off.env.player.borrow().weapon_data1.get("CritChance")).filter(Value::truthy));
         } else if q.flag(Some(off.pcfg(pi)), &["MainHandCritIsEqualToPartyMember"]) {
+            // :3081 `actor.partyMembers` -- nil on a minion
+            if off.who == crate::perform::Who::Minion {
+                panic!("{LUA}:3081: attempt to index field 'partyMembers' (a nil value)");
+            }
             // the PartyTab stand-in has an empty output and no weaponData1 (P5): `... or 0`
             crit_override = Some(Value::Num(0.0));
         }
@@ -730,9 +749,16 @@ fn crits(off: &mut Off<'_>, pi: usize) {
         let base_crit_from_main_hand = q.flag(Some(off.pcfg(pi)), &["BaseCritFromMainHand"]);
         let base_crit_from_parent = q.flag(Some(off.pcfg(pi)), &["AttackCritIsEqualToParentMainHand"]);
         if base_crit_from_main_hand {
-            base_crit = off.env.player.borrow().weapon_data1.get("CritChance");
+            base_crit = off.actor().weapon_data1.get("CritChance");
         } else if base_crit_from_parent {
-            panic!("{LUA}:3090: attempt to index field 'parent' (a nil value)");
+            // :3090 `actor.parent.weaponData1 and actor.parent.weaponData1.CritChance or baseCrit`
+            if off.who != crate::perform::Who::Minion {
+                panic!("{LUA}:3090: attempt to index field 'parent' (a nil value)");
+            }
+            let c = off.env.player.borrow().weapon_data1.get("CritChance");
+            if c.truthy() {
+                base_crit = c;
+            }
         }
         if crit_override.as_ref().and_then(Value::as_num) == Some(100.0) {
             off.pset_num(pi, "PreEffectiveCritChance", 100.0);
@@ -982,8 +1008,8 @@ pub(super) fn damage_passes(off: &mut Off<'_>, quantity_multiplier: f64) {
     for pi in 0..off.passes.len() {
         off.cur_pass = pi;
         // :2616-2624
-        let exerted_double_damage = dsum(&off.mod_db, ModType::Base, Some(off.pcfg(pi)), &["ExertDoubleDamageChance"]);
-        let exerting_warcry_count = dsum(&off.mod_db, ModType::Base, None, &["Multiplier:ExertingWarcryCount"]);
+        let exerted_double_damage = dsum(&off.env_db, ModType::Base, Some(off.pcfg(pi)), &["ExertDoubleDamageChance"]);
+        let exerting_warcry_count = dsum(&off.env_db, ModType::Base, None, &["Multiplier:ExertingWarcryCount"]);
         for (k, v) in [
             ("OffensiveWarcryEffect", 1.0),
             ("MaxOffensiveWarcryEffect", 1.0),

@@ -158,7 +158,7 @@ fn skill_dot(off: &mut Off<'_>, q: &Q, quantity_multiplier: f64) {
             if off.breakdown && eff_mult != 1.0 {
                 // :5835 `sourceRes` (breakdown text only; the queries are made)
                 let f = format!("Enemy{dt}ResistEqualToYours");
-                if !dflag(&off.mod_db, None, &[&f]) {
+                if !dflag(&off.env_db, None, &[&f]) {
                     let _ = dflag(&off.st.party_members.mod_db, None, &[&f]);
                 }
             }
@@ -283,7 +283,7 @@ fn per_second_costs(off: &mut Off<'_>, q: &Q) {
     let sc = off.cfg.clone();
     for (resource, upfront) in COSTS_ORDER {
         // :5919
-        let eb = off.mod_db.borrow().flag(None, &["EnergyShieldProtectsMana"]);
+        let eb = off.env_db.borrow().flag(None, &["EnergyShieldProtectsMana"]);
         let eb = crate::setup::ok(eb) == Some(true);
         // :5920
         if !upfront || !gt(off, &format!("{resource}HasCost")) {
@@ -335,9 +335,15 @@ fn per_second_costs(off: &mut Off<'_>, q: &Q) {
                 gn(off, "TotemPlacementSpeed", 5936)
             };
             v / repeats
-        } else if q.flag(None, &["HasSeals"]) && q.flag(None, &["UseMaxUnleash"]) && off.sd_truthy("hitTimeOverride") {
-            // :5939-5940 `env.player.mainSkill` is this skill (the player's offence)
-            off.sd_num("hitTimeOverride", 5940).expect("truthy") / repeats
+        } else if q.flag(None, &["HasSeals"]) && q.flag(None, &["UseMaxUnleash"]) && off.player_main_sd("hitTimeOverride").truthy() {
+            // :5939-5940 `env.player.mainSkill.skillData.hitTimeOverride` (this skill for the player's offence)
+            let v = off.player_main_sd("hitTimeOverride");
+            v.as_num().unwrap_or_else(|| {
+                panic!(
+                    "{LUA}:5940: attempt to perform arithmetic on field 'hitTimeOverride' (a {} value)",
+                    v.type_name()
+                )
+            }) / repeats
         } else {
             // :5943
             let v = if cooldown_positive(off, 5943) {
@@ -552,7 +558,7 @@ fn self_hit(off: &mut Off<'_>, q: &Q) {
         let first = self_damage_mods(q, "EchoesOfCreationSelfDamage", "dmgMult").into_iter().next();
         let mut avg = gn(off, "GlobalWarcryUptimeRatio", 6015) / 100.0;
         if q.flag(None, &["Condition:WarcryMaxHit"]) {
-            avg = dsum(&off.mod_db, ModType::Base, None, &["Multiplier:ExertingWarcryCount"]);
+            avg = dsum(&off.env_db, ModType::Base, None, &["Multiplier:ExertingWarcryCount"]);
         }
         if let Some((m, ty)) = first
             && m.truthy()

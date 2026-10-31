@@ -84,9 +84,39 @@ pub struct DetachedSkill {
     pub keep: Option<crate::session::RunRef>,
 }
 
+/// R7.10b: a skill of a minion's `activeSkillList` (`minion.activeSkillList[j + 1]`, CalcActiveSkill.lua:878-934) as one index the
+/// offence / trigger code can address like a player skill: bit [`MINION_SKILL`] set, the owner (the player skill that has the minion,
+/// [`DETACHED`] included) in bits 20.., `j` in bits 0..20. Never an index of `activeSkillList` (walks over the list never see it, as upstream).
+pub const MINION_SKILL: usize = 1 << 62;
+const MINION_OWNER_DETACHED: usize = (1 << 40) - 1;
+
+/// The id of `owner.minion.activeSkillList[j + 1]`.
+pub fn minion_skill_id(owner: usize, j: usize) -> usize {
+    let code = if owner == DETACHED { MINION_OWNER_DETACHED } else { owner };
+    assert!(code <= MINION_OWNER_DETACHED && j < (1 << 20), "minion skill id out of range");
+    MINION_SKILL | (code << 20) | j
+}
+
+/// `Some((owner, j))` for a [`minion_skill_id`].
+pub fn minion_skill_parts(i: usize) -> Option<(usize, usize)> {
+    if i == DETACHED || i & MINION_SKILL == 0 {
+        return None;
+    }
+    let code = (i >> 20) & MINION_OWNER_DETACHED;
+    Some((if code == MINION_OWNER_DETACHED { DETACHED } else { code }, i & ((1 << 20) - 1)))
+}
+
 impl SkillsState {
-    /// `activeSkillList[i + 1]`, or the detached main skill for [`DETACHED`].
+    /// `activeSkillList[i + 1]`, the detached main skill for [`DETACHED`], or a minion's skill for a [`minion_skill_id`].
     pub fn skill(&self, i: usize) -> &ActiveSkill {
+        if let Some((owner, j)) = minion_skill_parts(i) {
+            return &self
+                .skill(owner)
+                .minion
+                .as_deref()
+                .expect("minion skill of a skill without a minion")
+                .active_skill_list[j];
+        }
         if i == DETACHED {
             &self
                 .detached_main
@@ -99,6 +129,14 @@ impl SkillsState {
     }
 
     pub fn skill_mut(&mut self, i: usize) -> &mut ActiveSkill {
+        if let Some((owner, j)) = minion_skill_parts(i) {
+            return &mut self
+                .skill_mut(owner)
+                .minion
+                .as_deref_mut()
+                .expect("minion skill of a skill without a minion")
+                .active_skill_list[j];
+        }
         if i == DETACHED {
             &mut self
                 .detached_main

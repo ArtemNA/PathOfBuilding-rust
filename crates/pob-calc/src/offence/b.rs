@@ -137,7 +137,7 @@ pub(super) fn build_passes(off: &mut Off<'_>) {
             });
             wcfg.skill_stats = Some(IndexMap::new());
             let mut source = {
-                let p = off.env.player.borrow();
+                let p = off.actor();
                 if n == 1 { p.weapon_data1.clone() } else { p.weapon_data2.clone() }
             };
             if let Some(co) = &crit_override
@@ -375,9 +375,9 @@ pub(super) fn speed_accuracy(off: &mut Off<'_>) {
             Some(OutValue::Num(x)) => *x,
             other => panic!("{LUA}:2270: attempt to compare {other:?} with number"),
         };
+        // `env.player.output.Life`
         let life = off
-            .st
-            .player
+            .player_state()
             .output
             .opt_num("Life")
             .unwrap_or_else(|| panic!("{LUA}:2270: attempt to compare number with nil"));

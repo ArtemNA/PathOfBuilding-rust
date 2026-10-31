@@ -46,9 +46,9 @@ pub(super) fn resist_for_type(off: &Off<'_>, dt: &str, cfg: Option<&ModCfg>) -> 
             .unwrap_or_else(|| panic!("{LUA}:506: bad argument #1 to 'min' (number expected, got {})", v.type_name())),
         None => {
             let flag_name = format!("Enemy{dt}ResistEqualToYours");
-            if dflag(&off.mod_db, None, &[&flag_name]) {
-                off.st
-                    .player
+            // :498-499 `env.modDB` / `env.player.output`
+            if dflag(&off.env_db, None, &[&flag_name]) {
+                off.player_state()
                     .output
                     .opt_num(&rname)
                     .unwrap_or_else(|| panic!("{LUA}:506: bad argument #1 to 'min' (number expected, got nil)"))

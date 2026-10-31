@@ -714,6 +714,8 @@ fn skill_func_registry_matches_closures_json() {
     }
     assert_eq!(list.len(), 134);
     assert_eq!(reg.len(), 134);
+    // R7.10b: every closure is ported
+    assert_eq!((p, u), (134, 0), "pinned: ported / unported skill functions");
     assert!(bad.is_empty(), "registry drift:\n{}", bad.join("\n"));
 }
 

@@ -7,7 +7,7 @@
 //! `output.tables` = structural dumps), `fullDPS` (the `calcFullDPS` result), `minion` (the minion actor's output), `mainSkill`, and `covers`
 //! (the lines of CalcOffence/CalcTriggers/CalcMirages/Calcs.lua and the `Data/Skills` functions the scenario really executes).
 //!
-//! `offence_synth_matches_luajit` (ignored until R7 ports offence): `calculate_file(<scenario>.xml, Full, skills: true)`; EVERY scalar key of the LuaJIT
+//! `offence_synth_matches_luajit` (R7.10b: 0 divergences on all 186 scenarios): `calculate_file(<scenario>.xml, Full, skills: true)`; EVERY scalar key of the LuaJIT
 //! output is compared with Rust's `stats` (round4 = "ok"; bit for bit = "exact"); a key LuaJIT has and Rust lacks is "missing", the reverse "extra".
 //! Prints "scenario -> compared / ok / exact / mismatch / missing / extra", per-category totals and every divergence. Table-valued keys
 //! (`SkillDPS`, `Minion`, ...) are counted, not compared (Rust's `stats` are the oracle's scalar-only flatten).
@@ -212,7 +212,6 @@ fn offence_synth_corpus_is_wellformed() {
 }
 
 #[test]
-#[ignore = "R7: offence not ported yet"]
 fn offence_synth_matches_luajit() {
     let names = scenario_names();
     assert!(names.len() >= MIN_SCENARIOS, "{} scenarios < {MIN_SCENARIOS}", names.len());
@@ -324,26 +323,9 @@ fn json_diff(prefix: &str, lj: &Json, rust: &Json, out: &mut Vec<String>) {
 
 /// The scenarios whose `calcFullDPS` Rust cannot finish yet, and the boundary it must report (measured R7.7: the roll-up stops at the
 /// first included skill whose run needs an unported triggers / mirages branch, or at a minion skill -- R7.8/R7.9/R7.10). R7.9 (`calcs.mirages`
-/// ported): the mirage boundaries are gone -- `fd-all-ds` and `fd-mir-mirage` = LuaJIT; `fd-all-gen` / `fd-all-mir` now run past their
-/// General's Cry / Mirage Archer skills and stop at their golem (the minion's offence, R7.10b).
-const FULLDPS_BOUNDARY: [(&str, &str); 4] = [
-    (
-        "fd-all-cos",
-        "Calcs.lua:178-212 calcFullDPS roll-up of the minion skill Summon Ice Golem",
-    ),
-    (
-        "fd-all-gen",
-        "Calcs.lua:178-212 calcFullDPS roll-up of the minion skill Summon Ice Golem",
-    ),
-    (
-        "fd-all-mir",
-        "Calcs.lua:178-212 calcFullDPS roll-up of the minion skill Summon Lightning Golem",
-    ),
-    (
-        "fd-occ-minions",
-        "Calcs.lua:178-212 calcFullDPS roll-up of the minion skill Raise Zombie",
-    ),
-];
+/// ported): the mirage boundaries are gone. R7.10b (the minion's triggers / offence and the roll-up :178-212 ported): none left --
+/// `fd-all-cos`, `fd-all-gen`, `fd-all-mir`, `fd-occ-minions` (golems, zombies, skeletons) = LuaJIT.
+const FULLDPS_BOUNDARY: [(&str, &str); 0] = [];
 
 /// A scenario whose roll-up runs to the end but differs from LuaJIT, with the measured cause.
 /// `fd-cos-coc` (R7.8, `calcs.triggers` ported: every number = LuaJIT) -- `skills[2].trigger` = `activeSkill.infoTrigger` (Calcs.lua:254), which
@@ -493,7 +475,7 @@ fn fulldps_matches_luajit() {
     assert!(bad.is_empty(), "calcFullDPS != LuaJIT ({}):\n{}", bad.len(), bad.join("\n"));
     assert_eq!(
         (done.len(), bounded.len(), known.len()),
-        (11, 4, 0),
+        (15, 0, 0),
         "pinned split of the 15 fulldps scenarios"
     );
 }
@@ -547,9 +529,9 @@ fn mirage_scenarios_match_luajit() {
 
 // --- R7.10: the `minion` scenarios (a minion skill as the main skill) -------------------------------------------------------------------
 
-/// The keys of the minion actor's output that `calcs.offence(env, env.minion, env.minion.mainSkill)` / `calcs.triggers(env, env.minion)`
-/// (CalcPerform.lua:3807-3808) would write -- the R7.10 boundary (`crate::offence` / `crate::triggers` run the player only): a LuaJIT
-/// `Minion.*` key Rust lacks is that class.
+/// The player's output of a `minion` scenario and the minion actor's output (`Minion.*`, written by perform / defence / estimations and,
+/// since R7.10b, by `calcs.triggers(env, env.minion)` / `calcs.offence(env, env.minion, env.minion.mainSkill)`, CalcPerform.lua:3807-3808)
+/// against LuaJIT: `(row, keys, equal, missing, other divergences)`.
 fn minion_scenario(name: &str) -> (Row, usize, usize, usize, Vec<String>) {
     let row = run_scenario(name);
     let fx = fixture(name);
@@ -594,9 +576,8 @@ fn minion_scenario(name: &str) -> (Row, usize, usize, usize, Vec<String>) {
     (row, lua.len(), equal, missing, bad)
 }
 
-/// R7.10 gate (card p. 2): the 23 `minion` scenarios -- the player's output (every scalar key, exactly; the only allowed divergence is
-/// [`PERFORM_TAIL_GEM`] missing) and the minion actor's output `Minion.*` (every key Rust writes = LuaJIT bit for bit, no extra key; the
-/// keys Rust lacks are counted -- the offence / triggers of the minion, the R7.10 boundary).
+/// R7.10 / R7.10b gate: the 23 `minion` scenarios -- the player's output (every scalar key, exactly; the only allowed divergence is
+/// [`PERFORM_TAIL_GEM`] missing) and the minion actor's output `Minion.*` (every key = LuaJIT bit for bit, no missing and no extra key).
 #[test]
 fn minion_scenarios_match_luajit() {
     let mut bad = Vec::new();
@@ -639,17 +620,17 @@ fn minion_scenarios_match_luajit() {
         bad.extend(mbad);
     }
     println!(
-        "minion: {n} scenarios; player output = LuaJIT on {player_equal}; Minion.* complete on {minion_equal_all}; Minion keys {tot_keys}: equal {tot_equal}, missing {tot_missing} (the minion offence boundary)"
+        "minion: {n} scenarios; player output = LuaJIT on {player_equal}; Minion.* complete on {minion_equal_all}; Minion keys {tot_keys}: equal {tot_equal}, missing {tot_missing}"
     );
     for b in &bad {
         println!("{b}");
     }
     assert!(bad.is_empty(), "minion scenarios != LuaJIT ({}):\n{}", bad.len(), bad.join("\n"));
-    // R7.10: the player's output = LuaJIT on all 23; `Minion.*`: every key perform / defence / estimations write = LuaJIT (10 893), the
-    // 3 322 keys of the minion's offence are missing on every scenario (the boundary, CalcPerform.lua:3807-3808).
+    // R7.10b: the player's output = LuaJIT on all 23; `Minion.*` complete and = LuaJIT bit for bit on all 23 (14 215 keys; before R7.10b
+    // the 3 322 keys of the minion's triggers / offence were missing, CalcPerform.lua:3807-3808).
     assert_eq!(
         (n, player_equal, minion_equal_all, tot_keys, tot_equal, tot_missing),
-        (23, 23, 0, 14215, 10893, 3322),
+        (23, 23, 23, 14215, 14215, 0),
         "pinned state of the 23 minion scenarios"
     );
 }

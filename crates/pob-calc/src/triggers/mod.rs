@@ -15,7 +15,8 @@
 //! * `actor.mainSkill.triggeredBy` is the shared support effect table; the fields `configTable` entries write on it besides
 //!   `grantedEffect` (`mainSkill`, `activationFreqInc`/`More`, `attachedBrandCount`, `ignoresTickRate`) are read only by the same
 //!   `calcs.triggers` call, so they live in [`TriggeredByExtra`] next to the config.
-//! * Minion actors (`env.minion`, `config.actor = env.minion` -- "nova") are R7.10: a boundary.
+//! * Minion actors (R7.10b): `calcs.triggers(env, env.minion)` is [`triggers_of`] with `Who::Minion`; skills are addressed by index, the
+//!   minion's by [`crate::skills::minion_skill_id`].
 //! * Hash order: `configTable` is only ever indexed by key (no `pairs`); the cache is indexed by uuid. No `table.sort` in this file.
 
 mod config;
@@ -28,7 +29,7 @@ use pob_mods::{ModCfg, ModType, Value};
 use crate::active_skill::ActiveSkill;
 use crate::env::Env;
 use crate::offence::Q;
-use crate::perform::{PerformState, skill_cfg_of, skill_list_of};
+use crate::perform::{PerformState, Who, skill_cfg_of, skill_list_of};
 use crate::session::{CachedSkill, CalcMode, CalcSession, cache_skill_uuid, is_limited};
 use crate::setup::misc;
 
@@ -68,11 +69,11 @@ pub(crate) struct SimSkill {
 // --- access to `env.player.activeSkillList` --------------------------------------------------------------------------------------
 
 pub(super) fn skill(env: &Env, i: usize) -> &ActiveSkill {
-    &env.skills.as_ref().expect("skills on").active_skill_list[i]
+    env.skills.as_ref().expect("skills on").skill(i)
 }
 
 pub(super) fn skill_mut(env: &mut Env, i: usize) -> &mut ActiveSkill {
-    &mut env.skills.as_mut().expect("skills on").active_skill_list[i]
+    env.skills.as_mut().expect("skills on").skill_mut(i)
 }
 
 /// `env.player.mainSkill`.
@@ -90,7 +91,7 @@ pub(super) fn skill_count(env: &Env) -> usize {
 /// `skill.activeEffect.grantedEffect`.
 pub(super) fn ge_of(env: &Env, i: usize) -> &GrantedEffect {
     let st = env.skills.as_ref().expect("skills on");
-    &st.skills.effects[st.active_skill_list[i].active_effect.borrow().granted_effect]
+    &st.skills.effects[st.skill(i).active_effect.borrow().granted_effect]
 }
 
 pub(super) fn name_of(env: &Env, i: usize) -> String {
@@ -158,7 +159,7 @@ pub(super) fn q_of(env: &Env, i: usize) -> Q {
 /// `skill.skillCfg`.
 pub(super) fn cfg_of(env: &Env, i: usize) -> ModCfg {
     let st = env.skills.as_ref().expect("skills on");
-    skill_cfg_of(st, &st.active_skill_list[i])
+    skill_cfg_of(st, st.skill(i))
 }
 
 /// `skill.skillCfg.flags`.
@@ -180,7 +181,8 @@ pub(super) fn player_db(env: &Env) -> Q {
 /// `skill.socketGroup.slot` -- indexing a nil `socketGroup` is the Lua error.
 pub(super) fn group_slot(env: &Env, i: usize, line: u32) -> Option<String> {
     let st = env.skills.as_ref().expect("skills on");
-    let g = st.active_skill_list[i]
+    let g = st
+        .skill(i)
         .socket_group
         .unwrap_or_else(|| panic!("Modules/CalcTriggers.lua:{line}: attempt to index field 'socketGroup' (a nil value)"));
     st.tab.socket_group_list()[g].slot.clone()
@@ -189,7 +191,7 @@ pub(super) fn group_slot(env: &Env, i: usize, line: u32) -> Option<String> {
 /// `skill.activeEffect.srcInstance.<field>`.
 pub(super) fn src_instance<R>(env: &Env, i: usize, f: impl FnOnce(&crate::skills_tab::GemInstance) -> R) -> Option<R> {
     let st = env.skills.as_ref().expect("skills on");
-    let (g, k) = st.active_skill_list[i].active_effect.borrow().src_instance?;
+    let (g, k) = st.skill(i).active_effect.borrow().src_instance?;
     Some(f(&st.tab.socket_group_list()[g].gem_list[k]))
 }
 
@@ -197,7 +199,7 @@ pub(super) fn src_instance<R>(env: &Env, i: usize, f: impl FnOnce(&crate::skills
 /// Lua error).
 pub(super) fn triggered_by_cd(env: &Env, i: usize, line: u32) -> Option<f64> {
     let st = env.skills.as_ref().expect("skills on");
-    let tb = st.active_skill_list[i].triggered_by.as_ref()?;
+    let tb = st.skill(i).triggered_by.as_ref()?;
     let tb = tb.borrow();
     let ge = &st.skills.effects[tb.granted_effect];
     let lvl = tb.level.and_then(|l| ge.level(l)).unwrap_or_else(|| {
@@ -248,8 +250,8 @@ pub(super) fn slot_match(env: &Env, i: usize) -> bool {
     let main_from_item = from_item(env, ge_of(env, m));
     let src_from_item = |k: usize| src_instance(env, k, |g| g.from_item == Some(true)).unwrap_or(false);
     let fi = main_from_item || from_item(env, ge_of(env, i)) || src_from_item(m) || src_from_item(i);
-    let sk = &st.active_skill_list[i];
-    let main = &st.active_skill_list[m];
+    let sk = st.skill(i);
+    let main = st.skill(m);
     let match1 = fi
         && sk.socket_group.is_some()
         && group_slot(env, i, 36) == {
@@ -493,7 +495,7 @@ pub(crate) fn calc_multi_spell_rotation_impact(
 /// :1585-1600 `getUniqueItemTriggerName(skill)` (a Lua value: `skillData.triggerSource` may be any type).
 fn unique_item_trigger_name(env: &Env, i: usize) -> Option<String> {
     let st = env.skills.as_ref().expect("skills on");
-    let sk = &st.active_skill_list[i];
+    let sk = st.skill(i);
     if let Some(v) = sk.skill_data.get("triggerSource").filter(|v| v.truthy()) {
         return Some(v.as_str().map_or_else(|| format!("{v:?}"), str::to_owned));
     }
@@ -516,6 +518,12 @@ pub(crate) fn triggers(env: &mut Env, st: &mut PerformState) -> Result<(), Strin
     let Some(m) = env.skills.as_ref().and_then(|s| s.main_skill) else {
         return Ok(());
     };
+    triggers_of(env, st, Who::Player, m)
+}
+
+/// :1602-1627 `calcs.triggers(env, actor)` for `actor` = `who` with `actor.mainSkill` = skill `m` (R7.10b: for the minion `st.player` holds
+/// the minion's perform state and the player's is in `st.minion`, see [`crate::offence::Off`]).
+pub(crate) fn triggers_of(env: &mut Env, st: &mut PerformState, who: Who, m: usize) -> Result<(), String> {
     // :1603
     if flag(env, m, "disable") || is_limited(env, m) {
         return Ok(());
@@ -543,16 +551,31 @@ pub(crate) fn triggers(env: &mut Env, st: &mut PerformState) -> Result<(), Strin
         unique_name.as_deref().map(lower),
     ];
     // :1613-1617 `config = config or key and configTable[key] and configTable[key](env)` -- a nil return falls through (its side
-    // effects stay)
+    // effects stay); the entries write `env.player.output`
     let mut found = None;
     for key in candidates.into_iter().flatten() {
-        if let Some(c) = config::config_table(env, st, &key)? {
+        let c = match who {
+            Who::Player => config::config_table(env, &mut st.player.output, &key)?,
+            _ => {
+                let cell = st.minion.clone().expect("env.minion output");
+                let mut p = cell.borrow_mut();
+                config::config_table(env, &mut p.output, &key)?
+            }
+        };
+        if let Some(c) = c {
             found = Some(c);
             break;
         }
     }
     match found {
         Some(mut c) => {
+            // :1618 `config.actor = config.actor or actor`
+            let actor = c.actor.unwrap_or(who);
+            if actor != who {
+                return Err(format!(
+                    "CalcTriggers.lua:1618 config.actor = env.minion for calcs.triggers(env, {who:?}) (the handler would write the other actor's output)"
+                ));
+            }
             // :1619-1621
             if c.trigger_name.is_none() {
                 c.trigger_name = Some(trigger_name.unwrap_or(skill_name));
@@ -561,9 +584,13 @@ pub(crate) fn triggers(env: &mut Env, st: &mut PerformState) -> Result<(), Strin
                 c.trigger_chance = src_instance(env, m, |g| g.trigger_chance).flatten();
             }
             match c.custom_handler {
+                // the custom handlers work on `env.player` (:136-392)
+                Some(_) if who != Who::Player => Err(format!(
+                    "CalcTriggers.lua:1622 a custom trigger handler for calcs.triggers(env, {who:?}) (the handler writes env.player.output)"
+                )),
                 Some(config::Custom::Cwc) => handler::cwc_handler(env, st),
                 Some(config::Custom::Focus) => handler::helmet_focus_handler(env, st),
-                None => handler::default_trigger_handler(env, st, c),
+                None => handler::default_trigger_handler(env, st, c, actor, m),
             }
         }
         None => {
@@ -583,7 +610,7 @@ pub(super) fn config_input_is(env: &Env, key: &str, value: &str) -> bool {
 /// `env.player.activeSkillList[skill + 1]`.
 pub(super) fn can_support(env: &Env, ge: usize, i: usize) -> bool {
     let st = env.skills.as_ref().expect("skills on");
-    let sk = &st.active_skill_list[i];
+    let sk = st.skill(i);
     let ge = &st.skills.effects[ge];
     let act = ge_of(env, i);
     let p = env.player.borrow();

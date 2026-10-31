@@ -10,7 +10,8 @@ use super::{
     q_of, sd, sd_num, sd_truthy, set_flag, set_sd, skill, skill_count, skill_mut, slot_match, src_instance, with_cached,
 };
 use crate::env::Env;
-use crate::perform::PerformState;
+use crate::output::Output;
+use crate::perform::Who;
 use crate::session::cache_skill_uuid;
 use crate::setup::{mod_flag, tag};
 
@@ -40,6 +41,8 @@ pub(crate) struct Config {
     pub overlaps: Option<f64>,
     pub custom_trigger_name: Option<String>,
     pub custom_handler: Option<Custom>,
+    /// `config.actor` (only "nova" sets it: `env.minion`).
+    pub actor: Option<Who>,
     /// `actor.mainSkill.triggeredBy.<field>` written by the entry.
     pub tb: TriggeredByExtra,
 }
@@ -107,7 +110,8 @@ fn borrow_active_part(env: &mut Env, name: &str, line: u32) {
 
 /// `configTable[key](env)` -- `Ok(None)` for a key not in the table or an entry returning nil.
 #[allow(clippy::too_many_lines)]
-pub(crate) fn config_table(env: &mut Env, st: &mut PerformState, key: &str) -> Result<Option<Config>, String> {
+/// `out` is `env.player.output` (the entries write the player's output whichever actor `calcs.triggers` runs for).
+pub(crate) fn config_table(env: &mut Env, out: &mut Output, key: &str) -> Result<Option<Config>, String> {
     let m = main_idx(env);
     let main_name = name_of(env, m);
     let c = match key {
@@ -424,13 +428,24 @@ pub(crate) fn config_table(env: &mut Env, st: &mut PerformState, key: &str) -> R
                 return Ok(None);
             }
         }
-        // :1172-1179 `if env.minion and env.minion.mainSkill` -- the minion's "Nova" (Summon Holy Relic) is reached by `calcs.triggers(env, env.minion)`
-        // (CalcPerform.lua:3807) only, which is not ported (the minion offence boundary, R7.10)
+        // :1172-1179 `if env.minion and env.minion.mainSkill` (R7.10b): the triggered skill is the minion's main skill
         "nova" => {
-            if skill(env, m).minion.is_some() {
-                return Err("CalcTriggers.lua:1173-1178 configTable[\"nova\"]: config.actor = env.minion (calcs.triggers(env, env.minion), CalcPerform.lua:3807, is not ported)".into());
+            let Some(mm) = crate::perform::minion_main_skill_id(env) else {
+                return Ok(None);
+            };
+            let uuid = cache_skill_uuid(env, mm);
+            let cd = sd_num(env, mm, "cooldown", 1176);
+            Config {
+                trigger_name: Some("Summon Holy Relic".into()),
+                actor: Some(Who::Minion),
+                triggered_skills: Some(vec![SimSkill {
+                    uuid,
+                    cd,
+                    ..SimSkill::default()
+                }]),
+                trigger_skill_cond: cond(|env, s| has_type(env, s, "Attack")),
+                ..Config::default()
             }
-            return Ok(None);
         }
         // :1180-1194
         "cast when damage taken" => {
@@ -438,7 +453,7 @@ pub(crate) fn config_table(env: &mut Env, st: &mut PerformState, key: &str) -> R
                 return Ok(None);
             };
             let threshold_mod = q_of(env, m).calc_mod(None, &["CWDTThreshold"]);
-            st.player.output.set_num("CWDTThreshold", base * threshold_mod);
+            out.set_num("CWDTThreshold", base * threshold_mod);
             global_self(env)
         }
         // :1195-1204
@@ -681,7 +696,7 @@ pub(crate) fn config_table(env: &mut Env, st: &mut PerformState, key: &str) -> R
             ..Config::default()
         },
         // :1404-1479
-        "snipe" => match snipe(env, st)? {
+        "snipe" => match snipe(env, out)? {
             Some(c) => c,
             None => return Ok(None),
         },
@@ -800,7 +815,7 @@ pub(crate) fn config_table(env: &mut Env, st: &mut PerformState, key: &str) -> R
 }
 
 /// :1404-1479 `configTable["snipe"]`.
-fn snipe(env: &mut Env, st: &mut PerformState) -> Result<Option<Config>, String> {
+fn snipe(env: &mut Env, out: &mut Output) -> Result<Option<Config>, String> {
     let m = main_idx(env);
     let db = player_db(env);
     let stages = min2(
@@ -907,8 +922,8 @@ fn snipe(env: &mut Env, st: &mut PerformState) -> Result<Option<Config>, String>
                 if !sk.flag("disable") && !used_by_mirage && !has_type(env, s, "OtherThingUsesSkill") && speed_ok {
                     rate = cached_speed;
                     match hit_time {
-                        Some(t) => st.player.output.set_num("ChannelTimeToTrigger", t),
-                        None => st.player.output.remove("ChannelTimeToTrigger"),
+                        Some(t) => out.set_num("ChannelTimeToTrigger", t),
+                        None => out.remove("ChannelTimeToTrigger"),
                     }
                     source = Some(s);
                 }

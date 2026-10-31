@@ -730,9 +730,9 @@ impl CalcSession {
     /// accelerated `wipeEnv` re-init of the same env, :337-344), then the
     /// ailment re-adds and the caps (:297-353).
     ///
-    /// Boundaries (the roll-up stops, [`FullDpsOutcome::Unimplemented`]): a skill whose run hit a boundary of the port at :3797-3801, and a
-    /// minion skill (`activeSkill.minion or usedEnv.minion`, :178-212 -- the minion's offence is R7.10b). `activeSkill.mirage` (:214-251) is
-    /// rolled up (R7.9).
+    /// Boundaries (the roll-up stops, [`FullDpsOutcome::Unimplemented`]): a skill whose run hit a boundary of the port at :3797-3801, or whose
+    /// minion's triggers / offence (CalcPerform.lua:3807-3808) did. The minion (`activeSkill.minion or usedEnv.minion`, :178-212, R7.10b) and
+    /// `activeSkill.mirage` (:214-251, R7.9) are rolled up.
     ///
     /// Hash-order (R13/L10): none -- `fullDPS.skills` is an array, the ailment sources are plain locals compared with a strict `>` (the
     /// first of equal values wins, as upstream).
@@ -810,19 +810,109 @@ impl CalcSession {
                 }
             };
             processed += 1;
+            let mut count = count;
+            {
+                // :207-211 `activeSkillCount = 1`, `activeSkill.infoMessage2 = "Skill Damage"` (the last statement of the minion block: nothing
+                // in it reads either, so it is applied first -- the `infoMessage2` write needs the run mutably)
+                let mut r = run.borrow_mut();
+                let has_minion = r.env.skills.as_ref().expect("skills on").active_skill_list[i].minion.is_some() || r.env.minion.is_some();
+                if has_minion {
+                    let name = {
+                        let st = r.env.skills.as_ref().expect("skills on");
+                        st.skills.effects[st.active_skill_list[i].active_effect.borrow().granted_effect]
+                            .name
+                            .clone()
+                    };
+                    let db = r.env.mod_db.clone();
+                    let once =
+                        |pat: &str, cond: &str| name.contains(pat) && crate::setup::ok(db.borrow().flag(None, &[cond])) == Some(true);
+                    if once("Absolution", "Condition:AbsolutionSkillDamageCountedOnce")
+                        || once("Dominating Blow", "Condition:DominatingBlowSkillDamageCountedOnce")
+                        || once("Holy Strike", "Condition:HolyStrikeSkillDamageCountedOnce")
+                    {
+                        count = 1.0;
+                        r.env.skills.as_mut().expect("skills on").active_skill_list[i].info_message2 = Some("Skill Damage".to_owned());
+                    }
+                }
+            }
             {
                 let r = run.borrow();
                 let st = r.env.skills.as_ref().expect("skills on");
                 let sk = &st.active_skill_list[i];
                 let name = st.skills.effects[sk.active_effect.borrow().granted_effect].name.clone();
-                // :176-212 `if activeSkill.minion or usedEnv.minion`
-                if sk.minion.is_some() {
-                    return Ok(FullDpsOutcome::Unimplemented {
-                        processed,
-                        note: format!(
-                            "Calcs.lua:178-212 calcFullDPS roll-up of the minion skill {name} (usedEnv.minion.output.TotalDPS: the minion's offence, CalcPerform.lua:3807-3808, is not ported)"
-                        ),
-                    });
+                // :176-212 `if activeSkill.minion or usedEnv.minion` (R7.10b)
+                let mut minion_name: Option<String> = None;
+                if sk.minion.is_some() || r.env.minion.is_some() {
+                    let Some(ms) = r.state.minion.as_ref().filter(|_| r.state.minion_offence_ran) else {
+                        let why = r
+                            .env
+                            .unimplemented
+                            .iter()
+                            .find(|u| u.starts_with("CalcTriggers.lua:"))
+                            .cloned()
+                            .unwrap_or_else(|| "calcs.offence(env, env.minion) did not run".to_owned());
+                        return Ok(FullDpsOutcome::Unimplemented {
+                            processed,
+                            note: format!("Calcs.lua:178-212 calcFullDPS roll-up of the minion skill {name}: {why}"),
+                        });
+                    };
+                    let ms = ms.borrow();
+                    let mo = &ms.output;
+                    let mnum = |k: &str, line: u32| {
+                        mo.opt_num(k).unwrap_or_else(|| {
+                            panic!("Modules/Calcs.lua:{line}: attempt to perform arithmetic on field '{k}' (a nil value)")
+                        })
+                    };
+                    let mgt = |k: &str, best: f64| mo.opt_num(k).is_some_and(|v| v > best);
+                    if mgt("TotalDPS", 0.0) {
+                        // :180 `(activeSkill.minion and activeSkill.minion.minionData.name..": ") or (usedEnv.minion ...) or ""`
+                        let mname = sk.minion.as_deref().map(|m| m.md("name")).unwrap_or(pob_mods::Value::Nil);
+                        let mname = match mname {
+                            pob_mods::Value::Str(s) => format!("{s}: "),
+                            other => panic!(
+                                "Modules/Calcs.lua:180: attempt to concatenate field 'name' (a {} value)",
+                                other.type_name()
+                            ),
+                        };
+                        let part = sk
+                            .skill_part_name
+                            .clone()
+                            .unwrap_or_else(|| panic!("Modules/Calcs.lua:181: attempt to concatenate field 'skillPartName' (a nil value)"));
+                        let dps = mnum("TotalDPS", 181);
+                        fd.skills.push(FullDpsSkill {
+                            name: name.clone(),
+                            dps,
+                            count,
+                            trigger: sk.info_trigger.clone(),
+                            skill_part: Some(format!("{mname}{part}")),
+                            source: None,
+                        });
+                        fd.combined_dps += dps * count;
+                        minion_name = Some(mname);
+                    }
+                    if mgt("BleedDPS", fd.bleed_dps) {
+                        fd.bleed_dps = mnum("BleedDPS", 185);
+                        bleed_source.clone_from(&name);
+                    }
+                    if mgt("IgniteDPS", fd.ignite_dps) {
+                        fd.ignite_dps = mnum("IgniteDPS", 189);
+                        ignite_source.clone_from(&name);
+                    }
+                    if mgt("PoisonDPS", 0.0) {
+                        fd.total_poison_dps += mnum("TotalPoisonDPS", 193) * count;
+                    }
+                    if mgt("ImpaleDPS", 0.0) {
+                        fd.impale_dps += mnum("ImpaleDPS", 196) * count;
+                    }
+                    if mgt("DecayDPS", 0.0) {
+                        fd.decay_dps += mnum("DecayDPS", 199);
+                    }
+                    if mgt("TotalDot", 0.0) {
+                        fd.dot_dps += mnum("TotalDot", 202);
+                    }
+                    if mo.opt_num("CullMultiplier").is_some_and(|v| v > 1.0 && v > fd.culling_multi) {
+                        fd.culling_multi = mnum("CullMultiplier", 205);
+                    }
                 }
                 // :214-251 `activeSkill.mirage` and :254 `activeSkill.infoTrigger` are set by calcs.mirages / calcs.triggers; a run
                 // whose dispatch took an unported branch has no offence either.
@@ -921,7 +1011,11 @@ impl CalcSession {
                         dps,
                         count,
                         trigger,
-                        skill_part: sk.skill_part_name.clone(),
+                        // :254 `minionName and activeSkill.infoMessage2 or activeSkill.skillPartName`
+                        skill_part: match minion_name {
+                            Some(_) if sk.info_message2.is_some() => sk.info_message2.clone(),
+                            _ => sk.skill_part_name.clone(),
+                        },
                         source: None,
                     });
                     fd.combined_dps += dps * count;

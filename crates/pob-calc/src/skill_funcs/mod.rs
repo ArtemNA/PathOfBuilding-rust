@@ -20,6 +20,8 @@ use funcs as f;
 #[derive(Clone, Copy)]
 pub(crate) enum Body {
     Port(fn(&mut Off<'_>)),
+    /// An explicit gap (none since R7.10b: every closure of `data/closures.json` is ported).
+    #[allow(dead_code)]
     Unported(&'static str),
 }
 
@@ -47,14 +49,14 @@ const fn e(path: &'static str, src: &'static str, from: u32, to: u32, sha: &'sta
     }
 }
 
-use Body::{Port, Unported};
+use Body::Port;
 
 /// Every skill closure of `data/closures.json`, in its order.
 #[rustfmt::skip]
 pub(crate) static SKILL_FUNCS: [SkillFuncEntry; 134] = [
     e("skills.ArmageddonBrand.preDamageFunc", "act_int.lua", 715, 717, "48907eac3b6310cb369ef87ebddefa1a756bd1661da336193b0eaae2df3d17c6", Port(f::brand_activation)),
     e("skills.ArmageddonBrandAltY.preDamageFunc", "act_int.lua", 895, 897, "48907eac3b6310cb369ef87ebddefa1a756bd1661da336193b0eaae2df3d17c6", Port(f::brand_activation)),
-    e("skills.AvengingFlame.preDamageFunc", "sup_str.lua", 2540, 2548, "faaad88be39c14af61f127e760f1f689f9d4aae599fe769597b20a36b665670a", Unported("GlobalCache.cachedData MAIN/CALCS of the trigger source (Env.player.output.TotemLife; CALCS mode not ported)")),
+    e("skills.AvengingFlame.preDamageFunc", "sup_str.lua", 2540, 2548, "faaad88be39c14af61f127e760f1f689f9d4aae599fe769597b20a36b665670a", Port(f::avenging_flame)),
     e("skills.AzmeriHydraBarrage.preDamageFunc", "spectre.lua", 7277, 7279, "03e59e6faf7109e4a7a2a36ece5042d3240adfa86c9ca60ff39b899a3d699a99", Port(f::dps_eq_projectile_count)),
     e("skills.BallLightning.preDamageFunc", "act_int.lua", 1086, 1167, "dcb69ca3835a1191fe7c523895792508563f293fe432f147c747c60c6fef139e", Port(f::ball_lightning)),
     e("skills.BallLightningAltX.preDamageFunc", "act_int.lua", 1252, 1275, "89c427cc7e2f34a3c66e83beae5543c68e59253f28cdcf5b0553160143440188", Port(f::ball_lightning_alt_x)),
@@ -91,8 +93,8 @@ pub(crate) static SKILL_FUNCS: [SkillFuncEntry; 134] = [
     e("skills.Earthquake.preDamageFunc", "act_str.lua", 3363, 3366, "f83e1ae0bdaf20278a8f98f4c547f3f91a4fbe9bd6074350753a14d1bf68d7fd", Port(f::earthquake)),
     e("skills.EnemyExplode.preDamageFunc", "other.lua", 6204, 6252, "7e9905c62fd2940c2fa3a44316dc64e87f0c8502f602d0c16b061cbb04e58913", Port(f::enemy_explode)),
     e("skills.ExplosiveArrow.explosiveArrowFunc", "act_dex.lua", 6699, 6778, "fcb10aac6ef439a9aeda38d6950f55f88ee90e682f5888b661c270c448f78105", Port(f::explosive_arrow)),
-    e("skills.ExplosiveTrap.preDamageFunc", "act_dex.lua", 7156, 7221, "d3c4aeaf80b651612cead32b56b5483cc01d01b91446d8cd1fb324ead204a510", Unported("pairs(output.AreaOfEffectRadiusTertiaryOccurrences): float sum in lj_tab order (R11)")),
-    e("skills.ExplosiveTrap.statMap._grantedEffect.preDamageFunc", "act_dex.lua", 7156, 7221, "d3c4aeaf80b651612cead32b56b5483cc01d01b91446d8cd1fb324ead204a510", Unported("pairs(output.AreaOfEffectRadiusTertiaryOccurrences): float sum in lj_tab order (R11)")),
+    e("skills.ExplosiveTrap.preDamageFunc", "act_dex.lua", 7156, 7221, "d3c4aeaf80b651612cead32b56b5483cc01d01b91446d8cd1fb324ead204a510", Port(f::explosive_trap)),
+    e("skills.ExplosiveTrap.statMap._grantedEffect.preDamageFunc", "act_dex.lua", 7156, 7221, "d3c4aeaf80b651612cead32b56b5483cc01d01b91446d8cd1fb324ead204a510", Port(f::explosive_trap)),
     e("skills.EyeOfWinter.preDamageFunc", "act_int.lua", 5518, 5520, "0a1071f37209aa0bde8bc91a7ab1bb25d949adf9554f2fc4afb04d0d4e96aa5f", Port(f::eye_of_winter)),
     e("skills.EyeOfWinterAltX.preDamageFunc", "act_int.lua", 5611, 5613, "505fe42709ddbbd02464f56c05a1886d33b00377fb63f80c40d793817ff14d9d", Port(f::eye_of_winter_alt_x)),
     e("skills.EyeOfWinterAltY.preDamageFunc", "act_int.lua", 5704, 5706, "cde5535b049367c04282e6d0f8c0ff11409e8ec2ea4f6a93691d0875a0fb29a7", Port(f::eye_of_winter_alt_y)),
@@ -101,13 +103,13 @@ pub(crate) static SKILL_FUNCS: [SkillFuncEntry; 134] = [
     e("skills.FlameblastAltY.preDamageFunc", "act_int.lua", 7008, 7010, "251dfcbb9351c5830cd56f1e801ead6f33c4e6cf877fd6ff6a074bf6cabc2117", Port(f::flameblast_alt_y)),
     e("skills.FlamethrowerTrap.preDamageFunc", "act_dex.lua", 7691, 7717, "6cdc3e1700dfe5b0913fd558ea38bb7f67196eb5f76e944bbd6acc5b667d854e", Port(f::flamethrower_trap)),
     e("skills.FlamethrowerTrapAltX.preDamageFunc", "act_dex.lua", 7809, 7827, "5fba2e220c7694bd1b0e58ea4828866dbe8953c59861746ec69d13a68e266d95", Port(f::flamethrower_trap_alt_x)),
-    e("skills.ForbiddenRite.preDamageFunc", "act_int.lua", 7390, 7434, "8457f4596105fea7e4ec5004af033184441926d8a9011141ff1701f05563ba0d", Unported("TotemChaosResist / self damage taken (not ported)")),
-    e("skills.ForbiddenRiteAltX.preDamageFunc", "act_int.lua", 7549, 7589, "b3b9441a39c2cafc17cd4c2c2b55e57b984501ce03215e2da96de822e277fee6", Unported("TotemChaosResist / self damage taken (not ported)")),
+    e("skills.ForbiddenRite.preDamageFunc", "act_int.lua", 7390, 7434, "8457f4596105fea7e4ec5004af033184441926d8a9011141ff1701f05563ba0d", Port(f::forbidden_rite)),
+    e("skills.ForbiddenRiteAltX.preDamageFunc", "act_int.lua", 7549, 7589, "b3b9441a39c2cafc17cd4c2c2b55e57b984501ce03215e2da96de822e277fee6", Port(f::forbidden_rite_alt_x)),
     e("skills.FreezingPulse.preDamageFunc", "act_int.lua", 7686, 7689, "06ba986fa54db9309760acd69ad078489a2c6dfe3714aa04413a79384595c94a", Port(f::freezing_pulse)),
     e("skills.FrostBombAltY.preDamageFunc", "act_int.lua", 7933, 7936, "2ca978412425995c8196876064185d0aa15abe800fd24b4d2e08ce4aa5b9e1fb", Port(f::frost_bomb_alt_y)),
-    e("skills.FrozenSweep.preDamageFunc", "act_str.lua", 4679, 4713, "2723a80de969128512021a766ddcc18b794345df65a8d02b7f248081e64f7073", Unported("parent skill (Frozen Legion) lookup via actor.mainSkill.socketGroup.slot (not ported)")),
-    e("skills.FrozenSweepAltX.preDamageFunc", "act_str.lua", 4797, 4831, "6e21ef23c19d262d7b7f44d7bd8cb3d6592b9f54e97155a45950adf17c31dc4d", Unported("parent skill (Frozen Legion of Rallying) lookup via actor.mainSkill.socketGroup.slot (not ported)")),
-    e("skills.GAZombieCorpseGroundImpact.preDamageFunc", "minion.lua", 756, 758, "bc3a99f2a20c2aa3d459f84684ca97c7f18ea23622b4c852bfdd0a67f9443ecb", Unported("activeSkill.summonSkill (minion skills, R7.10)")),
+    e("skills.FrozenSweep.preDamageFunc", "act_str.lua", 4679, 4713, "2723a80de969128512021a766ddcc18b794345df65a8d02b7f248081e64f7073", Port(f::frozen_sweep)),
+    e("skills.FrozenSweepAltX.preDamageFunc", "act_str.lua", 4797, 4831, "6e21ef23c19d262d7b7f44d7bd8cb3d6592b9f54e97155a45950adf17c31dc4d", Port(f::frozen_sweep_alt_x)),
+    e("skills.GAZombieCorpseGroundImpact.preDamageFunc", "minion.lua", 756, 758, "bc3a99f2a20c2aa3d459f84684ca97c7f18ea23622b4c852bfdd0a67f9443ecb", Port(f::summon_speed_hit_time)),
     e("skills.GalvanicField.preDamageFunc", "act_int.lua", 8543, 8545, "c46c160cb7ed4e7493e4c23dcc87fb5820553396bc2c9f1589a0b1e5dd39eac6", Port(f::hit_time_repeat_frequency)),
     e("skills.GalvanicFieldAltX.preDamageFunc", "act_int.lua", 8663, 8665, "c46c160cb7ed4e7493e4c23dcc87fb5820553396bc2c9f1589a0b1e5dd39eac6", Port(f::hit_time_repeat_frequency)),
     e("skills.HeraldOfAsh.preDamageFunc", "act_str.lua", 5743, 5745, "b2dc72cf68544399285372853b14f33a4ea9ffd7a65c100bcb6c05e8251636d2", Port(f::herald_of_ash)),
@@ -134,7 +136,7 @@ pub(crate) static SKILL_FUNCS: [SkillFuncEntry; 134] = [
     e("skills.LightningTendrilsAltX.postCritFunc", "act_int.lua", 12651, 12662, "1d9effc02375c0875ba97ed557181296c4fb298a2994b5923f902c3162a2c0f5", Port(f::lightning_tendrils_alt_x_post_crit)),
     e("skills.LightningTendrilsAltX.preDamageFunc", "act_int.lua", 12642, 12650, "b646128c0d7652d7854f4684bbe6be3c545a3739c7803643487b494bb9be0dad", Port(f::lightning_tendrils_alt_x)),
     e("skills.Manabond.preDamageFunc", "act_int.lua", 13527, 13532, "bb99045da4e3a30496e00a37107e19a7760dc43a6c9020f4c6e1ca2909836783", Port(f::manabond)),
-    e("skills.MinionInstability.preDamageFunc", "minion.lua", 1756, 1758, "bc3a99f2a20c2aa3d459f84684ca97c7f18ea23622b4c852bfdd0a67f9443ecb", Unported("activeSkill.summonSkill (minion skills, R7.10)")),
+    e("skills.MinionInstability.preDamageFunc", "minion.lua", 1756, 1758, "bc3a99f2a20c2aa3d459f84684ca97c7f18ea23622b4c852bfdd0a67f9443ecb", Port(f::summon_speed_hit_time)),
     e("skills.MoltenShell.preDamageFunc", "act_str.lua", 7599, 7603, "3a02403e817b375d2f14abed327b1bc6e16bec124cc220852b05eab7de952d01", Port(f::molten_shell)),
     e("skills.MoltenStrike.preDamageFunc", "act_str.lua", 7832, 7882, "a54f809c7509641eed7fbd55b08bbf94ea474af7f4161f5a52c61860da4c1c6f", Port(f::molten_strike)),
     e("skills.MoltenStrikeAltX.preDamageFunc", "act_str.lua", 8011, 8082, "1aa115a4b356ed97dea4dc33d1b6a8d907005bac936b9870758a4a51ec7e5c69", Port(f::molten_strike_alt_x)),

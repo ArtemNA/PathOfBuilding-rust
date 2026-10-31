@@ -77,6 +77,9 @@ pub struct ActorState {
     /// `actor.weaponRange1` / `weaponRange2` (CalcOffence.lua:1159/:1162).
     pub weapon_range1: Option<f64>,
     pub weapon_range2: Option<f64>,
+    /// `actor.output.MainHand` / `OffHand` after the actor's offence (R7.10b: a minion's `actor.parent.output.MainHand`, CalcOffence.lua:3079);
+    /// `None` = nil (not an attack, or no offence).
+    pub(crate) hands: Option<[crate::offence::HandOut; 2]>,
 }
 
 impl ActorState {
@@ -94,6 +97,7 @@ impl ActorState {
             ally_life_list: None,
             weapon_range1: None,
             weapon_range2: None,
+            hands: None,
         }
     }
 }
@@ -119,6 +123,8 @@ pub struct PerformState {
     /// or `calcs.mirages` returned true and left the mirage's output in `env.player.output` (R7.9). False when the triggers / mirages
     /// code (:3797-3798) hit a boundary of the port, or the skill phase is off.
     pub offence_ran: bool,
+    /// :3807-3808 ran with no boundary of the port: `calcs.offence(env, env.minion, env.minion.mainSkill)` ran (R7.10b).
+    pub minion_offence_ran: bool,
 }
 
 impl PerformState {
@@ -260,6 +266,17 @@ pub(crate) fn skill_cfg_of(st: &SkillsState, sk: &ActiveSkill) -> ModCfg {
 
 /// `activeSkill.skillModList` after CalcPerform.lua:1296 (perform's child of `baseSkillModList`); before perform -- the base list.
 pub(crate) fn skill_list_of(env: &Env, i: usize) -> StoreRef {
+    if crate::skills::minion_skill_parts(i).is_some() {
+        // R7.10b: a minion skill's `skillModList` is the one `buildActiveSkillModList` made (createMinionSkills, CalcActiveSkill.lua:915)
+        return env
+            .skills
+            .as_ref()
+            .expect("skills on")
+            .skill(i)
+            .skill_mod_list
+            .clone()
+            .expect("minion skill skillModList");
+    }
     if i == crate::skills::DETACHED {
         // R7.9: the detached main skill's own list (CalcActiveSkill.lua:184; perform's :1296 does not rebuild it)
         return env
@@ -343,6 +360,18 @@ pub(crate) fn env_minion(env: &Env) -> &crate::minion::Minion {
         .filter_map(|sk| sk.minion.as_deref())
         .find(|m| m.actor.as_ref().is_some_and(|a| Rc::ptr_eq(a, actor)))
         .expect("env.minion is the minion of an active skill")
+}
+
+/// `env.minion.mainSkill` as a [`crate::skills::minion_skill_id`] (R7.10b): `env.minion` is `env.player.mainSkill.minion` (:1316); `None` = nil.
+pub(crate) fn minion_main_skill_id(env: &Env) -> Option<usize> {
+    let actor = env.minion.as_ref()?;
+    let st = env.skills.as_ref()?;
+    let owner = st.main_skill?;
+    let m = st.skill(owner).minion.as_deref()?;
+    if !m.actor.as_ref().is_some_and(|a| Rc::ptr_eq(a, actor)) {
+        return None;
+    }
+    m.main_skill.map(|j| crate::skills::minion_skill_id(owner, j))
 }
 
 /// `env.player.mainSkill` -- upstream indexes it unconditionally.
@@ -2934,6 +2963,7 @@ pub fn perform_skip_ehp(
         aegis_item,
         minion: minion_state,
         offence_ran: false,
+        minion_offence_ran: false,
     };
 
     // --- :3792 defence, then the offence tail ---------------------------------------------------------------------------
@@ -2981,7 +3011,7 @@ pub fn perform_skip_ehp(
     } else {
         skip(env, "3797-3801 triggers / mirages / offence (P5)");
     }
-    // --- :3802-3809 the minion: defence, estimations (R7.10); its triggers and offence are a boundary of the port --------------
+    // --- :3802-3809 the minion: defence, estimations (R7.10), triggers and offence (R7.10b) ----------------------------------------------
     if state.minion.is_some() {
         match defence {
             Some(def) => {
@@ -2995,7 +3025,15 @@ pub fn perform_skip_ehp(
             }
             None => skip(env, "3803 calcs.defence(env, env.minion) (P4.4b)"),
         }
-        skip(env, MINION_OFFENCE_BOUNDARY);
+        // :3807-3808 (R7.10b)
+        if skills_on {
+            match crate::offence::minion_offence(env, &mut state) {
+                Ok(()) => state.minion_offence_ran = true,
+                Err(what) => env.unimplemented.push(what),
+            }
+        } else {
+            skip(env, "3807-3808 calcs.triggers / calcs.offence of env.minion (P5)");
+        }
         skip(env, "3811-3990 buff export, party export (P5)");
     } else {
         skip(env, "3803-3990 minion output, buff export, party export (P5)");
@@ -3033,10 +3071,6 @@ fn gem_level_quality(env: &Env, state: &mut PerformState) {
         output.set_num("GemQuality", base + support + item + socket);
     }
 }
-
-/// CalcPerform.lua:3807-3808 -- `calcs.triggers(env, env.minion)` and `calcs.offence(env, env.minion, env.minion.mainSkill)`: `crate::triggers`
-/// and `crate::offence` run the player's main skill only (their actor is `env.player` throughout; the files are outside the R7.10 card).
-pub(crate) const MINION_OFFENCE_BOUNDARY: &str = "3807-3808 calcs.triggers(env, env.minion) / calcs.offence(env, env.minion, env.minion.mainSkill): the minion actor's triggers and offence (R7.10 boundary: crate::triggers / crate::offence take env.player only)";
 
 // --- Calcs.lua:392-449 -- the MAIN tail of `calcs.buildOutput` ----------------------------------------------------------
 

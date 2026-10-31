@@ -65,7 +65,7 @@ pub(super) fn skill_type_stats(off: &mut Off<'_>) {
                 .as_str()
                 .unwrap_or_else(|| panic!("{LUA}:1059: minionData.limit is not a string ({limit:?})"))
                 .to_owned();
-            let ov = ok(off.env.mod_db.borrow().override_(None, &[&name]));
+            let ov = ok(off.env_db.borrow().override_(None, &[&name]));
             let v = match ov {
                 Some(v) if v.truthy() => v
                     .as_num()
@@ -226,7 +226,7 @@ pub(super) fn skill_type_stats(off: &mut Off<'_>) {
         for n in [1u8, 2] {
             if off.flag(if n == 1 { "weapon1Attack" } else { "weapon2Attack" }) {
                 let range = {
-                    let p = off.env.player.borrow();
+                    let p = off.actor();
                     let d = if n == 1 { &p.weapon_data1 } else { &p.weapon_data2 };
                     d.get("range")
                 };
@@ -306,7 +306,7 @@ pub(super) fn skill_type_stats(off: &mut Off<'_>) {
                 (cd + q.base(c, &["CooldownRecovery"])) / q.calc_mod(c, &["CooldownRecovery"])
             }
         };
-        let max_hit = ok(off.env.mod_db.borrow().flag(None, &["Condition:WarcryMaxHit"])) == Some(true);
+        let max_hit = ok(off.env_db.borrow().flag(None, &["Condition:WarcryMaxHit"])) == Some(true);
         let uptime = if max_hit { 1.0 } else { min2(full_duration / actual_cooldown, 1.0) };
         let unscaled = q.calc_mod(c, &["WarcryEffect", "BuffEffect"]);
         off.out().set_num("WarcryEffectMod", unscaled * uptime);
@@ -354,7 +354,7 @@ pub(super) fn skill_type_stats(off: &mut Off<'_>) {
         let action = off.out_num("ActionSpeedMod", 1420);
         let speed = base_speed * q.calc_mod(c, &["TotemPlacementSpeed"]) * action;
         let limit = q.base(c, &["ActiveTotemLimit", "ActiveBallistaLimit"]);
-        let summoned = or_override(&off.env.mod_db, "TotemsSummoned", limit, 1434);
+        let summoned = or_override(&off.env_db, "TotemsSummoned", limit, 1434);
         let o = off.out();
         o.set_num("TotemPlacementSpeed", speed);
         o.set_num("TotemPlacementTime", 1.0 / speed);
@@ -565,14 +565,22 @@ pub(super) fn calc_area_of_effect(off: &mut Off<'_>, q: &Q, cfg: &ModCfg) {
                 *base_occ.entry(rd).or_insert(0.0) += 1.0;
                 dev += 0.01;
             }
-            // :435-443 `pairs(baseRadiiOccurrences)` -- integer sums, the order cannot change them
+            // :435-443 `pairs(baseRadiiOccurrences)` -- integer sums (order-free), but the walk decides the insertion order of
+            // `radiiOccurrences`, whose own `pairs` order ExplosiveTrap's float sum follows (MINEFIELD-RUST R11): both are the `lj_tab` order
+            let base_keys: Vec<f64> = base_occ.keys().map(|k| *k as f64).collect();
             let mut sum = 0.0;
             let mut occ: IndexMap<i64, f64> = IndexMap::new();
-            for (adj, count) in &base_occ {
-                let rd = calc_radius(*adj as f64, am3, Some(radius_mod));
+            for adj in pob_tree::lj_table::pairs_order(&base_keys) {
+                let count = base_occ[&(adj as i64)];
+                let rd = calc_radius(adj, am3, Some(radius_mod));
                 sum += rd * count;
                 *occ.entry(rd as i64).or_insert(0.0) += count;
             }
+            let occ_keys: Vec<f64> = occ.keys().map(|k| *k as f64).collect();
+            let occ = pob_tree::lj_table::pairs_order(&occ_keys)
+                .into_iter()
+                .map(|k| (k as i64, occ[&(k as i64)]))
+                .collect();
             off.radius_tertiary_occurrences = Some(occ);
             sum / margin_width
         } else {
@@ -598,7 +606,7 @@ fn trap(off: &mut Off<'_>, q: &Q, cfg: &ModCfg) {
     if base_cooldown.is_some() {
         count = 1.0;
     }
-    let count = or_override(&off.env.mod_db, "TrapThrowCount", count, 1268);
+    let count = or_override(&off.env_db, "TrapThrowCount", count, 1268);
     speed = min2(speed, tick());
     let time = 1.0 / speed;
     let o = off.out();
@@ -633,7 +641,7 @@ fn mine(off: &mut Off<'_>, q: &Q, cfg: &ModCfg) {
     if off.sd_truthy("trapCooldown") || off.sd_truthy("cooldown") {
         count = 1.0;
     }
-    let count = or_override(&off.env.mod_db, "MineThrowCount", count, 1357);
+    let count = or_override(&off.env_db, "MineThrowCount", count, 1357);
     if count >= 1.0 {
         speed /= 1.0 + (count - 1.0) * 0.1;
     }

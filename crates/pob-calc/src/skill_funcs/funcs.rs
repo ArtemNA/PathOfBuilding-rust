@@ -165,8 +165,10 @@ pub(super) fn bane(off: &mut Off<'_>) {
     let limit = off.st.player.output.opt_num("EnemyCurseLimit");
     let mut count = 0.0;
     let st = off.env.skills.as_ref().expect("skills on");
-    let me = st.active_skill_list[off.i].socket_group;
-    for (j, sk) in st.active_skill_list.iter().enumerate() {
+    let me = st.skill(off.i).socket_group;
+    // `ipairs(activeSkill.actor.activeSkillList)`
+    for j in (0..off.actor_skill_count()).map(|j| off.actor_skill(j)) {
+        let sk = st.skill(j);
         if sk.socket_group == me {
             let list = crate::perform::skill_list_of(off.env, j);
             // `skill.skillModList:GetCondition("AppliedByBane")` -- no cfg
@@ -301,7 +303,7 @@ pub(super) fn cremation(off: &mut Off<'_>) {
 
 fn cyclone_with(off: &mut Off<'_>, src: &str) {
     let w = |off: &Off<'_>, n: u8, k: &str| -> Value {
-        let p = off.env.player.borrow();
+        let p = off.actor();
         if n == 1 { p.weapon_data1.get(k) } else { p.weapon_data2.get(k) }
     };
     let num = |v: Value, site: &str| {
@@ -1067,8 +1069,9 @@ fn explode_source_name(off: &Off<'_>) -> String {
 /// `skills.EnemyExplode.preDamageFunc` (other.lua:6204-6252, "On Kill Monster Explosion").
 ///
 /// Part 3 ("Average Of All Sources") walks `pairs(typeAmountChances)` (string keys, R13) and `pairs(amountChance)` (number keys, R11);
-/// the products/sums there depend on that order. Rust walks both in insertion order (the `List` order) and records the gap whenever
-/// more than one (type, amount) pair exists -- with one pair the result is order-free.
+/// the products/sums there depend on that order. The number keys are walked in their LuaJIT order (the `lj_tab` model, R11, R7.10b);
+/// the string keys in insertion order (the `List` order -- the fixed order of MINEFIELD-RUST R13), and with more than one type the result
+/// may differ from a LuaJIT process: that is recorded (the set of LuaJIT results is not measured -- no corpus scenario has part 3).
 pub(super) fn enemy_explode(off: &mut Off<'_>) {
     off.out().set_num("ExplodeChance", 0.0);
     let part = off.sk().skill_part;
@@ -1112,15 +1115,21 @@ pub(super) fn enemy_explode(off: &mut Off<'_>) {
                 None => ac.push((amount, chance)),
             }
         }
-        if by_type.iter().map(|(_, ac)| ac.len()).sum::<usize>() > 1 {
+        if by_type.len() > 1 {
             off.note(
-                "Data/Skills/other.lua:6230-6247 skills.EnemyExplode.preDamageFunc: pairs over ExplodeMod types/amounts (R11/R13), insertion order used"
+                "Data/Skills/other.lua:6230 skills.EnemyExplode.preDamageFunc: pairs(typeAmountChances) over more than one ExplodeMod type (string keys, R13: the LuaJIT order varies by process; insertion order used)"
                     .into(),
             );
         }
         for (ty, ac) in &by_type {
             let mut phys_explode_chance = 0.0;
-            for &(amount, chance) in ac {
+            // :6232 `pairs(amountChance)` -- number keys, the `lj_tab` order (R11)
+            let keys: Vec<f64> = ac.iter().map(|(a, _)| *a).collect();
+            let ordered: Vec<(f64, f64)> = pob_tree::lj_table::pairs_order(&keys)
+                .into_iter()
+                .map(|k| *ac.iter().find(|(a, _)| *a == k).expect("a key of the table"))
+                .collect();
+            for &(amount, chance) in &ordered {
                 let amount_x_chance = amount * chance;
                 if ty == "RandomElement" {
                     for t in ["Fire", "Cold", "Lightning"] {
@@ -1180,7 +1189,7 @@ pub(super) fn explosive_arrow(off: &mut Off<'_>) {
     );
     let fuse_limit = q.base(c, &["ExplosiveArrowMaxFuseCount"]);
     let active_totems = if off.flag("totem") {
-        let o = crate::setup::ok(off.mod_db.borrow().override_(None, &["TotemsSummoned"])).filter(Value::truthy);
+        let o = crate::setup::ok(off.env_db.borrow().override_(None, &["TotemsSummoned"])).filter(Value::truthy);
         Some(match o {
             Some(v) => v
                 .as_num()
@@ -1404,6 +1413,268 @@ pub(super) fn seismic_trap_alt_x(off: &mut Off<'_>) {
     } else if part(off, 3.0) {
         dps_multiplier = max_waves;
     }
+    if dps_multiplier != 1.0 {
+        mul_dps_out(off, dps_multiplier);
+    }
+}
+
+/// minion.lua:756 GAZombieCorpseGroundImpact / :1756 MinionInstability (R7.10b): `skillData.hitTimeOverride = 1 /
+/// (activeSkill.summonSkill.skillData.summonSpeed or 1)` -- `summonSkill` is the player skill that has the minion.
+pub(super) fn summon_speed_hit_time(off: &mut Off<'_>) {
+    let owner = off
+        .sk()
+        .summon_skill
+        .unwrap_or_else(|| panic!("Data/Skills/minion.lua:757: attempt to index field 'summonSkill' (a nil value)"));
+    let speed = {
+        let st = off.env.skills.as_ref().expect("skills on");
+        match st.skill(owner).skill_data.get("summonSpeed") {
+            None | Some(Value::Nil | Value::Bool(false)) => 1.0,
+            Some(v) => v.as_num().unwrap_or_else(|| {
+                panic!(
+                    "Data/Skills/minion.lua:757: attempt to perform arithmetic on a {} value",
+                    v.type_name()
+                )
+            }),
+        }
+    };
+    set(off, "hitTimeOverride", 1.0 / speed);
+}
+
+/// act_int.lua:7390 ForbiddenRite / :7549 ForbiddenRiteAltX (preDamageFunc, R7.10b): the chaos damage added from life / energy shield and
+/// `output.FRDamageTaken` (the self damage per cast); `with_life` = the base gem (the AltX has no life part). Breakdown rows: R8.
+fn forbidden_rite_with(off: &mut Off<'_>, with_life: bool, src: &str) {
+    use pob_lua::number::{floor, round};
+    let names = ["DamageTaken", "ChaosDamageTaken", "DamageTakenWhenHit", "ChaosDamageTakenWhenHit"];
+    let base_taken_flat = off.q.sum(ModType::Base, None, &names);
+    let base_taken_inc = off.q.sum(ModType::Inc, None, &names);
+    let base_taken_more = off.q.more(None, &names);
+    let chaos_damage_taken = max2((1.0 + base_taken_inc / 100.0) * base_taken_more, 0.0);
+    let chaos_flat = floor(round(base_taken_flat * chaos_damage_taken, None), Some(0.0));
+    let (life_k, es_k, res_k) = if off.flag("totem") {
+        ("TotemLife", "TotemEnergyShield", "TotemChaosResist")
+    } else {
+        ("Life", "EnergyShield", "ChaosResist")
+    };
+    let num = |off: &Off<'_>, k: &str| {
+        off.st
+            .player
+            .output
+            .opt_num(k)
+            .unwrap_or_else(|| panic!("{src}: attempt to perform arithmetic on a nil value (output.{k})"))
+    };
+    // `life` is read (and used) only by the base gem
+    let life = if with_life { num(off, life_k) } else { 0.0 };
+    let energy_shield = num(off, es_k);
+    let chaos_resistance = num(off, res_k);
+    let es_add = energy_shield * sdn(off, "energyShieldDealtAsChaos", src);
+    let add = if with_life {
+        life * sdn(off, "lifeDealtAsChaos", src) + es_add
+    } else {
+        es_add
+    };
+    let self_life = if with_life {
+        floor(
+            round(life * sdn(off, "SelfDamageTakenLife", src), None) * (100.0 - chaos_resistance) / 100.0 * chaos_damage_taken,
+            None,
+        )
+    } else {
+        0.0
+    };
+    let self_es = floor(
+        round(energy_shield * sdn(off, "SelfDamageTakenES", src), None) * (100.0 - chaos_resistance) / 100.0 * chaos_damage_taken,
+        None,
+    );
+    let min = sdn(off, "ChaosMin", src) + add;
+    set(off, "ChaosMin", min);
+    let max = sdn(off, "ChaosMax", src) + add;
+    set(off, "ChaosMax", max);
+    if part(off, 2.0) {
+        let pc = on(off, "ProjectileCount");
+        mul_dps(off, pc + 1.0);
+    }
+    let taken = if with_life {
+        self_life + self_es + chaos_flat
+    } else {
+        self_es + chaos_flat
+    };
+    off.out().set_num("FRDamageTaken", taken);
+}
+
+/// act_int.lua:7390 ForbiddenRite.
+pub(super) fn forbidden_rite(off: &mut Off<'_>) {
+    forbidden_rite_with(off, true, "Data/Skills/act_int.lua:7390");
+}
+
+/// act_int.lua:7549 ForbiddenRiteAltX.
+pub(super) fn forbidden_rite_alt_x(off: &mut Off<'_>) {
+    forbidden_rite_with(off, false, "Data/Skills/act_int.lua:7549");
+}
+
+/// sup_str.lua:2540 AvengingFlame (preDamageFunc, R7.10b): `TotemLife` of the trigger source's cached MAIN / CALCS run (`GlobalCache.cachedData
+/// ["MAIN"][uuid] or ["CALCS"][uuid]`, whatever the env's mode) as added fire damage. A cached run that stopped at a boundary of the port
+/// (no `calcs.offence`, so no `TotemLife`) is a boundary here too -- never a nil read as 0.
+pub(super) fn avenging_flame(off: &mut Off<'_>) {
+    const SRC: &str = "Data/Skills/sup_str.lua:2540-2548";
+    let uuid = off.sd("triggerSourceUUID");
+    let totem_life = match uuid.as_str() {
+        None if uuid.truthy() => panic!("{SRC}: GlobalCache.cachedData index by a {} uuid", uuid.type_name()),
+        None => 0.0,
+        Some(u) => {
+            let sess = crate::session::CalcSession::of(off.env).unwrap_or_else(|| panic!("{SRC}: GlobalCache outside a CalcSession"));
+            let cache = sess.cache();
+            let c = cache
+                .get(crate::session::CalcMode::Main, u)
+                .or_else(|| cache.get(crate::session::CalcMode::Calcs, u));
+            match c {
+                None => 0.0,
+                Some(c) if !c.offence_ran => {
+                    let what = format!("{SRC} skills.AvengingFlame.preDamageFunc: the cached run of {u} has no calcs.offence (TotemLife)");
+                    drop(cache);
+                    off.note(what);
+                    return;
+                }
+                Some(c) => c.run.borrow().state.player.output.opt_num("TotemLife").unwrap_or(0.0),
+            }
+        }
+    };
+    let add = totem_life * sdn(off, "lifeDealtAsFire", SRC) / 100.0;
+    let max = sd_or(off, "FireMax", 0.0) + add;
+    set(off, "FireMax", max);
+    let min = sd_or(off, "FireMin", 0.0) + add;
+    set(off, "FireMin", min);
+}
+
+/// act_str.lua:4679 FrozenSweep / :4797 FrozenSweepAltX (preDamageFunc, R7.10b): the cooldown and statue count of the parent Frozen Legion
+/// (`parent` = its name) in the same slot as `activeSkill.actor.mainSkill`.
+fn frozen_sweep_with(off: &mut Off<'_>, parent: &str, src: &str) {
+    off.set_sd("showAverage", Value::Bool(false));
+    off.set_flag("showAverage", false);
+    off.set_flag("notAverage", true);
+    // `activeSkill.actor.mainSkill`: the player's main skill, or the minion's (this skill) for a minion actor
+    let actor_main = if off.who == crate::perform::Who::Player {
+        off.player_main()
+    } else {
+        off.i
+    };
+    let parent_skill = {
+        let st = off.env.skills.as_ref().expect("skills on");
+        let slot_of = |i: usize| {
+            let g = st
+                .skill(i)
+                .socket_group
+                .unwrap_or_else(|| panic!("{src}: attempt to index field 'socketGroup' (a nil value)"));
+            st.tab.socket_group_list()[g].slot.clone()
+        };
+        let mut found = None;
+        for j in (0..off.actor_skill_count()).map(|j| off.actor_skill(j)) {
+            let sk = st.skill(j);
+            if st.skills.effects[sk.active_effect.borrow().granted_effect].name == parent && slot_of(actor_main) == slot_of(off.i) {
+                found = Some(j);
+                break;
+            }
+        }
+        found.unwrap_or_else(|| panic!("{src}: attempt to index local 'parentSkill' (a nil value)"))
+    };
+    let (pq, pcfg, psd) = {
+        let st = off.env.skills.as_ref().expect("skills on");
+        let sk = st.skill(parent_skill);
+        (
+            crate::offence::Q {
+                list: crate::perform::skill_list_of(off.env, parent_skill),
+                malformed: sk.malformed_mods.clone(),
+            },
+            crate::perform::skill_cfg_of(st, sk),
+            sk.skill_data.clone(),
+        )
+    };
+    let pc = Some(&pcfg);
+    if pq.flag(pc, &["DisableSkill"]) && !pq.flag(pc, &["EnableSkill"]) {
+        return;
+    }
+    let cd_val = psd.get("cooldown").cloned().unwrap_or(Value::Nil);
+    off.set_sd("cooldown", cd_val.clone());
+    let cooldown = match pq.override_(pc, &["CooldownRecovery"]).filter(Value::truthy) {
+        Some(v) => v
+            .as_num()
+            .unwrap_or_else(|| panic!("{src}: attempt to perform arithmetic on a {} value", v.type_name())),
+        None => {
+            let cd = cd_val.as_num().unwrap_or_else(|| {
+                panic!(
+                    "{src}: attempt to perform arithmetic on field 'cooldown' (a {} value)",
+                    cd_val.type_name()
+                )
+            });
+            (cd + pq.base(pc, &["CooldownRecovery"])) / max2(0.0, pq.calc_mod(pc, &["CooldownRecovery"]))
+        }
+    };
+    let tick = misc("ServerTickRate");
+    let out_cd = (cooldown * tick).ceil() / tick;
+    off.out().set_num("Cooldown", out_cd);
+    set(off, "hitTimeOverride", out_cd);
+    let stored = match psd.get("storedUses") {
+        Some(Value::Num(x)) => *x,
+        other => panic!("{src}: attempt to perform arithmetic on field 'storedUses' ({other:?})"),
+    };
+    let max_statues = stored + pq.base(pc, &["AdditionalCooldownUses"]);
+    let waited = if part(off, 1.0) {
+        Value::Num(1.0)
+    } else if part(off, 2.0) {
+        Value::Num(max_statues)
+    } else {
+        Value::Nil
+    };
+    off.set_sd("averageBurstHits", waited);
+}
+
+/// act_str.lua:4679 FrozenSweep.
+pub(super) fn frozen_sweep(off: &mut Off<'_>) {
+    frozen_sweep_with(off, "Frozen Legion", "Data/Skills/act_str.lua:4679");
+}
+
+/// act_str.lua:4797 FrozenSweepAltX.
+pub(super) fn frozen_sweep_alt_x(off: &mut Off<'_>) {
+    frozen_sweep_with(off, "Frozen Legion of Rallying", "Data/Skills/act_str.lua:4797");
+}
+
+/// act_dex.lua:7156 ExplosiveTrap (and its statMap's `_grantedEffect`, the same body; R7.10b): the overlap chance of the small explosions --
+/// a float sum over `pairs(output.AreaOfEffectRadiusTertiaryOccurrences)`, walked in the LuaJIT `pairs` order the offence state keeps
+/// ([`crate::offence::Off::radius_tertiary_occurrences`], MINEFIELD-RUST R11). The breakdown rows (R8) are not built.
+pub(super) fn explosive_trap(off: &mut Off<'_>) {
+    const SRC: &str = "Data/Skills/act_dex.lua:7156-7221";
+    let enemy_radius = match off.q.override_(Some(&off.cfg), &["EnemyRadius"]).filter(Value::truthy) {
+        Some(v) => v.as_num().unwrap_or_else(|| {
+            panic!(
+                "{SRC}: attempt to perform arithmetic on local 'enemyRadius' (a {} value)",
+                v.type_name()
+            )
+        }),
+        None => sum(off, ModType::Base, &["EnemyRadius"]),
+    };
+    let full_radius = off.st.player.output.opt_num("AreaOfEffectRadiusSecondary");
+    let margin_width = sdn(off, "radiusTertiaryBaseMargin", SRC) * 2.0 + 1.0;
+    let occ = off
+        .radius_tertiary_occurrences
+        .clone()
+        .unwrap_or_else(|| panic!("{SRC}: bad argument #1 to 'pairs' (table expected, got nil)"));
+    let mut overlap_chance = 0.0;
+    for (small_radius, occurrence_count) in occ {
+        let spread =
+            full_radius.unwrap_or_else(|| panic!("{SRC}: attempt to perform arithmetic on local 'areaSpreadRadius' (a nil value)"));
+        // `hitChance(enemyRadius, areaDamageRadius, areaSpreadRadius)`
+        let damaging = small_radius as f64 + enemy_radius - 1.0;
+        let hit = min2(damaging * damaging / (spread * spread), 1.0);
+        overlap_chance += hit * occurrence_count / margin_width;
+    }
+    off.out().set_num("OverlapChance", overlap_chance * 100.0);
+    let small = sum(off, ModType::Base, &["SmallExplosions"]);
+    off.out().set_num("SmallExplosionsPerTrap", small);
+    let dps_multiplier = if part(off, 2.0) {
+        1.0 + small * overlap_chance
+    } else if part(off, 3.0) {
+        1.0 + small
+    } else {
+        1.0
+    };
     if dps_multiplier != 1.0 {
         mul_dps_out(off, dps_multiplier);
     }

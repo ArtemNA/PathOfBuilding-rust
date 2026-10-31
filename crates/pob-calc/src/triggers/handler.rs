@@ -12,7 +12,7 @@ use super::{
     triggered_by_cd, with_cached,
 };
 use crate::env::Env;
-use crate::perform::PerformState;
+use crate::perform::{PerformState, Who};
 use crate::session::cache_skill_uuid;
 use crate::setup::misc;
 
@@ -36,8 +36,12 @@ fn out_num(st: &PerformState, k: &str, line: u32) -> f64 {
 }
 
 /// `actor.modDB:Flag(nil, "HaveTriggerBots") and actor.mainSkill.skillTypes[SkillType.Spell]`.
-fn trigger_bots(env: &Env, m: usize) -> bool {
-    player_db(env).flag(None, &["HaveTriggerBots"]) && has_type(env, m, "Spell")
+fn trigger_bots(env: &Env, who: Who, m: usize) -> bool {
+    let db = crate::offence::Q {
+        list: crate::perform::db_of(env, who),
+        malformed: Vec::new(),
+    };
+    db.flag(None, &["HaveTriggerBots"]) && has_type(env, m, "Spell")
 }
 
 /// :136-220 `helmetFocusHandler(env)`.
@@ -169,7 +173,7 @@ pub(super) fn cwc_handler(env: &mut Env, st: &mut PerformState) -> Result<(), St
         .set_num("TriggerRateCap", min2(1.0 / eff_cd_triggered_skill, trigger_rate_of_trigger));
     let main_uuid = cache_skill_uuid(env, m);
     let (mut str_, _) = calc_multi_spell_rotation_impact(&main_uuid, &mut triggered, trigger_rate_of_trigger, Some(0.0), None);
-    if trigger_bots(env, m) {
+    if trigger_bots(env, Who::Player, m) {
         str_ *= 2.0;
     }
     st.player.output.set_num("SkillTriggerRate", str_);
@@ -198,10 +202,11 @@ fn both_hands_boundary(line: u32) -> String {
     )
 }
 
-/// :394-900 `defaultTriggerHandler(env, config)`.
+/// :394-900 `defaultTriggerHandler(env, config)`; `who` = `config.actor`, `m` = `actor.mainSkill` (R7.10b: `st.player` is that actor's perform
+/// state, see [`crate::offence::Off`]). `env.player.mainSkill` is [`main_idx`].
 #[allow(clippy::too_many_lines)]
-pub(super) fn default_trigger_handler(env: &mut Env, st: &mut PerformState, mut config: Config) -> Result<(), String> {
-    let m = main_idx(env);
+pub(super) fn default_trigger_handler(env: &mut Env, st: &mut PerformState, mut config: Config, who: Who, m: usize) -> Result<(), String> {
+    let pm = main_idx(env);
     let mut source = config.source;
     let mut triggered_skills = config.triggered_skills.take().unwrap_or_default();
     let mut trig_rate = config.trig_rate;
@@ -400,7 +405,15 @@ pub(super) fn default_trigger_handler(env: &mut Env, st: &mut PerformState, mut 
     let added = q.base(Some(&cfg), &["CooldownRecovery"]);
     let added_cooldown = (added != 0.0).then_some(added);
     let cooldown_override = q.override_num(Some(&cfg), &["CooldownRecovery"], "Modules/CalcTriggers.lua:567");
-    let mut trigger_cd = triggered_by_cd(env, m, 568);
+    // :567 `actor.mainSkill.triggeredBy and env.player.mainSkill.triggeredBy.grantedEffect.levels[...].cooldown`
+    let mut trigger_cd = if skill(env, m).triggered_by.is_some() {
+        if skill(env, pm).triggered_by.is_none() {
+            line_err(567, "attempt to index field 'triggeredBy' (a nil value)");
+        }
+        triggered_by_cd(env, pm, 568)
+    } else {
+        None
+    };
     if trigger_cd.is_none() {
         let s = req_source(source, 569);
         trigger_cd = triggered_by_cd(env, s, 569);
@@ -422,7 +435,8 @@ pub(super) fn default_trigger_handler(env: &mut Env, st: &mut PerformState, mut 
             .unwrap_or_else(|| line_err(573, "attempt to perform arithmetic on field 'activationFreqInc' (a nil value)"));
         trigger_cd = Some(rf / more / inc * icdr);
     }
-    let pac = process_added_cast_time(env, m);
+    // :578 `processAddedCastTime(env.player.mainSkill, breakdown)`
+    let pac = process_added_cast_time(env, pm);
     let adds = pac.map(|(a, _)| a);
     set_out(st, "addsCastTime", adds);
     let triggered_cd_adjusted = (triggered_cd.unwrap_or(0.0) + added_cooldown.unwrap_or(0.0)) / icdr;
@@ -492,7 +506,7 @@ pub(super) fn default_trigger_handler(env: &mut Env, st: &mut PerformState, mut 
 
     // :306-325
     let mut global_trigger = flag(env, m, "globalTrigger");
-    if name_of(env, m) == "Doom Blast" && config_input_is(env, "doomBlastSource", "vixen") {
+    if name_of(env, pm) == "Doom Blast" && config_input_is(env, "doomBlastSource", "vixen") {
         let vixen_gloves = env.player.borrow().item_list.get("Gloves").is_some_and(|it| {
             it.title
                 .as_deref()
@@ -523,7 +537,7 @@ pub(super) fn default_trigger_handler(env: &mut Env, st: &mut PerformState, mut 
                     / icdr
             });
         let r = req_rate(trig_rate, 314);
-        let main_uuid = cache_skill_uuid(env, m);
+        let main_uuid = cache_skill_uuid(env, pm);
         let mut rot = vec![SimSkill {
             uuid: main_uuid.clone(),
             icdr: Some(icdr),
@@ -548,7 +562,7 @@ pub(super) fn default_trigger_handler(env: &mut Env, st: &mut PerformState, mut 
     // :333-481
     let esr = out_num(st, "EffectiveSourceRate", 333);
     let skill_trigger_rate;
-    if esr != 0.0 && !flag(env, m, "skipEffectiveRate") {
+    if esr != 0.0 && !flag(env, pm, "skipEffectiveRate") {
         let mut trigger_chance = 100.0;
         // :338-387 accuracy and crit chance
         if let Some(s) = source
@@ -617,7 +631,7 @@ pub(super) fn default_trigger_handler(env: &mut Env, st: &mut PerformState, mut 
             };
             let main_uuid = cache_skill_uuid(env, m);
             let (mut r, _) = calc_multi_spell_rotation_impact(&main_uuid, &mut rot, esr, tcd, Some(trigger_chance));
-            if trigger_bots(env, m) {
+            if trigger_bots(env, who, m) {
                 r *= 2.0;
             }
             // `hits_per_cast` -- `config.stagesAreOverlaps` is never set: 1
@@ -631,7 +645,12 @@ pub(super) fn default_trigger_handler(env: &mut Env, st: &mut PerformState, mut 
     // :484-498
     st.player.output.set_num("Speed", skill_trigger_rate);
     add_trigger_inc_more_mods(env, m, source.unwrap_or(m));
-    let triggered_name = name_of(env, m);
+    // :576 `actor ~= env.minion and actor.mainSkill.activeEffect.grantedEffect.name or "Triggered skill"`
+    let triggered_name = if who == Who::Minion {
+        "Triggered skill".to_owned()
+    } else {
+        name_of(env, m)
+    };
     let info = match source {
         Some(s) if s != m => {
             let su = cache_skill_uuid(env, s);
@@ -645,7 +664,13 @@ pub(super) fn default_trigger_handler(env: &mut Env, st: &mut PerformState, mut 
                     } else {
                         triggered_name
                     };
-                    format!("{head}'s Trigger: {sname}")
+                    // :888 `actor == env.minion and "'s attack Trigger: " or "'s Trigger: "`
+                    let mid = if who == Who::Minion {
+                        "'s attack Trigger: "
+                    } else {
+                        "'s Trigger: "
+                    };
+                    format!("{head}{mid}{sname}")
                 }
             }
         }

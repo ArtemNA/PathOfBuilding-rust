@@ -45,18 +45,25 @@ use pob_mods::{ModCfg, StoreRef, Str, Value};
 use crate::active_skill::ActiveSkill;
 use crate::env::Env;
 use crate::output::{OutValue, Output};
-use crate::perform::{ActorState, Checkpoint, PerformState, skill_cfg_of, skill_list_of};
+use crate::perform::{ActorState, Checkpoint, PerformState, Who, skill_cfg_of, skill_list_of};
 use helpers::ConversionTable;
 pub(crate) use helpers::{Q, calc_skill_duration, calc_totem_life};
 
 /// The checkpoint hook as offence receives it.
 pub(crate) type Hook<'h, 'a> = Option<&'h mut (dyn FnMut(Checkpoint, &Env, &ActorState, &ActorState) + 'a)>;
 
-/// The state of one `calcs.offence(env, env.player, env.player.mainSkill)` call.
+/// The state of one `calcs.offence(env, actor, actor.mainSkill)` call.
+///
+/// The actor (R7.10b): `who` is [`Who::Player`] or [`Who::Minion`]. For the minion the caller (CalcPerform.lua:3807-3808, [`minion_offence`])
+/// swaps the minion's perform state into `st.player` for the duration of the call, so `st.player` is always `actor` (`output`,
+/// `actor.strDmgBonus`, `actor.weaponRange<n>`); the few places upstream names `env.player` itself read [`Off::player_state`].
 pub(crate) struct Off<'e> {
     pub env: &'e mut Env,
     pub st: &'e mut PerformState,
-    /// `env.player.mainSkill` (index into `activeSkillList`, or [`crate::skills::DETACHED`] for a mirage's copy, R7.9).
+    /// `actor`.
+    pub who: Who,
+    /// `actor.mainSkill`: an index into `activeSkillList`, [`crate::skills::DETACHED`] for a mirage's copy (R7.9), or a
+    /// [`crate::skills::minion_skill_id`] for the minion's main skill (R7.10b).
     pub i: usize,
     /// `activeSkill.skillModList`.
     pub q: Q,
@@ -65,9 +72,11 @@ pub(crate) struct Off<'e> {
     /// `actor.modDB` / `actor.enemy.modDB`.
     pub mod_db: StoreRef,
     pub enemy_db: StoreRef,
+    /// `env.modDB` (= `actor.modDB` for the player).
+    pub env_db: StoreRef,
     /// `actor.breakdown` is set.
     pub breakdown: bool,
-    /// `output.AreaOfEffectRadiusTertiaryOccurrences` (a table value in upstream's output: radius -> count, :445), insertion order.
+    /// `output.AreaOfEffectRadiusTertiaryOccurrences` (a table value in upstream's output: radius -> count, :445), in its LuaJIT `pairs` order.
     pub radius_tertiary_occurrences: Option<IndexMap<i64, f64>>,
     /// `isAttack` (:1052, `skillFlags.attack` before `preSkillTypeFunc`).
     pub is_attack: bool,
@@ -255,9 +264,77 @@ impl Off<'_> {
         }
     }
 
+    /// `actor` (the mod core's view: `itemList`, `weaponData<n>`).
+    pub fn actor(&self) -> std::cell::Ref<'_, crate::env::CalcActor> {
+        crate::perform::actor_of(self.env, self.who).borrow()
+    }
+
+    /// `env.player`'s perform state (`env.player.output`): `st.player` for the player's offence, the swapped-out cell for the minion's.
+    pub fn player_state(&self) -> PlayerState<'_> {
+        match self.who {
+            Who::Player => PlayerState::Own(&self.st.player),
+            _ => PlayerState::Cell(self.st.minion.as_ref().expect("env.minion").borrow()),
+        }
+    }
+
+    /// `actor.activeSkillList[j + 1]` as a skill index (the minion's: [`crate::skills::minion_skill_id`]).
+    pub fn actor_skill(&self, j: usize) -> usize {
+        match crate::skills::minion_skill_parts(self.i) {
+            Some((owner, _)) => crate::skills::minion_skill_id(owner, j),
+            None => j,
+        }
+    }
+
+    /// `#actor.activeSkillList`.
+    pub fn actor_skill_count(&self) -> usize {
+        let st = self.env.skills.as_ref().expect("skills on");
+        match crate::skills::minion_skill_parts(self.i) {
+            Some((owner, _)) => st.skill(owner).minion.as_deref().map_or(0, |m| m.active_skill_list.len()),
+            None => st.active_skill_list.len(),
+        }
+    }
+
+    /// `env.player.mainSkill` (an index; = [`Off::i`] for the player's offence).
+    pub fn player_main(&self) -> usize {
+        self.env.skills.as_ref().and_then(|s| s.main_skill).expect("env.player.mainSkill")
+    }
+
+    /// `env.player.mainSkill.skillData[k] = v`.
+    pub fn set_player_main_sd(&mut self, k: &str, v: Value) {
+        let m = self.player_main();
+        let sd = &mut self.env.skills.as_mut().expect("skills on").skill_mut(m).skill_data;
+        if v.is_nil() {
+            sd.shift_remove(k);
+        } else {
+            sd.insert(k.to_owned(), v);
+        }
+    }
+
+    /// `env.player.mainSkill.skillData[k]`.
+    pub fn player_main_sd(&self, k: &str) -> Value {
+        let st = self.env.skills.as_ref().expect("skills on");
+        st.skill(self.player_main()).skill_data.get(k).cloned().unwrap_or(Value::Nil)
+    }
+
     pub fn note(&mut self, what: String) {
         if !self.env.unimplemented.contains(&what) {
             self.env.unimplemented.push(what);
+        }
+    }
+}
+
+/// `env.player`'s perform state as [`Off::player_state`] reads it.
+pub(crate) enum PlayerState<'a> {
+    Own(&'a ActorState),
+    Cell(std::cell::Ref<'a, ActorState>),
+}
+
+impl std::ops::Deref for PlayerState<'_> {
+    type Target = ActorState;
+    fn deref(&self) -> &ActorState {
+        match self {
+            PlayerState::Own(a) => a,
+            PlayerState::Cell(a) => a,
         }
     }
 }
@@ -272,12 +349,33 @@ pub(crate) fn skill_type_u32(name: &str) -> u32 {
 
 /// `calcs.offence(env, env.player, env.player.mainSkill)` (CalcPerform.lua:3799) -- parts A (:348-1936, R7.3), B (:1937-2605, R7.4),
 /// C (:2606-4154, R7.5), D (:4155-5770, R7.6) and E (:5771-6263, R7.7). `hook` sees [`Checkpoint::Oc1`]..[`Checkpoint::Oc6`].
-pub(crate) fn offence(env: &mut Env, st: &mut PerformState, mut hook: Hook<'_, '_>) {
+pub(crate) fn offence(env: &mut Env, st: &mut PerformState, hook: Hook<'_, '_>) {
     let i = env
         .skills
         .as_ref()
         .and_then(|s| s.main_skill)
         .unwrap_or_else(|| panic!("Modules/CalcOffence.lua:358: attempt to index local 'activeSkill' (a nil value)"));
+    offence_of(env, st, hook, Who::Player, i);
+}
+
+/// CalcPerform.lua:3807-3808 `calcs.triggers(env, env.minion)` + `calcs.offence(env, env.minion, env.minion.mainSkill)` (R7.10b): the minion's
+/// perform state is swapped into `st.player` for both calls (see [`Off`]). `Err` = a boundary of the triggers port (no offence then, as for
+/// the player).
+pub(crate) fn minion_offence(env: &mut Env, st: &mut PerformState) -> Result<(), String> {
+    let i = crate::perform::minion_main_skill_id(env)
+        .unwrap_or_else(|| panic!("Modules/CalcOffence.lua:358: attempt to index local 'activeSkill' (a nil value)"));
+    let cell = st.minion.clone().expect("env.minion output");
+    std::mem::swap(&mut st.player, &mut *cell.borrow_mut());
+    let r = crate::triggers::triggers_of(env, st, Who::Minion, i);
+    if r.is_ok() {
+        offence_of(env, st, None, Who::Minion, i);
+    }
+    std::mem::swap(&mut st.player, &mut *cell.borrow_mut());
+    r
+}
+
+/// `calcs.offence(env, actor, activeSkill)` for `actor` = `who`, `activeSkill` = skill `i` (see [`Off`]).
+fn offence_of(env: &mut Env, st: &mut PerformState, mut hook: Hook<'_, '_>, who: Who, i: usize) {
     let (q, cfg) = {
         let s = env.skills.as_ref().expect("skills on");
         let sk = s.skill(i);
@@ -289,17 +387,20 @@ pub(crate) fn offence(env: &mut Env, st: &mut PerformState, mut hook: Hook<'_, '
             skill_cfg_of(s, sk),
         )
     };
-    let mod_db = env.mod_db.clone();
-    let enemy_db = env.enemy_db.clone();
+    let mod_db = crate::perform::db_of(env, who);
+    let enemy_db = crate::perform::enemy_db_of(env, who);
+    let env_db = env.mod_db.clone();
     let breakdown = env.build_breakdown;
     let mut off = Off {
         env,
         st,
+        who,
         i,
         q,
         cfg,
         mod_db,
         enemy_db,
+        env_db,
         breakdown,
         radius_tertiary_occurrences: None,
         is_attack: false,
@@ -343,6 +444,7 @@ pub(crate) fn offence(env: &mut Env, st: &mut PerformState, mut hook: Hook<'_, '
     // :5771-6262
     e::dot_cost_combined(&mut off, quantity_multiplier);
     hook_with_hands(&mut off, &mut hook, Checkpoint::Oc6);
+    off.st.player.hands = off.hands.take();
 }
 
 /// Calls the hook at `cp` with `output.MainHand` / `output.OffHand` readable through [`checkpoint_hand_outputs`].

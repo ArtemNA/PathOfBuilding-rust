@@ -347,7 +347,7 @@ fn chances(off: &mut Off<'_>, q: &Q, pi: usize) {
     }
     // :4231-4262 the elemental ailments
     let rules = pob_data::rules::rules();
-    let ignite_can_scorch = dflag(&off.mod_db, None, &["IgniteCanScorch"]);
+    let ignite_can_scorch = dflag(&off.env_db, None, &["IgniteCanScorch"]);
     for ailment in &rules.elemental_ailment_type_list {
         let a = ailment.as_str();
         let mut chance = q.base(c, &[&format!("Enemy{a}Chance")]) + dsum(&edb, ModType::Base, None, &[&format!("Self{a}Chance")]);
@@ -528,7 +528,7 @@ fn bleed(off: &mut Off<'_>, q: &Q, pi: usize) {
         bleed_stacks = bleed_stacks * bleed_duration * off.g_hit_speed(4449);
     }
     let site = format!("{LUA}:4451");
-    let active_totems = match ok(off.mod_db.borrow().override_(None, &["TotemsSummoned"])) {
+    let active_totems = match ok(off.env_db.borrow().override_(None, &["TotemsSummoned"])) {
         Some(v) if v.truthy() => v
             .as_num()
             .unwrap_or_else(|| panic!("{site}: attempt to perform arithmetic on a {} value", v.type_name())),
