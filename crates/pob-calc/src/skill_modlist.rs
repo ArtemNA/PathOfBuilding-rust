@@ -30,9 +30,11 @@ use crate::skills_tab::{GemInstance, SkillsTab};
 
 const CAS: &str = "Modules/CalcActiveSkill.lua";
 
-/// What `buildActiveSkillModList` reads of the env.
+/// What `buildActiveSkillModList` reads of the env. The skill's actor (`activeSkill.actor`: the list's parent `actor.modDB` :492, its items
+/// and weapons) is [`SkillActor`], apart: for a player skill of this env it is `env.player`, for a mirage's copy (`calcs.copyActiveSkill`,
+/// CalcActiveSkill.lua:181-183, R7.9) the player of ANOTHER env, while `mod_db` here stays the new env's.
 pub struct ModListInputs<'a> {
-    /// `env.modDB` (= `env.player.modDB`, the skill list's parent).
+    /// `env.modDB` (read for `SkillData`, :661; the player's skill list has it as parent through [`SkillActor::mod_db`]).
     pub mod_db: &'a StoreRef,
     /// `env.enemy.modDB`.
     pub enemy_db: &'a StoreRef,

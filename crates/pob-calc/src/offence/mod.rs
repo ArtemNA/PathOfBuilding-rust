@@ -34,7 +34,6 @@ mod c2;
 mod d;
 mod d2;
 mod e;
-mod gates;
 pub(crate) mod helpers;
 
 use std::cell::RefCell;
@@ -47,7 +46,6 @@ use crate::active_skill::ActiveSkill;
 use crate::env::Env;
 use crate::output::{OutValue, Output};
 use crate::perform::{ActorState, Checkpoint, PerformState, skill_cfg_of, skill_list_of};
-pub(crate) use gates::{Gate, mirages_gate};
 use helpers::ConversionTable;
 pub(crate) use helpers::{Q, calc_skill_duration, calc_totem_life};
 
@@ -58,7 +56,7 @@ pub(crate) type Hook<'h, 'a> = Option<&'h mut (dyn FnMut(Checkpoint, &Env, &Acto
 pub(crate) struct Off<'e> {
     pub env: &'e mut Env,
     pub st: &'e mut PerformState,
-    /// `env.player.mainSkill` (index into `activeSkillList`).
+    /// `env.player.mainSkill` (index into `activeSkillList`, or [`crate::skills::DETACHED`] for a mirage's copy, R7.9).
     pub i: usize,
     /// `activeSkill.skillModList`.
     pub q: Q,
@@ -152,11 +150,11 @@ pub fn checkpoint_hand_outputs() -> Option<(HandTable, HandTable)> {
 
 impl Off<'_> {
     pub fn sk(&self) -> &ActiveSkill {
-        &self.env.skills.as_ref().expect("skills on").active_skill_list[self.i]
+        self.env.skills.as_ref().expect("skills on").skill(self.i)
     }
 
     pub fn sk_mut(&mut self) -> &mut ActiveSkill {
-        &mut self.env.skills.as_mut().expect("skills on").active_skill_list[self.i]
+        self.env.skills.as_mut().expect("skills on").skill_mut(self.i)
     }
 
     pub fn out(&mut self) -> &mut Output {
@@ -213,7 +211,7 @@ impl Off<'_> {
     /// `activeSkill.weapon1Cfg` / `weapon2Cfg` as a ModStore cfg (`skillCond` reads through to the skill cfg's).
     pub fn weapon_cfg(&self, n: u8) -> Option<ModCfg> {
         let st = self.env.skills.as_ref().expect("skills on");
-        let sk = &st.active_skill_list[self.i];
+        let sk = st.skill(self.i);
         let w = if n == 1 { sk.weapon1_cfg.as_ref() } else { sk.weapon2_cfg.as_ref() }?;
         let parent = sk.skill_cfg.as_ref().map(|c| &c.skill_cond);
         Some(w.mod_cfg(&st.skills, &sk.skill_types, parent))
@@ -222,7 +220,7 @@ impl Off<'_> {
     /// Rebuild [`Off::cfg`] after a `skillCfg` write.
     pub fn refresh_cfg(&mut self) {
         let st = self.env.skills.as_ref().expect("skills on");
-        self.cfg = skill_cfg_of(st, &st.active_skill_list[self.i]);
+        self.cfg = skill_cfg_of(st, st.skill(self.i));
     }
 
     /// `output[k]` as a Lua value (nil when absent).
@@ -282,7 +280,7 @@ pub(crate) fn offence(env: &mut Env, st: &mut PerformState, mut hook: Hook<'_, '
         .unwrap_or_else(|| panic!("Modules/CalcOffence.lua:358: attempt to index local 'activeSkill' (a nil value)"));
     let (q, cfg) = {
         let s = env.skills.as_ref().expect("skills on");
-        let sk = &s.active_skill_list[i];
+        let sk = s.skill(i);
         (
             Q {
                 list: skill_list_of(env, i),

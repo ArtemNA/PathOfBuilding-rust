@@ -83,6 +83,31 @@ impl Output {
         }
     }
 
+    /// `env.player.output = newEnv.player.output` (CalcMirages.lua:157/:235, R7.9): the same table becomes `actor`'s output -- here a copy of
+    /// every value (scalars and table values) under `actor`, whose mod-core view is reset to its numbers. Upstream's two envs then share one
+    /// table; later writes go to the copy only (what reads the mirage env's own output afterwards is listed in `crate::mirages`).
+    pub fn copy_for(&self, actor: &ActorRef) -> Output {
+        let nums: IndexMap<Str, f64> = self
+            .map
+            .iter()
+            .filter_map(|(k, v)| match v {
+                OutValue::Num(x) => Some((k.clone(), *x)),
+                _ => None,
+            })
+            .collect();
+        actor.borrow_mut().output = Some(nums);
+        Output {
+            map: self.map.clone(),
+            tables: self.tables.clone(),
+            actor: actor.clone(),
+        }
+    }
+
+    /// The scalars of the table (a snapshot).
+    pub fn scalars(&self) -> IndexMap<Str, OutValue> {
+        self.map.clone()
+    }
+
     pub fn get(&self, key: &str) -> Option<&OutValue> {
         self.map.get(key)
     }

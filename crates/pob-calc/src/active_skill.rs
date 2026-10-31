@@ -174,6 +174,39 @@ pub struct ActiveSkill {
     pub info_message: Option<String>,
     pub info_message2: Option<String>,
     pub info_trigger: Option<String>,
+    /// `activeSkill.mirage` -- written by `calcs.mirages` (CalcMirages.lua:76-100 Mirage Archer, :302-326 Sacred Wisps, R7.9); read by
+    /// the combined DPS (CalcOffence.lua:6213-6248) and `calcFullDPS` (Calcs.lua:214-251).
+    pub mirage: Option<Mirage>,
+}
+
+/// `activeSkill.mirage` (CalcMirages.lua:76-100 / :302-326): `name`, `count`, `skillPart` / `skillPartName` / `infoMessage2` (a multi-part
+/// skill) and `output` (`newEnv.player.output`, set by `postCalcFunc`). `minion` / `breakdown` are not kept (a copy with a minion is the
+/// R7.10 boundary; breakdown is R8).
+#[derive(Clone, Debug, Default)]
+pub struct Mirage {
+    pub name: String,
+    /// `mirage.count` -- nil when the wisps' summoning skill is missing (`wispsMaxCount` nil).
+    pub count: Option<f64>,
+    pub skill_part: Option<f64>,
+    pub skill_part_name: Option<String>,
+    pub info_message2: Option<String>,
+    /// `mirage.output` -- the mirage run's `env.player.output` (its scalars; nothing writes to that table after `postCalcFunc`).
+    pub output: Option<Rc<IndexMap<Str, crate::output::OutValue>>>,
+}
+
+impl Mirage {
+    /// `mirage.output[k]` as a number (`None` for nil or a non-number).
+    pub fn out(&self, k: &str) -> Option<f64> {
+        match self.output.as_ref()?.get(k) {
+            Some(crate::output::OutValue::Num(v)) => Some(*v),
+            _ => None,
+        }
+    }
+
+    /// `mirage.output[k]` (nil -> `None`).
+    pub fn out_val(&self, k: &str) -> Option<&crate::output::OutValue> {
+        self.output.as_ref()?.get(k)
+    }
 }
 
 impl std::fmt::Debug for ActiveSkill {
@@ -486,5 +519,6 @@ pub fn create_active_skill_summoned(
         info_message: None,
         info_message2: None,
         info_trigger: None,
+        mirage: None,
     })
 }

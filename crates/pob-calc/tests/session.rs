@@ -3,10 +3,9 @@
 //!
 //!   (a) `cacheSkillUUID` of every active skill = LuaJIT (`mainInfo.activeSkills[].uuid`, order and count), and the top perform's main
 //!       skill uuid = LuaJIT's (`logs.performLog`, the `top` entry);
-//!   (b) the nested runs: the `buildActiveSkill` calls of the MAIN loop (Calcs.lua:400-404) and their performs, the cache writes and the
-//!       initEnv count follow the same laws as LuaJIT's logs. The only nested runs LuaJIT makes that Rust does not are the ones
-//!       `calcs.triggers` / `calcs.mirages` make (R7.8/R7.9, skipped at CalcPerform.lua:3797-3801) -- each one is identified in
-//!       LuaJIT's log, and the MAIN-loop difference they cause is checked to be exactly that, nothing else;
+//!   (b) the nested runs: LuaJIT's own logs obey the MAIN-loop law (Calcs.lua:400-404) and the initEnv law; since R7.9 (`calcs.mirages`,
+//!       after R7.8's `calcs.triggers`) Rust's `buildActiveSkill` log, perform log, `cacheData` log, initEnv count and cache keys are
+//!       LuaJIT's, entry by entry;
 //!   (c) `calcFullDPS` = LuaJIT's (empty on the goldens), plus its frame on synthetic `includeInFullDPS` groups;
 //!   (d) perf of the repeated runs (`--nocapture`).
 
@@ -129,7 +128,6 @@ fn nested_runs_follow_luajit() {
             .filter(|c| c["mode"] == "MAIN")
             .map(|c| s(&c["uuid"]))
             .collect();
-        let lj_top_cw_uuid = s(&lj_cw[top_cw]["uuid"]);
         // the loop law on LuaJIT's own log: every skill without a MAIN entry, in activeSkillList order
         let lj_expected: Vec<String> = skills.iter().filter(|u| !lj_pre.contains(*u)).cloned().collect();
         assert_eq!(
@@ -147,77 +145,64 @@ fn nested_runs_follow_luajit() {
             g.name
         );
 
-        // --- Rust
+        // --- Rust. R7.9: every nested run LuaJIT makes Rust makes too (`calcs.triggers` since R7.8, `calcs.mirages` since R7.9) -- the
+        // three logs are equal to LuaJIT's entry by entry, and so is the initEnv count.
         let rust_top = log.perform.iter().find(|p| p.top).expect("top perform");
         assert_eq!(rust_top.uuid, lj_top_uuid, "{}: top perform main skill", g.name);
         assert!(!rust_top.skip_ehp && rust_top.depth == 0 && rust_top.mode == CalcMode::Main);
-        // R7.8: calcs.triggers builds its source skill inside the top perform (depth > 0), as LuaJIT does; the MAIN loop is
-        // the depth-0 entries and obeys the same law as LuaJIT's (every skill without a MAIN entry from before the loop)
-        let rust_loop: Vec<String> = log.bas.iter().filter(|b| b.depth == 0).map(|b| b.target_uuid.clone()).collect();
-        let rust_nested: BTreeSet<String> = log.bas.iter().filter(|b| b.depth > 0).map(|b| b.target_uuid.clone()).collect();
-        assert!(
-            rust_nested.is_subset(&lj_nested_bas),
-            "{}: Rust nested buildActiveSkill {rust_nested:?} not among LuaJIT's {lj_nested_bas:?}",
-            g.name
-        );
-        let rust_pre: BTreeSet<String> = std::iter::once(rust_top.uuid.clone()).chain(rust_nested.iter().cloned()).collect();
-        let rust_expected: Vec<String> = skills.iter().filter(|u| !rust_pre.contains(*u)).cloned().collect();
-        assert_eq!(rust_loop, rust_expected, "{}: Rust MAIN loop", g.name);
-        for b in log.bas.iter().filter(|b| b.depth == 0) {
-            assert_eq!(
-                b,
-                &BasEntry {
-                    depth: 0,
-                    mode: CalcMode::Main,
-                    env_mode: CalcMode::Main,
-                    skill_uuid: b.target_uuid.clone(),
-                    target_uuid: b.target_uuid.clone(),
-                    limited: vec![],
-                },
-                "{}: buildActiveSkill entry",
-                g.name
-            );
+        let mode_of = |v: &Json| match v.as_str().expect("mode") {
+            "MAIN" => CalcMode::Main,
+            "CALCS" => CalcMode::Calcs,
+            "CALCULATOR" => CalcMode::Calculator,
+            other => panic!("mode {other}"),
+        };
+        let lj_bas_rows: Vec<BasEntry> = lj_bas
+            .iter()
+            .map(|b| BasEntry {
+                depth: num(&b["depth"]),
+                mode: mode_of(&b["mode"]),
+                env_mode: mode_of(&b["envMode"]),
+                skill_uuid: s(&b["skillUUID"]),
+                target_uuid: s(&b["targetUUID"]),
+                limited: arr(&b["limited"]).iter().map(s).collect(),
+            })
+            .collect();
+        assert_eq!(log.bas, lj_bas_rows, "{}: buildActiveSkill log", g.name);
+        let rust_perf: Vec<(usize, CalcMode, bool, bool, String)> = log
+            .perform
+            .iter()
+            .map(|p| (p.depth, p.mode, p.skip_ehp, p.top, p.uuid.clone()))
+            .collect();
+        let lj_perf_rows: Vec<(usize, CalcMode, bool, bool, String)> = lj_perf
+            .iter()
+            .map(|p| {
+                (
+                    num(&p["depth"]),
+                    mode_of(&p["mode"]),
+                    p["skipEHP"] == Json::Bool(true),
+                    p["top"] == Json::Bool(true),
+                    s(&p["uuid"]),
+                )
+            })
+            .collect();
+        assert_eq!(rust_perf, lj_perf_rows, "{}: perform log", g.name);
+        let rust_cw: Vec<(CalcMode, bool, String)> = log.cache_writes.iter().map(|c| (c.mode, c.top, c.uuid.clone())).collect();
+        let lj_cw_rows: Vec<(CalcMode, bool, String)> = lj_cw
+            .iter()
+            .map(|c| (mode_of(&c["mode"]), c["top"] == Json::Bool(true), s(&c["uuid"])))
+            .collect();
+        assert_eq!(rust_cw, lj_cw_rows, "{}: cacheData log", g.name);
+        assert_eq!(log.init_env_calls, num(&logs["initEnvCalls"]), "{}: initEnv count", g.name);
+        // the cache keys = the uuids LuaJIT wrote, per mode
+        for mode in [CalcMode::Main, CalcMode::Calculator] {
+            let keys: BTreeSet<String> = sess.cache().uuids(mode).into_iter().collect();
+            let lj_keys: BTreeSet<String> = lj_cw_rows.iter().filter(|c| c.0 == mode).map(|c| c.2.clone()).collect();
+            assert_eq!(keys, lj_keys, "{}: {} cache keys", g.name, mode.as_str());
         }
-        // every buildActiveSkill ran one perform(fullEnv, true) of that skill
-        let nested: Vec<_> = log.perform.iter().filter(|p| !p.top).collect();
-        assert_eq!(nested.len(), log.bas.len(), "{}: one perform per buildActiveSkill", g.name);
-        for p in &nested {
-            assert!(p.skip_ehp && p.mode == CalcMode::Main && log.bas.iter().any(|b| b.target_uuid == p.uuid));
-        }
-        // cache writes: the top, then one per nested run, each under its own uuid
-        assert_eq!(log.cache_writes.len(), log.perform.len());
-        // a run nested in the top perform (calcs.triggers) writes its cacheData before the top's, as in LuaJIT
-        let tops: Vec<_> = log.cache_writes.iter().filter(|c| c.top).collect();
-        assert!(tops.len() == 1 && tops[0].uuid == rust_top.uuid, "{}: one top cacheData", g.name);
-        let main_keys: BTreeSet<String> = sess.cache().uuids(CalcMode::Main).into_iter().collect();
-        assert_eq!(
-            main_keys,
-            skills.iter().cloned().collect::<BTreeSet<_>>(),
-            "{}: MAIN cache = every skill",
-            g.name
-        );
-        assert!(sess.cache().uuids(CalcMode::Calculator).is_empty() && sess.cache().uuids(CalcMode::Calcs).is_empty());
-        assert_eq!(log.init_env_calls, 2 + log.bas.len(), "{}: Rust initEnv law", g.name);
+        assert!(sess.cache().uuids(CalcMode::Calcs).is_empty());
         assert!(log.con_print.is_empty(), "{}: {:?}", g.name, log.con_print);
-
-        // --- the difference is exactly the triggers' / mirages' runs
-        // LuaJIT pre-loop entries Rust does not have: made by a nested buildActiveSkill (CalcTriggers / CalcMirages)
-        let lj_only: BTreeSet<String> = lj_pre.iter().filter(|u| **u != rust_top.uuid).cloned().collect();
-        assert!(
-            lj_only.is_subset(&lj_nested_bas),
-            "{}: {lj_only:?} not from nested buildActiveSkill {lj_nested_bas:?}",
-            g.name
-        );
-        // Rust's top entry LuaJIT does not have: the mirage replaced the top mainSkill before cacheData (CalcMirages Saviour)
-        if !lj_pre.contains(&rust_top.uuid) {
-            assert_ne!(
-                lj_top_cw_uuid, lj_top_uuid,
-                "{}: top uuid missing from LuaJIT's cache without a mainSkill swap",
-                g.name
-            );
-        }
-        let mut sym: Vec<String> = rust_loop.iter().filter(|u| !lj_loop.contains(u)).map(|u| format!("+{u}")).collect();
-        sym.extend(lj_loop.iter().filter(|u| !rust_loop.contains(u)).map(|u| format!("-{u}")));
+        let rust_loop: Vec<String> = log.bas.iter().filter(|b| b.depth == 0).map(|b| b.target_uuid.clone()).collect();
+        let sym: Vec<String> = rust_loop.iter().filter(|u| !lj_loop.contains(u)).cloned().collect();
 
         // (c) calcFullDPS: LuaJIT's is empty on every golden
         assert_eq!(fx["fullDPS"]["combinedDPS"], "0");

@@ -58,8 +58,57 @@ pub struct SkillsState {
     pub cost_wiped: Vec<(String, f64)>,
     /// Hash-order walks whose order could change the result (see the module doc); empty on the goldens.
     pub order_notes: Vec<String>,
-    /// `env.auxSkillList` (CalcActiveSkill.lua:871-874) -- indices into `active_skill_list`.
+    /// `env.auxSkillList` (CalcActiveSkill.lua:871-874) -- indices into `active_skill_list` ([`DETACHED`] for a detached main skill).
     pub aux_skill_list: Vec<usize>,
+    /// R7.9: `env.player.mainSkill` when it is a skill OUTSIDE `activeSkillList` -- the copy `calcs.copyActiveSkill` makes
+    /// (CalcActiveSkill.lua:167-192) for a mirage (CalcMirages.lua:40/:51, :155/:232). Reached only through [`SkillsState::main_skill`] =
+    /// `Some(`[`DETACHED`]`)` ([`SkillsState::skill`]); every walk over `activeSkillList` keeps not seeing it, as upstream.
+    pub detached_main: Option<DetachedSkill>,
+}
+
+/// The index [`SkillsState::main_skill`] holds when `env.player.mainSkill` is [`SkillsState::detached_main`] (never a list index).
+pub const DETACHED: usize = usize::MAX;
+
+/// A skill outside `env.player.activeSkillList` (R7.9, `calcs.copyActiveSkill`): the skill, its own perform-time `skillModList` (upstream
+/// `new("ModList"):ModList(newSkill.baseSkillModList)` at CalcActiveSkill.lua:184 -- `calcs.perform` does not rebuild it, :1295-1296 walks the
+/// list only), and its `actor` (`skill.actor` of the copied skill -- another env's player: the skill list's parent is that actor's modDB).
+#[derive(Clone)]
+pub struct DetachedSkill {
+    pub skill: ActiveSkill,
+    /// `newSkill.skillModList` (a child of `skill.skill_mod_list`, the `baseSkillModList`).
+    pub skill_mod_list: StoreRef,
+    /// `newSkill.actor`.
+    pub actor: Rc<std::cell::RefCell<crate::env::CalcActor>>,
+    /// The cached run whose env owns `actor` (kept alive as upstream's GC keeps the env a skill's actor belongs to); `None` when the actor is
+    /// the player of the env that made the copy.
+    pub keep: Option<crate::session::RunRef>,
+}
+
+impl SkillsState {
+    /// `activeSkillList[i + 1]`, or the detached main skill for [`DETACHED`].
+    pub fn skill(&self, i: usize) -> &ActiveSkill {
+        if i == DETACHED {
+            &self
+                .detached_main
+                .as_ref()
+                .unwrap_or_else(|| panic!("env.player.mainSkill: detached main skill missing"))
+                .skill
+        } else {
+            &self.active_skill_list[i]
+        }
+    }
+
+    pub fn skill_mut(&mut self, i: usize) -> &mut ActiveSkill {
+        if i == DETACHED {
+            &mut self
+                .detached_main
+                .as_mut()
+                .unwrap_or_else(|| panic!("env.player.mainSkill: detached main skill missing"))
+                .skill
+        } else {
+            &mut self.active_skill_list[i]
+        }
+    }
 }
 
 impl FromItem for BTreeSet<String> {
@@ -127,6 +176,7 @@ impl SkillsState {
             cost_wiped: Vec::new(),
             order_notes: Vec::new(),
             aux_skill_list: Vec::new(),
+            detached_main: None,
         }
     }
 

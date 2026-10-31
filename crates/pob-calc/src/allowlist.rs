@@ -33,18 +33,18 @@
 //! mismatch only on Mirage Archer (Rust 0 vs golden 14) -- Vaal Grace, an aura of the buff phase.
 //! R6.3 re-measured with the skill phase of initEnv (socket groups, supports, active skills, `requirementsTableGems`; no
 //! `buildActiveSkillModList` yet): 4 keys moved from EXCLUDED to ALLOWLIST (`ReqDex`, `ReqInt`, `ReqIntString`, `ReqStr`), none left
-//! ALLOWLIST, none newly emitted; `ReqDexString`/`ReqStrString` stay EXCLUDED with a new reason ([`REQ_STRING`]).
+//! ALLOWLIST, none newly emitted; `ReqDexString`/`ReqStrString` stay EXCLUDED with a new reason (`REQ_STRING`, removed in R7.9).
 //! R6.5 re-measured with the skills handed to perform (the skill loop CalcPerform.lua:1334-1512, ConvertArmourESToLife, Mageblood, the
 //! flasks :1513-1942; CP1 = LuaJIT on all six goldens): 26 keys moved from EXCLUDED to ALLOWLIST -- resistances (`Fire*`/`Chaos*`, incl.
 //! `FireResistTakenHitMulti`, `ChaosResistTakenHitMulti`, `ChaosTakenDotMult`), `Evasion`/`MeleeEvasion`/`ProjectileEvasion`/
 //! `LowestOfArmourAndEvasion`, `SpellSuppressionChance`/`EffectiveSpellSuppressionChance`/`ConfiguredDamageChance` and the seven
 //! `*AvoidChance`: their missing input was the FLASK mods (Ruby/Amethyst/Quartz/Granite/... flasks), not the auras the pob-ts attribution
 //! named; 4 newly emitted keys are ALLOWLIST (`ActiveGolemLimit`, `ActiveTotemLimit`, `HexDoomLimit`, `TotemsSummoned`); none left
-//! ALLOWLIST; 8 newly emitted keys are EXCLUDED with the new root `offence` ([`MIRAGE_BREAKDOWN`]).
+//! ALLOWLIST; 8 newly emitted keys are EXCLUDED with the new root `offence` (`MIRAGE_BREAKDOWN`, removed in R7.9).
 //! R6.6 re-measured with the per-skill reservation loop (CalcPerform.lua:1978-2090; CP2 = LuaJIT on all six goldens): 4 keys moved from
 //! EXCLUDED to ALLOWLIST (`ManaReserved`, `ManaReservedPercent`, `ManaUnreserved`, `ManaUnreservedPercent`; the root `reservation` is now
 //! closed), none newly emitted, none measured out of ALLOWLIST; `ReqIntString` moved from ALLOWLIST to EXCLUDED on synthetic evidence
-//! ([`SYNTH_EXCLUDED`]); `ReqDexString`/`ReqStrString` re-rooted to `offence` by measurement ([`REQ_STRING`]).
+//! ([`SYNTH_EXCLUDED`]); `ReqDexString`/`ReqStrString` re-rooted to `offence` by measurement (`REQ_STRING`, removed in R7.9).
 //! R6.7 re-measured with the buff phase (CalcPerform.lua:2164-3482: heralds/auras, buffs/debuffs/curses/guards, alternate charges, extra
 //! curses, curse slots, guard slots, apply, Choir/extra auras/keystones; CP3 = LuaJIT on all six goldens): 125 keys moved from EXCLUDED to
 //! ALLOWLIST -- every key whose reason named `buffs`/`curses`/`guards`/`skills` (`RageEffect` included) but the three below (`ReqIntString`
@@ -90,6 +90,12 @@
 //! `EffectiveSourceRate`, `TriggerTime`, `StoredUses`, `ManaCostWarning`, the projectile keys `Chain`, `ChainMax`, `ChainMaxString`,
 //! `ChainRemaining`, `ForkCountString`, `PierceCount`, `PierceCountString`, `PiercedCount`, `ProjectileCount`, `ProjectileSpeedMod`,
 //! `SplitCount`, `SplitCountString`; none left ALLOWLIST; EXCLUDED 11 unchanged (Dual Savior mirage class + `ReqIntString`).
+//! R7.9 re-measured with `calcs.mirages` (CalcMirages.lua; The Saviour / General's Cry / Mirage Archer, OC1-OC6 = LuaJIT on all 82 offence
+//! runs): 51 keys newly ALLOWLIST -- the 11 former EXCLUDED (`Req{Dex,Int,Str}String` and the 8 flask / tincture breakdown keys: Dual
+//! Savior's output is now the CALCULATOR perform's, as LuaJIT's) and 40 keys the Generals / Mirage Archer top offence and The Saviour's
+//! mirage now emit (bleed / impale / poison / brittle / sap / scorch / shock, `HitSpeed`, `HitTime`, `MirageDPS`, `QuantityMultiplier`,
+//! `StrikeTargets`, `WeaponRange`, `Pvp*`, ...); none left ALLOWLIST; EXCLUDED 0 (`ReqIntString` -- the synthetic evidence of R6.6 --
+//! re-measured on `tests/defence_synth.rs`).
 
 use indexmap::IndexMap;
 
@@ -134,29 +140,18 @@ pub fn filter_stats(stats: &IndexMap<String, StatValue>) -> IndexMap<String, Sta
 // R5.4 closed `item-miss`, R5.5a/R5.6 `cluster`, R5.5c `tree-jewel`, R6.6 `reservation`, R6.7 `buffs`/`curses`/`guards`/`skills`: no
 // reason names them; the keys they explained moved to ALLOWLIST by measurement.
 
-/// R6.6 measured (R-L5): on Dual Savior the MAIN perform of LuaJIT itself takes the NEGATIVE-colour branch of CalcPerform.lua:2158
-/// (probe CP3/CP4: `ReqDexString` `^xDD0022155`, `ReqStrString` `^xDD0022122`, Dex 14 / Str 52 -- Rust is equal at both checkpoints);
-/// the golden's numbers 155/122 are written later by `calcs.mirages` (CalcMirages.lua:52/:157: the output of a nested CALCULATOR
-/// perform, `buildBreakdown` false). `ReqIntString` has the same mechanism but no unmet Int requirement on any golden (ok on all six, the
-/// value is the number there); it is excluded on the evidence of the synthetic Dual Savior variants (R4-synth, `tests/defence_synth.rs`:
-/// Rust `^xDD0022194`, LuaJIT 194) -- see [`SYNTH_EXCLUDED`].
-const REQ_STRING: &str = "offence: Dual Savior -- the MAIN perform writes the NEGATIVE-coloured Req*String (CalcPerform.lua:2158, LuaJIT CP4 = Rust), calcs.mirages (CalcMirages.lua:157) replaces the output with a CALCULATOR perform (no breakdown) that writes the number; ok on the other 5";
-
 /// Keys in [`EXCLUDED`] that are `ok` on all six goldens but wrong on a measured LuaJIT input outside them (the goldens do not reach the
 /// branch). `tests/allowlist.rs` checks they are still measured `ok` on the goldens (once one is not, it is an ordinary EXCLUDED key).
-pub const SYNTH_EXCLUDED: &[&str] = &["ReqIntString"];
+/// R7.9: empty -- `ReqIntString` (R6.6, the synthetic Dual Savior variants of `tests/defence_synth.rs`: the MAIN perform's NEGATIVE-coloured
+/// string where LuaJIT's `calcs.mirages` (CalcMirages.lua:157) leaves the CALCULATOR perform's number) is that number now.
+pub const SYNTH_EXCLUDED: &[&str] = &[];
 
-/// R6.5: the flask/tincture breakdown keys (CalcPerform.lua:1626-1633, :1858-1859, written because MAIN builds the breakdown) are `ok` on
-/// 5/6 goldens and `extra` on Dual Savior only: its main skill is The Saviour, and `calcs.mirages` (:3798) replaces `env.player.output`
-/// with the output of a nested `calcs.perform` on a CALCULATOR env (CalcMirages.lua:52/:157, `buildBreakdown` false) -- R7.
-const MIRAGE_BREAKDOWN: &str = "offence: Dual Savior -- calcs.mirages (CalcMirages.lua:157) replaces the output with a CALCULATOR perform (no breakdown, no flask breakdown keys); ok on the other 5";
-
-/// 796 keys, sorted (byte order): `ok` on every golden that emits them, on none `mismatch` or `extra` (R5.4: measured
+/// 847 keys, sorted (byte order): `ok` on every golden that emits them, on none `mismatch` or `extra` (R5.4: measured
 /// with `ParseMode::Full`, the default; R5.5a re-measured with the cluster-jewel subgraphs: +20; R5.5b radius jewels: +1;
 /// R5.5c timeless jewels: +23; R6.3 gem requirements: +4; R6.5 skills + flasks in perform: +30; R6.6 reservations: +4, `ReqIntString` -1;
 /// R6.7 buffs/curses/guards: +128; R6.8 ailments/exposures/ally life: +13; R7.3 offence part A: +43; R7.4 offence part B: +7;
 /// R7.5 offence part C: +106; R7.6 offence part D (ailments): +49; R7.7 offence part E + calcFullDPS: +18;
-/// R7.8 triggers: +18).
+/// R7.8 triggers: +18; R7.9 mirages: +51 -- 40 newly ok, the 11 former EXCLUDED).
 pub const ALLOWLIST: &[&str] = &[
     "AbsorptionCharges",
     "AbsorptionChargesMax",
@@ -217,8 +212,17 @@ pub const ALLOWLIST: &[&str] = &[
     "BasePhysicalDamageReduction",
     "BasePhysicalDamageReductionWhenHit",
     "BleedAvoidChance",
+    "BleedChance",
     "BleedChanceOnCrit",
     "BleedChanceOnHit",
+    "BleedDPS",
+    "BleedDamage",
+    "BleedDuration",
+    "BleedEffMult",
+    "BleedRollAverage",
+    "BleedStackPotential",
+    "BleedStacks",
+    "BleedStacksMax",
     "BlindAvoidChance",
     "BlindEffectMod",
     "BlitzCharges",
@@ -234,8 +238,11 @@ pub const ALLOWLIST: &[&str] = &[
     "BrineCharges",
     "BrineChargesMax",
     "BrittleAvoidChance",
+    "BrittleChance",
     "BrittleChanceOnCrit",
     "BrittleChanceOnHit",
+    "BrittleDuration",
+    "BrittleEffectMod",
     "BrutalCharges",
     "BrutalChargesMax",
     "BrutalChargesMin",
@@ -252,7 +259,9 @@ pub const ALLOWLIST: &[&str] = &[
     "ChaosBaseTakenHitMult",
     "ChaosCritAverage",
     "ChaosDamageReduction",
+    "ChaosDot",
     "ChaosDotEHP",
+    "ChaosDotEffMult",
     "ChaosEffectiveAppliedArmour",
     "ChaosEnemyDamage",
     "ChaosEnemyDamageMult",
@@ -492,6 +501,9 @@ pub const ALLOWLIST: &[&str] = &[
     "FiretakenFlat",
     "FistOfWarCooldown",
     "FistOfWarDamageEffect",
+    "FlaskChargeGen",
+    "FlaskChargeOnCritChance",
+    "FlaskEffect",
     "ForkCountString",
     "FortificationEffect",
     "FortificationStacks",
@@ -520,6 +532,8 @@ pub const ALLOWLIST: &[&str] = &[
     "GuardSkillActive",
     "HexDoomLimit",
     "HitChance",
+    "HitSpeed",
+    "HitTime",
     "IgniteAvoidChance",
     "IgniteChance",
     "IgniteChanceOnCrit",
@@ -540,8 +554,13 @@ pub const ALLOWLIST: &[&str] = &[
     "ImpaleAvoidChance",
     "ImpaleChance",
     "ImpaleChanceOnCrit",
+    "ImpaleDPS",
     "ImpaleDuration",
     "ImpaleDurationMod",
+    "ImpaleModifier",
+    "ImpaleStacks",
+    "ImpaleStacksMax",
+    "ImpaleStoredDamage",
     "InherentRageLoss",
     "InherentRageLossDelay",
     "InspirationCharges",
@@ -555,6 +574,7 @@ pub const ALLOWLIST: &[&str] = &[
     "LifeCancellableReservation",
     "LifeCost",
     "LifeDegen",
+    "LifeFlaskChargeGen",
     "LifeFlaskCharges",
     "LifeFlaskRecovery",
     "LifeHasCost",
@@ -651,6 +671,7 @@ pub const ALLOWLIST: &[&str] = &[
     "ManaCostRaw",
     "ManaCostWarning",
     "ManaDegen",
+    "ManaFlaskChargeGen",
     "ManaHasCost",
     "ManaLeech",
     "ManaLeechDuration",
@@ -707,6 +728,7 @@ pub const ALLOWLIST: &[&str] = &[
     "MinimumBypass",
     "MinimumFortification",
     "MinionAllyDamageMitigation",
+    "MirageDPS",
     "MissingChaosResist",
     "MissingColdResist",
     "MissingFireResist",
@@ -761,6 +783,7 @@ pub const ALLOWLIST: &[&str] = &[
     "PierceCountString",
     "PiercedCount",
     "PoisonAvoidChance",
+    "PoisonChance",
     "PoisonChanceOnCrit",
     "PoisonChanceOnHit",
     "PowerCharges",
@@ -775,6 +798,9 @@ pub const ALLOWLIST: &[&str] = &[
     "ProjectileEvasion",
     "ProjectileNotHitChance",
     "ProjectileSpeedMod",
+    "PvpAverageDamage",
+    "PvpTotalDPS",
+    "QuantityMultiplier",
     "RadianceSentinelAllyDamageMitigation",
     "Rage",
     "RageCost",
@@ -794,8 +820,11 @@ pub const ALLOWLIST: &[&str] = &[
     "RemovableTotalCharges",
     "Repeats",
     "ReqDex",
+    "ReqDexString",
     "ReqInt",
+    "ReqIntString",
     "ReqStr",
+    "ReqStrString",
     "ReservationDPS",
     "ReservationDpsMultiplier",
     "RuthlessBlowAilmentEffect",
@@ -805,12 +834,18 @@ pub const ALLOWLIST: &[&str] = &[
     "RuthlessBlowHitMultiplier",
     "RuthlessBlowMaxCount",
     "SapAvoidChance",
+    "SapChance",
     "SapChanceOnCrit",
     "SapChanceOnHit",
+    "SapDuration",
+    "SapEffectMod",
     "ScaledDamageEffect",
     "ScorchAvoidChance",
+    "ScorchChance",
     "ScorchChanceOnCrit",
     "ScorchChanceOnHit",
+    "ScorchDuration",
+    "ScorchEffectMod",
     "SecondMinimalMaximumHitTaken",
     "SelfBleedDuration",
     "SelfBleedEffect",
@@ -837,6 +872,8 @@ pub const ALLOWLIST: &[&str] = &[
     "ShockChance",
     "ShockChanceOnCrit",
     "ShockChanceOnHit",
+    "ShockDuration",
+    "ShockEffectMod",
     "ShowBlockEffect",
     "ShowBurst",
     "SilenceAvoidChance",
@@ -874,12 +911,15 @@ pub const ALLOWLIST: &[&str] = &[
     "StoneGolemAllyDamageMitigation",
     "StoredUses",
     "Str",
+    "StrikeTargets",
     "StunAvoidChance",
     "StunDuration",
     "StunThreshold",
     "TheoreticalMaxOffensiveWarcryEffect",
     "TheoreticalOffensiveWarcryEffect",
     "Time",
+    "TinctureEffect",
+    "TinctureLimit",
     "TotalAttr",
     "TotalCharges",
     "TotalDPS",
@@ -897,6 +937,8 @@ pub const ALLOWLIST: &[&str] = &[
     "TotalMax",
     "TotalMin",
     "TotalNumberOfHits",
+    "TotalPoisonDPS",
+    "TotalPoisonStacks",
     "TotemAllyDamageMitigation",
     "TotemChaosResist",
     "TotemChaosResistOverCap",
@@ -919,6 +961,7 @@ pub const ALLOWLIST: &[&str] = &[
     "TripleDamageChanceOnCrit",
     "TripleDamageEffect",
     "UntypedNotHitChance",
+    "UtilityFlaskChargeGen",
     "VaalArcticArmourLife",
     "VaalArcticArmourMitigation",
     "VaalRejuvenationTotemAllyDamageMitigation",
@@ -926,9 +969,12 @@ pub const ALLOWLIST: &[&str] = &[
     "WarcryPower",
     "Ward",
     "WardRechargeDelay",
+    "WeaponRange",
+    "WeaponRangeMetre",
     "WithBleedDPS",
     "WithDotDPS",
     "WithIgniteDPS",
+    "WithImpaleDPS",
     "WithPoisonDPS",
     "WitherEffectOnSelf",
     "allMult",
@@ -956,18 +1002,7 @@ pub const ALLOWLIST: &[&str] = &[
     "totalTakenHit",
 ];
 
-/// 13 keys the engine writes that fail on at least one golden (or, [`SYNTH_EXCLUDED`], on a synthetic LuaJIT input), each with its root
-/// cause (pob-ts vocabulary).
-pub const EXCLUDED: &[(&str, &str)] = &[
-    ("ReqDexString", REQ_STRING),
-    ("ReqIntString", REQ_STRING),
-    ("ReqStrString", REQ_STRING),
-    ("FlaskChargeGen", MIRAGE_BREAKDOWN),
-    ("FlaskChargeOnCritChance", MIRAGE_BREAKDOWN),
-    ("FlaskEffect", MIRAGE_BREAKDOWN),
-    ("LifeFlaskChargeGen", MIRAGE_BREAKDOWN),
-    ("ManaFlaskChargeGen", MIRAGE_BREAKDOWN),
-    ("TinctureEffect", MIRAGE_BREAKDOWN),
-    ("TinctureLimit", MIRAGE_BREAKDOWN),
-    ("UtilityFlaskChargeGen", MIRAGE_BREAKDOWN),
-];
+/// The keys the engine writes that fail on at least one golden (or, [`SYNTH_EXCLUDED`], on a synthetic LuaJIT input), each with its root
+/// cause (pob-ts vocabulary). R7.9: empty -- the 11 keys of R7.8 (`Req{Dex,Int,Str}String`, the 8 flask / tincture breakdown keys of
+/// Dual Savior) were the `offence` root `calcs.mirages`: The Saviour replaces the output with its CALCULATOR perform's (no breakdown).
+pub const EXCLUDED: &[(&str, &str)] = &[];

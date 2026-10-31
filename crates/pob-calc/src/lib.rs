@@ -21,6 +21,7 @@ pub mod env;
 pub mod estimations;
 pub mod init_env;
 pub(crate) mod minion;
+pub(crate) mod mirages;
 pub(crate) mod offence;
 pub mod output;
 pub mod perform;

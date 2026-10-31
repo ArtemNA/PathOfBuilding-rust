@@ -753,7 +753,8 @@ pub(super) fn combine(env: &mut Env) -> Combined {
         flag(&mod_db, &["Condition:CanLinkToMinions"])
             && flag(&mod_db, &["Condition:LinkedToMinion"])
             && !flag(&mc.db, &["Condition:CannotBeDamaged"])
-            && !st.active_skill_list[st.main_skill.expect("mainSkill")]
+            && !st
+                .skill(st.main_skill.expect("mainSkill"))
                 .skill_types
                 .contains(&skill_type_u32("MinionsAreUndamagable"))
     });

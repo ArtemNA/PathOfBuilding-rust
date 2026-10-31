@@ -15,9 +15,10 @@
 //! tail): the run is moved once into an `Rc<RefCell<CalcRun>>` ([`RunRef`]) shared by the cache and the caller -- no copies. An env
 //! points back at its session with a `Weak` (the cache owns envs).
 //!
-//! Offence (`calcs.offence`, CalcPerform.lua:3797-3801) runs unless the triggers / mirages dispatch (:3797-3798) takes a branch not
-//! ported yet (R7.8/R7.9): every cache entry says whether it ran ([`CalcRun::offence_ran`]), and every reader of an offence value
-//! through the cache stops at a run without it with an `unimplemented` note -- no nil is ever read as a value.
+//! :3797-3801 (`calcs.triggers`, `calcs.mirages`, `calcs.offence`) runs to its end unless it hits a boundary of the port (a mirage's copy
+//! with a minion, R7.10): every cache entry says whether it did ([`CalcRun::offence_ran`]), and every reader of an offence value through the
+//! cache stops at a run without it with an `unimplemented` note -- no nil is ever read as a value. R7.9: a mirage's perform (CalcMirages.lua:52)
+//! is one more nested perform (cached); The Saviour / Tawhoa's Chosen leave a copy outside `activeSkillList` as `mainSkill` (cached as it is).
 
 use std::cell::{Cell, Ref, RefCell};
 use std::collections::BTreeSet;
@@ -85,7 +86,8 @@ pub type RunRef = Rc<RefCell<CalcRun>>;
 
 /// `GlobalCache.cachedData[mode][uuid]` (Common.lua:925-940). The scalar fields are copies taken at `cacheData` time; `run` is
 /// the env itself (`Env = env`), `active_skill` is `ActiveSkill = env.player.mainSkill` as an index into
-/// `run.env.skills.active_skill_list`.
+/// `run.env.skills.active_skill_list` -- or [`crate::skills::DETACHED`] (R7.9: a mirage's copy outside the list), whose skill object is
+/// `detached` (taken at `cacheData`: nothing writes to a copy after its perform; the env's own `detached_main` may be replaced later).
 pub struct CachedSkill {
     pub name: String,
     pub speed: Option<f64>,
@@ -101,6 +103,22 @@ pub struct CachedSkill {
     pub total_dps: Option<f64>,
     pub active_skill: usize,
     pub run: RunRef,
+    /// `ActiveSkill` when it is a detached skill (`active_skill == DETACHED`).
+    pub detached: Option<Rc<crate::skills::DetachedSkill>>,
+    /// [`CalcRun::offence_ran`] at `cacheData`: the scalar copies above are upstream's (false: the run stopped at a boundary of the port).
+    pub offence_ran: bool,
+}
+
+/// What `GlobalCache.cachedData[mode][uuid].ActiveSkill` is, for `calcs.mirages`' readers (CalcMirages.lua:134/:137/:194), which copy it.
+#[derive(Clone)]
+pub(crate) enum CachedActiveSkill {
+    /// `activeSkillList[i + 1]` of the cached run's env.
+    Listed(RunRef, usize),
+    /// `activeSkillList[i + 1]` of the env in hand: the cached run is the env being performed in place (R7.2b, `calcFullDPS`) -- upstream
+    /// reads the very skill table of the env it is performing.
+    Current(usize),
+    /// A detached skill (R7.9).
+    Detached(Rc<crate::skills::DetachedSkill>),
 }
 
 /// `GlobalCache` (Data/Global.lua:356-358): `{ MAIN = {}, CALCS = {}, CALCULATOR = {} }`, uuid -> entry. Upstream's tables are
@@ -234,6 +252,9 @@ pub struct SessionCore {
     /// The checkpoint hook every perform of the session runs with ([`CalcSession::set_hook`]); taken out while a perform runs, so a
     /// perform nested inside it runs without one.
     hook: RefCell<Option<SessionHook>>,
+    /// The run [`CalcSession::perform_in_place`] performs now and the frame depth it was called at (R7.2b mine, R7.9): its env is mutably
+    /// borrowed for the whole perform, and a reader of `cachedData[..].ActiveSkill` inside that perform gets the skill of the env in hand.
+    in_place: RefCell<Option<(std::rc::Weak<RefCell<CalcRun>>, usize)>>,
 }
 
 /// A checkpoint hook owned by the session (R7.3: the offence checkpoints of nested runs, e.g. Dual Savior's first nested env).
@@ -292,7 +313,7 @@ fn strip_lua_space(s: &str) -> String {
 /// skill.activeEffect.srcInstance`, :907-913) is the `(group, gem)` index pair the skill phase records as `srcInstance`.
 pub fn cache_skill_uuid(env: &Env, skill: usize) -> String {
     let st = env.skills.as_ref().expect("cacheSkillUUID: the skill phase is off");
-    let sk = &st.active_skill_list[skill];
+    let sk = st.skill(skill);
     let effect = sk.active_effect.borrow();
     // :898 `skill.activeEffect.grantedEffect.name:gsub("%s+", "")`
     let str_name = strip_lua_space(&st.skills.effects[effect.granted_effect].name);
@@ -377,6 +398,7 @@ impl CalcSession {
                 depth: Cell::new(0),
                 main_init_done: Cell::new(false),
                 hook: RefCell::new(None),
+                in_place: RefCell::new(None),
             }),
         }
     }
@@ -500,8 +522,18 @@ impl CalcSession {
         self.perform_inner(env, skip_ehp, false)
     }
 
-    fn perform_inner(&self, mut env: Env, skip_ehp: bool, top: bool) -> RunRef {
-        let state = self.perform_env(&mut env, skip_ehp, top);
+    fn perform_inner(&self, env: Env, skip_ehp: bool, top: bool) -> RunRef {
+        self.perform_run(env, skip_ehp, top, None)
+    }
+
+    /// `calcs.perform(newEnv)` from inside a perform that holds a checkpoint hook (CalcMirages.lua:52, R7.9): the nested perform runs with
+    /// that same hook (the session's own hook is taken by the outermost perform), then `cacheData` as every perform.
+    pub(crate) fn perform_hooked(&self, env: Env, skip_ehp: bool, hook: crate::offence::Hook<'_, '_>) -> RunRef {
+        self.perform_run(env, skip_ehp, false, Some(hook))
+    }
+
+    fn perform_run(&self, mut env: Env, skip_ehp: bool, top: bool, hook: Option<crate::offence::Hook<'_, '_>>) -> RunRef {
+        let state = self.perform_env(&mut env, skip_ehp, top, hook);
         let offence_ran = state.offence_ran;
         let run = Rc::new(RefCell::new(CalcRun { env, state, offence_ran }));
         self.cache_data(&run, top);
@@ -511,20 +543,47 @@ impl CalcSession {
     /// `calcs.perform(env, skipEHP)` again on the env a cached run holds (R7.2b: `calcFullDPS` performs its one env once per skill,
     /// Calcs.lua:172-174, re-initialising it in place in between). The run's output is replaced -- upstream's `env.player.output = { }`
     /// (CalcPerform.lua:1305), seen by every cache entry that holds this env -- then `cacheData`. The run stays mutably borrowed for
-    /// the whole perform: a nested read of this very run through the cache (upstream: the env being performed) panics instead of
-    /// reading a stale run.
+    /// the whole perform; the session records it ([`SessionCore::in_place`]): `calcs.mirages`' read of `cachedData[..].ActiveSkill` of this
+    /// very run (CalcMirages.lua:134/:137/:194 -- upstream: the env being performed) gets the skill of the env in hand
+    /// ([`CalcSession::cached_active_skill`]); any other read of this run through the cache panics instead of reading a stale run.
     fn perform_in_place(&self, run: &RunRef, skip_ehp: bool) {
+        let prev = self.core.in_place.replace(Some((Rc::downgrade(run), self.core.depth.get())));
         {
             let mut guard = run.borrow_mut();
             let r = &mut *guard;
-            let state = self.perform_env(&mut r.env, skip_ehp, false);
+            let state = self.perform_env(&mut r.env, skip_ehp, false, None);
             r.offence_ran = state.offence_ran;
             r.state = state;
         }
+        *self.core.in_place.borrow_mut() = prev;
         self.cache_data(run, false);
     }
 
-    fn perform_env(&self, env: &mut Env, skip_ehp: bool, top: bool) -> PerformState {
+    /// `GlobalCache.cachedData[mode][uuid].ActiveSkill` for a reader that copies the skill (`calcs.copyActiveSkill`, R7.9) -- `None` = no
+    /// entry. A run being performed in place ([`CalcSession::perform_in_place`]) resolves to the env in hand when the reader is that very
+    /// perform (one frame below it); any other reader of a mutably borrowed run is a Lua-impossible state here and panics.
+    pub(crate) fn cached_active_skill(&self, mode: CalcMode, uuid: &str) -> Option<CachedActiveSkill> {
+        let cache = self.core.cache.borrow();
+        let c = cache.get(mode, uuid)?;
+        if let Some(d) = &c.detached {
+            return Some(CachedActiveSkill::Detached(d.clone()));
+        }
+        if c.run.try_borrow().is_ok() {
+            return Some(CachedActiveSkill::Listed(c.run.clone(), c.active_skill));
+        }
+        let in_place = self.core.in_place.borrow();
+        match in_place.as_ref() {
+            Some((w, d)) if w.upgrade().is_some_and(|r| Rc::ptr_eq(&r, &c.run)) && self.core.depth.get() == d + 1 => {
+                Some(CachedActiveSkill::Current(c.active_skill))
+            }
+            _ => panic!(
+                "GlobalCache.cachedData[{}][{uuid}].ActiveSkill: the cached run is being performed and is not the env in hand (R7.2b)",
+                mode.as_str()
+            ),
+        }
+    }
+
+    fn perform_env(&self, env: &mut Env, skip_ehp: bool, top: bool, explicit_hook: Option<crate::offence::Hook<'_, '_>>) -> PerformState {
         let depth = self.core.depth.get();
         let mode = CalcMode::of(env);
         let at = {
@@ -541,14 +600,23 @@ impl CalcSession {
         };
         let t0 = std::time::Instant::now();
         self.core.depth.set(depth + 1);
-        let mut hook = self.core.hook.borrow_mut().take();
-        let state = match hook.as_mut() {
-            Some(h) => perform_skip_ehp(env, self.core.opts.defence, self.core.opts.estimations, Some(&mut **h), skip_ehp),
-            None => perform_skip_ehp(env, self.core.opts.defence, self.core.opts.estimations, None, skip_ehp),
+        let state = match explicit_hook {
+            Some(h) => {
+                let h = h.map(|f| f as &mut dyn FnMut(Checkpoint, &Env, &ActorState, &ActorState));
+                perform_skip_ehp(env, self.core.opts.defence, self.core.opts.estimations, h, skip_ehp)
+            }
+            None => {
+                let mut hook = self.core.hook.borrow_mut().take();
+                let state = match hook.as_mut() {
+                    Some(h) => perform_skip_ehp(env, self.core.opts.defence, self.core.opts.estimations, Some(&mut **h), skip_ehp),
+                    None => perform_skip_ehp(env, self.core.opts.defence, self.core.opts.estimations, None, skip_ehp),
+                };
+                if hook.is_some() && self.core.hook.borrow().is_none() {
+                    *self.core.hook.borrow_mut() = hook;
+                }
+                state
+            }
         };
-        if hook.is_some() && self.core.hook.borrow().is_none() {
-            *self.core.hook.borrow_mut() = hook;
-        }
         self.core.depth.set(depth);
         self.core.log.borrow_mut().perform[at].ms = t0.elapsed().as_secs_f64() * 1000.0;
         state
@@ -560,9 +628,9 @@ impl CalcSession {
             let r = run.borrow();
             let ms = main_skill_of(&r.env);
             let st = r.env.skills.as_ref().expect("skills on");
-            let name = st.skills.effects[st.active_skill_list[ms].active_effect.borrow().granted_effect]
-                .name
-                .clone();
+            let name = st.skills.effects[st.skill(ms).active_effect.borrow().granted_effect].name.clone();
+            // R7.9: a detached main skill (a mirage's copy) is kept as the object it is now
+            let detached = (ms == crate::skills::DETACHED).then(|| Rc::new(st.detached_main.clone().expect("detached main skill")));
             let o = &r.state.player.output;
             (
                 CalcMode::of(&r.env),
@@ -582,6 +650,8 @@ impl CalcSession {
                     total_dps: o.opt_num("TotalDPS"),
                     active_skill: ms,
                     run: run.clone(),
+                    detached,
+                    offence_ran: r.offence_ran,
                 },
             )
         };
@@ -660,9 +730,9 @@ impl CalcSession {
     /// accelerated `wipeEnv` re-init of the same env, :337-344), then the
     /// ailment re-adds and the caps (:297-353).
     ///
-    /// Boundaries (the roll-up stops, [`FullDpsOutcome::Unimplemented`]): a skill whose run did not reach `calcs.offence` (the triggers /
-    /// mirages dispatch took an unported branch -- `activeSkill.infoTrigger` / `activeSkill.mirage` and the skill's DPS come from there,
-    /// R7.8/R7.9), and a minion skill (`activeSkill.minion or usedEnv.minion`, :178-212 -- the minion actor is R7.10).
+    /// Boundaries (the roll-up stops, [`FullDpsOutcome::Unimplemented`]): a skill whose run hit a boundary of the port at :3797-3801, and a
+    /// minion skill (`activeSkill.minion or usedEnv.minion`, :178-212 -- the minion's offence is R7.10b). `activeSkill.mirage` (:214-251) is
+    /// rolled up (R7.9).
     ///
     /// Hash-order (R13/L10): none -- `fullDPS.skills` is an array, the ailment sources are plain locals compared with a strict `>` (the
     /// first of equal values wins, as upstream).
@@ -785,6 +855,64 @@ impl CalcSession {
                     o.opt_num(k)
                         .unwrap_or_else(|| panic!("Modules/Calcs.lua:{line}: attempt to perform arithmetic on field '{k}' (a nil value)"))
                 };
+                // :214-251 `activeSkill.mirage` (R7.9: Mirage Archer / Sacred Wisps, CalcMirages.lua:76/:302)
+                if let Some(m) = &sk.mirage {
+                    let mirage_count = m.count.unwrap_or(1.0) * count;
+                    let mnum = |k: &str, line: u32| {
+                        m.out(k).unwrap_or_else(|| {
+                            panic!("Modules/Calcs.lua:{line}: attempt to perform arithmetic on field '{k}' (a nil value)")
+                        })
+                    };
+                    let mgt = |k: &str, best: f64| m.out(k).is_some_and(|v| v > best);
+                    if m.output.is_none() {
+                        panic!("Modules/Calcs.lua:216: attempt to index field 'output' (a nil value)");
+                    }
+                    if mgt("TotalDPS", 0.0) {
+                        let dps = mnum("TotalDPS", 217);
+                        fd.skills.push(FullDpsSkill {
+                            name: format!("{} (Mirage)", m.name),
+                            dps,
+                            count: mirage_count,
+                            // `activeSkill.mirage.infoTrigger` -- no code writes it (nil)
+                            trigger: None,
+                            skill_part: m.skill_part_name.clone(),
+                            source: None,
+                        });
+                        fd.combined_dps += dps * mirage_count;
+                    }
+                    if mgt("BleedDPS", fd.bleed_dps) {
+                        fd.bleed_dps = mnum("BleedDPS", 221);
+                        bleed_source = format!("{name} (Mirage)");
+                    }
+                    if mgt("IgniteDPS", fd.ignite_dps) {
+                        fd.ignite_dps = mnum("IgniteDPS", 225);
+                        ignite_source = format!("{name} (Mirage)");
+                    }
+                    if mgt("PoisonDPS", 0.0) {
+                        fd.total_poison_dps += mnum("TotalPoisonDPS", 229) * mirage_count;
+                    }
+                    if mgt("ImpaleDPS", 0.0) {
+                        fd.impale_dps += mnum("ImpaleDPS", 232) * mirage_count;
+                    }
+                    if mgt("DecayDPS", 0.0) {
+                        fd.decay_dps += mnum("DecayDPS", 235);
+                    }
+                    if mgt("TotalDot", 0.0) && (sk.flag("DotCanStack") || o.opt_num("TotalDot") == Some(0.0)) {
+                        let k = if sk.flag("DotCanStack") { mirage_count } else { 1.0 };
+                        fd.dot_dps += mnum("TotalDot", 238) * k;
+                    }
+                    if m.out("CullMultiplier").is_some_and(|v| v > 1.0 && v > fd.culling_multi) {
+                        fd.culling_multi = mnum("CullMultiplier", 241);
+                    }
+                    if mgt("BurningGroundDPS", fd.burning_ground_dps) {
+                        fd.burning_ground_dps = mnum("BurningGroundDPS", 244);
+                        burning_ground_source = format!("{name} (Mirage)");
+                    }
+                    if mgt("CausticGroundDPS", fd.caustic_ground_dps) {
+                        fd.caustic_ground_dps = mnum("CausticGroundDPS", 248);
+                        caustic_ground_source = format!("{name} (Mirage)");
+                    }
+                }
                 // :253-256
                 if pos("TotalDPS") {
                     let dps = num("TotalDPS", 254);
@@ -985,11 +1113,7 @@ impl CalcSession {
             let (uuids, names, main_name): (Vec<String>, Vec<String>, Option<String>) = {
                 let r = run.borrow();
                 let st = r.env.skills.as_ref().expect("skills on");
-                let name_of = |i: usize| {
-                    st.skills.effects[st.active_skill_list[i].active_effect.borrow().granted_effect]
-                        .name
-                        .clone()
-                };
+                let name_of = |i: usize| st.skills.effects[st.skill(i).active_effect.borrow().granted_effect].name.clone();
                 let n = st.active_skill_list.len();
                 (
                     (0..n).map(|i| cache_skill_uuid(&r.env, i)).collect(),
@@ -1009,7 +1133,7 @@ impl CalcSession {
                         let cr = c.run.borrow();
                         let o = &cr.state.player.output;
                         let st = cr.env.skills.as_ref().expect("skills on");
-                        let ms = &st.active_skill_list[main_skill_of(&cr.env)];
+                        let ms = st.skill(main_skill_of(&cr.env));
                         let costs: Vec<Option<f64>> = COST_POOLS
                             .iter()
                             .chain(PERCENT_COST_POOLS.iter())
@@ -1038,7 +1162,7 @@ impl CalcSession {
                 if !offence_ran {
                     // the cached run stopped at the triggers / mirages dispatch: its costs (offence part A) are missing
                     let what = format!(
-                        "Calcs.lua:407-436 cost warnings of {}: the cached run has no calcs.offence (its triggers/mirages branch is R7.8/R7.9)",
+                        "Calcs.lua:407-436 cost warnings of {}: the cached run stopped at a boundary of the port before or in calcs.offence",
                         names[i]
                     );
                     if !env.unimplemented.contains(&what) {
@@ -1147,7 +1271,7 @@ pub fn get_cached_output_value(env: &Env, skill: usize, keys: &[&str]) -> Result
     let run = entry.run.borrow();
     if !run.offence_ran {
         return Err(format!(
-            "CalcPerform.lua:39 getCachedOutputValue({}): the cached run's output has no calcs.offence (its triggers/mirages branch is R7.8/R7.9)",
+            "CalcPerform.lua:39 getCachedOutputValue({}): the cached run stopped at a boundary of the port before or in calcs.offence",
             keys.join(", ")
         ));
     }

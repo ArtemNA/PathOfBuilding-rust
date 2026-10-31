@@ -115,8 +115,9 @@ pub struct PerformState {
     pub aegis_item: Option<Rc<Item>>,
     /// `env.minion.output` (= `output.Minion`, :1319-1320, R7.10): shared with the player's output table value `Minion`.
     pub minion: Option<std::rc::Rc<std::cell::RefCell<ActorState>>>,
-    /// `calcs.offence(env, env.player, env.player.mainSkill)` (:3799) ran to its end (R7.7): false when the triggers / mirages dispatch
-    /// (:3797-3798) took an unported branch, or the skill phase is off.
+    /// :3797-3801 ran to its end with no boundary of the port: `calcs.offence(env, env.player, env.player.mainSkill)` (:3799) ran (R7.7),
+    /// or `calcs.mirages` returned true and left the mirage's output in `env.player.output` (R7.9). False when the triggers / mirages
+    /// code (:3797-3798) hit a boundary of the port, or the skill phase is off.
     pub offence_ran: bool,
 }
 
@@ -259,6 +260,18 @@ pub(crate) fn skill_cfg_of(st: &SkillsState, sk: &ActiveSkill) -> ModCfg {
 
 /// `activeSkill.skillModList` after CalcPerform.lua:1296 (perform's child of `baseSkillModList`); before perform -- the base list.
 pub(crate) fn skill_list_of(env: &Env, i: usize) -> StoreRef {
+    if i == crate::skills::DETACHED {
+        // R7.9: the detached main skill's own list (CalcActiveSkill.lua:184; perform's :1296 does not rebuild it)
+        return env
+            .skills
+            .as_ref()
+            .expect("skills on")
+            .detached_main
+            .as_ref()
+            .expect("detached main skill")
+            .skill_mod_list
+            .clone();
+    }
     match env.skill_mod_lists.get(i) {
         Some(l) => l.clone(),
         None => env.skills.as_ref().expect("skills on").active_skill_list[i]
@@ -293,7 +306,7 @@ pub(crate) fn main_skill(env: &Env, who: Who) -> Option<MainSkill> {
         let i = st
             .main_skill
             .unwrap_or_else(|| panic!("Modules/CalcPerform.lua: attempt to index field 'mainSkill' (a nil value)"));
-        let sk = &st.active_skill_list[i];
+        let sk = st.skill(i);
         return Some(MainSkill {
             list: skill_list_of(env, i),
             base: sk.skill_mod_list.clone().expect("baseSkillModList"),
@@ -2302,7 +2315,11 @@ pub fn perform_skip_ehp(
     let mut minion_state: Option<Rc<std::cell::RefCell<ActorState>>> = None;
     if player_main_skill(env, 1316).has_minion {
         let i = env.skills.as_ref().and_then(|s| s.main_skill).expect("mainSkill");
-        let actor = env.skills.as_ref().expect("skills on").active_skill_list[i]
+        let actor = env
+            .skills
+            .as_ref()
+            .expect("skills on")
+            .skill(i)
             .minion
             .as_ref()
             .and_then(|m| m.actor.clone())
@@ -2944,11 +2961,18 @@ pub fn perform_skip_ehp(
     // --- :3797-3801 triggers / mirages / offence ([`crate::offence`]) -------------------------------------------------------
     if skills_on {
         // :3797 `calcs.triggers(env, env.player)` (R7.8); an `Err` is a boundary of the port: offence is not run on that state
-        match crate::triggers::triggers(env, &mut state) {
+        let triggered = if env.skills.as_ref().and_then(|s| s.main_skill) == Some(crate::skills::DETACHED) {
+            crate::mirages::triggers_on_detached(env)
+        } else {
+            crate::triggers::triggers(env, &mut state)
+        };
+        match triggered {
             Err(what) => env.unimplemented.push(what),
-            Ok(()) => match crate::offence::mirages_gate(env) {
-                crate::offence::Gate::Unported(what) => env.unimplemented.push(what),
-                crate::offence::Gate::Pass => {
+            // :3798 `if not calcs.mirages(env) then calcs.offence(...)` (R7.9); `Err` = a boundary of the port (no offence either)
+            Ok(()) => match crate::mirages::mirages(env, &mut state, hook.as_deref_mut()) {
+                Err(what) => env.unimplemented.push(what),
+                Ok(true) => state.offence_ran = true,
+                Ok(false) => {
                     crate::offence::offence(env, &mut state, hook);
                     state.offence_ran = true;
                 }

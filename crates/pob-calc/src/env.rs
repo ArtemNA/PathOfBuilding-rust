@@ -214,6 +214,12 @@ pub struct Env {
 }
 
 impl Env {
+    /// `env.player.activeSkillList[i + 1].skillModList` after CalcPerform.lua:1296 (perform's child list; before perform the base list), or
+    /// the detached main skill's own list for [`crate::skills::DETACHED`] (R7.9).
+    pub fn skill_mod_list(&self, i: usize) -> StoreRef {
+        crate::perform::skill_list_of(self, i)
+    }
+
     /// `build.itemsTab.items[id]`.
     pub fn item(&self, id: f64) -> Option<&Rc<Item>> {
         if id >= 0.0 && id.fract() == 0.0 {

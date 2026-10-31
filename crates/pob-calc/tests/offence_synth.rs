@@ -323,16 +323,22 @@ fn json_diff(prefix: &str, lj: &Json, rust: &Json, out: &mut Vec<String>) {
 }
 
 /// The scenarios whose `calcFullDPS` Rust cannot finish yet, and the boundary it must report (measured R7.7: the roll-up stops at the
-/// first included skill whose run needs an unported triggers / mirages branch, or at a minion skill -- R7.8/R7.9/R7.10).
-const FULLDPS_BOUNDARY: [(&str, &str); 6] = [
+/// first included skill whose run needs an unported triggers / mirages branch, or at a minion skill -- R7.8/R7.9/R7.10). R7.9 (`calcs.mirages`
+/// ported): the mirage boundaries are gone -- `fd-all-ds` and `fd-mir-mirage` = LuaJIT; `fd-all-gen` / `fd-all-mir` now run past their
+/// General's Cry / Mirage Archer skills and stop at their golem (the minion's offence, R7.10b).
+const FULLDPS_BOUNDARY: [(&str, &str); 4] = [
     (
         "fd-all-cos",
         "Calcs.lua:178-212 calcFullDPS roll-up of the minion skill Summon Ice Golem",
     ),
-    ("fd-all-ds", "CalcMirages.lua:120-164 Reflection (The Saviour)"),
-    ("fd-all-gen", "CalcMirages.lua:346-426 General's Cry"),
-    ("fd-all-mir", "CalcMirages.lua:67-119 Mirage Archer"),
-    ("fd-mir-mirage", "CalcMirages.lua:67-119 Mirage Archer"),
+    (
+        "fd-all-gen",
+        "Calcs.lua:178-212 calcFullDPS roll-up of the minion skill Summon Ice Golem",
+    ),
+    (
+        "fd-all-mir",
+        "Calcs.lua:178-212 calcFullDPS roll-up of the minion skill Summon Lightning Golem",
+    ),
     (
         "fd-occ-minions",
         "Calcs.lua:178-212 calcFullDPS roll-up of the minion skill Raise Zombie",
@@ -487,9 +493,56 @@ fn fulldps_matches_luajit() {
     assert!(bad.is_empty(), "calcFullDPS != LuaJIT ({}):\n{}", bad.len(), bad.join("\n"));
     assert_eq!(
         (done.len(), bounded.len(), known.len()),
-        (9, 6, 0),
+        (11, 4, 0),
         "pinned split of the 15 fulldps scenarios"
     );
+}
+
+/// R7.9 gate (card p. 2): the 7 `mirage` scenarios of R7-synth (Mirage Archer x2, Sacred Wisps, The Saviour, Tawhoa's Chosen, General's Cry
+/// x2) against LuaJIT, EVERY scalar key exactly (bit for bit); the only allowed divergence is [`PERFORM_TAIL_GEM`] missing.
+#[test]
+fn mirage_scenarios_match_luajit() {
+    let mut equal = Vec::new();
+    let mut bad = Vec::new();
+    let mut compared = 0;
+    for name in scenario_names() {
+        if fixture(&name)["category"].as_str() != Some("mirage") {
+            continue;
+        }
+        let r = run_scenario(&name);
+        compared += r.compared;
+        let other: Vec<&String> = r
+            .bad
+            .iter()
+            .filter(|b| {
+                let key = b.split(" | ").nth(1).unwrap_or("");
+                !(PERFORM_TAIL_GEM.contains(&key) && b.contains("| MISSING |"))
+            })
+            .collect();
+        println!(
+            "{name}: compared {} ok {} exact {} missing {} extra {} -- outside the perform-tail class: {}",
+            r.compared,
+            r.ok,
+            r.exact,
+            r.missing,
+            r.extra,
+            other.len()
+        );
+        if other.is_empty() && r.missing == PERFORM_TAIL_GEM.len() {
+            equal.push(name);
+        } else {
+            bad.extend(other.into_iter().cloned());
+            if r.missing != PERFORM_TAIL_GEM.len() {
+                bad.push(format!("{name}: {} missing", r.missing));
+            }
+        }
+    }
+    println!(
+        "mirage: {} scenarios = LuaJIT (but {PERFORM_TAIL_GEM:?}); {compared} keys compared",
+        equal.len()
+    );
+    assert!(bad.is_empty(), "mirage scenarios != LuaJIT ({}):\n{}", bad.len(), bad.join("\n"));
+    assert_eq!(equal.len(), 7, "pinned: all 7 mirage scenarios");
 }
 
 // --- R7.10: the `minion` scenarios (a minion skill as the main skill) -------------------------------------------------------------------

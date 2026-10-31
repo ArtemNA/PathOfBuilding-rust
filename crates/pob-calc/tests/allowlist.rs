@@ -113,8 +113,9 @@ fn allowlist_is_the_measured_set() {
     // R7.7 (offence part E + calcFullDPS + buildOutput tail; OC6 = LuaJIT on the same runs): 778 / 11;
     // R7.8 (calcs.triggers; Cospris x2 top offence runs, OC1-OC6 = LuaJIT): 796 / 11
     // R7.10 (minion actors; OC1-OC6 = LuaJIT on all 73 Rust runs incl. the 4 nested golem runs; no golden main skill is a minion): 796 / 11
-    assert_eq!(ALLOWLIST.len(), 796, "pinned size of the measured allowlist");
-    assert_eq!(EXCLUDED.len(), 11, "pinned size of the measured exclusions");
+    // R7.9 (calcs.mirages; OC1-OC6 = LuaJIT on all 82 offence runs, Dual Savior's output = its mirage's): 847 / 0
+    assert_eq!(ALLOWLIST.len(), 847, "pinned size of the measured allowlist");
+    assert_eq!(EXCLUDED.len(), 0, "pinned size of the measured exclusions");
 }
 
 #[test]
@@ -149,7 +150,8 @@ fn filter_keeps_exactly_the_allowlist() {
     let g = GOLDEN_BUILDS[0];
     let res = calculate_file(g.xml_path(), CalculateOptions::default()).unwrap();
     let filtered = filter_stats(&res.stats);
-    assert!(filtered.len() < res.stats.len());
+    // R7.9: EXCLUDED is empty -- Dual Savior emits no key outside ALLOWLIST (before: the 11 EXCLUDED keys were filtered out)
+    assert_eq!(filtered.len(), res.stats.len(), "every key Dual Savior emits is allowlisted");
     assert!(filtered.keys().all(|k| is_allowed(k)));
     assert_eq!(filtered.len(), res.stats.keys().filter(|k| is_allowed(k)).count());
     // Order of the underlying map is preserved.

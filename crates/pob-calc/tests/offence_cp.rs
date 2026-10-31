@@ -115,7 +115,8 @@ fn table_json(t: &OutTable) -> Json {
 fn snap(env: &Env, player: &ActorState) -> Json {
     let st = env.skills.as_ref().expect("skills on");
     let i = st.main_skill.expect("mainSkill");
-    let sk = &st.active_skill_list[i];
+    // R7.9: a mirage's copy is a main skill outside `activeSkillList` (`SkillsState::skill`)
+    let sk = st.skill(i);
     let mut output: Map<String, Json> = player.output.iter().map(|(k, v)| (k.to_string(), out_json(v))).collect();
     for (k, t) in player.output.tables() {
         output.insert(k.to_string(), table_json(t));
@@ -138,7 +139,7 @@ fn snap(env: &Env, player: &ActorState) -> Json {
         "playerMultipliers": multipliers,
         "playerModDB": mod_count(&pdb).to_string(),
         "enemyModDB": mod_count(&edb).to_string(),
-        "skillModList": mod_count(&env.skill_mod_lists[i]).to_string(),
+        "skillModList": mod_count(&env.skill_mod_list(i)).to_string(),
         "mainSkillName": st.skills.effects[sk.active_effect.borrow().granted_effect].name.clone(),
     })
 }
@@ -159,19 +160,9 @@ struct Hit {
 /// compared exactly; `perform_cp.rs` compares the reference itself against the `export-skills.ts` key `<group>:<gem>`).
 const GEM_REF: [&str; 4] = ["ReqStrItem", "ReqDexItem", "ReqIntItem", "ReqOmniItem"];
 
-/// The goldens whose top env takes an unported branch at CalcPerform.lua:3798, and the reason Rust records (measured: the R7.1 fixtures.
-/// OC1 has `skillFlags.mirageArcher` (Toxic Rain) and the General's Cry mods on the skill list (Perforate: `skillModList` 10, `HasNoCost`)).
-/// R7.8 removed the two Cospris entries (Cast On Critical Strike, `calcs.triggers` is ported: OC1-OC6 of the top Ice Spear = LuaJIT).
-const GATED: [(&str, &str); 2] = [
-    (
-        "Generals Perforate Zerker",
-        "CalcMirages.lua:346-426 General's Cry for Perforate (R7.9)",
-    ),
-    (
-        "Mirage Archer Toxic Rain",
-        "CalcMirages.lua:67-119 Mirage Archer for Toxic Rain (R7.9)",
-    ),
-];
+/// The goldens whose top env takes an unported branch at CalcPerform.lua:3798, and the reason Rust records. R7.8 removed the two Cospris
+/// entries (Cast On Critical Strike); R7.9 (`calcs.mirages` ported) removed Generals (General's Cry) and Mirage Archer: none is left.
+const GATED: [(&str, &str); 0] = [];
 
 /// Every difference between LuaJIT's checkpoint and Rust's, as text lines.
 fn diff(lj: &Json, rust: &Json) -> Vec<String> {
@@ -283,12 +274,36 @@ fn oc1_oc4_equal_luajit_on_six_goldens() {
             }
             continue;
         }
+        // R7.9: Dual Savior's first nested run (`calcs.buildActiveSkill` Double Strike) is built by The Saviour's `compareFunc` INSIDE the top
+        // perform, which the session hook does not reach -- it is compared on its reproduction ([`repro_nested`], the first nested
+        // `buildActiveSkill` of the session log), as `oc1_oc4_equal_luajit_on_all_offence_runs` does.
+        let repro: Option<RustRun> = nested
+            .then(|| {
+                let want_mode = cps["OC1"].get("envMode").and_then(Json::as_str).unwrap_or("MAIN");
+                let seen = hits.get("OC1").is_some_and(|v| v.iter().any(|h| h.nested && h.mode == want_mode));
+                if seen {
+                    return None;
+                }
+                let (_, _, bas) = rust_runs(g.name);
+                let (mode, uuid, flags) = bas.into_iter().find(|(m, _, _)| m.as_str() == want_mode)?;
+                println!("{}: first nested run {} {uuid} compared on its reproduction", g.name, mode.as_str());
+                repro_nested(g.name, mode, &uuid, &flags)
+                    .into_iter()
+                    .find(|r| r.limited && r.uuid == uuid)
+            })
+            .flatten();
         for cp in CPS {
             let w = &cps[cp];
             let want_mode = w.get("envMode").and_then(Json::as_str).unwrap_or("MAIN");
-            let hit = hits
-                .get(cp)
-                .and_then(|v| v.iter().find(|h| h.nested == nested && h.mode == want_mode));
+            let repro_hit = repro.as_ref().and_then(|r| r.oc.get(cp)).map(|s| Hit {
+                nested: true,
+                mode: "MAIN",
+                snap: s.clone(),
+            });
+            let hit = repro_hit.as_ref().or_else(|| {
+                hits.get(cp)
+                    .and_then(|v| v.iter().find(|h| h.nested == nested && h.mode == want_mode))
+            });
             let Some(hit) = hit else {
                 all_bad.push(format!("{}: {cp} no Rust hit (nested {nested}, mode {want_mode})", g.name));
                 continue;
@@ -473,12 +488,6 @@ fn hooked_runs(sess: &CalcSession, f: impl FnOnce(&CalcSession)) -> Vec<RustRun>
     Rc::try_unwrap(runs).ok().expect("hook dropped").into_inner()
 }
 
-/// Dual Savior: the LuaJIT `CALCULATOR`-mode offence runs come from `calcs.mirages` (Reflection), which Rust does not port yet.
-const SAVIOR_GATE: (&str, &str) = (
-    "Dual Savior",
-    "CalcMirages.lua:120-164 Reflection (The Saviour) for Reflection (R7.9)",
-);
-
 /// Compares every matched run; returns (differences / unexplained gaps, totals
 /// `[LuaJIT, Rust, matched, OC1 ok, OC2 ok, OC3 ok, OC4 ok, OC5 ok, OC6 ok, diff lines, not run, of the Rust runs reproduced]`).
 fn compare_all() -> (Vec<String>, [usize; 12]) {
@@ -519,7 +528,7 @@ fn compare_all() -> (Vec<String>, [usize; 12]) {
         let (mut matched, mut ndiff, mut nun) = (0, 0, 0);
         let mut oks = [0usize; 6];
         let mut used = BTreeSet::new();
-        let gate = GATED.iter().chain([&SAVIOR_GATE]).find(|(n, _)| *n == g.name).map(|(_, why)| *why);
+        let gate = GATED.iter().find(|(n, _)| *n == g.name).map(|(_, why)| *why);
         let gate_recorded = gate.is_some_and(|why| notes.iter().any(|u| u == why));
         for l in &lj {
             let found = rs
@@ -536,8 +545,7 @@ fn compare_all() -> (Vec<String>, [usize; 12]) {
                     "{}: LuaJIT run #{} (seq {}, {} {} depth {}, limitedSkills {}) -- Rust did not run offence: {why}",
                     g.name, l.ordinal, l.seq, l.mode, l.uuid, l.depth, l.limited
                 );
-                // Savior: only the mirage simulation's CALCULATOR runs are covered by the gate
-                if !gate_recorded || (g.name == SAVIOR_GATE.0 && l.mode != "CALCULATOR") {
+                if !gate_recorded {
                     bad.push(line.clone());
                 }
                 unexecuted.push(line);
@@ -638,7 +646,11 @@ fn oc1_oc4_equal_luajit_on_all_offence_runs() {
 /// (:1057-1065) from OC2 on.
 const MINION_CLASS: [&str; 3] = ["output.Minion:", "output.ActiveMinionLimit:", "output.SummonedMinionsPerCast:"];
 
-/// Pins the measured state so it cannot drift silently. R7.10 (minion actors): 82 / 73 / 73, OC1-OC6 73/73 equal, 0 difference lines
+/// Pins the measured state so it cannot drift silently. R7.9 (`calcs.mirages`): 82 / 82 / 82, OC1-OC6 82/82 equal, 0 difference lines, 0
+/// not run; 4 runs compared on their reproduction (Cyclone of both Cospris goldens, Dual Savior's Double Strike built by The Saviour's
+/// `compareFunc` and Generals' Perforate built by General's Cry -- each a `buildActiveSkill` inside the top perform); the 9 runs the mirage
+/// gate stopped before R7.9 now run, the mirages' own CALCULATOR performs hooked directly (they run with the caller's hook).
+/// R7.10 (minion actors): 82 / 73 / 73, OC1-OC6 73/73 equal, 0 difference lines
 /// (the 64 lines of the R7.10 class closed). R7.8 (`calcs.triggers` ported): 82 LuaJIT player offence runs, 73 Rust runs (all
 /// matched; 2 of them -- Cyclone of both Cospris goldens, built by `findTriggerSkill` inside the top perform -- compared on their
 /// reproduction, [`repro_nested`]), 9 not run (the recorded mirage gates), OC1-OC6 69/73 equal; the 64 difference lines are all the R7.10
@@ -652,7 +664,7 @@ const MINION_CLASS: [&str; 3] = ["output.Minion:", "output.ActiveMinionLimit:", 
 #[test]
 fn offence_runs_state_is_pinned() {
     let (bad, tot) = compare_all();
-    assert_eq!(tot, [82, 73, 73, 73, 73, 73, 73, 73, 73, 0, 9, 2], "{}", bad.join("\n"));
+    assert_eq!(tot, [82, 82, 82, 82, 82, 82, 82, 82, 82, 0, 0, 4], "{}", bad.join("\n"));
     assert_eq!(bad.len(), 0, "unexplained gaps or differences:\n{}", bad.join("\n"));
     let other: Vec<&String> = bad.iter().filter(|l| !MINION_CLASS.iter().any(|c| l.contains(c))).collect();
     assert!(other.is_empty(), "differences outside the R7.10 minion class:\n{other:?}");

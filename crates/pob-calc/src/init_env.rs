@@ -2334,3 +2334,53 @@ pub fn reinit_accelerated(env: &mut Env, spec: &SpecDbs) {
         .cloned()
         .collect();
 }
+
+// --- R7.9: `buildActiveSkillModList` on an env already built -------------------------------------------------------------
+
+/// What `calcs.buildActiveSkillModList(env, activeSkill)` reads of `env` itself ([`crate::skill_modlist::ModListInputs`]: `env.modDB` for the
+/// `SkillData` list :661, `env.enemyDB`, `env.player`'s items / weapons, the config distances, the build tables) for a built env -- what
+/// `calcs.copyActiveSkill` (CalcActiveSkill.lua:183, R7.9) builds its copy against. The skill's ACTOR (the list's parent, `skill.actor.modDB`
+/// :492, and its weapons :549/:576) is passed apart ([`crate::skill_modlist::SkillActor`]): for a copy it is another env's player.
+pub(crate) fn with_mod_list_inputs<R>(env: &Env, f: impl FnOnce(&crate::skill_modlist::ModListInputs<'_>) -> R) -> R {
+    let p = env.player.borrow();
+    let cfg_or = |k: &str| -> Value {
+        let conv = |v: &pob_build::ConfigValue| match v {
+            pob_build::ConfigValue::Num(x) => Value::Num(*x),
+            pob_build::ConfigValue::Str(t) => Value::str(t),
+            pob_build::ConfigValue::Bool(b) => Value::Bool(*b),
+        };
+        let input = env.config.input.get(k).map(conv).unwrap_or_default();
+        if input.truthy() {
+            input
+        } else {
+            env.config.placeholder.get(k).map(conv).unwrap_or_default()
+        }
+    };
+    // `build.spectreList`: Build.lua:989-992 keeps only ids with `data.minions[id]`
+    let spectres: Vec<String> = env
+        .build
+        .spectres
+        .iter()
+        .filter(|id| crate::skill_modlist::is_minion(id))
+        .cloned()
+        .collect();
+    let inp = crate::skill_modlist::ModListInputs {
+        mod_db: &env.mod_db,
+        enemy_db: &env.enemy_db,
+        item_list: &p.item_list,
+        weapon_data1: &p.weapon_data1,
+        weapon_data2: &p.weapon_data2,
+        mode_buffs: env.mode_buffs,
+        mode_combat: env.mode_combat,
+        mode_effective: env.mode_effective,
+        melee_distance: cfg_or("meleeDistance"),
+        projectile_distance: cfg_or("projectileDistance"),
+        spectre_list: &spectres,
+        character_level: env.build.level,
+        enemy_level: env.enemy_level,
+        items: &env.items,
+        item_sets: &env.build.item_sets,
+        the_iron_mass: env.the_iron_mass.is_some(),
+    };
+    f(&inp)
+}

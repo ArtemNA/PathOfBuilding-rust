@@ -263,7 +263,7 @@ pub(super) fn slot_match(env: &Env, i: usize) -> bool {
 }
 
 /// :41-43 `isTriggered(skill)` (truthiness).
-pub(super) fn is_triggered(env: &Env, i: usize) -> bool {
+pub(crate) fn is_triggered(env: &Env, i: usize) -> bool {
     let sk = skill(env, i);
     let t = |k: &str| sk.skill_data.get(k).is_some_and(Value::truthy);
     // `grantedEffect.triggered`: no granted effect of the data sets it
@@ -431,7 +431,7 @@ fn floor_b(x: f64, base: f64) -> f64 {
 
 /// :91-134 `calcMultiSpellRotationImpact(env, skillRotation, sourceRate, triggerCD, chance, actor)` -> `(mainRate, rates)`; `main_uuid` =
 /// `cacheSkillUUID(actor.mainSkill, env)`.
-pub(super) fn calc_multi_spell_rotation_impact(
+pub(crate) fn calc_multi_spell_rotation_impact(
     main_uuid: &str,
     rotation: &mut [SimSkill],
     source_rate: f64,

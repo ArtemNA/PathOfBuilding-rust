@@ -35,7 +35,7 @@ fn calc_file_json_has_meta_and_allowlisted_stats() {
     let parsed = CandidateOutput::from_json(std::str::from_utf8(&out.stdout).unwrap()).unwrap();
     assert_eq!(
         parsed.stats.len(),
-        504,
+        628,
         "Dual Savior: every ALLOWLIST key it emits (= oracle ok count)"
     );
     assert!(
@@ -53,13 +53,8 @@ fn calc_file_json_has_meta_and_allowlisted_stats() {
             .iter()
             .any(|u| u.contains("3497-3620") || u.contains("3627-3665") || u.contains("3667-3789"))
     );
-    // R7.3: offence part A runs; on Dual Savior the top env stops at the unported `calcs.mirages` branch (R7.9) before it.
-    assert!(
-        parsed
-            .unimplemented
-            .iter()
-            .any(|u| u == "CalcMirages.lua:120-164 Reflection (The Saviour) for Reflection (R7.9)")
-    );
+    // R7.9: `calcs.mirages` is ported -- The Saviour's mirage runs, no CalcMirages note is left.
+    assert!(!parsed.unimplemented.iter().any(|u| u.starts_with("CalcMirages.lua:")));
 }
 
 /// `POB_EXPERIMENTAL=1`: the raw output, a strict superset of the filtered one (pob-ts `candidate.test.ts`).
@@ -76,7 +71,8 @@ fn experimental_env_disables_the_filter() {
         CandidateOutput::from_json(std::str::from_utf8(&out.stdout).unwrap()).unwrap()
     };
     let (filtered, raw) = (run(false), run(true));
-    assert!(raw.stats.len() > filtered.stats.len());
+    // R7.9: EXCLUDED is empty -- on Dual Savior the raw run and the filtered one hold the same keys
+    assert_eq!(raw.stats.len(), filtered.stats.len());
     assert!(filtered.stats.keys().all(|k| raw.stats.contains_key(k)));
     assert!(!raw.stats.contains_key("_meta") && !filtered.stats.contains_key("_meta"));
     // The raw run holds exactly the ALLOWLIST ∪ EXCLUDED keys (535 on Dual Savior is a subset; all of them are classified).
@@ -117,16 +113,19 @@ fn experimental_env_disables_the_filter() {
 /// R7.8 (calcs.triggers; allowlist 778 -> 796): both Cospris goldens 514/513 -> 734/733 (the CoC-triggered Ice Spear now runs offence:
 /// trigger rates, projectiles, the whole offence output); the other four unchanged.
 /// R7.10 (minion actors; allowlist 796 unchanged): the six numbers unchanged (no golden's main skill is a minion).
+/// R7.9 (calcs.mirages; allowlist 796 -> 847, EXCLUDED 11 -> 0): Dual Savior 504 -> 628 (its output is The Saviour's mirage perform's),
+/// Generals 528 -> 645 and Mirage Archer 515 -> 654 (their top offence runs), every golden +11 for the 11 former EXCLUDED keys (ok on
+/// the other five before): Cospris x2 745, OccVortex 769; `unimplemented` 4 on each (the perform tail `Gem*` keys).
 /// O9: `VaalArcticArmourMitigation` is `ok`, not `exact` (golden `+0`, Rust `-0`) -- hence exact = ok - 1.
 #[test]
 fn cli_stats_against_goldens() {
     let pinned: [(&str, usize, usize); 6] = [
-        ("Dual Savior", 504, 503),
-        ("Dual Wield Cospris CoC", 734, 733),
-        ("Dual Wield Cospris CoC - Lethal Pride", 734, 733),
-        ("Generals Perforate Zerker", 528, 527),
-        ("Mirage Archer Toxic Rain", 515, 514),
-        ("OccVortex", 758, 757),
+        ("Dual Savior", 628, 627),
+        ("Dual Wield Cospris CoC", 745, 744),
+        ("Dual Wield Cospris CoC - Lethal Pride", 745, 744),
+        ("Generals Perforate Zerker", 645, 644),
+        ("Mirage Archer Toxic Rain", 654, 653),
+        ("OccVortex", 769, 768),
     ];
     let mut got = Vec::new();
     for (g, (name, _, _)) in GOLDEN_BUILDS.iter().zip(pinned) {

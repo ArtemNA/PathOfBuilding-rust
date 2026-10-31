@@ -11,8 +11,8 @@
 //!   part: the loop body never runs (upstream as written).
 //! * `for pool, costResource in pairs(...)` is the buildOutput tail ([`crate::session`]).
 //!
-//! `activeSkill.mirage` (:6213) is set only by `calcs.mirages` (CalcMirages.lua); offence runs only when the mirage dispatch took no
-//! branch ([`super::gates::mirages_gate`]), so the field is nil here and the mirage block is skipped as upstream skips it.
+//! `activeSkill.mirage` (:6213) is set by `calcs.mirages` (CalcMirages.lua:76/:302, [`crate::mirages`], R7.9) before offence runs: the
+//! mirage block (:6212-6248) adds the mirage run's DPS to the combined DPS.
 //!
 //! Breakdown (R8): every `if breakdown` branch of this part only fills breakdown tables; the queries their conditions make
 //! (`Flag(nil, "Enemy<T>ResistEqualToYours")` :5835, `Sum("BASE", skillCfg, "Multiplier:SustainableTraumaStacks")` :6050) are still made.
@@ -616,7 +616,7 @@ fn self_hit(off: &mut Off<'_>, q: &Q) {
     // :6091-6101 `ipairs` over a hash-only table: no iteration.
 }
 
-/// :6107-6262 the combined DPS (`activeSkill.mirage` is nil here, see the module doc).
+/// :6107-6262 the combined DPS (with the mirage block, see the module doc).
 #[allow(clippy::too_many_lines)]
 fn combined_dps(off: &mut Off<'_>, quantity_multiplier: f64) {
     let cap = misc("DotDpsCap");
@@ -739,8 +739,67 @@ fn combined_dps(off: &mut Off<'_>, quantity_multiplier: f64) {
         let v = gn(off, "CombinedDPS", 6176) + impale;
         off.gset("CombinedDPS", v);
     }
-    // :6211-6247 `activeSkill.mirage` -- nil (module doc)
+    // :6212-6248 `activeSkill.mirage` (set by `calcs.mirages` before offence: Mirage Archer / Sacred Wisps, R7.9)
     let mut best_cull = 1.0;
+    let mirage = off.sk().mirage.clone();
+    if let Some(m) = mirage.as_ref().filter(|m| m.output.is_some())
+        && let Some(m_total) = m.out("TotalDPS")
+    {
+        let count = m.count.unwrap_or(1.0);
+        off.gset("MirageDPS", m_total * count);
+        let v = gn(off, "CombinedDPS", 6216) + m_total * count;
+        off.gset("CombinedDPS", v);
+        gset_val(off, "MirageBurningGroundDPS", m.out_val("BurningGroundDPS").cloned());
+        gset_val(off, "MirageCausticGroundDPS", m.out_val("CausticGroundDPS").cloned());
+        if let Some(x) = m.out("IgniteDPS")
+            && x > g0(off, "IgniteDPS", 6220)
+        {
+            let v = gn(off, "MirageDPS", 6221) + x;
+            off.gset("MirageDPS", v);
+            off.gset("IgniteDPS", 0.0);
+        }
+        if let Some(x) = m.out("BleedDPS")
+            && x > g0(off, "BleedDPS", 6224)
+        {
+            let v = gn(off, "MirageDPS", 6225) + x;
+            off.gset("MirageDPS", v);
+            off.gset("BleedDPS", 0.0);
+        }
+        if let Some(x) = m.out("PoisonDPS") {
+            let v = gn(off, "MirageDPS", 6230) + x * count;
+            off.gset("MirageDPS", v);
+            let v = gn(off, "CombinedDPS", 6231) + x * count;
+            off.gset("CombinedDPS", v);
+        }
+        if let Some(x) = m.out("ImpaleDPS") {
+            let v = gn(off, "MirageDPS", 6234) + x * count;
+            off.gset("MirageDPS", v);
+            let v = gn(off, "CombinedDPS", 6235) + x * count;
+            off.gset("CombinedDPS", v);
+        }
+        if let Some(x) = m.out("DecayDPS") {
+            let v = gn(off, "MirageDPS", 6238) + x;
+            off.gset("MirageDPS", v);
+            let v = gn(off, "CombinedDPS", 6239) + x;
+            off.gset("CombinedDPS", v);
+        }
+        let dot_can_stack = off.flag("DotCanStack");
+        if let Some(x) = m.out("TotalDot")
+            && (dot_can_stack || !gt(off, "TotalDot") || off.gval("TotalDot") == Some(&OutValue::Num(0.0)))
+        {
+            let k = if dot_can_stack { count } else { 1.0 };
+            let v = gn(off, "MirageDPS", 6242) + x * k;
+            off.gset("MirageDPS", v);
+            let v = gn(off, "CombinedDPS", 6243) + x * k;
+            off.gset("CombinedDPS", v);
+        }
+        let cull = m
+            .out("CullMultiplier")
+            .unwrap_or_else(|| panic!("{LUA}:6245: attempt to compare nil with number (mirage.output.CullMultiplier)"));
+        if cull > 1.0 {
+            best_cull = cull;
+        }
+    }
     // :6249-6255
     let total_dot_dps = g0(off, "TotalDot", 6249)
         + g0(off, "TotalPoisonDPS", 6249)
