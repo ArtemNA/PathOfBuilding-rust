@@ -388,7 +388,11 @@ pub fn mod_parser() -> Rc<ModParserData> {
         c.get_or_init(|| {
             let mut j: Json = crate::load("mod-parser.json");
             crate::patches::apply_mod_parser(&mut j).unwrap_or_else(|e| panic!("{e}"));
-            Rc::new(build(&j).unwrap_or_else(|e| panic!("pob-data: {e}")))
+            let patched = crate::patches::apply_mod_parser_upvalues(&mut j).unwrap_or_else(|e| panic!("{e}"));
+            let mut d = build(&j).unwrap_or_else(|e| panic!("pob-data: {e}"));
+            // `fn_refs` counts what the converter wrote; the upvalue patch (R5.5b0) adds one `up` per patched closure
+            d.fn_refs -= patched;
+            Rc::new(d)
         })
         .clone()
     })

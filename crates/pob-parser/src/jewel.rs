@@ -8,9 +8,10 @@
 //!   visitor;
 //! * [`visit`] -- `func(node, out, data)` from the radius-jewel code of CalcSetup/PassiveSpec (R5.5).
 //!
-//! Every body carries its upstream lines. A body whose upvalues the data does not carry (the getSimpleConv visitors at
-//! :19 referenced from jewelOtherFuncs, the two thresholds inside :6582) cannot run: `ParseError::Unrepresentable`, never
-//! a guess (a data gap for R5.5, see the R5.4 report).
+//! Every body carries its upstream lines. The getSimpleConv visitors at :19 referenced from jewelOtherFuncs and the two
+//! thresholds inside :6582 get their upvalues from `data-patches/mod-parser-upvalues.json` (R5.5b0: the converter wrote
+//! only one level of upvalues); a body whose upvalues are still missing cannot run: `ParseError::Unrepresentable`, never
+//! a guess.
 
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -91,6 +92,10 @@ pub fn data_func(f: &Rc<FnRef>) -> Result<Value, ParseError> {
         && let Ok(t) = Threshold::from_up(f)
     {
         JewelFn::Threshold(Rc::new(t))
+    } else if line == 19
+        && let Ok(sc) = simple_conv_from_up(f)
+    {
+        JewelFn::SimpleConv(sc)
     } else {
         JewelFn::Data(f.clone())
     };
@@ -100,6 +105,46 @@ pub fn data_func(f: &Rc<FnRef>) -> Result<Value, ParseError> {
     }));
     DATA_FUNCS.with(|m| m.borrow_mut().insert(key, v.clone()));
     Ok(v)
+}
+
+/// The visitor at :19 from the upvalues the data patch (`data-patches/mod-parser-upvalues.json`, R5.5b0) carries:
+/// `srcList, dst, type, remove` and, when not nil, `factor, srcType`.
+fn simple_conv_from_up(f: &FnRef) -> Result<SimpleConv, ParseError> {
+    let s = |k: &str| -> Result<Str, ParseError> {
+        match crate::helpers::upv(f, k)? {
+            Value::Str(s) => Ok(s),
+            other => Err(unrep(format!("{}: upvalue '{k}' is a {}", f.id, other.type_name()))),
+        }
+    };
+    let Value::Table(list) = crate::helpers::upv(f, "srcList")? else {
+        return Err(unrep(format!("{}: upvalue 'srcList' not in the data", f.id)));
+    };
+    let src_list = list
+        .array
+        .iter()
+        .map(|v| match v {
+            Value::Str(s) => Ok(s.clone()),
+            other => Err(unrep(format!("{}: srcList holds a {}", f.id, other.type_name()))),
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    let src_type = match crate::helpers::upv(f, "srcType")? {
+        Value::Nil => None,
+        Value::Str(s) => Some(s),
+        other => return Err(unrep(format!("{}: upvalue 'srcType' is a {}", f.id, other.type_name()))),
+    };
+    let factor = match crate::helpers::upv(f, "factor")? {
+        Value::Nil => None,
+        Value::Num(n) => Some(n),
+        other => return Err(unrep(format!("{}: upvalue 'factor' is a {}", f.id, other.type_name()))),
+    };
+    Ok(SimpleConv {
+        src_list,
+        dst: s("dst")?,
+        ty: s("type")?,
+        remove: crate::helpers::upv(f, "remove")?.truthy(),
+        factor,
+        src_type,
+    })
 }
 
 /// A `PVal` as a Lua value: closures become function values (`jewelFuncList` entries `{ func = f, type = ... }`).

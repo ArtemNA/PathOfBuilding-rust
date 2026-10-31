@@ -162,3 +162,125 @@ pub(crate) fn apply_mod_cache(raw: &mut [RawEntry]) -> Result<usize, DataError> 
     }
     Ok(mine.len())
 }
+
+// --- mod-parser-upvalues.json (R5.5b0) -------------------------------------------------------------------------------------
+
+/// One closure whose upvalues the converter did not write: the `{fn}` node at `path` of `mod-parser.json` gets `up`.
+#[derive(Clone, Debug, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct UpPatch {
+    /// `"<src>:<from>"` -- must equal the node's `fn`.
+    #[serde(rename = "fn")]
+    pub fn_id: String,
+    pub path: Vec<Json>,
+    /// The upvalues in the converter's shape (`{name: value}`; functions `{fn, up}`, C functions `{cfn: true}`).
+    pub up: Json,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct UpFile {
+    format: u32,
+    #[allow(dead_code)]
+    producer: Json,
+    manifest_sha256: String,
+    patches: Vec<UpPatch>,
+    /// LuaJIT's results of the patched visitors on a synthetic scenario (the Rust tests; not read by the loaders).
+    goldens: Json,
+}
+
+/// `<repo>/data-patches/mod-parser-upvalues.json`.
+pub fn upvalue_patch_path() -> PathBuf {
+    data_dir().join("..").join("data-patches").join("mod-parser-upvalues.json")
+}
+
+/// Parse the upvalue patch file and check its `manifestSha256` against `lock_sha`.
+fn parse_up_file(text: &str, lock_sha: &str) -> Result<UpFile, DataError> {
+    let f: UpFile = serde_json::from_str(text).map_err(|e| DataError(format!("pob-data: mod-parser-upvalues.json: {e}")))?;
+    if f.format != 1 {
+        return Err(DataError(format!(
+            "pob-data: mod-parser-upvalues.json: format {}, expected 1",
+            f.format
+        )));
+    }
+    if f.manifest_sha256 != lock_sha {
+        return Err(DataError(format!(
+            "pob-data: mod-parser-upvalues.json was taken from data with manifest sha256 {}, but data.lock has {lock_sha} -- \
+             re-take it: node tools/lua-corpus/export-jewel-upvalues.ts",
+            f.manifest_sha256
+        )));
+    }
+    Ok(f)
+}
+
+fn up_file() -> Result<&'static UpFile, DataError> {
+    static P: OnceLock<Result<UpFile, DataError>> = OnceLock::new();
+    P.get_or_init(|| {
+        let dir = crate::ensure_data()?;
+        let lock = verify_lock(dir, &lock_path(dir))?;
+        let path = upvalue_patch_path();
+        let text = std::fs::read_to_string(&path).map_err(|e| DataError(format!("pob-data: {}: {e}", path.display())))?;
+        parse_up_file(&text, &lock.manifest_sha256)
+    })
+    .as_ref()
+    .map_err(Clone::clone)
+}
+
+/// The upvalue patches of this process.
+pub fn upvalue_patches() -> Result<&'static [UpPatch], DataError> {
+    up_file().map(|f| f.patches.as_slice())
+}
+
+/// The JSON value type of [`upvalue_goldens`] (so a test without a `serde_json` dependency can name it).
+pub type Golden = Json;
+
+/// `{scenario, entries}`: the LuaJIT results of the patched visitors (see `tools/lua-corpus/export-jewel-upvalues.ts`).
+pub fn upvalue_goldens() -> Result<&'static Json, DataError> {
+    up_file().map(|f| &f.goldens)
+}
+
+/// Give the `{fn}` node at `p.path` its upvalues. The node must be exactly what the converter writes for a nested closure.
+pub fn apply_upvalue_patch(root: &mut Json, p: &UpPatch) -> Result<(), DataError> {
+    let err = |m: String| DataError(format!("pob-data: upvalue patch {:?}: {m}", p.path));
+    let mut cur = root;
+    for k in &p.path {
+        cur = match (k, cur) {
+            (Json::String(s), Json::Object(o)) => o.get_mut(s.as_str()).ok_or_else(|| err(format!("no key {s:?}")))?,
+            (Json::Number(n), Json::Array(a)) => {
+                let i = n.as_u64().ok_or_else(|| err("bad index".to_owned()))? as usize;
+                a.get_mut(i).ok_or_else(|| err(format!("no index {i}")))?
+            }
+            (k, c) => return Err(err(format!("path element {k} does not fit {}", kind(c)))),
+        };
+    }
+    let Json::Object(node) = cur else {
+        return Err(err(format!("the target is {}, not a closure", kind(cur))));
+    };
+    if node.get("fn").and_then(Json::as_str) != Some(p.fn_id.as_str()) {
+        return Err(err(format!(
+            "the target is {}, expected fn {}",
+            Json::Object(node.clone()),
+            p.fn_id
+        )));
+    }
+    let empty = match node.get("up") {
+        None => true,
+        Some(Json::Array(a)) => a.is_empty(),
+        Some(Json::Object(o)) => o.is_empty(),
+        Some(_) => false,
+    };
+    if !empty {
+        return Err(err("the closure already carries its upvalues -- the data drifted".to_owned()));
+    }
+    node.insert("up".to_owned(), p.up.clone());
+    Ok(())
+}
+
+/// Apply the upvalue patches to the parsed `mod-parser.json`. Returns how many were applied.
+pub(crate) fn apply_mod_parser_upvalues(root: &mut Json) -> Result<usize, DataError> {
+    let ps = upvalue_patches()?;
+    for p in ps {
+        apply_upvalue_patch(root, p)?;
+    }
+    Ok(ps.len())
+}

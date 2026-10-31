@@ -3,7 +3,8 @@
 
 use std::rc::Rc;
 
-use pob_mods::{LuaError, Mod, ModStore, ModType, Table, Value, create_mod};
+use pob_data::patches::Golden;
+use pob_mods::{LuaError, Mod, ModStore, ModType, Table, Tag, Value, create_mod};
 use pob_parser::helpers::JewelNode;
 use pob_parser::jewel::visit;
 use pob_parser::{ParseError, parse_mod_uncached};
@@ -166,12 +167,146 @@ fn melee_to_bow_transforms_weapon_mods() {
     assert!(got[1].starts_with("10|Tree:1|PhysicalDamage|INC|"), "{got:?}");
 }
 
+// --- R5.5b0: the upvalues of the closures the converter did not write (data-patches/mod-parser-upvalues.json) ---------------
+
+/// A mod of the LuaJIT scenario (`goldens.scenario`).
+fn scen_mod(j: &Golden) -> Mod {
+    let tags = j["tags"]
+        .as_array()
+        .expect("tags")
+        .iter()
+        .map(|t| {
+            let mut tb = Table::default();
+            for (k, v) in t.as_object().expect("tag") {
+                tb.hash.insert(Rc::from(k.as_str()), Value::str(v.as_str().expect("tag field")));
+            }
+            Tag::new(tb)
+        })
+        .collect();
+    create_mod(
+        j["name"].as_str().expect("name"),
+        ModType::parse(j["type"].as_str().expect("type")),
+        Value::Num(j["value"].as_f64().expect("value")),
+        j["source"].as_str(),
+        j["flags"].as_u64().expect("flags") as u32,
+        j["keywordFlags"].as_u64().expect("keywordFlags") as u32,
+        tags,
+    )
+}
+
+/// `jewelFuncList[key]` as the function value `parseMod` hands out (an exact-key entry: `{func = ..., type = ...}`).
+fn entry_func(key: &str) -> Value {
+    let d = pob_data::mod_parser::mod_parser();
+    let e = d
+        .table("jewelFuncList")
+        .get(key)
+        .unwrap_or_else(|| panic!("no jewelFuncList entry {key:?}"));
+    pob_parser::jewel::pval_value(&e.field("func").expect("func")).unwrap()
+}
+
 #[test]
-fn a_visitor_without_its_upvalues_is_explicit() {
-    // data gap (R5.5): the getSimpleConv visitors referenced from jewelOtherFuncs carry no upvalues in mod-parser.json
-    let (_, f, _) = func_of("Increases and Reductions to Life in Radius are Transformed to apply to Energy Shield");
-    let mut out = list();
-    let mut d = data("Item:6:Jewel");
-    let e = visit(&f, Some(&node("Normal", vec![base("Life", 5.0)])), &mut out, &mut d).unwrap_err();
-    assert!(matches!(e, ParseError::Unrepresentable(_)), "{e}");
+fn upvalue_patch_visitors_equal_luajit() {
+    // LuaJIT ran the real `jewelFuncList[key].func(node, out, data)` on a synthetic scenario (3 nodes, then the final
+    // `func(nil, out, data)`); `out` is rendered with modLib.formatSourceMod. One entry per key of the patch.
+    let g = pob_data::patches::upvalue_goldens().unwrap();
+    let patches = pob_data::patches::upvalue_patches().unwrap();
+    let sc = &g["scenario"];
+    let pre: Vec<Mod> = sc["pre"].as_array().unwrap().iter().map(scen_mod).collect();
+    let nodes: Vec<(String, bool, Vec<Mod>)> = sc["nodes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|n| {
+            (
+                n["type"].as_str().unwrap().to_owned(),
+                n["isTattoo"].as_bool().unwrap(),
+                n["mods"].as_array().unwrap().iter().map(scen_mod).collect(),
+            )
+        })
+        .collect();
+    let mut refs = 0;
+    let entries = g["entries"].as_array().unwrap();
+    for e in entries {
+        let key = e["key"].as_str().unwrap();
+        refs += e["refs"].as_array().unwrap().len();
+        let f = entry_func(key);
+        let mut out = list();
+        for m in &pre {
+            out.add_mod(Rc::new(m.clone()));
+        }
+        let mut d = data(sc["modSource"].as_str().unwrap());
+        for (ty, tattoo, mods) in &nodes {
+            let ty: &'static str = match ty.as_str() {
+                "Normal" => "Normal",
+                "Notable" => "Notable",
+                other => panic!("scenario node type {other}"),
+            };
+            let mut n = node(ty, mods.clone());
+            n.tattoo = *tattoo;
+            visit(&f, Some(&n), &mut out, &mut d).unwrap_or_else(|e| panic!("{key}: {e}"));
+        }
+        visit(&f, None, &mut out, &mut d).unwrap_or_else(|e| panic!("{key}: {e}"));
+        let want: Vec<&str> = e["out"].as_array().unwrap().iter().map(|s| s.as_str().unwrap()).collect();
+        assert_eq!(mods(&out), want, "{key}");
+    }
+    assert_eq!(refs, patches.len(), "every patched closure is covered by a golden entry");
+    assert!(patches.len() >= 13, "{} patched closures", patches.len());
+    assert_eq!(entries.len(), 12);
+}
+
+#[test]
+fn every_patched_closure_becomes_a_runnable_visitor() {
+    // the 11 getSimpleConv visitors (:19) and the 2 thresholds (:6457) inside :6582 carry their upvalues now
+    let patches = pob_data::patches::upvalue_patches().unwrap();
+    let n19 = patches.iter().filter(|p| p.fn_id == "Modules/ModParser.lua:19").count();
+    let n6457 = patches.iter().filter(|p| p.fn_id == "Modules/ModParser.lua:6457").count();
+    assert_eq!((n19, n6457, patches.len()), (11, 2, 13));
+    let d = pob_data::mod_parser::mod_parser();
+    assert_eq!(d.fn_refs, 1_973, "fn_refs counts what the converter wrote");
+}
+
+#[test]
+fn jewel_func_list_has_no_unrepresentable_visitor() {
+    // every entry of jewelFuncList, driven the way parseMod / the radius-jewel code drive it: a key with captures is called with
+    // captures (the factory returns the visitor), the others are the visitor itself. 0 `Unrepresentable` over the corpus.
+    let d = pob_data::mod_parser::mod_parser();
+    let t = d.table("jewelFuncList");
+    let caps: Vec<Value> = (0..5).map(|_| Value::str("5")).collect();
+    let n = node(
+        "Normal",
+        vec![
+            base("Str", 5.0),
+            base("Dex", 6.0),
+            base("Int", 7.0),
+            base("Life", 8.0),
+            base("EnergyShield", 9.0),
+        ],
+    );
+    let (mut checked, mut bad) = (0, Vec::new());
+    for (key, v) in t.iter() {
+        let func = pob_parser::jewel::pval_value(&v.field("func").expect("func")).unwrap();
+        let f = if key.contains('(') {
+            match pob_parser::jewel::call_caps(&func, &caps) {
+                Ok(f) => f,
+                Err(e) => {
+                    bad.push(format!("{key}: call_caps: {e}"));
+                    continue;
+                }
+            }
+        } else {
+            func
+        };
+        let mut out = list();
+        let mut d = data("Item:9:Jewel");
+        for node in [Some(&n as &dyn JewelNode), None] {
+            checked += 1;
+            if let Err(e) = visit(&f, node, &mut out, &mut d)
+                && matches!(e, ParseError::Unrepresentable(_))
+            {
+                bad.push(format!("{key}: {e}"));
+            }
+        }
+    }
+    assert!(bad.is_empty(), "{} of {checked} visits: {bad:#?}", bad.len());
+    assert!(checked >= 2 * t.len());
 }
