@@ -10,7 +10,7 @@
 //! (`Flag(skillCfg, "CritLucky")`, :3815/:3819) are still made.
 
 use pob_lua::number::{max2, min2};
-use pob_mods::{ModType, Str, Value};
+use pob_mods::{ModCfg, ModType, Str, Value};
 
 use super::c::{LUA, config_is, config_truthy, dflag, dmore, dsum, num_at, or_num};
 use super::helpers::{DMG_TYPE_LIST, calc_damage};
@@ -23,12 +23,12 @@ fn is_elemental(t: &str) -> bool {
     matches!(t, "Fire" | "Cold" | "Lightning")
 }
 
-/// :494-507 `calcResistForType(damageType, cfg)` with `cfg` = the global `dotCfg` (nil at :3527/:3538: the `local dotCfg` of the
-/// ailment sections is declared later).
-fn resist_for_type(off: &Off<'_>, dt: &str) -> f64 {
+/// :494-507 `calcResistForType(damageType, cfg)`; `cfg` is nil at :3527/:3538 (the global `dotCfg`: the `local dotCfg` of the ailment
+/// sections is declared later) and an ailment / Decay / burning ground cfg in part D (R7.6).
+pub(super) fn resist_for_type(off: &Off<'_>, dt: &str, cfg: Option<&ModCfg>) -> f64 {
     let enemy = &off.enemy_db;
     let rname = format!("{dt}Resist");
-    let resist = ok(enemy.borrow().override_(None, &[&rname])).filter(Value::truthy);
+    let resist = ok(enemy.borrow().override_(cfg, &[&rname])).filter(Value::truthy);
     let floor_max = misc("EnemyMaxResist");
     let max_resist = if dflag(enemy, None, &["DoNotChangeMaxResFromConfig"]) {
         floor_max
@@ -60,7 +60,7 @@ fn resist_for_type(off: &Off<'_>, dt: &str) -> f64 {
                 if is_elemental(dt) {
                     names.push("ElementalResist");
                 }
-                dsum(enemy, ModType::Base, None, &names) * max2(ok(crate::calc_lib::mod_(&enemy.borrow(), None, &names)), 0.0)
+                dsum(enemy, ModType::Base, cfg, &names) * max2(ok(crate::calc_lib::mod_(&enemy.borrow(), cfg, &names)), 0.0)
             }
         }
     };
@@ -608,7 +608,7 @@ fn enemy_eff_mult(off: &mut Off<'_>, q: &super::Q, pi: usize, pass: u8, dt: &'st
             }
         }
     } else {
-        resist = resist_for_type(off, dt);
+        resist = resist_for_type(off, dt, None);
         let c = Some(off.pcfg(pi));
         if ((q.flag(c, &["ChaosDamageUsesLowestResistance"]) || q.flag(c, &["ChaosDamageUsesHighestResistance"])) && dt == "Chaos")
             || (q.flag(c, &["ElementalDamageUsesLowestResistance"]) && is_elemental(dt))
@@ -619,7 +619,7 @@ fn enemy_eff_mult(off: &mut Off<'_>, q: &super::Q, pi: usize, pass: u8, dt: &'st
             }
             for ele in DMG_TYPE_LIST {
                 if is_elemental(ele) && use_this_resist(off, ele) > 0.0 && dt != ele {
-                    let current = resist_for_type(off, ele);
+                    let current = resist_for_type(off, ele, None);
                     if q.flag(Some(off.pcfg(pi)), &["ChaosDamageUsesHighestResistance"]) {
                         if resist < current {
                             resist = current;

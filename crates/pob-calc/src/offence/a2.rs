@@ -659,6 +659,7 @@ fn durations(off: &mut Off<'_>, q: &Q, cfg: &ModCfg) {
                 ok(crate::calc_lib::mod_(&off.enemy_db.borrow(), c, &["BuffExpireFaster"])),
             );
     }
+    off.debuff_duration_mult = debuff_mult;
     let mine_dur = off.sd_truthy("mineDurationAppliesToSkill");
     let with_mine = |mut v: Vec<&'static str>| {
         if mine_dur {

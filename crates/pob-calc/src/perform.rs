@@ -151,6 +151,9 @@ pub enum Checkpoint {
     /// `calcs.offence` before :4156 -- after the damage pass (exert, crits, damage by type, leech, DPS, PvP), the hand combine and the
     /// leech rates (R7.1 probe OC4).
     Oc4,
+    /// `calcs.offence` before :5772 -- after the ailments (secondary effect chances, bleed / poison / ignite, non-damaging ailments,
+    /// knockback, stun, impale, the combine, Decay, burning ground) (R7.1 probe OC5).
+    Oc5,
 }
 
 /// Called at each [`Checkpoint`] with the env and the player's / enemy's perform state (`actor.output`).

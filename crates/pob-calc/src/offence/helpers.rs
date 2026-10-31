@@ -66,6 +66,11 @@ impl Q {
         skill_guard(&self.malformed, names);
         ok(self.list.borrow().flag(cfg, names)) == Some(true)
     }
+    /// `Flag(cfg, ...)` as Lua sees it: nil (`None`, no mod), `true`, or `false` (only an explicit false mod).
+    pub fn flag_opt(&self, cfg: Option<&ModCfg>, names: &[&str]) -> Option<bool> {
+        skill_guard(&self.malformed, names);
+        ok(self.list.borrow().flag(cfg, names))
+    }
     pub fn override_(&self, cfg: Option<&ModCfg>, names: &[&str]) -> Option<Value> {
         skill_guard(&self.malformed, names);
         ok(self.list.borrow().override_(cfg, names))
@@ -83,6 +88,11 @@ impl Q {
     pub fn max(&self, cfg: Option<&ModCfg>, names: &[&str]) -> Option<f64> {
         skill_guard(&self.malformed, names);
         ok(self.list.borrow().max(cfg, names))
+    }
+    /// `Min(cfg, ...)` -- nil when no MIN mod.
+    pub fn min(&self, cfg: Option<&ModCfg>, names: &[&str]) -> Value {
+        skill_guard(&self.malformed, names);
+        ok(self.list.borrow().min(cfg, names))
     }
     pub fn list(&self, cfg: Option<&ModCfg>, names: &[&str]) -> Vec<Value> {
         skill_guard(&self.malformed, names);
@@ -332,7 +342,6 @@ pub(crate) fn calc_damage(
 }
 
 /// :143-153 `calcAilmentSourceDamage` without the breakdown rows (R8).
-#[allow(dead_code)] // first caller: R7.6 (ailments)
 pub(crate) fn calc_ailment_source_damage(
     q: &Q,
     conv: &ConversionTable,

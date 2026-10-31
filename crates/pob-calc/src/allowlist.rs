@@ -71,6 +71,12 @@
 //! `ok` (OccVortex only), are ALLOWLIST (`AverageDamage`, `TotalDPS`, `CritChance`/`CritMultiplier`/`CritEffect`, `<Type>HitAverage` /
 //! `CritAverage` / `MinBase` / `MaxBase`, leech / gain on hit / kill, warcry / Ruthless / Fist of War / double / triple damage, culling);
 //! none left ALLOWLIST; no new EXCLUDED key; the 13 EXCLUDED keys and their measured classes are unchanged.
+//! R7.6 re-measured with offence part D (CalcOffence.lua:4155-5770 -- secondary effect chances, bleed / poison / ignite, non-damaging
+//! ailments, knockback, stun, impale, Decay, burning ground; OC5 = LuaJIT on OccVortex (top), Dual Savior (first nested) and 53 of the 56
+//! offence runs Rust executes, the other 3 the R7.10 minion class): 49 newly emitted keys, all `ok` (OccVortex only), are ALLOWLIST
+//! (`<Ailment>ChanceOnHit` / `ChanceOnCrit`, `Ignite*` (DPS, damage, duration, stacks, rolls, DoT multis, eff. mult), `Chill*` / `Freeze*`
+//! / `Shock*` chance / duration / effect, `Knockback*`, `Impale*` chances, `EnemyStun*`, `ChaosPoisonChance`); none left ALLOWLIST; no new
+//! EXCLUDED key; the 13 EXCLUDED keys and their measured classes are unchanged.
 
 use indexmap::IndexMap;
 
@@ -136,11 +142,11 @@ const MIRAGE_BREAKDOWN: &str = "offence: Dual Savior -- calcs.mirages (CalcMirag
 /// per-second cost of an upfront cost x use speed, R7.7): mismatch on OccVortex (OC2 `0`/`false`, OC6 and golden `240.00000000000003`/`true`).
 const OFFENCE_TAIL_COST: &str = "offence: CalcOffence.lua:5920-5948 (R7.7) rewrites the per-second cost from the upfront cost x speed after part A (:1805/:1813, = LuaJIT OC2); mismatch on OccVortex, not emitted on the other 5";
 
-/// 711 keys, sorted (byte order): `ok` on every golden that emits them, on none `mismatch` or `extra` (R5.4: measured
+/// 760 keys, sorted (byte order): `ok` on every golden that emits them, on none `mismatch` or `extra` (R5.4: measured
 /// with `ParseMode::Full`, the default; R5.5a re-measured with the cluster-jewel subgraphs: +20; R5.5b radius jewels: +1;
 /// R5.5c timeless jewels: +23; R6.3 gem requirements: +4; R6.5 skills + flasks in perform: +30; R6.6 reservations: +4, `ReqIntString` -1;
 /// R6.7 buffs/curses/guards: +128; R6.8 ailments/exposures/ally life: +13; R7.3 offence part A: +43; R7.4 offence part B: +7;
-/// R7.5 offence part C: +106).
+/// R7.5 offence part C: +106; R7.6 offence part D (ailments): +49).
 pub const ALLOWLIST: &[&str] = &[
     "AbsorptionCharges",
     "AbsorptionChargesMax",
@@ -201,6 +207,8 @@ pub const ALLOWLIST: &[&str] = &[
     "BasePhysicalDamageReduction",
     "BasePhysicalDamageReductionWhenHit",
     "BleedAvoidChance",
+    "BleedChanceOnCrit",
+    "BleedChanceOnHit",
     "BlindAvoidChance",
     "BlindEffectMod",
     "BlitzCharges",
@@ -216,6 +224,8 @@ pub const ALLOWLIST: &[&str] = &[
     "BrineCharges",
     "BrineChargesMax",
     "BrittleAvoidChance",
+    "BrittleChanceOnCrit",
+    "BrittleChanceOnHit",
     "BrutalCharges",
     "BrutalChargesMax",
     "BrutalChargesMin",
@@ -246,6 +256,7 @@ pub const ALLOWLIST: &[&str] = &[
     "ChaosMinBase",
     "ChaosMindOverMatter",
     "ChaosMoMHitPool",
+    "ChaosPoisonChance",
     "ChaosRecoupableDamageTaken",
     "ChaosResist",
     "ChaosResistOver75",
@@ -263,6 +274,13 @@ pub const ALLOWLIST: &[&str] = &[
     "ChaosTotalPool",
     "ChaostakenFlat",
     "ChillAvoidChance",
+    "ChillChance",
+    "ChillChanceOnCrit",
+    "ChillChanceOnHit",
+    "ChillDuration",
+    "ChillDurationMod",
+    "ChillEffectMod",
+    "ChillSourceEffect",
     "ColdAegis",
     "ColdAegisDisplay",
     "ColdAfterReductionTakenHitMulti",
@@ -314,6 +332,7 @@ pub const ALLOWLIST: &[&str] = &[
     "CritDamageRolls",
     "CritEffect",
     "CritExtraDamageReduction",
+    "CritIgniteDotMulti",
     "CritMultiplier",
     "CullMultiplier",
     "CullPercent",
@@ -363,6 +382,8 @@ pub const ALLOWLIST: &[&str] = &[
     "EnemyEnergyShieldRegen",
     "EnemyLifeRegen",
     "EnemyManaRegen",
+    "EnemyStunDuration",
+    "EnemyStunThresholdMod",
     "EnergyShield",
     "EnergyShieldDegen",
     "EnergyShieldLeech",
@@ -456,6 +477,10 @@ pub const ALLOWLIST: &[&str] = &[
     "FortificationStacksOver20",
     "FortifyDuration",
     "FreezeAvoidChance",
+    "FreezeChance",
+    "FreezeChanceOnCrit",
+    "FreezeChanceOnHit",
+    "FreezeDurationMod",
     "FrenzyCharges",
     "FrenzyChargesDuration",
     "FrenzyChargesMax",
@@ -473,7 +498,25 @@ pub const ALLOWLIST: &[&str] = &[
     "HexDoomLimit",
     "HitChance",
     "IgniteAvoidChance",
+    "IgniteChance",
+    "IgniteChanceOnCrit",
+    "IgniteChanceOnHit",
+    "IgniteChancePerHit",
+    "IgniteDPS",
+    "IgniteDamage",
+    "IgniteDotMulti",
+    "IgniteDuration",
+    "IgniteEffMult",
+    "IgniteFireMax",
+    "IgniteFireMin",
+    "IgniteRollAverage",
+    "IgniteStackPotential",
+    "IgniteStacksMax",
+    "IgniteTotalMax",
+    "IgniteTotalMin",
     "ImpaleAvoidChance",
+    "ImpaleChance",
+    "ImpaleChanceOnCrit",
     "ImpaleDuration",
     "ImpaleDurationMod",
     "InherentRageLoss",
@@ -482,6 +525,9 @@ pub const ALLOWLIST: &[&str] = &[
     "InspirationChargesMax",
     "Int",
     "InterruptStunAvoidChance",
+    "KnockbackChance",
+    "KnockbackChanceOnCrit",
+    "KnockbackChanceOnHit",
     "Life",
     "LifeCancellableReservation",
     "LifeCost",
@@ -686,6 +732,8 @@ pub const ALLOWLIST: &[&str] = &[
     "PhysicalTotalPool",
     "PhysicaltakenFlat",
     "PoisonAvoidChance",
+    "PoisonChanceOnCrit",
+    "PoisonChanceOnHit",
     "PowerCharges",
     "PowerChargesDuration",
     "PowerChargesMax",
@@ -725,8 +773,12 @@ pub const ALLOWLIST: &[&str] = &[
     "RuthlessBlowHitMultiplier",
     "RuthlessBlowMaxCount",
     "SapAvoidChance",
+    "SapChanceOnCrit",
+    "SapChanceOnHit",
     "ScaledDamageEffect",
     "ScorchAvoidChance",
+    "ScorchChanceOnCrit",
+    "ScorchChanceOnHit",
     "SecondMinimalMaximumHitTaken",
     "SelfBleedDuration",
     "SelfBleedEffect",
@@ -750,6 +802,9 @@ pub const ALLOWLIST: &[&str] = &[
     "SelfStunChance",
     "ShieldBlockChance",
     "ShockAvoidChance",
+    "ShockChance",
+    "ShockChanceOnCrit",
+    "ShockChanceOnHit",
     "ShowBlockEffect",
     "ShowBurst",
     "SilenceAvoidChance",

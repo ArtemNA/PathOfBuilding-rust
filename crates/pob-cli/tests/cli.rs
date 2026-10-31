@@ -110,6 +110,8 @@ fn experimental_env_disables_the_filter() {
 /// `AccuracyHitChance`, `CastRate`, `HitChance`, `Speed`, `Time`, `enemyBlockChance`); the other five unchanged (gated top offence).
 /// R7.5 (offence part C, OC4 = LuaJIT on every offence run Rust executes but the 3 R7.10 minion runs; allowlist 605 -> 711): OccVortex
 /// 691/690 (+106: damage by type, crits, leech, gain on hit / kill, DPS, warcry / Ruthless / Fist of War); the other five unchanged.
+/// R7.6 (offence part D -- ailments, OC5 = LuaJIT on every offence run Rust executes but the 3 R7.10 minion runs; allowlist 711 -> 760):
+/// OccVortex 740/739 (+49: ailment chances, ignite / chill / freeze / shock, knockback, impale chances, enemy stun); the other five unchanged.
 /// O9: `VaalArcticArmourMitigation` is `ok`, not `exact` (golden `+0`, Rust `-0`) -- hence exact = ok - 1.
 #[test]
 fn cli_stats_against_goldens() {
@@ -119,7 +121,7 @@ fn cli_stats_against_goldens() {
         ("Dual Wield Cospris CoC - Lethal Pride", 512, 511),
         ("Generals Perforate Zerker", 526, 525),
         ("Mirage Archer Toxic Rain", 513, 512),
-        ("OccVortex", 691, 690),
+        ("OccVortex", 740, 739),
     ];
     let mut got = Vec::new();
     for (g, (name, _, _)) in GOLDEN_BUILDS.iter().zip(pinned) {
