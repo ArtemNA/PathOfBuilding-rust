@@ -50,6 +50,9 @@ dependencies = [
  "pob-data",
  "pob-golden",
  "pob-lua",
+ "pob-mods",
+ "pob-parser",
+ "pob-tree",
  "serde",
  "serde_json",
 ]

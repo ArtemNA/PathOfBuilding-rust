@@ -4,11 +4,13 @@
 
 #![forbid(unsafe_code)]
 
+pub mod config;
 pub mod load;
 pub mod model;
 pub mod sanitise;
 pub mod xml;
 
+pub use config::{ConfigModLists, ConfigState, ConfigValue};
 pub use load::{active_config, active_item_set, active_skill_groups, active_spec, load_build_xml, meta_of};
 pub use model::*;
 pub use sanitise::sanitise_text;
