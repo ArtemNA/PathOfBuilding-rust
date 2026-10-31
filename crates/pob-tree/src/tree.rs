@@ -467,7 +467,7 @@ impl PassiveTree {
         };
         t.build_classes()?;
         t.build_nodes()?;
-        t.build_links();
+        t.build_links()?;
         t.build_nodes_in_radius();
         t.add_class_start_conditions();
         Ok(t)
@@ -574,19 +574,7 @@ impl PassiveTree {
                 },
             );
         }
-        let mut ids: Vec<(u32, &RawNode)> = Vec::with_capacity(json.nodes.len());
-        for (key, raw) in json.nodes.iter() {
-            // :510 `self.nodes.root = nil`.
-            if key == "root" {
-                continue;
-            }
-            let id = pob_lua::tonumber(key)
-                .and_then(as_id)
-                .ok_or_else(|| TreeError(format!("PassiveTree: node key '{key}' is not an id")))?;
-            ids.push((id, raw));
-        }
-        ids.sort_by_key(|(id, _)| *id);
-        for (id, raw) in ids {
+        for (id, raw) in self.raw_nodes()? {
             let mut node = self.migrate_node(id, raw);
             self.classify_node(&mut node, raw);
             self.attach_group(&mut node);
@@ -595,6 +583,25 @@ impl PassiveTree {
             self.nodes.push(node);
         }
         Ok(())
+    }
+
+    /// `pairs(self.nodes)` (:521) keyed by `nodeMap[node.id]` (:543), ascending id (D13). The id is the migrated `node.id`
+    /// (:525-528: `node.skill` on >= 3.10, the legacy `id` before) -- not the table key: 2_6 keeps `nodes` as an array.
+    fn raw_nodes(&self) -> Result<Vec<(u32, &'static RawNode)>, TreeError> {
+        let json = self.json;
+        let mut ids: Vec<(u32, &'static RawNode)> = Vec::with_capacity(json.nodes.len());
+        for (key, raw) in json.nodes.iter() {
+            // :510 `self.nodes.root = nil` (>= 3.10).
+            if self.version_num >= 3.1 && key == "root" {
+                continue;
+            }
+            let id = if self.version_num >= 3.1 { raw.skill } else { raw.id }
+                .and_then(as_id)
+                .ok_or_else(|| TreeError(format!("PassiveTree: node '{key}' has no id")))?;
+            ids.push((id, raw));
+        }
+        ids.sort_by_key(|(id, _)| *id);
+        Ok(ids)
     }
 
     /// :522-541 plus the `<= 3.09` passive-point stat line (:538-540).
@@ -815,9 +822,10 @@ impl PassiveTree {
     }
 
     /// :620-650 -- `linkedId` is every `out`, then every `in`, each in Lua key order.
-    fn build_links(&mut self) {
+    fn build_links(&mut self) -> Result<(), TreeError> {
+        let raws: HashMap<u32, &'static RawNode> = self.raw_nodes()?.into_iter().collect();
         for node in &mut self.nodes {
-            let raw = &self.json.nodes[node.id.to_string().as_str()];
+            let raw = raws[&node.id];
             for list in [&raw.out, &raw.in_].into_iter().flatten() {
                 for (_, r) in list.entries() {
                     if let Some(other) = node_ref_id(r) {
@@ -826,6 +834,7 @@ impl PassiveTree {
                 }
             }
         }
+        Ok(())
     }
 
     /// :713-721 -- every Normal node next to a class start gets a Condition flag naming that class.

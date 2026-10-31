@@ -220,6 +220,153 @@ fn build_ordered_slots(spec: &PassiveSpec, set: &pob_build::ItemSetModel) -> Vec
     ordered
 }
 
+/// `ItemsTab:IsItemValidForSlot(item, slotName)` (ItemsTab.lua:2560-2607) for `orderedSlots`; `sel(name)` is the active item
+/// set's `selItemId` of another slot (`itemSet["Weapon 1"].selItemId`). A `nil` result is `false`.
+fn is_item_valid_for_slot(item: &Item, slot_name: &str, spec: &PassiveSpec, items: &ParsedItems, sel: impl Fn(&str) -> f64) -> bool {
+    let item_ty = item.ty.as_deref();
+    let base = item.base.expect("itemsTab.items hold resolved bases (ItemsTab.lua:1264)");
+    // :2562 `slotName:match("^([%a ]+) (%d+)$")`
+    let (slot_type, slot_id) = match slot_name.rsplit_once(' ') {
+        Some((head, digits))
+            if !digits.is_empty()
+                && digits.bytes().all(|b| b.is_ascii_digit())
+                && !head.is_empty()
+                && head.bytes().all(|b| b.is_ascii_alphabetic() || b == b' ') =>
+        {
+            (head, Some(digits))
+        }
+        _ => (slot_name, None),
+    };
+    if slot_type == "Jewel" {
+        // :2566-2588 -- `self.build.spec.tree.nodes[tonumber(slotId)] or self.build.spec.nodes[...]`; the socket slots are tree
+        // sockets (`build_ordered_slots`), so the tree node is the one found.
+        let id = slot_id.and_then(pob_lua::tonumber).and_then(as_node_id);
+        let Some(node) = id.and_then(|id| spec.tree.node(id)) else {
+            return false;
+        };
+        if item_ty != Some("Jewel") {
+            return false;
+        }
+        // PassiveTree.lua:656-658 `socket.charmSocket = true` for a socket named "Charm Socket".
+        let charm_socket = spec.tree.sockets.contains_key(&node.id) && node.name.as_deref() == Some("Charm Socket");
+        let charm = base.sub_type.as_deref() == Some("Charm");
+        if charm_socket || charm {
+            return charm_socket && charm;
+        }
+        let Some(exp) = node.expansion_jewel.as_ref() else {
+            // :2578 cluster jewels only in expansion sockets; :2581 an ordinary socket fits anything else
+            return item.cluster_jewel.is_none();
+        };
+        if exp.size == Some(2.0) {
+            return true;
+        }
+        return match item.cluster_jewel {
+            None => true,
+            Some(cj) => {
+                let size = exp
+                    .size
+                    .unwrap_or_else(|| panic!("Classes/ItemsTab.lua:2586: attempt to compare number with nil (expansionJewel.size)"));
+                cj.size_index <= size
+            }
+        };
+    }
+    if item_ty == Some(slot_type) {
+        return true;
+    }
+    if item_ty == Some("Tincture") && slot_type == "Flask" {
+        return true;
+    }
+    if item_ty == Some("Jewel") && base.sub_type.as_deref() == Some("Abyss") && slot_name.contains("Abyssal Socket") {
+        return true;
+    }
+    match slot_name {
+        "Weapon 1" | "Weapon 1 Swap" | "Weapon" => base.weapon.is_some(),
+        "Weapon 2" | "Weapon 2 Swap" => {
+            let weapon1_sel = sel(if slot_name == "Weapon 2" { "Weapon 1" } else { "Weapon 1 Swap" });
+            let weapon1_type = parsed_item(items, weapon1_sel).map_or("None", |w| w.base.expect("resolved base").ty.as_str());
+            let wti = &rules().weapon_type_info;
+            let one_hand = |ty: Option<&str>| ty.and_then(|t| wti.get(t)).is_some_and(|i| i.one_hand == Some(true));
+            if weapon1_type == "None" {
+                item_ty == Some("Shield") || one_hand(item_ty)
+            } else if weapon1_type == "Bow" {
+                item_ty == Some("Quiver")
+            } else if wti
+                .get(weapon1_type)
+                .unwrap_or_else(|| {
+                    panic!("Classes/ItemsTab.lua:2598: attempt to index a nil value (data.weaponTypeInfo[{weapon1_type:?}])")
+                })
+                .one_hand
+                == Some(true)
+            {
+                item_ty == Some("Shield")
+                    || (one_hand(item_ty)
+                        && ((weapon1_type == "Wand" && item_ty == Some("Wand")) || (weapon1_type != "Wand" && item_ty != Some("Wand"))))
+            } else {
+                // a two-handed Weapon 1 accepts nothing beside it
+                false
+            }
+        }
+        _ => false,
+    }
+}
+
+/// An integral, non-negative Lua number that fits a node id.
+fn as_node_id(n: f64) -> Option<u32> {
+    (n >= 0.0 && n.fract() == 0.0 && n <= f64::from(u32::MAX)).then_some(n as u32)
+}
+
+/// `self.itemsTab.items[selItemId]`.
+fn parsed_item(items: &ParsedItems, id: f64) -> Option<&Rc<Item>> {
+    (id >= 0.0 && id.fract() == 0.0).then(|| items.get(&(id as u64))).flatten()
+}
+
+/// `ItemsTab:PopulateSlots()` (ItemsTab.lua:1652-1657) as the load leaves the slots -- ItemsTab:Load's `SetActiveItemSet`
+/// (:1615) and TreeTab:PostLoad (TreeTab.lua:533): `ItemSlotControl:Populate` (ItemSlotControl.lua:86-123) unequips an item
+/// the slot does not accept (`SetSelItemId(0)`, :105-107 -- e.g. Weapon 2 beside a two-handed Weapon 1) and empties the
+/// abyssal sockets past the parent item's `abyssalSocketCount` (:109-122). Upstream walks `pairs(self.slots)`; the one order
+/// dependence (Weapon 2 reads Weapon 1's selItemId, which Weapon 1's own Populate clears only if it holds a non-weapon) is
+/// resolved in `orderedSlots` order (Weapon 1 first). Returns the upstream branches not ported.
+fn populate_slots(slots: &mut [Slot], spec: &PassiveSpec, items: &ParsedItems) -> Vec<String> {
+    let mut unimplemented = Vec::new();
+    for i in 0..slots.len() {
+        let sel_id = slots[i].sel_item_id;
+        let valid = parsed_item(items, sel_id).is_some_and(|item| {
+            is_item_valid_for_slot(item, &slots[i].slot_name, spec, items, |name| {
+                slots.iter().find(|s| s.slot_name == name).map_or(0.0, |s| s.sel_item_id)
+            })
+        });
+        if slots[i].node_id.is_some() {
+            if !valid && sel_id != 0.0 {
+                // :72-79 SetSelItemId on a socket writes `spec.jewels[nodeId] = 0` and rebuilds the cluster graphs.
+                unimplemented.push(format!(
+                    "ItemSlotControl.lua:105-106 + :72-79 unequipping the invalid jewel {sel_id} from {} (spec.jewels, BuildClusterJewelGraphs)",
+                    slots[i].slot_name
+                ));
+            }
+            continue;
+        }
+        if !valid {
+            slots[i].sel_item_id = 0.0;
+        }
+        // :109-122 -- `self.abyssalSocketList` holds the slots whose parent is this one, in creation order.
+        let count = if slots[i].sel_item_id > 0.0 {
+            parsed_item(items, slots[i].sel_item_id).map_or(0.0, |it| it.abyssal_socket_count)
+        } else {
+            0.0
+        };
+        let mut n = 0.0;
+        for slot in slots.iter_mut() {
+            if slot.parent_slot == Some(i) {
+                n += 1.0;
+                if n > count {
+                    slot.sel_item_id = 0.0;
+                }
+            }
+        }
+    }
+    unimplemented
+}
+
 /// `build.itemsTab.items` -- ItemsTab.lua:1216-1266; only items whose base resolved are kept (:1264).
 pub fn parse_items(build: &BuildModel, mode: pob_parser::ParseMode) -> IndexMap<u64, Rc<Item>> {
     let mut items = IndexMap::new();
@@ -585,7 +732,8 @@ impl BuildShared {
         prof.mark("once per session: spec load + PostLoad");
         let (config, config_lists) = load_config(build, parse_mode)?;
         prof.mark("once per session: config BuildModList");
-        let slots = build_ordered_slots(&spec, active_item_set(build));
+        let mut slots = build_ordered_slots(&spec, active_item_set(build));
+        populate_slots(&mut slots, &spec, &items);
         let skills_tab = SkillsState::load_tab(build, &slots, &items);
         prof.mark("once per session: SkillsTab:Load");
         Ok(BuildShared {
@@ -1110,6 +1258,8 @@ fn init_env_core(
     // --- (12) items (:800-1370) --------------------------------------------------------------------------------------
     let item_set = active_item_set(&build);
     env.ordered_slots = build_ordered_slots(&env.spec, item_set);
+    let populate_unimplemented = populate_slots(&mut env.ordered_slots, &env.spec, &parsed_items);
+    env.unimplemented.extend(populate_unimplemented);
     env.items = parsed_items;
     // `build.skillsTab` as the first BuildOutput finds it: SkillsTab:Load + UpdateSocketGroups (Build.lua:691), R6.2/R6.3.
     if skills {

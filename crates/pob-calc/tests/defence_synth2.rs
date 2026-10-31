@@ -297,7 +297,6 @@ fn defence_synth2_corpus_shape() {
 }
 
 #[test]
-#[ignore = "R4-synth-2: 157 mismatches in 2 scenarios (res-locus-mine-bow 155: two-handed Weapon 1 does not hide Weapon 2; ee-3-16-tree 2: tree 3_16 not loadable)"]
 fn defence_synth2_corpus_matches_luajit() {
     let names = scenario_names();
     assert!(names.len() >= MIN_SCENARIOS, "{} scenarios < {MIN_SCENARIOS}", names.len());

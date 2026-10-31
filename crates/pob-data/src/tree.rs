@@ -166,7 +166,9 @@ pub struct TreeJson {
     pub tree: Option<String>,
     pub classes: LuaTable<TreeClass>,
     pub groups: LuaTable<TreeGroup>,
-    /// Keyed by node id (string). Modern trees include `"root"`.
+    /// Keyed by node id (string). Modern trees include `"root"`. 2_6 writes `nodes` as a Lua array: it is keyed by the Lua key
+    /// `"1".."n"` (what `pairs` sees); the node id is the node's own `id` field (PassiveTree.lua:543 `nodeMap[node.id]`).
+    #[serde(deserialize_with = "nodes_table")]
     pub nodes: OrderedMap<TreeNode>,
     /// Legacy trees keep `root` beside `nodes`.
     pub root: Option<TreeNode>,
@@ -183,6 +185,14 @@ pub struct TreeJson {
     /// (CalcSetup.lua:588 `tree.characterData and tree.characterData[classId] or tree.classes[classId]`, MINEFIELD D19.5).
     #[serde(rename = "characterData")]
     pub character_data: Option<OrderedMap<CharacterData>>,
+}
+
+/// `tree.nodes`: a JSON object, or a JSON array (2_6) keyed by its 1-based Lua key.
+fn nodes_table<'de, D: Deserializer<'de>>(d: D) -> Result<OrderedMap<TreeNode>, D::Error> {
+    Ok(match LuaTable::<TreeNode>::deserialize(d)? {
+        LuaTable::Object(m) => OrderedMap(m),
+        LuaTable::Array(v) => OrderedMap(v.into_iter().enumerate().map(|(i, n)| ((i + 1).to_string(), n)).collect()),
+    })
 }
 
 /// One `tree.characterData[classId]` entry of a 3.06 tree.
@@ -206,20 +216,81 @@ impl TreeJson {
 /// The trees committed under `data/tree/` (golden versions + latest); the other 37 live in `data/tree/_ondemand/`.
 pub const COMMITTED_TREE_VERSIONS: [&str; 4] = ["3_6", "3_12", "3_13", "3_29"];
 
-/// `treeVersions[ver].num` (GameVersions.lua) for the committed versions -- the number decides the migration branch
-/// (`>= 3.10`), so it is data, not a parse of the name ("3_6" is 3.06). Same table as pob-ts `TREE_VERSION_NUM`.
+/// One `treeVersions[ver]` entry of GameVersions.lua (`url` is UI only and not exported).
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TreeVersion {
+    pub ver: String,
+    pub display: String,
+    pub num: f64,
+}
+
+/// `data-patches/tree-versions.json` (`tools/lua-corpus/export-tree-versions.ts`): GameVersions.lua taken from LuaJIT -- the converter
+/// snapshots the tree data but not this table.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct TreeVersions {
+    format: u32,
+    #[allow(dead_code)]
+    producer: Json,
+    manifest_sha256: String,
+    pob_sha: String,
+    pub latest_tree_version: String,
+    pub default_tree_version: String,
+    /// In `treeVersionList` order.
+    pub tree_versions: Vec<TreeVersion>,
+}
+
+/// `<repo>/data-patches/tree-versions.json`.
+pub fn tree_versions_patch_path() -> std::path::PathBuf {
+    crate::data_dir().join("..").join("data-patches").join("tree-versions.json")
+}
+
+/// Parse the tree-versions patch and check it against the lock (`manifestSha256` and `pobSha`).
+pub fn parse_tree_versions(text: &str, lock_sha: &str, lock_pob: &str) -> Result<TreeVersions, DataError> {
+    let t: TreeVersions = serde_json::from_str(text).map_err(|e| DataError(format!("pob-data: tree-versions.json: {e}")))?;
+    if t.format != 1 {
+        return Err(DataError(format!("pob-data: tree-versions.json: format {}, expected 1", t.format)));
+    }
+    if t.manifest_sha256 != lock_sha || t.pob_sha != lock_pob {
+        return Err(DataError(format!(
+            "pob-data: tree-versions.json was taken from data {} / PoB {}, but data.lock has {lock_sha} / {lock_pob} -- re-take it:              node tools/lua-corpus/export-tree-versions.ts",
+            t.manifest_sha256, t.pob_sha
+        )));
+    }
+    Ok(t)
+}
+
+/// GameVersions.lua of this process (read once, after the `data.lock` check).
+pub fn tree_versions() -> Result<&'static TreeVersions, DataError> {
+    static T: OnceLock<Result<TreeVersions, DataError>> = OnceLock::new();
+    T.get_or_init(|| {
+        let dir = crate::ensure_data()?;
+        let lock = crate::verify_lock(dir, &crate::lock_path(dir))?;
+        let path = tree_versions_patch_path();
+        let text = std::fs::read_to_string(&path).map_err(|e| DataError(format!("pob-data: {}: {e}", path.display())))?;
+        parse_tree_versions(&text, &lock.manifest_sha256, &lock.pob_sha)
+    })
+    .as_ref()
+    .map_err(Clone::clone)
+}
+
+/// `treeVersionList` (GameVersions.lua:11).
+pub fn tree_version_list() -> Result<Vec<&'static str>, DataError> {
+    Ok(tree_versions()?.tree_versions.iter().map(|v| v.ver.as_str()).collect())
+}
+
+/// `treeVersions[ver].num` (GameVersions.lua) -- the number decides the migration branch (`>= 3.10`), so it is data, not a parse
+/// of the name ("3_6" is 3.06). An unknown version is an error naming it (W4).
 pub fn tree_version_num(version: &str) -> Result<f64, DataError> {
-    Ok(match version {
-        "3_6" => 3.06,
-        "3_12" => 3.12,
-        "3_13" => 3.13,
-        "3_29" => 3.29,
-        _ => {
-            return Err(DataError(format!(
-                "unknown tree version '{version}' (have: {}); add it to tree_version_num",
-                COMMITTED_TREE_VERSIONS.join(", ")
-            )));
-        }
+    let t = tree_versions()?;
+    t.tree_versions.iter().find(|v| v.ver == version).map(|v| v.num).ok_or_else(|| {
+        DataError(format!(
+            "unknown tree version '{version}' (GameVersions.lua treeVersions has {} versions, {} .. {})",
+            t.tree_versions.len(),
+            t.tree_versions.first().map_or("", |v| v.ver.as_str()),
+            t.latest_tree_version
+        ))
     })
 }
 
