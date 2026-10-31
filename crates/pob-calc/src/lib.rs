@@ -5,7 +5,9 @@
 //! (R3-ARCH §3) is `tests/env_fixture.rs` against the R3.1 fixtures in `tests/fixtures/` (LuaJIT + pob-ts dumps).
 //! `perform` = CalcPerform.lua:1286-3792 (CALC-ARCH §8 subset); its gate is `tests/perform_fixture.rs` against the pob-ts
 //! perform-only fixtures (`tools/lua-corpus/export-perform-only.ts`). `defence` = CalcDefence.lua:511-1671 (R4.3), gated by
-//! `tests/defence_fixture.rs` against `tools/lua-corpus/export-defence-only.ts`.
+//! `tests/defence_fixture.rs` against `tools/lua-corpus/export-defence-only.ts`. `estimations` = CalcDefence.lua:1674-3786
+//! (`buildDefenceEstimations`, R4.4b) on top of `pools`; the full output (perform + defence + estimations) is gated by
+//! `tests/full_fixture.rs` against the pob-ts full-output fixtures (`<build>.r4-pobts.json`, R4-ARCH gate (a)).
 
 #![forbid(unsafe_code)]
 
@@ -13,6 +15,7 @@ pub mod calc_lib;
 pub mod calculate;
 pub mod defence;
 pub mod env;
+pub mod estimations;
 pub mod init_env;
 pub mod output;
 pub mod perform;
@@ -21,6 +24,7 @@ pub mod setup;
 
 pub use calculate::{CalcError, CalculateOptions, CalculateResult, Timings, calculate, calculate_file, calculate_with};
 pub use defence::{armour_reduction, armour_reduction_f, defence, hit_chance};
+pub use estimations::estimations;
 pub use output::{OutValue, Output, StatValue, output_to_stats};
 pub use perform::{ActorState, PerformState, PhaseFn, Who, finish_output, noop_phase, perform};
 

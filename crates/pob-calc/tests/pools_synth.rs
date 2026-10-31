@@ -9,17 +9,15 @@
 //! A LuaJIT error counts as ONE field and matches when Rust returns a `PoolError` with the same `CalcDefence.lua` line
 //! number (only the line is compared: the message wording is not ported). The actor answers only the captured reads.
 
-#[path = "../src/pools.rs"]
-#[allow(dead_code)]
-mod pools;
+use pob_calc::pools;
 
 use std::collections::HashMap;
 
-use pob_lua::format_g;
-use pools::{
+use pob_calc::pools::{
     ALLY_LIFE_POOL_LIST, Aegis, AllyPool, AllyPools, DMG_TYPE_LIST, DamageTable, DmgType, Guard, PoolActor, PoolError, PoolTable,
     PoolsResult,
 };
+use pob_lua::format_g;
 use serde_json::Value as Json;
 
 /// Producer report: pob-ts = LuaJIT on all of these.

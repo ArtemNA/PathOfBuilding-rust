@@ -21,8 +21,8 @@ use crate::perform::{PerformState, PhaseFn, finish_output, perform};
 use crate::{EnvMeta, meta_of};
 
 /// What `calculate` plugs into perform's `calcs.defence` / `calcs.buildDefenceEstimations` call sites (CalcPerform.lua:
-/// 3792-3795). `None` records the call site in `unimplemented`. The default is the real `defence` (R4.3) and no
-/// estimations (until R4.4).
+/// 3792-3795). `None` records the call site in `unimplemented`. The default is the real `defence` (R4.3) and the real
+/// `buildDefenceEstimations` (R4.4b).
 #[derive(Clone, Copy)]
 pub struct CalculateOptions {
     pub defence: Option<PhaseFn>,
@@ -33,7 +33,7 @@ impl Default for CalculateOptions {
     fn default() -> CalculateOptions {
         CalculateOptions {
             defence: Some(crate::defence::defence),
-            estimations: None,
+            estimations: Some(crate::estimations::estimations),
         }
     }
 }

@@ -172,22 +172,6 @@ fn defence_only_equals_pob_ts_for_six_goldens() {
     assert!(bad.is_empty(), "{} differences:\n{}", bad.len(), bad.join("\n"));
 }
 
-/// `calculate`'s default now plugs the real defence (estimations still a stub): same stats as the explicit options.
-#[test]
-fn default_options_run_real_defence() {
-    let g = GOLDEN_BUILDS.iter().find(|g| g.name == "OccVortex").unwrap();
-    let a = calculate_file(g.xml_path(), CalculateOptions::default()).unwrap();
-    let b = run("OccVortex");
-    assert!(a.stats.contains_key("EvadeChance"));
-    assert_eq!(stats_dump(&a).0, stats_dump(&b).0);
-    assert!(
-        a.env
-            .unimplemented
-            .iter()
-            .any(|u| u == "CalcPerform.lua:3793-3795 buildDefenceEstimations (P4.4c)")
-    );
-}
-
 /// The comparator is not vacuous on the defence keys: a flipped bit and a dropped key are caught.
 #[test]
 fn comparator_is_not_vacuous() {

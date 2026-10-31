@@ -7,15 +7,13 @@
 //! The Rust actor answers ONLY those reads -- anything else panics, so a read the probe did not capture cannot pass silently.
 //! Every column of every call is compared as a `%.17g` string (`-nan` folded into `nan`, as the producer does).
 
-#[path = "../src/pools.rs"]
-#[allow(dead_code)]
-mod pools;
+use pob_calc::pools;
 
 use std::collections::HashMap;
 
+use pob_calc::pools::{Aegis, DMG_TYPE_LIST, DamageTable, DmgType, Guard, PoolActor, PoolTable, PoolsResult};
 use pob_golden::registry::GOLDEN_BUILDS;
 use pob_lua::format_g;
-use pools::{Aegis, DMG_TYPE_LIST, DamageTable, DmgType, Guard, PoolActor, PoolTable, PoolsResult};
 use serde_json::Value as Json;
 
 /// 21 pool calls x 32 columns + 15 taken calls x 6 columns.
