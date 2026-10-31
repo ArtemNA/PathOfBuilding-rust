@@ -17,6 +17,7 @@ pub mod gems;
 pub mod globals;
 pub mod item_bases;
 pub mod mod_cache;
+pub mod mod_parser;
 pub mod mod_scalability;
 pub mod pantheons;
 pub mod rules;

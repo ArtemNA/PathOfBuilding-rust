@@ -136,6 +136,7 @@ name = "pob-parser"
 version = "0.1.0"
 dependencies = [
  "pob-data",
+ "pob-lua",
  "pob-mods",
 ]
 
