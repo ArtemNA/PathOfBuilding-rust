@@ -47,7 +47,7 @@ fn calc_file_json_has_meta_and_allowlisted_stats() {
         parsed
             .unimplemented
             .iter()
-            .any(|u| u.starts_with("CalcSetup.lua:1941-1945 buildActiveSkillModList"))
+            .any(|u| u.starts_with("CalcPerform.lua:1296-1512 the ") && u.contains("not handed to perform yet (R6.5)"))
     );
 }
 

@@ -1,21 +1,23 @@
-//! R6.3 gate: the skill half of `calcs.initEnv` (CalcSetup.lua :1308-1356, :1448-1940, CalcActiveSkill.lua `createActiveSkill`) against the
-//! LuaJIT fixtures of R6.1 (`tests/fixtures/<build>.skills.json`, producer `tools/lua-corpus/export-skills.ts`), 6 goldens,
-//! `ParseMode::Full`, skills on.
+//! R6.3/R6.4 gate: the skill half of `calcs.initEnv` (CalcSetup.lua :1308-1356, :1448-1945, CalcActiveSkill.lua `createActiveSkill` and
+//! `buildActiveSkillModList`) against the LuaJIT fixtures of R6.1 (`tests/fixtures/<build>.skills.json`, producer
+//! `tools/lua-corpus/export-skills.ts`), 6 goldens, `ParseMode::Full`, skills on.
 //!
 //!   * `socketGroups` -- every field the probe dumps (D15/R13: a gem with several candidate variants is masked by the probe; Rust's id must
-//!     be one of `ambiguousVariants`);
-//!   * every active skill: `activeEffect`, `effectList` (order), `supportList` (order), `skillTypes`, `minionSkillTypes`, `socketGroup`,
-//!     `slotName`, `summonSkill`, `disableReason`; `skillFlags` -- the flags createActiveSkill sets must all be in LuaJIT's;
-//!   * `mainSkill`, `requirementsTableGems`, `env.modDB` after initEnv (mods as a multiset per name, conditions, multipliers).
+//!     be one of `ambiguousVariants`), the `srcInstance.skillPart*`/`skillMinion*`/... writes of `buildActiveSkillModList` included;
+//!   * every active skill, every field the probe dumps: effects (order; `grantedEffectLevel` = the level table), `skillTypes`, `skillFlags`
+//!     (all of them), `skillCfg`/`weapon1Cfg`/`weapon2Cfg` (every field), `weapon1Flags`/`weapon2Flags`, `skillData` (`%.17g`),
+//!     `skillModList` (the list's own mods as a multiset of `formatSourceMod`, MINEFIELD-RUST R13; `baseSame`), `buffList` (a multiset of
+//!     entries, each `modList` a multiset), `extraSkillModList`, `minionList`, `triggeredBy`, `skillPart*`, `skillTotemId`;
+//!   * the totals (`skillModCount`, buffList entries), `mainSkill`, `requirementsTableGems`, `env.modDB` after initEnv (mods as a multiset
+//!     per name, conditions, multipliers).
 //!
-//! What LuaJIT's dump holds that this phase cannot have yet is listed per key, not hidden: the fields `buildActiveSkillModList` (R6.4,
-//! CalcActiveSkill.lua:229-877) writes -- onto the skill, its effects and the gem instances -- and `displaySkillListCalcs` (the CALCS-mode
-//! initEnv of CalcsTab, not MAIN). Each such key is counted and printed; a difference on any other key fails.
+//! What LuaJIT's dump holds that MAIN cannot have is counted per key, not hidden: `displaySkillListCalcs` and the `displayGemList` of a
+//! group MAIN does not process (the CALCS-mode initEnv of CalcsTab). A difference on any other key fails.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::rc::Rc;
 
-use pob_calc::active_skill::{EffectRef, GemCfg};
+use pob_calc::active_skill::{ActiveSkill, EffectRef, GemCfg, SkillCfg};
 use pob_calc::skills::SkillsState;
 use pob_calc::skills_tab::{ExplodeSource, GemInstance, SocketGroup};
 use pob_calc::{Env, InitEnvOptions, ParseMode, init_env_with};
@@ -27,46 +29,6 @@ use pob_mods::{StoreKind, Value};
 use serde_json::{Map, Value as Json, json};
 
 const D15: &str = "<D15:ambiguous>";
-
-/// `buildActiveSkillModList` (R6.4) writes these onto the active skill (CalcActiveSkill.lua:229-877, :1941-1970).
-const R64_SKILL_KEYS: [&str; 17] = [
-    "actor",
-    "baseSame",
-    "baseSkillModList",
-    "buffList",
-    "extraSkillModList",
-    "minion",
-    "minionList",
-    "skillCfg",
-    "skillData",
-    "skillModList",
-    "skillPart",
-    "skillPartName",
-    "skillTotemId",
-    "skillTypesIsCfgTypes",
-    "triggeredBy",
-    "weapon1Cfg",
-    "weapon2Cfg",
-];
-/// ... and these (computed by R6.4 but dumped at the skill level).
-const R64_SKILL_KEYS2: [&str; 2] = ["weapon1Flags", "weapon2Flags"];
-/// ... onto the effects (`grantedEffectLevel` :514/:579, `supportQuality` :564, `actorLevel` :577).
-const R64_EFFECT_KEYS: [&str; 3] = ["grantedEffectLevel", "actorLevel", "supportQuality"];
-/// ... onto `activeEffect.srcInstance` (:251-269, :629-630, :656-657, :697-743).
-const R64_GEM_KEYS: [&str; 12] = [
-    "skillPart",
-    "skillPartCalcs",
-    "skillMineCount",
-    "skillMineCountCalcs",
-    "skillStageCount",
-    "skillStageCountCalcs",
-    "skillMinion",
-    "skillMinionCalcs",
-    "skillMinionItemSet",
-    "skillMinionItemSetCalcs",
-    "skillMinionSkill",
-    "skillMinionSkillCalcs",
-];
 
 fn fixture(name: &str) -> Json {
     let p = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -154,6 +116,205 @@ impl Ctx<'_> {
         Json::Object(o)
     }
 
+    /// `grantedEffect.levels[l]` as the probe's `D` dumps it (stat values `[1..n]`, the named fields, `cost` -- `{}` after
+    /// ProcessSocketGroup's `levels[l].cost = {}`).
+    fn level_table(&self, ge: usize, l: f64) -> Json {
+        let g = &self.st.skills.effects[ge];
+        let lv = g.level(l).expect("grantedEffectLevel is a level of the effect");
+        let mut o = Map::new();
+        for (i, v) in lv.values.iter().enumerate() {
+            o.insert((i + 1).to_string(), n17(*v));
+        }
+        for (k, v) in lv.named_numbers() {
+            o.insert(k.into(), n17(v));
+        }
+        if let Some(si) = &lv.stat_interpolation {
+            o.insert(
+                "statInterpolation".into(),
+                Json::Object(si.iter().enumerate().map(|(i, v)| ((i + 1).to_string(), n17(*v))).collect()),
+            );
+        }
+        if self.st.cost_wiped.iter().any(|(id, x)| id == &g.id && *x == l) {
+            o.insert("cost".into(), json!({}));
+        } else if let Some(c) = &lv.cost {
+            o.insert("cost".into(), Json::Object(c.iter().map(|(k, v)| (k.clone(), n17(*v))).collect()));
+        }
+        Json::Object(o)
+    }
+
+    /// `skillCfg` / `weapon<n>Cfg` (`fields(v, { skillTypes = true })`; `skillCond` is the table's own keys -- `pairs` does not follow
+    /// `__index`).
+    fn cfg(&self, c: &SkillCfg) -> Json {
+        let mut o = Map::new();
+        o.insert("flags".into(), n17(c.flags));
+        o.insert("keywordFlags".into(), n17(c.keyword_flags));
+        o.insert("skillName".into(), json!(c.skill_name));
+        if let Some(x) = &c.summon_skill_name {
+            o.insert("summonSkillName".into(), json!(x));
+        }
+        if let Some(x) = &c.skill_gem {
+            o.insert("skillGem".into(), json!(x));
+        }
+        o.insert("skillGrantedEffect".into(), json!(self.effect_id(c.skill_granted_effect)));
+        if let Some(x) = c.skill_part {
+            o.insert("skillPart".into(), n17(x));
+        }
+        o.insert(
+            "skillCond".into(),
+            Json::Object(c.skill_cond.iter().map(|(k, v)| (k.clone(), json!(v))).collect()),
+        );
+        if let Some(x) = c.skill_dist {
+            o.insert("skillDist".into(), n17(x));
+        }
+        if let Some(x) = &c.slot_name {
+            o.insert("slotName".into(), json!(x));
+        }
+        if let Some(x) = &c.socket_color {
+            o.insert("socketColor".into(), json!(x));
+        }
+        if let Some(x) = c.socket_num {
+            o.insert("socketNum".into(), n17(x));
+        }
+        Json::Object(o)
+    }
+
+    /// `skillDump(sk, i)` of the probe.
+    fn skill(&self, i: usize, s: &ActiveSkill) -> Json {
+        let mut o = Map::new();
+        o.insert("index".into(), n17((i + 1) as f64));
+        o.insert("activeEffect".into(), self.effect(&s.active_effect));
+        o.insert(
+            "effectList".into(),
+            json!(s.effect_list.iter().map(|e| self.effect(e)).collect::<Vec<_>>()),
+        );
+        o.insert(
+            "supportList".into(),
+            json!(s.support_list.iter().map(|e| self.effect(e)).collect::<Vec<_>>()),
+        );
+        o.insert("skillTypes".into(), skill_types(&s.skill_types));
+        if let Some(m) = &s.minion_skill_types {
+            o.insert("minionSkillTypes".into(), skill_types(m));
+        }
+        if let Some(g) = s.socket_group {
+            o.insert("socketGroup".into(), n17((g + 1) as f64));
+        }
+        if let Some(sl) = &s.slot_name {
+            o.insert("slotName".into(), json!(sl));
+        }
+        o.insert("actor".into(), json!("<actor>"));
+        // the probe's `D` skips every key named `minion` (SKIP), `skillFlags.minion` included
+        o.insert(
+            "skillFlags".into(),
+            Json::Object(
+                s.skill_flags
+                    .iter()
+                    .filter(|(k, _)| k.as_str() != "minion")
+                    .map(|(k, v)| (k.clone(), json!(v)))
+                    .collect(),
+            ),
+        );
+        if let Some(ml) = &s.skill_mod_list {
+            let StoreKind::List(l) = &ml.borrow().kind else {
+                panic!("skillModList is a ModList")
+            };
+            let mut mods: Vec<String> = l.mods.iter().map(|m| format_source_mod(m)).collect();
+            mods.sort();
+            o.insert("skillModList".into(), json!({ "mods": mods }));
+            o.insert("baseSame".into(), json!(true));
+        }
+        if let Some(c) = &s.skill_cfg {
+            o.insert("skillCfg".into(), self.cfg(c));
+            o.insert("skillTypesIsCfgTypes".into(), json!(true));
+        } else {
+            o.insert("skillTypesIsCfgTypes".into(), json!(false));
+        }
+        if let Some(c) = &s.weapon1_cfg {
+            o.insert("weapon1Cfg".into(), self.cfg(c));
+        }
+        if let Some(c) = &s.weapon2_cfg {
+            o.insert("weapon2Cfg".into(), self.cfg(c));
+        }
+        if let Some(f) = s.weapon1_flags {
+            o.insert("weapon1Flags".into(), n17(f64::from(f)));
+        }
+        if let Some(f) = s.weapon2_flags {
+            o.insert("weapon2Flags".into(), n17(f64::from(f)));
+        }
+        o.insert(
+            "skillData".into(),
+            Json::Object(s.skill_data.iter().map(|(k, v)| (k.clone(), lua_value(v))).collect()),
+        );
+        let mut buffs: Vec<Json> = s
+            .buff_list
+            .iter()
+            .map(|b| {
+                let mut e = Map::new();
+                for (k, v) in [
+                    ("type", &b.ty),
+                    ("name", &b.name),
+                    ("allowTotemBuff", &b.allow_totem_buff),
+                    ("cond", &b.cond),
+                    ("enemyCond", &b.enemy_cond),
+                    ("stackVar", &b.stack_var),
+                    ("stackLimit", &b.stack_limit),
+                    ("stackLimitVar", &b.stack_limit_var),
+                    ("applyNotPlayer", &b.apply_not_player),
+                    ("applyMinions", &b.apply_minions),
+                    ("applyAllies", &b.apply_allies),
+                ] {
+                    if !v.is_nil() {
+                        e.insert(k.into(), lua_value(v));
+                    }
+                }
+                if let Some(a) = b.active_skill_buff {
+                    e.insert("activeSkillBuff".into(), json!(a));
+                }
+                let mut mods: Vec<String> = b.mod_list.iter().map(|m| format_source_mod(m)).collect();
+                mods.sort();
+                e.insert("modList".into(), json!(mods));
+                Json::Object(e)
+            })
+            .collect();
+        buffs.sort_by_key(canon);
+        o.insert("buffList".into(), json!(buffs));
+        if let Some(l) = &s.extra_skill_mod_list {
+            let mut mods: Vec<String> = l.iter().map(|m| format_source_mod(m)).collect();
+            mods.sort();
+            o.insert("extraSkillModList".into(), json!(mods));
+        }
+        if let Some(l) = &s.minion_list {
+            o.insert(
+                "minionList".into(),
+                Json::Object(l.iter().enumerate().map(|(i, m)| ((i + 1).to_string(), json!(m))).collect()),
+            );
+        }
+        if s.minion.is_some() {
+            o.insert("minion".into(), json!("<minion>"));
+        }
+        if let Some(e) = &s.triggered_by {
+            o.insert("triggeredBy".into(), self.brief(e));
+        }
+        if let Some(x) = s.skill_part {
+            o.insert("skillPart".into(), n17(x));
+        }
+        if let Some(x) = &s.skill_part_name {
+            o.insert("skillPartName".into(), json!(x));
+        }
+        if let Some(x) = s.skill_totem_id {
+            o.insert("skillTotemId".into(), n17(x));
+        }
+        if let Some(x) = &s.disable_reason {
+            o.insert("disableReason".into(), json!(x));
+        }
+        if let Some(x) = s.active_mine_count {
+            o.insert("activeMineCount".into(), n17(x));
+        }
+        if let Some(x) = s.active_stage_count {
+            o.insert("activeStageCount".into(), n17(x));
+        }
+        Json::Object(o)
+    }
+
     /// `fields(effect)` of the probe.
     fn effect(&self, e: &EffectRef) -> Json {
         let e = e.borrow();
@@ -171,6 +332,10 @@ impl Ctx<'_> {
         num("supportQuality", e.support_quality);
         num("socketQuality", e.socket_quality);
         num("req", e.req);
+        num("actorLevel", e.actor_level);
+        if let Some(l) = e.granted_effect_level {
+            o.insert("grantedEffectLevel".into(), self.level_table(e.granted_effect, l));
+        }
         for (k, v) in &e.other {
             o.insert(k.clone(), n17(*v));
         }
@@ -374,6 +539,79 @@ fn lua_value(v: &Value) -> Json {
     }
 }
 
+/// A canonical text of a JSON value (object keys sorted) -- the sort key of a multiset of tables.
+fn canon(j: &Json) -> String {
+    match j {
+        Json::Object(o) => {
+            let mut ks: Vec<&String> = o.keys().collect();
+            ks.sort();
+            let parts: Vec<String> = ks.iter().map(|k| format!("{}:{}", json!(k), canon(&o[k.as_str()]))).collect();
+            format!("{{{}}}", parts.join(","))
+        }
+        Json::Array(a) => format!("[{}]", a.iter().map(canon).collect::<Vec<_>>().join(",")),
+        other => other.to_string(),
+    }
+}
+
+/// Proven class `stale-perform-tag`: CalcPerform.lua:2382 writes `warcryBuff[1].warcryPowerBonus` onto the GlobalEffect tag TABLE of a
+/// warcry buff mod -- a table shared with the data's statMap mod (`mergeLevelMod` copies the mod with `copyTable(mod, true)`, the tags stay
+/// the same objects). The write happens in every perform pass (branch `not CannotShareWarcryBuffs`) before both reads of that pass (:2398,
+/// :2411); the reads :3090/:3099 are the party warcries (partyTab, not ported, empty). So the value left by the previous perform of the
+/// LuaJIT process (the load ran MAIN and CALCS before the probe's initEnv) never changes a result -- it is only visible in a dump of the
+/// state after initEnv. Rust's run is the first (fresh data: no such field). Modelling the write (a shared tag cell, like `div`, R4) is
+/// R6.7. The pin: LuaJIT's mod with that one field removed must equal Rust's mod (the comparison that follows); every place is listed by
+/// name in [`STALE_PINS`] -- any other difference or another count fails.
+const STALE: &str = "stale-perform-tag";
+const STALE_PINS: [&str; 1] = ["OccVortex, activeSkills[4] Enduring Cry, buffList[1].modList[0]"];
+
+/// Removes `/warcryPowerBonus=<n>` from the GlobalEffect tags with `effectType=Warcry` of LuaJIT's buff mods; returns where it did.
+fn strip_stale_perform_tags(w: &mut Json) -> Vec<String> {
+    let mut pins = Vec::new();
+    let Some(buffs) = w.get_mut("buffList").and_then(Json::as_array_mut) else {
+        return pins;
+    };
+    for (b, buff) in buffs.iter_mut().enumerate() {
+        let Some(mods) = buff.get_mut("modList").and_then(Json::as_array_mut) else {
+            continue;
+        };
+        for (m, md) in mods.iter_mut().enumerate() {
+            let Some(text) = md.as_str() else { continue };
+            let Some((head, tags)) = text.rsplit_once('|') else { continue };
+            let new_tags: Vec<String> = tags
+                .split(',')
+                .map(|t| {
+                    let parts: Vec<&str> = t.split('/').collect();
+                    if parts.contains(&"type=GlobalEffect") && parts.contains(&"effectType=Warcry") {
+                        parts
+                            .iter()
+                            .filter(|p| !p.starts_with("warcryPowerBonus="))
+                            .copied()
+                            .collect::<Vec<_>>()
+                            .join("/")
+                    } else {
+                        t.to_owned()
+                    }
+                })
+                .collect();
+            let new_text = format!("{head}|{}", new_tags.join(","));
+            if new_text != text {
+                pins.push(format!("buffList[{b}].modList[{m}]"));
+                *md = json!(new_text);
+            }
+        }
+        mods.sort_by(|a, b| a.as_str().cmp(&b.as_str()));
+    }
+    pins
+}
+
+/// LuaJIT's skill dump made order-free where LuaJIT's order is per process (R13): `buffList` entries sorted canonically (the probe sorts
+/// by its own serialisation; the mods inside are already sorted).
+fn canon_skill(w: &mut Json) {
+    if let Some(b) = w.get_mut("buffList").and_then(Json::as_array_mut) {
+        b.sort_by_key(canon);
+    }
+}
+
 fn skill_types(s: &BTreeSet<u32>) -> Json {
     Json::Object(s.iter().map(|t| (t.to_string(), json!(true))).collect())
 }
@@ -504,64 +742,11 @@ fn check(name: &str) -> (Vec<String>, BTreeMap<String, usize>, String) {
             }
         }
     }
-    // R6.4 :558-567 adds `SupportedGemProperty` values onto `activeEffect[key]` and a `GemSupport<Key>` BASE mod per value into the
-    // skill's skillModList: LuaJIT's level/quality of an ACTIVE effect = Rust's + the sum of those mods (checked to the number).
-    let lj_skills = lj["activeSkills"].as_array().unwrap();
-    let support_delta = |i: usize, key: &str| -> f64 {
-        let name = if key == "level" { "GemSupportLevel" } else { "GemSupportQuality" };
-        lj_skills[i]["skillModList"]["mods"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .filter_map(|m| {
-                let parts: Vec<&str> = m.as_str().unwrap().split('|').collect();
-                (parts.get(2) == Some(&name)).then(|| parts[0].parse::<f64>().expect("number"))
-            })
-            .sum()
-    };
-    let skill_of_gem: BTreeMap<String, usize> = lj_skills
-        .iter()
-        .enumerate()
-        .filter_map(|(i, sk)| sk["activeEffect"]["srcInstance"].as_str().map(|g| (g.to_owned(), i)))
-        .collect();
-    let num_of = |v: Option<&Json>| v.and_then(Json::as_str).and_then(|x| x.parse::<f64>().ok());
-    let r64_level =
-        |skill: Option<usize>, key: &str, lj_v: Option<f64>, rust_v: Option<f64>, later: &mut BTreeMap<String, usize>| -> bool {
-            match (skill, lj_v, rust_v) {
-                (Some(i), Some(a), Some(b)) if (key == "level" || key == "quality") && a - b == support_delta(i, key) => {
-                    *later
-                        .entry(format!(
-                            "effect.{key} of an active effect (R6.4 :558-567 SupportedGemProperty = sum of GemSupport* mods)"
-                        ))
-                        .or_default() += 1;
-                    true
-                }
-                _ => false,
-            }
-        };
-    let pointer = |root: &Json, p: &str| -> Option<Json> {
-        // "socketGroups[1].gemList[0].displayEffect.level" -> JSON pointer
-        let mut ptr = String::new();
-        for seg in p.split('.') {
-            let (name, idx) = match seg.find('[') {
-                Some(b) => (&seg[..b], Some(&seg[b + 1..seg.len() - 1])),
-                None => (seg, None),
-            };
-            ptr.push('/');
-            ptr.push_str(name);
-            if let Some(i) = idx {
-                ptr.push('/');
-                ptr.push_str(i);
-            }
-        }
-        root.pointer(&ptr).cloned()
-    };
     let processed_in_main = |gi: usize| -> bool {
         let sg = &groups[gi];
         (gi + 1) as f64 == env.main_socket_group || (sg.enabled && sg.slot_enabled == Some(true))
     };
     compare(&want_groups, &got_groups, "socketGroups", &mut diffs);
-    let roots = (json!({ "socketGroups": want_groups }), json!({ "socketGroups": got_groups }));
     for (p, d) in diffs {
         let k = last_key(&p);
         let group_idx: usize = p["socketGroups[".len()..].split(']').next().unwrap().parse().unwrap();
@@ -572,25 +757,6 @@ fn check(name: &str) -> (Vec<String>, BTreeMap<String, usize>, String) {
             *later
                 .entry("group.displayGemList of a group MAIN does not process (CALCS-mode leftover)".into())
                 .or_default() += 1;
-        } else if p.contains(".displayEffect.")
-            && r64_level(
-                pointer(&roots.0, &p.replace(&format!(".displayEffect.{k}"), ".displayEffect.srcInstance"))
-                    .and_then(|g| g.as_str().and_then(|g| skill_of_gem.get(g).copied())),
-                k,
-                num_of(pointer(&roots.0, &p).as_ref()),
-                num_of(pointer(&roots.1, &p).as_ref()),
-                &mut later,
-            )
-        {
-        } else if R64_GEM_KEYS.contains(&k)
-            && p.split(".gemList[")
-                .nth(1)
-                .and_then(|r| r.split(']').next())
-                .and_then(|g| g.parse::<usize>().ok())
-                .is_some_and(|gem| skill_of_gem.contains_key(&format!("{}:{}", group_idx + 1, gem + 1)))
-        {
-            // only on a gem that is some active skill's `srcInstance`
-            *later.entry(format!("gem.{k} (R6.4 srcInstance write)")).or_default() += 1;
         } else {
             bad.push(format!("{p}: {d}"));
         }
@@ -605,75 +771,38 @@ fn check(name: &str) -> (Vec<String>, BTreeMap<String, usize>, String) {
             st.active_skill_list.len()
         ));
     }
-    let mut flags_missing = 0;
+    let mut n_mods = 0usize;
+    let mut n_buffs = 0usize;
     for (i, (w, s)) in want_skills.iter().zip(&st.active_skill_list).enumerate() {
-        let mut o = Map::new();
-        o.insert("index".into(), n17((i + 1) as f64));
-        o.insert("activeEffect".into(), cx.effect(&s.active_effect));
-        o.insert(
-            "effectList".into(),
-            json!(s.effect_list.iter().map(|e| cx.effect(e)).collect::<Vec<_>>()),
-        );
-        o.insert(
-            "supportList".into(),
-            json!(s.support_list.iter().map(|e| cx.effect(e)).collect::<Vec<_>>()),
-        );
-        o.insert("skillTypes".into(), skill_types(&s.skill_types));
-        if let Some(m) = &s.minion_skill_types {
-            o.insert("minionSkillTypes".into(), skill_types(m));
-        }
-        if let Some(g) = s.socket_group {
-            o.insert("socketGroup".into(), n17((g + 1) as f64));
-        }
-        if let Some(sl) = &s.slot_name {
-            o.insert("slotName".into(), json!(sl));
-        }
-        let mut got = Json::Object(o);
+        let got = cx.skill(i, s);
+        n_mods += got["skillModList"]["mods"].as_array().map_or(0, Vec::len);
+        n_buffs += got["buffList"].as_array().map_or(0, Vec::len);
+        let mut got = got;
         mask(&mut got, &amb, &mut bad);
         let mut want = w.clone();
-        let wo = want.as_object_mut().unwrap();
-        // skillFlags: createActiveSkill's flags must all be LuaJIT's; the rest is R6.4
-        let lj_flags: BTreeSet<String> = wo
-            .remove("skillFlags")
-            .and_then(|f| f.as_object().cloned())
-            .map(|f| f.into_iter().filter(|(_, v)| v == &json!(true)).map(|(k, _)| k).collect())
-            .unwrap_or_default();
-        for (f, v) in &s.skill_flags {
-            // the probe's `D` skips every key named `minion` (SKIP), `skillFlags.minion` included
-            if *v && !lj_flags.contains(f) && f != "minion" {
-                bad.push(format!("activeSkills[{i}].skillFlags.{f}: rust true, lj not set"));
-            }
-        }
-        flags_missing += lj_flags.iter().filter(|f| !s.skill_flags.contains_key(*f)).count();
-        for k in R64_SKILL_KEYS.iter().chain(&R64_SKILL_KEYS2) {
-            if wo.remove(*k).is_some() {
-                *later.entry(format!("skill.{k} (R6.4)")).or_default() += 1;
-            }
+        canon_skill(&mut want);
+        for pin in strip_stale_perform_tags(&mut want) {
+            *later
+                .entry(format!(
+                    "{STALE}: {name}, activeSkills[{i}] {}, {pin}",
+                    s.skill_cfg.as_ref().map_or("", |c| c.skill_name.as_str())
+                ))
+                .or_default() += 1;
         }
         let mut diffs = Vec::new();
         compare(&want, &got, &format!("activeSkills[{i}]"), &mut diffs);
-        for (p, d) in diffs {
-            let k = last_key(&p);
-            let on_active = p == format!("activeSkills[{i}].activeEffect.{k}") || p == format!("activeSkills[{i}].effectList[0].{k}");
-            let rel = p.split_once('.').map_or("", |x| x.1);
-            if on_active
-                && r64_level(
-                    Some(i),
-                    k,
-                    num_of(pointer(&want, rel).as_ref()),
-                    num_of(pointer(&got, rel).as_ref()),
-                    &mut later,
-                )
-            {
-            } else if R64_EFFECT_KEYS.contains(&k) {
-                *later.entry(format!("effect.{k} (R6.4)")).or_default() += 1;
-            } else {
-                bad.push(format!("{p}: {d}"));
-            }
-        }
+        bad.extend(diffs.into_iter().map(|(p, d)| format!("{p}: {d}")));
     }
-    if flags_missing > 0 {
-        later.insert("skill.skillFlags: LuaJIT flags not yet set (R6.4)".into(), flags_missing);
+    let lj_mods: usize = want_skills
+        .iter()
+        .map(|w| w["skillModList"]["mods"].as_array().map_or(0, Vec::len))
+        .sum();
+    let lj_buffs: usize = want_skills.iter().map(|w| w["buffList"].as_array().map_or(0, Vec::len)).sum();
+    if lj["skillModCount"] != n17(n_mods as f64) || lj_mods != n_mods || lj_buffs != n_buffs {
+        bad.push(format!(
+            "totals: skillModList mods lj {} ({lj_mods}) rust {n_mods}, buffList entries lj {lj_buffs} rust {n_buffs}",
+            lj["skillModCount"]
+        ));
     }
 
     // --- mainSkill, requirementsTableGems -------------------------------------------------------------------------------
@@ -724,9 +853,10 @@ fn check(name: &str) -> (Vec<String>, BTreeMap<String, usize>, String) {
     bad.extend(diffs.into_iter().map(|(p, d)| format!("{p}: {d}")));
 
     let summary = format!(
-        "{name}: groups {} / active skills {} / mainSkill {} / reqGems {} / modDB {} mods (order notes {})",
+        "{name}: groups {} / active skills {} / skillModList mods {n_mods} / buffList entries {n_buffs} / auxSkillList {} / mainSkill {} / reqGems {} / modDB {} mods (order notes {})",
         groups.len(),
         st.active_skill_list.len(),
+        st.aux_skill_list.len(),
         main,
         env.requirements_table_gems.len(),
         db["count"].as_str().unwrap(),
@@ -758,7 +888,16 @@ fn skills_equal_luajit_on_six_goldens() {
         }
         all_bad.extend(bad.into_iter().map(|b| format!("{}: {b}", g.name)));
     }
-    println!("waiting for R6.4 / not MAIN (counts over 6 goldens): {later_all:#?}");
+    println!("not MAIN / proven classes (counts over 6 goldens): {later_all:#?}");
+    let stale: Vec<String> = later_all
+        .iter()
+        .filter(|(k, _)| k.starts_with(STALE))
+        .map(|(k, n)| {
+            assert_eq!(*n, 1, "{k}");
+            k[STALE.len() + 2..].to_owned()
+        })
+        .collect();
+    assert_eq!(stale, STALE_PINS.map(str::to_owned).to_vec(), "{STALE}: the pinned places, by name");
     assert!(
         all_bad.is_empty(),
         "{} differences:\n{}",
@@ -847,5 +986,62 @@ fn perf_skill_phase() {
             on - off,
             on - off - load
         );
+    }
+}
+
+/// `processMod` in a lazy statMap copy sets `grantedEffect.hasGlobalEffect` (Data.lua:1033-1045), and CalcSetup.lua:1743 reads it to skip a
+/// global-effect skill whose `enableGlobal` is off. LuaJIT's fixture is at least the third initEnv of its process (the load ran MAIN and
+/// CALCS), Rust's is the first: a mark that `buildActiveSkillModList` sets on an effect some gem of the build grants would make the two
+/// differ. Measured per golden on a fresh thread (fresh `data.skills`): the effects whose mark the run flipped, and how many of them a gem
+/// of the build grants with its `enableGlobal<k>` off (the only case :1755 reads the mark) -- must be 0.
+#[test]
+fn lazy_global_effect_marks_do_not_reach_the_builds() {
+    for g in GOLDEN_BUILDS {
+        let name = g.name;
+        let (flipped, used) = std::thread::spawn(move || {
+            let sk = pob_data::skills::skills();
+            let before: Vec<bool> = sk.effects.iter().map(|e| e.has_global_effect.get()).collect();
+            let env = run(name);
+            let st = env.skills.as_ref().expect("skills on");
+            let flipped: Vec<usize> = sk
+                .effects
+                .iter()
+                .enumerate()
+                .filter(|(i, e)| e.has_global_effect.get() != before[*i])
+                .map(|(i, _)| i)
+                .collect();
+            let mut used = Vec::new();
+            for sg in st.tab.socket_group_list() {
+                for gi in &sg.gem_list {
+                    let ids: Vec<String> = match &gi.gem_data {
+                        Some(gd) => {
+                            let e = &gems().gems[gd];
+                            std::iter::once(e.granted_effect_id.clone())
+                                .chain(e.secondary_granted_effect_id.clone())
+                                .collect()
+                        }
+                        None => gi.granted_effect.iter().cloned().collect(),
+                    };
+                    for (k, id) in ids.into_iter().enumerate() {
+                        // CalcSetup.lua:1755 `not grantedEffect.hasGlobalEffect or gemInstance["enableGlobal"..index]`
+                        let enable_global = if k == 0 { gi.enable_global1 } else { gi.enable_global2 } == Some(true);
+                        if let Some(&i) = sk.index.get(&id)
+                            && flipped.contains(&i)
+                            && !enable_global
+                        {
+                            used.push(id);
+                        }
+                    }
+                }
+            }
+            (flipped.iter().map(|&i| sk.effects[i].id.clone()).collect::<Vec<_>>(), used)
+        })
+        .join()
+        .expect("thread");
+        println!(
+            "{name}: hasGlobalEffect flipped by the run on {} effects {flipped:?}; granted with enableGlobal off: {used:?}",
+            flipped.len()
+        );
+        assert!(used.is_empty(), "{name}: {used:?}");
     }
 }

@@ -1,8 +1,8 @@
 //! The skill half of `calcs.initEnv` (R6.3): CalcSetup.lua `socketedGems` (:1308-1356), the merge of item/tree-granted skills into
 //! `build.skillsTab.socketGroupList` (:1448-1563), the main socket group (:1584-1592), supports into their buckets (:1593-1732, `applyGemMods`
 //! :382, `applySocketMods` :419, `addBestSupport` :428), the active skills (:1733-1861, `createActiveSkill` in [`crate::active_skill`]),
-//! the per-group lists and the main skill (:1862-1940) and `requirementsTableGems` (:1846-1854). `buildActiveSkillModList` (:1941-1970) is
-//! R6.4: `init_env` records it as unimplemented and keeps perform's stub main skill.
+//! the per-group lists and the main skill (:1862-1940) and `requirementsTableGems` (:1846-1854). `buildActiveSkillModList` (:1941-1945, R6.4)
+//! is [`crate::skill_modlist`].
 //!
 //! State Lua keeps on shared tables lives in [`SkillsState`]: the skills tab (`build.skillsTab` -- the merge appends to it), the data writes
 //! CalcSetup/ProcessSocketGroup make (`grantedEffect.fromItem = true`, `levels[l].cost = {}`), the active skill list and the main skill.
@@ -58,6 +58,8 @@ pub struct SkillsState {
     pub cost_wiped: Vec<(String, f64)>,
     /// Hash-order walks whose order could change the result (see the module doc); empty on the goldens.
     pub order_notes: Vec<String>,
+    /// `env.auxSkillList` (CalcActiveSkill.lua:871-874) -- indices into `active_skill_list`.
+    pub aux_skill_list: Vec<usize>,
 }
 
 impl FromItem for BTreeSet<String> {
@@ -81,7 +83,7 @@ fn gem(id: &str) -> &'static GemEntry {
 }
 
 /// `cfg.skillGem` for a gem.
-fn skill_gem_cfg(g: &GemEntry) -> Gem {
+pub(crate) fn skill_gem_cfg(g: &GemEntry) -> Gem {
     Gem {
         name: Rc::from(g.name.as_str()),
         tags: g.tags.iter().map(|(k, v)| (Rc::from(k.as_str()), *v)).collect(),
@@ -113,6 +115,7 @@ impl SkillsState {
             from_item_marks: BTreeSet::new(),
             cost_wiped: Vec::new(),
             order_notes: Vec::new(),
+            aux_skill_list: Vec::new(),
         })
     }
 

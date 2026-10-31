@@ -24,6 +24,7 @@ pub mod output;
 pub mod perform;
 pub mod pools;
 pub mod setup;
+pub mod skill_modlist;
 pub mod skills;
 pub mod skills_tab;
 

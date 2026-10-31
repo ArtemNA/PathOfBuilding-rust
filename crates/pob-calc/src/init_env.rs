@@ -1719,8 +1719,49 @@ pub fn init_env_with(build: Rc<BuildModel>, opts: InitEnvOptions, skills: bool) 
         };
         env.requirements_table_gems = out.requirements_table_gems;
         env.unimplemented.extend(out.unimplemented);
+        // (18c') CalcSetup.lua:1941-1945 buildActiveSkillModList for every active skill (R6.4)
+        let more = {
+            let p = player.borrow();
+            let cfg_or = |k: &str| -> pob_mods::Value {
+                let conv = |v: &pob_build::ConfigValue| match v {
+                    pob_build::ConfigValue::Num(x) => pob_mods::Value::Num(*x),
+                    pob_build::ConfigValue::Str(t) => pob_mods::Value::str(t),
+                    pob_build::ConfigValue::Bool(b) => pob_mods::Value::Bool(*b),
+                };
+                let input = env.config.input.get(k).map(conv).unwrap_or_default();
+                if input.truthy() {
+                    input
+                } else {
+                    env.config.placeholder.get(k).map(conv).unwrap_or_default()
+                }
+            };
+            // `build.spectreList`: Build.lua:989-992 keeps only ids with `data.minions[id]`
+            let spectres: Vec<String> = build
+                .spectres
+                .iter()
+                .filter(|id| crate::skill_modlist::is_minion(id))
+                .cloned()
+                .collect();
+            let inp = crate::skill_modlist::ModListInputs {
+                mod_db: &mod_db,
+                enemy_db: &env.enemy_db,
+                item_list: &p.item_list,
+                weapon_data1: &p.weapon_data1,
+                weapon_data2: &p.weapon_data2,
+                mode_buffs: env.mode_buffs,
+                mode_combat: env.mode_combat,
+                mode_effective: env.mode_effective,
+                melee_distance: cfg_or("meleeDistance"),
+                projectile_distance: cfg_or("projectileDistance"),
+                spectre_list: &spectres,
+                character_level: build.level,
+                enemy_level: env.enemy_level,
+            };
+            crate::skill_modlist::build_all(&mut st, &inp).map_err(InitEnvError)?
+        };
+        env.unimplemented.extend(more);
         env.unimplemented.push(format!(
-            "CalcSetup.lua:1941-1945 buildActiveSkillModList for {} active skills (R6.4): perform keeps the stub main skill",
+            "CalcPerform.lua:1296-1512 the {} built active skills are not handed to perform yet (R6.5): perform keeps the stub main skill",
             st.active_skill_list.len()
         ));
         env.skills = Some(st);

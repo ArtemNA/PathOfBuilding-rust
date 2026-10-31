@@ -5,15 +5,17 @@
 //! `displayEffect`/`supportEffect` (`addBestSupport` writes `superseded` onto the shared table): [`EffectRef`] = `Rc<RefCell<_>>`
 //! compared by identity. Granted effects are indices into `pob_data::skills::Skills::effects`.
 //!
-//! Not here (R6.4, `buildActiveSkillModList` CalcActiveSkill.lua:229-877): `skillCfg`, `skillData`, `skillModList`, weapon flags, the rest of
-//! `skillFlags`, `disableReason`, the `srcInstance.skillPart*`/`skillMinion*`/... writes, `activeEffect.grantedEffectLevel`/`supportQuality`.
+//! The fields `buildActiveSkillModList` (CalcActiveSkill.lua:229-877, R6.4) writes are filled by [`crate::skill_modlist`]: `skillCfg`,
+//! `skillData`, `skillModList`, weapon flags/cfgs, the rest of `skillFlags`, `disableReason`, `buffList`, the minion stub, and on the
+//! effects `grantedEffectLevel`/`actorLevel`/`supportQuality`.
 
 use std::cell::{Ref, RefCell, RefMut};
 use std::rc::Rc;
 
 use indexmap::IndexMap;
+use pob_data::skill_stat_map::MalformedMod;
 use pob_data::skills::{GrantedEffect, SkillTypeSet, Skills};
-use pob_mods::{ModCfg, TabEntry};
+use pob_mods::{Mod, ModCfg, StoreRef, Str, TabEntry, Value};
 
 use crate::calc_tools::{ActiveSkillView, LuaError, WeaponView, can_granted_effect_support_active_skill_ext};
 
@@ -86,6 +88,10 @@ pub struct SkillEffect {
     pub gem_property_info: Option<Vec<TabEntry>>,
     /// Any other `applyGemMods` key (`effect[value.key]`), in insertion order.
     pub other: IndexMap<String, f64>,
+    /// `effect.grantedEffectLevel = grantedEffect.levels[effect.level]` (CalcActiveSkill.lua:514/:579) -- the level key.
+    pub granted_effect_level: Option<f64>,
+    /// `effect.actorLevel` (CalcActiveSkill.lua:577) -- nil for the player's skills.
+    pub actor_level: Option<f64>,
 }
 
 /// A shared effect table.
@@ -123,8 +129,8 @@ impl std::fmt::Debug for EffectRef {
     }
 }
 
-/// `env.player.activeSkillList[i]` as far as CalcSetup builds it.
-#[derive(Clone, Debug)]
+/// `env.player.activeSkillList[i]`: what `createActiveSkill` (CalcSetup) and `buildActiveSkillModList` (R6.4) build.
+#[derive(Clone)]
 pub struct ActiveSkill {
     pub active_effect: EffectRef,
     pub support_list: Vec<EffectRef>,
@@ -139,6 +145,138 @@ pub struct ActiveSkill {
     pub effect_list: Vec<EffectRef>,
     /// `activeSkill.slotName` (CalcSetup.lua:1838, gems only).
     pub slot_name: Option<String>,
+    // --- buildActiveSkillModList (R6.4, crate::skill_modlist)
+    pub skill_cfg: Option<SkillCfg>,
+    pub weapon1_cfg: Option<SkillCfg>,
+    pub weapon2_cfg: Option<SkillCfg>,
+    pub weapon1_flags: Option<u32>,
+    pub weapon2_flags: Option<u32>,
+    /// `activeSkill.skillData`, insertion order.
+    pub skill_data: IndexMap<String, Value>,
+    /// `activeSkill.skillModList` (= `baseSkillModList`, the same table) -- a ModList whose parent is `actor.modDB`.
+    pub skill_mod_list: Option<StoreRef>,
+    /// Malformed mods (`SkillMod::Malformed`) the Lua list would hold; every query that reaches their name raises `query_error()`.
+    pub malformed_mods: Vec<MalformedMod>,
+    pub buff_list: Vec<Buff>,
+    pub extra_skill_mod_list: Option<Vec<Rc<Mod>>>,
+    pub minion_list: Option<Vec<String>>,
+    pub minion: Option<MinionStub>,
+    pub triggered_by: Option<EffectRef>,
+    pub skill_part: Option<f64>,
+    pub skill_part_name: Option<String>,
+    pub skill_totem_id: Option<f64>,
+    pub disable_reason: Option<String>,
+    pub active_mine_count: Option<f64>,
+    pub active_stage_count: Option<f64>,
+}
+
+impl std::fmt::Debug for ActiveSkill {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "ActiveSkill({:?}, flags {:?})", self.active_effect, self.skill_flags)
+    }
+}
+
+impl ActiveSkill {
+    /// `skillFlags[k]` truthy.
+    pub fn flag(&self, k: &str) -> bool {
+        self.skill_flags.get(k).copied().unwrap_or(false)
+    }
+}
+
+/// `activeSkill.skillCfg` / `weapon1Cfg` / `weapon2Cfg` (CalcActiveSkill.lua:464-489). `skillTypes` is the skill's own table (shared, read
+/// from [`ActiveSkill::skill_types`]); a weapon cfg's `skillCond` reads through to the skill cfg's (`__index`).
+#[derive(Clone, Debug, Default)]
+pub struct SkillCfg {
+    pub flags: f64,
+    pub keyword_flags: f64,
+    pub skill_name: String,
+    pub summon_skill_name: Option<String>,
+    /// `skillGem` -- a `data.gems` id.
+    pub skill_gem: Option<String>,
+    /// `skillGrantedEffect` -- an effect index.
+    pub skill_granted_effect: usize,
+    pub skill_part: Option<f64>,
+    /// The cfg's own `skillCond` table.
+    pub skill_cond: IndexMap<String, bool>,
+    /// `true` for a weapon cfg (`setmetatable(..., { __index = skillCfg.skillCond })`).
+    pub skill_cond_inherits: bool,
+    /// `env.mode_effective and effectiveRange`.
+    pub skill_dist: Option<f64>,
+    pub slot_name: Option<String>,
+    pub socket_color: Option<String>,
+    pub socket_num: Option<f64>,
+}
+
+impl SkillCfg {
+    /// The table as a ModStore `cfg`. `parent_cond` = the skill cfg's `skillCond` (for a weapon cfg's `__index`).
+    pub fn mod_cfg(&self, skills: &Skills, skill_types: &SkillTypeSet, parent_cond: Option<&IndexMap<String, bool>>) -> ModCfg {
+        let ge = &skills.effects[self.skill_granted_effect];
+        let mut cond: IndexMap<Str, bool> = IndexMap::new();
+        if self.skill_cond_inherits
+            && let Some(p) = parent_cond
+        {
+            for (k, v) in p {
+                cond.insert(Str::from(k.as_str()), *v);
+            }
+        }
+        for (k, v) in &self.skill_cond {
+            cond.insert(Str::from(k.as_str()), *v);
+        }
+        ModCfg {
+            flags: Some(self.flags),
+            keyword_flags: Some(self.keyword_flags),
+            skill_name: Some(Str::from(self.skill_name.as_str())),
+            summon_skill_name: self.summon_skill_name.as_deref().map(Str::from),
+            skill_dist: self.skill_dist,
+            skill_cond: Some(cond),
+            slot_name: self.slot_name.as_deref().map(Str::from),
+            skill_gem: self
+                .skill_gem
+                .as_deref()
+                .map(|g| crate::skills::skill_gem_cfg(&pob_data::gems::gems().gems[g])),
+            socket_color: self.socket_color.as_deref().map(Str::from),
+            socket_num: self.socket_num,
+            skill_granted_effect: Some(pob_mods::GrantedEffect {
+                id: Str::from(ge.id.as_str()),
+                base_flags: ge
+                    .base_flags
+                    .as_ref()
+                    .map(|f| f.iter().map(|k| (Str::from(k.as_str()), true)).collect()),
+            }),
+            skill_part: self.skill_part,
+            skill_types: Some(skill_types.iter().map(|&t| f64::from(t)).collect()),
+            ..ModCfg::default()
+        }
+    }
+}
+
+/// One `activeSkill.buffList` entry (CalcActiveSkill.lua:827-847). The fields copied off the `GlobalEffect` tag stay Lua values.
+#[derive(Clone, Debug, Default)]
+pub struct Buff {
+    pub ty: Value,
+    pub name: Value,
+    pub allow_totem_buff: Value,
+    pub cond: Value,
+    pub enemy_cond: Value,
+    pub stack_var: Value,
+    pub stack_limit: Value,
+    pub stack_limit_var: Value,
+    pub apply_not_player: Value,
+    pub apply_minions: Value,
+    pub apply_allies: Value,
+    pub active_skill_buff: Option<bool>,
+    pub mod_list: Vec<Rc<Mod>>,
+}
+
+/// `activeSkill.minion` as far as R6 builds it (CalcActiveSkill.lua:704-723); the minion actor itself (weapon data, life table, skills)
+/// is R7.
+#[derive(Clone, Debug)]
+pub struct MinionStub {
+    pub ty: String,
+    /// `minion.minionData` present in `data.minions`.
+    pub has_minion_data: bool,
+    pub hostile: bool,
+    pub level: f64,
 }
 
 /// What `createActiveSkill` reads of the actor and the gem instances.
@@ -300,5 +438,24 @@ pub fn create_active_skill(
         skill_flags,
         effect_list,
         slot_name: None,
+        skill_cfg: None,
+        weapon1_cfg: None,
+        weapon2_cfg: None,
+        weapon1_flags: None,
+        weapon2_flags: None,
+        skill_data: IndexMap::new(),
+        skill_mod_list: None,
+        malformed_mods: Vec::new(),
+        buff_list: Vec::new(),
+        extra_skill_mod_list: None,
+        minion_list: None,
+        minion: None,
+        triggered_by: None,
+        skill_part: None,
+        skill_part_name: None,
+        skill_totem_id: None,
+        disable_reason: None,
+        active_mine_count: None,
+        active_stage_count: None,
     })
 }
