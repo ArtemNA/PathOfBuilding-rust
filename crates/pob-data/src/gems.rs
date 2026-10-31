@@ -1,5 +1,8 @@
-//! `data.gems` and its lookups (Modules/Data.lua) -- pob-ts `src/data/gems.ts`. Resolution of a saved gem against them is
-//! R3.4/R5 (SkillsTab.lua:440-521, D15).
+//! `data.gems` and its lookups (Modules/Data.lua:1085-1155) -- pob-ts `src/data/gems.ts`. Resolution of a saved gem against them:
+//! `pob_calc::skills_tab` (R6.2). Checked against LuaJIT (`crates/pob-calc/tests/gemdata.rs`): all 871 gems (with the Vaal AltX/AltY ones),
+//! `gemForSkill` -- 37 effects shared by 2-3 gems, all a Vaal gem and its Alt variants set up in one iteration, so the last Alt wins in
+//! every process and the converter's map is LuaJIT's -- `gemForBaseName`, `gemsByGameId`. Map order = data order (R13: the `pairs`
+//! order of LuaJIT's string-keyed tables differs per process).
 
 use std::sync::OnceLock;
 

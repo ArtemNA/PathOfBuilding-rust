@@ -377,6 +377,7 @@ fn load_skill_group(el: &XmlElement) -> SocketGroupModel {
     SocketGroupModel {
         enabled: is_true(el, "active") || is_true(el, "enabled"),
         include_in_full_dps: is_true(el, "includeInFullDPS"),
+        include_in_full_dps_attr: el.attr("includeInFullDPS").is_some(),
         group_count: num(el, "groupCount"),
         label: attr(el, "label"),
         slot: attr(el, "slot"),

@@ -284,3 +284,68 @@ pub(crate) fn apply_mod_parser_upvalues(root: &mut Json) -> Result<usize, DataEr
     }
     Ok(ps.len())
 }
+
+// --- skill-levels-shape.json (R6.2) ---------------------------------------------------------------------------------------------
+
+/// effect id -> (`#levels`, `next(levels)`).
+pub type LevelsShapes = HashMap<String, (usize, f64)>;
+
+/// `#grantedEffect.levels` and `next(grantedEffect.levels)` of one effect, as LuaJIT has them.
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct LevelsShape {
+    pub len: usize,
+    pub next: f64,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct ShapeFile {
+    format: u32,
+    #[allow(dead_code)]
+    producer: Json,
+    manifest_sha256: String,
+    shapes: crate::wire::OrderedMap<LevelsShape>,
+}
+
+/// `<repo>/data-patches/skill-levels-shape.json`.
+pub fn skill_levels_shape_path() -> PathBuf {
+    data_dir().join("..").join("data-patches").join("skill-levels-shape.json")
+}
+
+/// Parse the levels-shape file and check its `manifestSha256` against `lock_sha`. The converter wrote `levels` as a sorted list, which
+/// loses the Lua table's shape: `#levels` is the border LuaJIT finds (0 for a table built only with `[20] = ...`) and `next(levels)` the
+/// first key of its traversal (array part first, then the hash nodes) -- both read by validateGemLevel/`naturalMaxLevel`/ProcessGemLevel.
+/// Integer keys hash deterministically (MINEFIELD-RUST R11), so the patch is a plain table taken from LuaJIT
+/// (`tools/lua-corpus/export-gemdata.ts`, checked equal over 20 processes).
+pub fn parse_levels_shape(text: &str, lock_sha: &str) -> Result<HashMap<String, (usize, f64)>, DataError> {
+    let f: ShapeFile = serde_json::from_str(text).map_err(|e| DataError(format!("pob-data: skill-levels-shape.json: {e}")))?;
+    if f.format != 1 {
+        return Err(DataError(format!(
+            "pob-data: skill-levels-shape.json: format {}, expected 1",
+            f.format
+        )));
+    }
+    if f.manifest_sha256 != lock_sha {
+        return Err(DataError(format!(
+            "pob-data: skill-levels-shape.json was taken from data with manifest sha256 {}, but data.lock has {lock_sha} -- \
+             re-take it: node tools/lua-corpus/export-gemdata.ts",
+            f.manifest_sha256
+        )));
+    }
+    Ok(f.shapes.0.into_iter().map(|(k, s)| (k, (s.len, s.next))).collect())
+}
+
+/// The levels shapes of this process (effect id -> (`#levels`, `next(levels)`)).
+pub fn skill_levels_shape() -> Result<&'static HashMap<String, (usize, f64)>, DataError> {
+    static P: OnceLock<Result<LevelsShapes, DataError>> = OnceLock::new();
+    P.get_or_init(|| {
+        let dir = crate::ensure_data()?;
+        let lock = verify_lock(dir, &lock_path(dir))?;
+        let path = skill_levels_shape_path();
+        let text = std::fs::read_to_string(&path).map_err(|e| DataError(format!("pob-data: {}: {e}", path.display())))?;
+        parse_levels_shape(&text, &lock.manifest_sha256)
+    })
+    .as_ref()
+    .map_err(Clone::clone)
+}

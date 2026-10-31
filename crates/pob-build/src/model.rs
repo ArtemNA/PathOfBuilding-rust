@@ -304,6 +304,10 @@ pub struct SocketGroupModel {
     pub enabled: bool,
     #[serde(rename = "includeInFullDPS")]
     pub include_in_full_dps: bool,
+    /// SkillsTab.lua:447 `includeInFullDPS = attrib.includeInFullDPS and attrib.includeInFullDPS == "true"`: nil (not false) when the
+    /// attribute is absent -- whether it was there (R6.2 gem model).
+    #[serde(skip)]
+    pub include_in_full_dps_attr: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub group_count: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
