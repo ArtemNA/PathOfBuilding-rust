@@ -9,8 +9,8 @@
 //!   the list that reaches their name raises their `query_error()`, as LuaJIT's `ModList` does when its name test passes.
 //! * Hash-order walks (MINEFIELD-RUST R13): `pairs(stats)` (:62) and `pairs(part)` (:258) -- the stat order only decides the mod order of
 //!   the list (the gate compares multisets), the part keys are distinct. `pairs(activeSkill.effectList)` (:297, :519) is a sequence.
-//! * Minions (:668-803): the type choice, `srcInstance.skillMinion*` writes, `skillFlags.haveMinion` and the minion's level are ported; the
-//!   minion actor (weapon data, life table, item sets, minion skills) is R7 and recorded as unimplemented.
+//! * Minions (:668-803): the minion table ([`crate::minion::Minion`]: type, level, life table, weapon data, item set) and, for a minion
+//!   skill (`createMinionSkills`, R7.10), the minion actor's side (`actor.minionData`: the damage fixup, `actorLevel`, `summonSkill`).
 
 use std::rc::Rc;
 
@@ -22,8 +22,9 @@ use pob_items::{DataTable, Item};
 use pob_lua::number::{max2, min2};
 use pob_mods::{Mod, ModCfg, ModType, StoreKind, StoreRef, Str, Tag, Value, compare_mod_params, create_mod};
 
-use crate::active_skill::{ActiveSkill, Buff, EffectRef, MinionStub, SkillCfg};
+use crate::active_skill::{ActiveSkill, Buff, EffectRef, SkillCfg};
 use crate::calc_tools::{GemLevelTarget, LuaError, SkillInstance, build_skill_instance_stats, validate_gem_level};
+use crate::minion::{LifeTable, Minion};
 use crate::skills::SkillsState;
 use crate::skills_tab::{GemInstance, SkillsTab};
 
@@ -51,6 +52,25 @@ pub struct ModListInputs<'a> {
     /// `env.build.characterLevel`.
     pub character_level: f64,
     pub enemy_level: f64,
+    /// `env.build.itemsTab.items` (a minion's item set, :735-786).
+    pub items: &'a IndexMap<u64, Rc<Item>>,
+    /// `env.build.itemsTab.itemSets` in `itemSetOrderList` order.
+    pub item_sets: &'a [pob_build::ItemSetModel],
+    /// `env.theIronMass ~= nil`.
+    pub the_iron_mass: bool,
+}
+
+/// `activeSkill.actor` as `buildActiveSkillModList` reads it: the player (`env.player`) or a minion (`createMinionSkills`, R7.10).
+pub(crate) struct SkillActor<'a> {
+    /// `actor.modDB` -- the parent of the skill list.
+    pub mod_db: &'a StoreRef,
+    pub item_list: &'a IndexMap<String, Rc<Item>>,
+    pub weapon_data1: &'a DataTable,
+    pub weapon_data2: &'a DataTable,
+    /// `actor.minionData` and `actor.level` (nil for the player).
+    pub minion: Option<(&'a Value, f64)>,
+    /// `activeSkill.summonSkill.activeEffect.grantedEffect.name`.
+    pub summon_name: Option<String>,
 }
 
 fn skill_type(name: &str) -> u32 {
@@ -407,13 +427,39 @@ pub fn build_active_skill_mod_list(
         ..
     } = st;
     let skill: &mut ActiveSkill = &mut active_skill_list[idx];
+    let actor = SkillActor {
+        mod_db: inp.mod_db,
+        item_list: inp.item_list,
+        weapon_data1: inp.weapon_data1,
+        weapon_data2: inp.weapon_data2,
+        minion: None,
+        summon_name: None,
+    };
+    // :871-874 auxiliary skill list
+    if build_skill(&sk, tab, skill, inp, &actor, unimplemented)? {
+        aux_skill_list.push(idx);
+    }
+    Ok(())
+}
+
+/// CalcActiveSkill.lua:229-876 `calcs.buildActiveSkillModList(env, activeSkill)` for any actor (mode MAIN); `Ok(true)` when the skill goes
+/// into `env.auxSkillList` (:871-874).
+#[allow(clippy::too_many_lines)]
+pub(crate) fn build_skill(
+    sk: &Rc<Skills>,
+    tab: &mut SkillsTab,
+    skill: &mut ActiveSkill,
+    inp: &ModListInputs<'_>,
+    actor: &SkillActor<'_>,
+    _unimplemented: &mut Vec<String>,
+) -> Result<bool, LuaError> {
     let ae = skill.active_effect.clone();
     let (act_idx, gem_data, src) = {
         let e = ae.borrow();
         (e.granted_effect, e.gem_data.clone(), e.src_instance)
     };
     let act: &GrantedEffect = &sk.effects[act_idx];
-    let secondary = has_secondary(&sk, gem_data.as_deref());
+    let secondary = has_secondary(sk, gem_data.as_deref());
     let src_nil = |line: u32| format!("{CAS}:{line}: attempt to index field 'srcInstance' (a nil value)");
     let has_type = |skill: &ActiveSkill, n: &str| skill.skill_types.contains(&skill_type(n));
     let summon = skill.summon_skill.is_some();
@@ -463,7 +509,7 @@ pub fn build_active_skill_mod_list(
     }
 
     // :272-282 shield / staff requirements
-    let item_type = |slot: &str| inp.item_list.get(slot).and_then(|i| i.ty.clone());
+    let item_type = |slot: &str| actor.item_list.get(slot).and_then(|i| i.ty.clone());
     if (has_type(skill, "RequiresShield") || skill.flag("shieldAttack")) && !summon && item_type("Weapon 2").as_deref() != Some("Shield") {
         skill.skill_flags.insert("disable".into(), true);
         skill.disable_reason = Some("This skill requires a Shield".into());
@@ -500,7 +546,16 @@ pub fn build_active_skill_mod_list(
         }
         let (mut w1_flags, mut w1_info) = (None, None);
         if !skill.flag("forceOffHand") {
-            (w1_flags, w1_info) = get_weapon_flags(inp.weapon_data1, &weapon_types);
+            (w1_flags, w1_info) = get_weapon_flags(actor.weapon_data1, &weapon_types);
+        }
+        if w1_flags.is_none() && summon {
+            // :306-309 minion skills seem to ignore weapon types
+            let none = pob_data::rules::rules()
+                .weapon_type_info
+                .get("None")
+                .unwrap_or_else(|| panic!("{CAS}:308: data.weaponTypeInfo.None is nil"));
+            w1_flags = Some(mod_flag(none.flag.as_deref().unwrap_or_else(|| panic!("{CAS}:308: ModFlag[nil]"))));
+            w1_info = Some(none);
         }
         if let Some(fl) = w1_flags {
             if skill.flag("attack") || skill.flag("dotFromAttack") {
@@ -518,12 +573,12 @@ pub fn build_active_skill_mod_list(
             skill.disable_reason = Some("Main Hand weapon is not usable with this skill".into());
         }
         if !skill.flag("forceMainHand") {
-            let (w2_flags, w2_info) = get_weapon_flags(inp.weapon_data2, &weapon_types);
+            let (w2_flags, w2_info) = get_weapon_flags(actor.weapon_data2, &weapon_types);
             if let Some(fl) = w2_flags {
-                let (t1, t2) = (inp.weapon_data1.get("type"), inp.weapon_data2.get("type"));
+                let (t1, t2) = (actor.weapon_data1.get("type"), actor.weapon_data2.get("type"));
                 if has_type(skill, "DualWieldRequiresDifferentTypes")
                     && t1.raw_eq(&t2)
-                    && !(inp.weapon_data2.get("countsAsAll1H").truthy() || inp.weapon_data1.get("countsAsAll1H").truthy())
+                    && !(actor.weapon_data2.get("countsAsAll1H").truthy() || actor.weapon_data1.get("countsAsAll1H").truthy())
                 {
                     skill.skill_flags.insert("disable".into(), true);
                     skill
@@ -678,7 +733,7 @@ pub fn build_active_skill_mod_list(
         flags: f64::from(skill_mod_flags | skill.weapon1_flags.or(skill.weapon2_flags).unwrap_or(0)),
         keyword_flags: f64::from(kw),
         skill_name: act.name.strip_prefix("Vaal ").unwrap_or(&act.name).to_owned(),
-        summon_skill_name: None,
+        summon_skill_name: actor.summon_name.clone(),
         skill_gem: gem_data.clone(),
         skill_granted_effect: act_idx,
         skill_part: skill.skill_part,
@@ -706,12 +761,34 @@ pub fn build_active_skill_mod_list(
         c.flags = f64::from(skill_mod_flags | skill.weapon2_flags.expect("weapon2Attack"));
         skill.weapon2_cfg = Some(c);
     }
-    let cfg: ModCfg = skill_cfg.mod_cfg(&sk, &skill.skill_types, None);
+    let cfg: ModCfg = skill_cfg.mod_cfg(sk, &skill.skill_types, None);
     skill.skill_cfg = Some(skill_cfg);
 
-    // :491-501 the skill mod list (the damage fixup is a minion actor's -- `actor.minionData` is nil for the player)
-    let ml = pob_mods::ModStore::new_list(Some(inp.mod_db.clone()));
+    // :491-501 the skill mod list (parent: `actor.modDB`) and a minion actor's damage fixup
+    let ml = pob_mods::ModStore::new_list(Some(actor.mod_db.clone()));
     skill.skill_mod_list = Some(ml.clone());
+    if let Some((md, _)) = actor.minion
+        && let Some(fix) = md.get("damageFixup").as_num()
+    {
+        ml.borrow_mut().new_mod(create_mod(
+            "Damage",
+            Some(ModType::More),
+            Value::Num(-100.0 * fix),
+            Some("Damage Fixup"),
+            mod_flag("Attack"),
+            0,
+            Vec::new(),
+        ));
+        ml.borrow_mut().new_mod(create_mod(
+            "Speed",
+            Some(ModType::More),
+            Value::Num(100.0 * fix),
+            Some("Damage Fixup"),
+            mod_flag("Attack"),
+            0,
+            Vec::new(),
+        ));
+    }
     let mut malformed: Vec<MalformedMod> = Vec::new();
 
     // :503-508 DisableSkill
@@ -735,10 +812,10 @@ pub fn build_active_skill_mod_list(
     if skill.flag("disable") {
         skill.skill_flags.clear();
         skill.skill_flags.insert("disable".into(), true);
-        let l = validate_effect_level(&sk, &ae)?;
+        let l = validate_effect_level(sk, &ae)?;
         ae.borrow_mut().granted_effect_level = act.level(l).map(|_| l);
         skill.malformed_mods = malformed;
-        return Ok(());
+        return Ok(false);
     }
 
     // :518-549 support gem modifiers
@@ -747,7 +824,7 @@ pub fn build_active_skill_mod_list(
         if !ge.support {
             continue;
         }
-        merge_skill_instance_mods(&sk, &ml, &mut malformed, &se, None)?;
+        merge_skill_instance_mods(sk, &ml, &mut malformed, &se, None)?;
         let lv = se.borrow().level.expect("validated");
         let level = ge
             .level(lv)
@@ -878,11 +955,11 @@ pub fn build_active_skill_mod_list(
         ));
     }
 
-    // :576-579 active gem modifiers (`actor.minionData` is nil: actorLevel = nil)
-    ae.borrow_mut().actor_level = None;
+    // :576-579 active gem modifiers (`actorLevel = actor.minionData and actor.level`)
+    ae.borrow_mut().actor_level = actor.minion.map(|(_, l)| l);
     guard(&malformed, &["ExtraSkillStat"])?;
     let extra = lua(ml.borrow().list(Some(&cfg), &["ExtraSkillStat"]))?;
-    merge_skill_instance_mods(&sk, &ml, &mut malformed, &ae, Some(&extra))?;
+    merge_skill_instance_mods(sk, &ml, &mut malformed, &ae, Some(&extra))?;
     let ae_level = ae.borrow().level.expect("validated");
     let level = act.level(ae_level);
     ae.borrow_mut().granted_effect_level = level.map(|_| ae_level);
@@ -1051,8 +1128,7 @@ pub fn build_active_skill_mod_list(
             }
         }
     }
-    let _ = is_spectre;
-    if !minion_list.is_empty() {
+    if !minion_list.is_empty() && actor.minion.is_none() {
         // `not activeSkill.actor.minionData` -- the player
         let s = src.ok_or_else(|| src_nil(699))?;
         let gi = gem_mut(tab, s);
@@ -1089,23 +1165,137 @@ pub fn build_active_skill_mod_list(
         if data.is_nil() {
             return Err(format!("{CAS}:724: attempt to index field 'minionData' (a nil value)"));
         }
-        skill.minion = Some(MinionStub {
-            ty: minion_type.clone(),
-            has_minion_data: true,
-            hostile,
-            level: lvl,
-        });
+        let md_num = |k: &str, line: u32| -> Result<f64, LuaError> {
+            data.get(k)
+                .as_num()
+                .ok_or_else(|| format!("{CAS}:{line}: attempt to perform arithmetic on field '{k}' (a nil value)"))
+        };
+        // :724-728 life table
+        let life_table = if hostile {
+            LifeTable::Monster
+        } else if data.get("lifeScaling").is_str("AltLife1") {
+            LifeTable::Monster2
+        } else if data.get("lifeScaling").is_str("AltLife2") {
+            LifeTable::Monster3
+        } else if is_spectre {
+            LifeTable::Monster
+        } else {
+            LifeTable::Ally
+        };
+        // :729-734 base damage
+        let attack_time = md_num("attackTime", 729)?;
+        let c = pob_data::constants::constants();
+        let damage_table = if is_spectre || hostile {
+            &c.monster_damage_table
+        } else {
+            &c.monster_ally_damage_table
+        };
+        let mut damage = pob_data::constants::monster_table_at(damage_table, lvl)
+            .ok_or_else(|| format!("{CAS}:731: attempt to perform arithmetic on a nil value (damageTable[{lvl}])"))?
+            * md_num("damage", 731)?;
+        if !data.get("baseDamageIgnoresAttackSpeed").truthy() {
+            damage *= attack_time;
+        }
+        // :735-750 item set (MAIN: `srcInstance.skillMinionItemSet`)
+        let mut item_set: Option<usize> = None;
         if act.minion_has_item_set {
-            unimplemented.push(format!("{CAS}:735-746 minion item set of {} (itemsTab.itemSets; R7)", act.id));
+            let gi = gem_mut(tab, s);
+            let found = gi
+                .skill_minion_item_set
+                .and_then(|id| inp.item_sets.iter().position(|x| x.id == id));
+            item_set = match found {
+                Some(k) => Some(k),
+                None => {
+                    // `srcInstance.skillMinionItemSet = itemSetOrderList[1]`; `itemSets[nil]` is nil
+                    gi.skill_minion_item_set = inp.item_sets.first().map(|x| x.id);
+                    if inp.item_sets.is_empty() { None } else { Some(0) }
+                }
+            };
         } else if !secondary {
             let gi = gem_mut(tab, s);
             gi.skill_minion_item_set_calcs = None;
             gi.skill_minion_item_set = None;
         }
-        unimplemented.push(format!(
-            "{CAS}:724-793 minion actor of {} ({minion_type}): lifeTable, weaponData1/2 (R7)",
-            act.id
-        ));
+        // :751-765 weapon 1
+        let player_w1 = inp.weapon_data1;
+        let mut w1 = if (sd("minionUseBowAndQuiver").truthy() && player_w1.get("type").is_str("Bow"))
+            || sd("minionUseMainHandWeapon").truthy()
+            || (inp.the_iron_mass && minion_type == "RaisedSkeleton")
+        {
+            player_w1.clone()
+        } else {
+            let spread = md_num("damageSpread", 760)?;
+            let mut d = DataTable::default();
+            d.set("type", or(data.get("weaponType1"), Value::str("None")));
+            d.set("AttackRate", Value::Num(1.0 / attack_time));
+            d.set("CritChance", Value::Num(5.0));
+            d.set("PhysicalMin", Value::Num(pob_lua::number::round(damage * (1.0 - spread), None)));
+            d.set("PhysicalMax", Value::Num(pob_lua::number::round(damage * (1.0 + spread), None)));
+            d.set("range", data.get("attackRange"));
+            d
+        };
+        // :766-787 the slots the minion uses
+        let mut w2 = DataTable::default();
+        let uses: Option<Vec<String>> = act
+            .minion_uses
+            .as_ref()
+            .map(|u| u.0.iter().filter(|(_, v)| **v).map(|(k, _)| k.clone()).collect());
+        if let Some(u) = &uses {
+            let set_weapon = |slot: &str, n: f64| -> Result<Option<Option<DataTable>>, LuaError> {
+                let Some(k) = item_set else { return Ok(None) };
+                let set = &inp.item_sets[k];
+                let name = if set.use_second_weapon_set {
+                    format!("{slot} Swap")
+                } else {
+                    slot.to_owned()
+                };
+                let sel = set.slots.get(&name).map_or(0.0, |x| x.item_id);
+                let item = (sel >= 0.0 && sel.fract() == 0.0).then(|| inp.items.get(&(sel as u64))).flatten();
+                Ok(Some(
+                    item.and_then(|it| it.weapon_data.as_ref())
+                        .and_then(|wd| wd.get(&pob_items::NumKey(n)).cloned()),
+                ))
+            };
+            if u.iter().any(|x| x == "Weapon 1") {
+                match set_weapon("Weapon 1", 1.0)? {
+                    Some(Some(d)) => w1 = d,
+                    Some(None) => {}
+                    None => w1 = player_w1.clone(),
+                }
+            }
+            if u.iter().any(|x| x == "Weapon 2") {
+                match set_weapon("Weapon 2", 2.0)? {
+                    Some(Some(d)) => w2 = d,
+                    Some(None) => {}
+                    None => w2 = inp.weapon_data2.clone(),
+                }
+            }
+        }
+        // :788-793 NonSpectreMinionsUseParentMainHandAttackTime
+        if !is_spectre {
+            guard(&malformed, &["NonSpectreMinionsUseParentMainHandAttackTime"])?;
+            if lua(ml.borrow().flag(Some(&cfg), &["NonSpectreMinionsUseParentMainHandAttackTime"]))? == Some(true)
+                && let Some(rate) = player_w1.get("AttackRate").as_num()
+                && rate > 0.0
+            {
+                w1.set("AttackRate", Value::Num(rate));
+            }
+        }
+        skill.minion = Some(Box::new(Minion {
+            ty: minion_type.clone(),
+            data,
+            hostile,
+            level: lvl,
+            item_list: IndexMap::new(),
+            uses,
+            life_table,
+            weapon_data1: w1,
+            weapon_data2: w2,
+            item_set,
+            actor: None,
+            active_skill_list: Vec::new(),
+            main_skill: None,
+        }));
     } else if let Some(s) = src
         && !secondary
     {
@@ -1216,10 +1406,6 @@ pub fn build_active_skill_mod_list(
         remove(&ml, i);
     }
 
-    // :871-874 auxiliary skill list
-    if !skill.buff_list.is_empty() {
-        aux_skill_list.push(idx);
-    }
     skill.malformed_mods = malformed;
-    Ok(())
+    Ok(!skill.buff_list.is_empty())
 }

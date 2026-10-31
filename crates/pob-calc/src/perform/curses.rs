@@ -1,10 +1,11 @@
 //! CalcPerform.lua:3143-3316 -- extra curses (:3143-3192), ally curses (:3193-3211), the curse limit (:3215-3217) and the curse slots
 //! (:3219-3316). R6.7, skills on only.
 //!
-//! * `pairs({[curses] = modDB, [minionCurses] = env.minion and env.minion.modDB})` (:3144): `env.minion` is nil (R7), so the table has
-//!   ONE entry -- no order question.
+//! * `pairs({[curses] = modDB, [minionCurses] = env.minion and env.minion.modDB})` (:3144): table keys -- a per-process order (R13); each
+//!   entry writes its own `dest` and its own DB and only reads `enemyDB`, so the order cannot matter: Rust takes the player first.
 //! * Ally curses (:3193-3211): the PartyTab stand-in has no `Curse.Curse` (P5) -- `allyCurses` is empty, its `limit` nil is never read.
-//! * `minionCurses` (limit 1) only ever gets curses from the minions' own skills (:2909-2920, R7): empty here.
+//! * `minionCurses` (limit 1, or a spectre's `EnemyCurseLimit` + 1) gets the curses of the minions' own skills (:2909-2920) and the minion's
+//!   extra curses (R7.10).
 //! * The slots: `curseSlots` fills from 1 without holes (a slot is either the first empty one or an occupied one), so `#curseSlots` is the
 //!   vector length. No `table.sort` (L17): the order is `activeSkillList` order, then the extra curses.
 
@@ -76,9 +77,18 @@ fn merge_extra_curse_mods(env: &Env, ge_idx: usize, level: Option<f64>) -> Vec<R
     out
 }
 
-/// :3143-3192 extra curses (`dest` = `curses`, `modDB` = `env.modDB`; the minion entry is absent, see the module doc).
-pub(super) fn extra_curses(env: &Env, curses: &mut Vec<Curse>) {
-    let mod_db = env.mod_db.clone();
+/// :3143-3192 extra curses: `curses` with `env.modDB`, then `minionCurses` with `env.minion.modDB` (see the module doc).
+pub(super) fn extra_curses(env: &Env, curses: &mut Vec<Curse>, minion_curses: &mut Vec<Curse>) {
+    extra_curses_for(env, &env.mod_db, curses);
+    if let Some(m) = &env.minion {
+        let mdb = m.borrow().mod_db.clone();
+        extra_curses_for(env, &mdb, minion_curses);
+    }
+}
+
+/// One `pairs` entry of :3144 (`dest`, `modDB`).
+fn extra_curses_for(env: &Env, mod_db: &pob_mods::StoreRef, curses: &mut Vec<Curse>) {
+    let mod_db = mod_db.clone();
     let enemy_db = env.enemy_db.clone();
     if env.mode_combat && flag(&mod_db, &["Condition:OnConsecratedGround"]) {
         let effect = 1.0 + inc(&mod_db, &["ConsecratedGroundEffect"]) / 100.0;
@@ -146,13 +156,14 @@ pub(super) fn extra_curses(env: &Env, curses: &mut Vec<Curse>) {
                 socketed_curses_hex_limit: false,
                 mod_list: Some(list_mods(&l)),
                 buff_mod_list: None,
+                minion_buff_mod_list: None,
             });
         }
     }
 }
 
 /// :3215-3316 the curse limit and the slots; returns `curseSlots`.
-pub(super) fn curse_slots(env: &Env, output: &mut Output, curses: &[Curse]) -> Vec<Rc<Curse>> {
+pub(super) fn curse_slots(env: &Env, output: &mut Output, curses: &[Curse], minion_curses: &[Curse], minion_limit: f64) -> Vec<Rc<Curse>> {
     let mod_db = env.mod_db.clone();
     // :3215 `Flag and output.PowerChargesMax or Sum(...)`
     let limit = if flag(&mod_db, &["CurseLimitIsMaximumPowerCharges"])
@@ -166,11 +177,17 @@ pub(super) fn curse_slots(env: &Env, output: &mut Output, curses: &[Curse]) -> V
     let st = env.skills.as_ref().expect("skills on");
     let main_cfg = super::player_main_skill(env, 3232).cfg;
     let curses: Vec<Rc<Curse>> = curses.iter().cloned().map(Rc::new).collect();
+    let minion_curses: Vec<Rc<Curse>> = minion_curses.iter().cloned().map(Rc::new).collect();
     let mut slots: Vec<Rc<Curse>> = Vec::new();
     // Currently assume only 1 mark is possible
     let mut mark_slotted = false;
-    // :3224 `ipairs({curses, minionCurses, allyCurses})` -- the last two are empty (see the module doc).
-    for curse in &curses {
+    // :3224 `ipairs({curses, minionCurses, allyCurses})` -- `allyCurses` is empty (see the module doc).
+    let player_limit = limit;
+    for (curse, limit) in curses
+        .iter()
+        .map(|c| (c, player_limit))
+        .chain(minion_curses.iter().map(|c| (c, minion_limit)))
+    {
         // Calculate curses that ignore hex limit after
         if curse.ignore_hex_limit || curse.socketed_curses_hex_limit {
             continue;
@@ -234,7 +251,7 @@ pub(super) fn curse_slots(env: &Env, output: &mut Output, curses: &[Curse]) -> V
         }
     }
     // :3280-3315 curses that ignore the hex limit (`ipairs({curses, minionCurses})`).
-    for curse in &curses {
+    for curse in curses.iter().chain(minion_curses.iter()) {
         if curse.ignore_hex_limit {
             let mut skip_adding_curse = false;
             for s in &mut slots {

@@ -491,3 +491,112 @@ fn fulldps_matches_luajit() {
         "pinned split of the 15 fulldps scenarios"
     );
 }
+
+// --- R7.10: the `minion` scenarios (a minion skill as the main skill) -------------------------------------------------------------------
+
+/// The keys of the minion actor's output that `calcs.offence(env, env.minion, env.minion.mainSkill)` / `calcs.triggers(env, env.minion)`
+/// (CalcPerform.lua:3807-3808) would write -- the R7.10 boundary (`crate::offence` / `crate::triggers` run the player only): a LuaJIT
+/// `Minion.*` key Rust lacks is that class.
+fn minion_scenario(name: &str) -> (Row, usize, usize, usize, Vec<String>) {
+    let row = run_scenario(name);
+    let fx = fixture(name);
+    let xml = pob_build::read_build_file(dir().join(format!("{name}.xml"))).expect("xml");
+    let model = pob_build::load_build_xml(&xml).expect("xml parses");
+    let opts = CalculateOptions {
+        parse_mode: ParseMode::Full,
+        skills: true,
+        ..CalculateOptions::default()
+    };
+    let sess = pob_calc::CalcSession::new(std::rc::Rc::new(model), opts);
+    let out = sess.build_output(pob_calc::CalcMode::Main).expect("buildOutput");
+    let r = out.run.borrow();
+    let lua = scalars(&fx["minion"]);
+    let mut bad = Vec::new();
+    let (mut equal, mut missing) = (0, 0);
+    let Some(ms) = &r.state.minion else {
+        bad.push(format!("{name} | Minion | rust has no env.minion"));
+        return (row, lua.len(), 0, 0, bad);
+    };
+    let ms = ms.borrow();
+    let rust: BTreeMap<String, Gv> = pob_calc::output_to_stats(&ms.output)
+        .iter()
+        .map(|(k, v)| (k.clone(), to_golden(v)))
+        .collect();
+    for (k, l) in &lua {
+        match rust.get(k) {
+            Some(v) if stats_exact(l, v) => equal += 1,
+            Some(v) => bad.push(format!(
+                "{name} | Minion.{k} | rust {} | luajit {} | MISMATCH",
+                show(Some(v)),
+                show(Some(l))
+            )),
+            None => missing += 1,
+        }
+    }
+    for (k, v) in &rust {
+        if !lua.contains_key(k) {
+            bad.push(format!("{name} | Minion.{k} | rust {} | luajit nil | EXTRA", show(Some(v))));
+        }
+    }
+    (row, lua.len(), equal, missing, bad)
+}
+
+/// R7.10 gate (card p. 2): the 23 `minion` scenarios -- the player's output (every scalar key, exactly; the only allowed divergence is
+/// [`PERFORM_TAIL_GEM`] missing) and the minion actor's output `Minion.*` (every key Rust writes = LuaJIT bit for bit, no extra key; the
+/// keys Rust lacks are counted -- the offence / triggers of the minion, the R7.10 boundary).
+#[test]
+fn minion_scenarios_match_luajit() {
+    let mut bad = Vec::new();
+    let (mut n, mut player_equal, mut minion_equal_all) = (0, 0, 0);
+    let (mut tot_keys, mut tot_equal, mut tot_missing) = (0, 0, 0);
+    for name in scenario_names() {
+        if fixture(&name)["category"].as_str() != Some("minion") {
+            continue;
+        }
+        n += 1;
+        let (r, keys, equal, missing, mbad) = minion_scenario(&name);
+        let other: Vec<&String> = r
+            .bad
+            .iter()
+            .filter(|b| {
+                let key = b.split(" | ").nth(1).unwrap_or("");
+                !(PERFORM_TAIL_GEM.contains(&key) && b.contains("| MISSING |"))
+            })
+            .collect();
+        println!(
+            "{name}: player compared {} ok {} exact {} missing {} extra {} (outside the perform-tail class {}); Minion keys {keys} equal {equal} missing {missing} other {}",
+            r.compared,
+            r.ok,
+            r.exact,
+            r.missing,
+            r.extra,
+            other.len(),
+            mbad.len()
+        );
+        if other.is_empty() {
+            player_equal += 1;
+        }
+        if mbad.is_empty() && missing == 0 {
+            minion_equal_all += 1;
+        }
+        tot_keys += keys;
+        tot_equal += equal;
+        tot_missing += missing;
+        bad.extend(other.into_iter().cloned());
+        bad.extend(mbad);
+    }
+    println!(
+        "minion: {n} scenarios; player output = LuaJIT on {player_equal}; Minion.* complete on {minion_equal_all}; Minion keys {tot_keys}: equal {tot_equal}, missing {tot_missing} (the minion offence boundary)"
+    );
+    for b in &bad {
+        println!("{b}");
+    }
+    assert!(bad.is_empty(), "minion scenarios != LuaJIT ({}):\n{}", bad.len(), bad.join("\n"));
+    // R7.10: the player's output = LuaJIT on all 23; `Minion.*`: every key perform / defence / estimations write = LuaJIT (10 893), the
+    // 3 322 keys of the minion's offence are missing on every scenario (the boundary, CalcPerform.lua:3807-3808).
+    assert_eq!(
+        (n, player_equal, minion_equal_all, tot_keys, tot_equal, tot_missing),
+        (23, 23, 0, 14215, 10893, 3322),
+        "pinned state of the 23 minion scenarios"
+    );
+}

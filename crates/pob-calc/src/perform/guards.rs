@@ -10,7 +10,7 @@
 //! | `ipairs(guardSlots)` :3334 | condition writes (idempotent) and `mergeBuff` into distinct `buffs[guard.name]` keys | independent |
 //! | `pairs(buffs)` :3344 | the order of `modDB:AddList` (the order inside a ModDB bucket = the summation order) and `+1` on `BuffOnSelf` (integers) | a sum of 3+ float terms of one bucket may differ in the last bit (L10) -- the same freedom LuaJIT has between its own runs |
 //! | `pairs(debuffs)` :3358 | the order of `enemyDB:AddList` | as `pairs(buffs)` |
-//! | `pairs(minionBuffs)` :3354 | -- (`env.minion` is nil, R7) | -- |
+//! | `pairs(minionBuffs)` :3354 | `AddList` into the minion's DB: a multiset (R7.10) | insertion order |
 //! | `ipairs(curseSlots)` :3362 | a sequence | -- |
 
 use std::rc::Rc;
@@ -63,15 +63,31 @@ pub(super) fn guard_slots(env: &mut Env, guards: &Buffs, buffs: &mut Buffs, outp
 }
 
 /// :3343-3376 apply the buffs/debuffs and the curse slots.
-pub(super) fn apply(env: &Env, buffs: &Buffs, debuffs: &Buffs, curse_slots: &[Rc<Curse>]) {
+pub(super) fn apply(env: &Env, buffs: &Buffs, minion_buffs: &Buffs, debuffs: &Buffs, curse_slots: &[Rc<Curse>]) {
     let mod_db = env.mod_db.clone();
     let enemy_db = env.enemy_db.clone();
+    let minion = env
+        .minion
+        .as_ref()
+        .map(|m| (m.borrow().mod_db.clone(), super::env_minion(env).ty.clone()));
+    let main = env.minion.as_ref().map(|_| super::player_main_skill(env, 3350));
     for list in buffs.values() {
         mod_db.borrow_mut().add_list(&list.mods);
         if !list.not_buff {
             bump_mult(&mod_db, "BuffOnSelf", 1.0);
         }
-        // :3349-3351 `addMinionModifiers` -- env.minion is nil (R7).
+        // :3349-3351 `addMinionModifiers(modList, env.player.mainSkill.skillCfg, env.minion)`
+        if let (Some((mdb, ty)), Some(main)) = (&minion, &main) {
+            let l = pob_mods::ModStore::new_list(None);
+            l.borrow_mut().add_list(&list.mods);
+            crate::minion::add_minion_modifiers(&l, Some(&main.cfg), mdb, ty);
+        }
+    }
+    // :3353-3357
+    if let Some((mdb, _)) = &minion {
+        for list in minion_buffs.values() {
+            mdb.borrow_mut().add_list(&list.mods);
+        }
     }
     for list in debuffs.values() {
         enemy_db.borrow_mut().add_list(&list.mods);
@@ -88,6 +104,11 @@ pub(super) fn apply(env: &Env, buffs: &Buffs, debuffs: &Buffs, curse_slots: &[Rc
         if let Some(l) = &slot.buff_mod_list {
             mod_db.borrow_mut().add_list(l);
         }
-        // :3373-3375 `minionBuffModList` -- only made when env.minion is set (R7).
+        if let Some(l) = &slot.minion_buff_mod_list {
+            let (mdb, _) = minion
+                .as_ref()
+                .unwrap_or_else(|| panic!("Modules/CalcPerform.lua:3374: attempt to index field 'minion' (a nil value)"));
+            mdb.borrow_mut().add_list(l);
+        }
     }
 }

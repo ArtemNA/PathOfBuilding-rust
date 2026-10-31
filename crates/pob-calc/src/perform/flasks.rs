@@ -5,8 +5,8 @@
 //! * `mergeBuff` (:45-67) is ported here (its only callers before the buff phase are the flasks and tinctures).
 //! * The closures capture the upvalues of :1602-1611 / :1855-1857 ONCE: the :3121 call reuses the values computed at :1602
 //!   ([`FlaskCtx`]), and `mergeTinctures` decrements its `tinctureLimit` upvalue ([`TinctureCtx`]).
-//! * `env.minion` is nil here (the minion actor is R7, recorded at :1316): every `flasksApplyToMinion`/`quickSilverAppliesToAllies`/
-//!   `nonUniqueFlasksApplyToMinion` is `nil`, the minion half of `mergeFlasks` is dead.
+//! * `env.minion` (R7.10): `flasksApplyToMinion` / `quickSilverAppliesToAllies` / `nonUniqueFlasksApplyToMinion` (:1607-1609) and the
+//!   minion half of `mergeFlasks` (:1829-1853) are ported.
 //! * Hash-order walks (MINEFIELD-RUST R13/D13): `pairs(flasks)` / `pairs(tinctures)` (:1798, :1909) are keyed by item TABLES (address
 //!   order); Rust walks the slot order (`env.flasks`). The order decides (a) which of two flasks with the same `mergeBuff` key and an EQUAL
 //!   value keeps its mod (the first; only the source can differ), and (b) which tinctures fit under `TinctureLimit` -- neither happens on the
@@ -186,12 +186,23 @@ pub(super) struct FlaskCtx {
     effect_inc_magic_no_adjacent: f64,
     effect_inc_non_player: f64,
     effect_inc_magic_non_player: f64,
-    /// `env.minion and ...` -- nil (R7, see the module doc).
+    /// `env.minion and ...` (:1607-1609).
     flasks_apply_to_minion: bool,
     quick_silver_applies_to_allies: bool,
     pub non_unique_flasks_apply_to_minion: bool,
     flask_total_rate_inc: f64,
     flask_dur_inc: f64,
+}
+
+/// :1607-1609 `env.minion and modDB:Flag(env.player.mainSkill.skillCfg, name)` (`player`) / `env.minion and env.minion.modDB:Flag(nil, name)`.
+fn minion_flag(env: &Env, player: bool, name: &str) -> bool {
+    let Some(m) = &env.minion else { return false };
+    if player {
+        let cfg = super::player_main_skill(env, 1607).cfg;
+        super::flag_cfg(&env.mod_db, Some(&cfg), &[name])
+    } else {
+        flag(&m.borrow().mod_db, &[name])
+    }
 }
 
 /// :1602-1634 the flask upvalues and the flask breakdown (MAIN builds the breakdown: it writes output keys, MINEFIELD-RUST R8).
@@ -204,9 +215,9 @@ pub(super) fn flask_ctx(env: &Env, output: &mut Output, breakdown: bool) -> Flas
         effect_inc_magic_no_adjacent: sum(db, ModType::Inc, Some(&player), &["MagicFlaskNoAdjacentEffect"]),
         effect_inc_non_player: inc(db, &["FlaskEffect"]),
         effect_inc_magic_non_player: inc(db, &["MagicUtilityFlaskEffect"]),
-        flasks_apply_to_minion: false,
-        quick_silver_applies_to_allies: false,
-        non_unique_flasks_apply_to_minion: false,
+        flasks_apply_to_minion: minion_flag(env, true, "FlasksApplyToMinion"),
+        quick_silver_applies_to_allies: minion_flag(env, true, "QuickSilverAppliesToAllies"),
+        non_unique_flasks_apply_to_minion: minion_flag(env, false, "ParentNonUniqueFlasksAppliedToYou"),
         flask_total_rate_inc: inc(db, &["FlaskRecoveryRate"]),
         flask_dur_inc: inc(db, &["FlaskDuration"]),
     };
@@ -555,7 +566,33 @@ pub(super) fn merge_flasks(env: &Env, cx: &FlaskCtx, only_recovery: bool, check_
             db.borrow_mut().add_list(list);
         }
     }
-    // :1840-1853 the minion half: `env.minion` is nil (R7).
+    // :1829-1853 the minion half (R7.10)
+    if let Some(m) = &env.minion {
+        let mdb = m.borrow().mod_db.clone();
+        if cx.flasks_apply_to_minion || cx.non_unique_flasks_apply_to_minion {
+            for (c, status) in &t.conditions {
+                set_cond(&mdb, c, *status);
+            }
+            for list in t.non_player.values() {
+                mdb.borrow_mut().add_list(list);
+            }
+        } else if cx.quick_silver_applies_to_allies
+            && let Some(per) = t.per_base_non_player.get("Quicksilver Flask")
+        {
+            // `minionModDB.conditions[k] = flaskConditions[k]` -- a nil assignment removes the key
+            for k in ["UsingQuicksilverFlask", "UsingFlask"] {
+                match t.conditions.get(k) {
+                    Some(v) => set_cond(&mdb, k, *v),
+                    None => {
+                        mdb.borrow_mut().conditions.shift_remove(k);
+                    }
+                }
+            }
+            for list in per.values() {
+                mdb.borrow_mut().add_list(list);
+            }
+        }
+    }
 }
 
 /// The upvalues `mergeTinctures` captures (:1855-1857) -- `tinctureLimit` is decremented by the call.

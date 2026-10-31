@@ -3,8 +3,8 @@
 //! The curse slots are [`super::curses`], the guard slots and the application of everything to the actors (:3317-3377) [`super::guards`].
 //!
 //! What the phase knows it does not do (each recorded in `env.unimplemented` when a build reaches it):
-//! * `env.minion` is nil (the minion actor is R7, recorded at :1316): every `if env.minion` half is dead; the minions' own skills
-//!   (`activeSkill.minion.activeSkillList`, :2777-2993, made by `createMinionSkills` :1300) and spectres (:2210-2272) are R7.
+//! * `env.minion` (R7.10): every `if env.minion` half, the minions' own skills (`activeSkill.minion.activeSkillList`, :2777-2993) and the
+//!   spectres (:2210-2272) are ported; `minionBuffs` / `minionCurses` go to [`Combined`].
 //! * `getCachedOutputValue` (:2281-2305, Blight / Penance Brand / Earthquake stages) needs another skill's offence -- R7.
 //! * PartyTab (P5): `env.partyMembers` is the empty stand-in actor, so `allyBuffs` (:2207) has no `Aura`/`AuraDebuff`/`otherEffects`/
 //!   `extraAura`, `partyMembers.Warcry/Link` are empty (:2997-3115 never run), and `partyTabEnableExportBuffs` is false
@@ -53,16 +53,39 @@ pub(super) struct Curse {
     pub socketed_curses_hex_limit: bool,
     pub mod_list: Option<Vec<Rc<Mod>>>,
     pub buff_mod_list: Option<Vec<Rc<Mod>>>,
+    /// `curse.minionBuffModList` (:2661-2666, a `CurseBuff` while `env.minion` is set).
+    pub minion_buff_mod_list: Option<Vec<Rc<Mod>>>,
 }
 
 /// What :2193-2995 leaves for the curse/guard/apply phases.
-#[derive(Default)]
 pub(super) struct Combined {
     pub buffs: Buffs,
     pub guards: Buffs,
     pub debuffs: Buffs,
     /// `curses` (an array: `t_insert` in `activeSkillList` order).
     pub curses: Vec<Curse>,
+    /// `minionBuffs` (R7.10).
+    pub minion_buffs: Buffs,
+    /// `minionCurses` and its `limit` (1, or a spectre's `EnemyCurseLimit` + 1, :2241).
+    pub minion_curses: Vec<Curse>,
+    pub minion_curse_limit: f64,
+    /// `nonUniqueFlasksApplyToMinion = true` written by a Link's `ParentNonUniqueFlasksAppliedToYou` (:2727-2729).
+    pub non_unique_flasks_apply_to_minion: bool,
+}
+
+impl Default for Combined {
+    fn default() -> Self {
+        Combined {
+            buffs: Buffs::default(),
+            guards: Buffs::default(),
+            debuffs: Buffs::default(),
+            curses: Vec::new(),
+            minion_buffs: Buffs::default(),
+            minion_curses: Vec::new(),
+            minion_curse_limit: 1.0,
+            non_unique_flasks_apply_to_minion: false,
+        }
+    }
 }
 
 /// :45-67 `mergeBuff(src, destTable, destKey)` -- the highest value of each `compareModParams`-equal mod.
@@ -294,6 +317,356 @@ pub(super) fn determine_curse_priority(env: &Env, curse_name: &str, skill: Optio
     base_priority + socket_priority + slot_priority + source_priority
 }
 
+/// `env.minion` as the buff phase reads it (R7.10).
+pub(super) struct MinionCtx {
+    pub db: StoreRef,
+    pub hostile: bool,
+    pub actor: Rc<std::cell::RefCell<crate::env::CalcActor>>,
+}
+
+/// `copyTable(modValue)` with `source = "Spectre:<name>"` for each value of a LIST spectre mod (`pairs(modData.value)`).
+fn spectre_copies(v: &Value, name: &str) -> Vec<Rc<Mod>> {
+    let mut out = Vec::new();
+    let mut one = |x: &Value| match x {
+        Value::Mod(m) => {
+            let mut c = m.deep_copy();
+            c.source = Some(Rc::from(format!("Spectre:{name}").as_str()));
+            out.push(Rc::new(c));
+        }
+        other => panic!("{CP}:2246: spectre modifier value is a {} (a mod expected)", other.type_name()),
+    };
+    match v {
+        Value::Table(t) => {
+            // `pairs` over a table holding mods: the array part, then the hash part (R13: one key in the data -- `mod`)
+            for x in &t.array {
+                one(x);
+            }
+            for x in t.hash.values() {
+                one(x);
+            }
+        }
+        Value::Mod(m) => one(&Value::Mod(m.clone())),
+        other => panic!("{CP}:2246: bad argument #1 to 'pairs' (table expected, got {})", other.type_name()),
+    }
+    out
+}
+
+/// :2222-2272 the active spectres: `HaveBeastSpectre`, the minion curse limit, their ally / minion / player modifiers.
+fn spectres(env: &Env, mod_db: &StoreRef, active: &[String], out: &mut Combined) {
+    // `env.spec.build.spectreList` (Build.lua:989-992 keeps the ids `data.minions` knows)
+    let list: Vec<String> = env
+        .build
+        .spectres
+        .iter()
+        .filter(|id| crate::skill_modlist::is_minion(id))
+        .cloned()
+        .collect();
+    for id in &list {
+        if !active.contains(id) {
+            continue;
+        }
+        let data = crate::skill_modlist::minion_data(id);
+        let name = data.get("name");
+        let name = name
+            .as_str()
+            .unwrap_or_else(|| panic!("{CP}:2246: spectreData.name is not a string"));
+        if super::cond(mod_db, "HaveBeastSpectre") != Some(true)
+            && let Value::Table(tags) = data.get("monsterTags")
+            && tags.array.iter().any(|t| t.is_str("beast"))
+        {
+            set_cond(mod_db, "HaveBeastSpectre", true);
+        }
+        let Value::Table(mods) = data.get("modList") else {
+            panic!("{CP}:2241: spectreData.modList is not a table")
+        };
+        for m in &mods.array {
+            let Value::Mod(md) = m else {
+                panic!("{CP}:2242: spectreData.modList entry is not a mod")
+            };
+            let is_list = md.ty == Some(ModType::List);
+            match &*md.name {
+                "EnemyCurseLimit" => {
+                    out.minion_curse_limit = md
+                        .value
+                        .as_num()
+                        .unwrap_or_else(|| panic!("{CP}:2244: attempt to perform arithmetic on field 'value'"))
+                        + 1.0;
+                    break;
+                }
+                "AllyModifier" if is_list => {
+                    let copies = spectre_copies(&md.value, name);
+                    out.buffs.entry("Spectre".into()).or_default();
+                    out.minion_buffs.entry("Spectre".into()).or_default();
+                    for c in copies {
+                        out.minion_buffs.get_mut("Spectre").expect("made").mods.push(c.clone());
+                        out.buffs.get_mut("Spectre").expect("made").mods.push(c);
+                    }
+                }
+                "MinionModifier" if is_list => {
+                    let copies = spectre_copies(&md.value, name);
+                    out.minion_buffs.entry("Spectre".into()).or_default().mods.extend(copies);
+                }
+                "PlayerModifier" if is_list => {
+                    let copies = spectre_copies(&md.value, name);
+                    out.buffs.entry("Spectre".into()).or_default().mods.extend(copies);
+                }
+                _ => {}
+            }
+        }
+    }
+}
+
+/// `setSpectreSource(modList, sourceSkill)` (:2780-2791): a spectre's buff mods get `source = "Spectre:[<skill> - ]<minion name>"`. Upstream
+/// writes the field in place (on the shared buff mods when the scale is 1); here the list's entries are replaced by re-sourced copies.
+fn set_spectre_source(list: &StoreRef, spectre: bool, source_skill: Option<&str>, minion_name: &str) {
+    if !spectre {
+        return;
+    }
+    let source = match source_skill {
+        Some(s) => format!("Spectre:{s} - {minion_name}"),
+        None => format!("Spectre:{minion_name}"),
+    };
+    if let pob_mods::StoreKind::List(l) = &mut list.borrow_mut().kind {
+        for m in &mut l.mods {
+            let mut c = (**m).clone();
+            c.source = Some(Rc::from(source.as_str()));
+            *m = Rc::new(c);
+        }
+    }
+}
+
+/// :2777-2993 the buffs, auras, curses and debuffs of the skills of `env.player.activeSkillList[i]`'s minion (`castingMinion`).
+#[allow(clippy::too_many_lines)]
+fn minion_skill_buffs(
+    env: &Env,
+    i: usize,
+    env_minion: Option<&MinionCtx>,
+    main: &super::MainSkill,
+    mod_db: &StoreRef,
+    enemy_db: &StoreRef,
+    out: &mut Combined,
+) {
+    let st = env.skills.as_ref().expect("skills on");
+    let sk = &st.active_skill_list[i];
+    let cm = sk.minion.as_deref().expect("activeSkill.minion");
+    let cm_actor = cm.actor.clone().expect("castingMinion.modDB");
+    let cm_db = cm_actor.borrow().mod_db.clone();
+    // `env.minion == castingMinion` / `env.minion ~= activeSkill.minion` (one table)
+    let is_env_minion = env_minion.is_some_and(|m| Rc::ptr_eq(&m.actor, &cm_actor));
+    let spectre = sk.flag("spectre");
+    let cm_name = cm.md("name");
+    let cm_name = cm_name.as_str().unwrap_or("");
+    let (mode_buffs, mode_effective) = (env.mode_buffs, env.mode_effective);
+    for ms in &cm.active_skill_list {
+        let q = SkillQ {
+            list: ms.skill_mod_list.clone().expect("minion skill skillModList"),
+            malformed: &ms.malformed_mods,
+        };
+        let skill_cfg = skill_cfg_of(st, ms);
+        let data_truthy = |k: &str| ms.skill_data.get(k).is_some_and(Value::truthy);
+        let enable = data_truthy("enable");
+        let has_ty = |t: &str| ms.skill_types.contains(&skill_type_u32(t));
+        for buff in &ms.buff_list {
+            let ty = buff.ty.as_str().unwrap_or("");
+            let name = || str_of(&buff.name, 2796, "buff.name");
+            match ty {
+                "Buff" if mode_buffs && enable => {
+                    let active = buff.active_skill_buff == Some(true);
+                    let cfg = active.then_some(&skill_cfg);
+                    let store = if active { Store::Skill(&q) } else { Store::Db(&cm_db) };
+                    if buff.apply_allies.truthy() {
+                        let name = name();
+                        set_cond(mod_db, &format!("AffectedBy{}", no_spaces(name)), true);
+                        let src = new_list();
+                        let inc =
+                            store.sum(ModType::Inc, cfg, &["BuffEffect", "BuffEffectOnPlayer"]) + super::inc(mod_db, &["BuffEffectOnSelf"]);
+                        let more =
+                            store.more(cfg, &["BuffEffect", "BuffEffectOnPlayer"]) * super::more(mod_db, None, &["BuffEffectOnSelf"]);
+                        scale_add(&src, &buff.mod_list, (1.0 + inc / 100.0) * more);
+                        merge_buff(&list_mods(&src), &mut out.buffs, name);
+                        merge_buff(&buff.mod_list, &mut out.buffs, name);
+                        if data_truthy("thisIsNotABuff") {
+                            out.buffs.get_mut(name).expect("merged").not_buff = true;
+                        }
+                    }
+                    let env_minion_check = env_minion.is_some() && (is_env_minion || buff.apply_allies.truthy());
+                    if buff.apply_minions.truthy() || env_minion_check {
+                        let name = name();
+                        let target = if env_minion_check {
+                            &env_minion.expect("checked").db
+                        } else {
+                            &cm_db
+                        };
+                        set_cond(target, &format!("AffectedBy{}", no_spaces(name)), true);
+                        let names: &[&str] = if is_env_minion {
+                            &["BuffEffect", "BuffEffectOnSelf"]
+                        } else {
+                            &["BuffEffect"]
+                        };
+                        let inc = store.sum(ModType::Inc, cfg, names);
+                        let more = store.more(cfg, names);
+                        let src = new_list();
+                        scale_add(&src, &buff.mod_list, (1.0 + inc / 100.0) * more);
+                        merge_buff(&list_mods(&src), &mut out.minion_buffs, name);
+                        merge_buff(&buff.mod_list, &mut out.minion_buffs, name);
+                        if data_truthy("thisIsNotABuff") {
+                            out.buffs
+                                .get_mut(name)
+                                .unwrap_or_else(|| panic!("{CP}:2835: attempt to index field '?' (a nil value)"))
+                                .not_buff = true;
+                        }
+                    }
+                }
+                "Aura" if mode_buffs && enable => {
+                    let name = name();
+                    let extra = extra_effect_list(&cm_db, Some(&skill_cfg), "ExtraAuraEffect", 2843);
+                    if flag(&cm_db, &["SelfAurasCannotAffectAllies"])
+                        || flag(&cm_db, &["SelfAurasOnlyAffectYou"])
+                        || flag(&cm_db, &["SelfAuraSkillsCannotAffectAllies"])
+                        || q.flag(Some(&skill_cfg), &["SelfAurasAffectYouAndLinkedTarget"])
+                    {
+                        continue;
+                    }
+                    let key = format!("AffectedBy{}", no_spaces(name));
+                    if !flag(mod_db, &["AlliesAurasCannotAffectSelf"]) && super::cond(mod_db, &key) != Some(true) {
+                        let inc = q.sum(
+                            ModType::Inc,
+                            Some(&skill_cfg),
+                            &["AuraEffect", "BuffEffect", "BuffEffectOnPlayer", "AuraBuffEffect"],
+                        ) + super::sum(mod_db, ModType::Inc, Some(&skill_cfg), &["BuffEffectOnSelf", "AuraEffectOnSelf"]);
+                        let more = q.more(Some(&skill_cfg), &["AuraEffect", "BuffEffect", "AuraBuffEffect"])
+                            * super::more(mod_db, Some(&skill_cfg), &["BuffEffectOnSelf", "AuraEffectOnSelf"]);
+                        let mult = (1.0 + inc / 100.0) * more;
+                        // `allyBuffs["Aura"]` is nil (P5)
+                        set_cond(mod_db, "AffectedByAura", true);
+                        if name.as_bytes().get(..4) == Some(b"Vaal") {
+                            set_cond(mod_db, &format!("AffectedBy{}", no_spaces(name.get(5..).unwrap_or(""))), true);
+                        }
+                        set_cond(mod_db, &key, true);
+                        let src = new_list();
+                        scale_add(&src, &buff.mod_list, mult);
+                        scale_add(&src, &extra, mult);
+                        set_spectre_source(&src, spectre, Some(name), cm_name);
+                        merge_buff(&list_mods(&src), &mut out.buffs, name);
+                    }
+                    if let Some(em) = env_minion
+                        && super::cond(&em.db, &key) != Some(true)
+                        && (!is_env_minion || !sk.skill_data.get("auraCannotAffectSelf").is_some_and(Value::truthy))
+                    {
+                        let inc = q.sum(ModType::Inc, Some(&skill_cfg), &["AuraEffect", "BuffEffect"])
+                            + super::sum(&em.db, ModType::Inc, Some(&skill_cfg), &["BuffEffectOnSelf", "AuraEffectOnSelf"]);
+                        let more = q.more(Some(&skill_cfg), &["AuraEffect", "BuffEffect"])
+                            * super::more(&em.db, Some(&skill_cfg), &["BuffEffectOnSelf", "AuraEffectOnSelf"]);
+                        let mult = (1.0 + inc / 100.0) * more;
+                        set_cond(&em.db, &key, true);
+                        set_cond(&em.db, "AffectedByAura", true);
+                        let src = new_list();
+                        scale_add(&src, &buff.mod_list, mult);
+                        scale_add(&src, &extra, mult);
+                        set_spectre_source(&src, spectre, Some(name), cm_name);
+                        merge_buff(&list_mods(&src), &mut out.minion_buffs, name);
+                    }
+                    // :2888-2899 buffExports (write-only)
+                    if main.flag("totem") && super::cond(&main.list, &key) != Some(true) {
+                        set_cond(&main.list, &key, true);
+                        set_cond(&main.list, "AffectedByAura", true);
+                        let src = new_list();
+                        let names = ["AuraEffect", "BuffEffect", "AuraBuffEffect"];
+                        let inc = q.sum(ModType::Inc, Some(&skill_cfg), &names);
+                        let more = q.more(Some(&skill_cfg), &names);
+                        let scale = max2((1.0 + inc / 100.0) * more, 0.0);
+                        totem_aura_mods([&extra, &buff.mod_list], scale, &src);
+                        set_spectre_source(&src, spectre, None, cm_name);
+                        merge_buff(&list_mods(&src), &mut out.buffs, &format!("Totem {name}"));
+                    }
+                }
+                "Curse" if mode_effective && enable && (!flag(enemy_db, &["Hexproof"]) || has_ty("Mark")) => {
+                    let name = name();
+                    let priority = determine_curse_priority(env, name, Some((None, has_ty("Aura"))));
+                    let inc = q.sum(ModType::Inc, Some(&skill_cfg), &["CurseEffect"]) + super::inc(enemy_db, &["CurseEffectOnSelf"]);
+                    let more = q.more(Some(&skill_cfg), &["CurseEffect"]) * super::more(enemy_db, None, &["CurseEffectOnSelf"]);
+                    let l = new_list();
+                    scale_add(&l, &buff.mod_list, (1.0 + inc / 100.0) * more);
+                    out.minion_curses.push(Curse {
+                        name: name.to_owned(),
+                        priority,
+                        is_mark: false,
+                        ignore_hex_limit: false,
+                        socketed_curses_hex_limit: false,
+                        mod_list: Some(list_mods(&l)),
+                        buff_mod_list: None,
+                        minion_buff_mod_list: None,
+                    });
+                }
+                "Debuff" | "AuraDebuff" => {
+                    let stack_count = if buff.stack_var.truthy() {
+                        let var = str_of(&buff.stack_var, 2941, "buff.stackVar");
+                        let mut c = q.sum(ModType::Base, Some(&skill_cfg), &[&format!("Multiplier:{var}")]);
+                        if buff.stack_limit.truthy() {
+                            c = min2(c, num_of(&buff.stack_limit, 2943, "stackLimit"));
+                        } else if buff.stack_limit_var.truthy() {
+                            let var = str_of(&buff.stack_limit_var, 2945, "buff.stackLimitVar");
+                            c = min2(c, q.sum(ModType::Base, Some(&skill_cfg), &[&format!("Multiplier:{var}")]));
+                        }
+                        c
+                    } else {
+                        match ms.skill_data.get("stackCount") {
+                            Some(v) if v.truthy() => num_of(v, 2948, "stackCount"),
+                            _ => 1.0,
+                        }
+                    };
+                    if mode_effective && stack_count > 0.0 {
+                        let name = name();
+                        let key = format!("AffectedBy{}", no_spaces(name));
+                        let mut mult = 1.0;
+                        if ty == "AuraDebuff" {
+                            mult = 0.0;
+                            if !q.flag(None, &["SelfAurasOnlyAffectYou"])
+                                || q.flag(Some(&skill_cfg), &["SelfAurasAffectYouAndLinkedTarget"])
+                            {
+                                let names = ["AuraEffect", "BuffEffect", "DebuffEffect"];
+                                let inc = q.sum(ModType::Inc, Some(&skill_cfg), &names);
+                                let more = q.more(Some(&skill_cfg), &names);
+                                mult = (1.0 + inc / 100.0) * more;
+                                // `allyBuffs["AuraDebuff"]` is nil (P5); buffExports write-only
+                                if super::cond(enemy_db, &key) == Some(true) {
+                                    mult = 0.0;
+                                }
+                            }
+                        }
+                        set_cond(enemy_db, &key, true);
+                        if is_env_minion && let Some(em) = env_minion {
+                            set_cond(&em.db, &key, true);
+                        }
+                        if ty == "Debuff" {
+                            let inc = q.sum(ModType::Inc, Some(&skill_cfg), &["DebuffEffect"]);
+                            let more = q.more(Some(&skill_cfg), &["DebuffEffect"]);
+                            mult = (1.0 + inc / 100.0) * more;
+                        }
+                        let src = new_list();
+                        scale_add(&src, &buff.mod_list, mult * stack_count);
+                        let sc = ms.skill_data.get("stackCount").cloned().unwrap_or_default();
+                        if sc.truthy() || buff.stack_var.truthy() {
+                            // `srcList:NewMod(..., activeMinionSkill.skillData.stackCount, buff.name)` -- the skill's stackCount, not `stackCount`
+                            src.borrow_mut().new_mod(create_mod(
+                                &format!("Multiplier:{name}Stack"),
+                                Some(ModType::Base),
+                                sc,
+                                Some(name),
+                                0,
+                                0,
+                                vec![],
+                            ));
+                        }
+                        merge_buff(&list_mods(&src), &mut out.debuffs, name);
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+}
+
 /// :2193-2995 -- see the module doc.
 #[allow(clippy::too_many_lines)]
 pub(super) fn combine(env: &mut Env) -> Combined {
@@ -308,8 +681,9 @@ pub(super) fn combine(env: &mut Env) -> Combined {
     let n_skills = st.active_skill_list.len();
     let has = |i: usize, t: &str| st.active_skill_list[i].skill_types.contains(&skill_type_u32(t));
 
-    // :2208-2272 spectres -- minions (R7).
+    // :2208-2272 spectres (R7.10)
     let mut has_active_spectre = false;
+    let mut active_spectre_list: Vec<String> = Vec::new();
     for sk in &st.active_skill_list {
         if !sk.flag("disable")
             && skills.effects[sk.active_effect.borrow().granted_effect]
@@ -317,11 +691,20 @@ pub(super) fn combine(env: &mut Env) -> Combined {
                 .starts_with("RaiseSpectre")
         {
             has_active_spectre = true;
+            if let Some(m) = sk.minion.as_deref() {
+                active_spectre_list.push(m.ty.clone());
+            }
         }
     }
     if has_active_spectre {
-        notes.push("CalcPerform.lua:2222-2272 active spectre skill: spectre curse limit / ally/minion/player buffs (R7)".to_owned());
+        spectres(env, &mod_db, &active_spectre_list, &mut out);
     }
+    // `env.minion` (R7.10): its DB, hostility and actor
+    let minion: Option<MinionCtx> = env.minion.as_ref().map(|a| MinionCtx {
+        db: a.borrow().mod_db.clone(),
+        hostile: super::env_minion(env).hostile,
+        actor: a.clone(),
+    });
 
     // :2277-2306 maximum sustainable stages
     for (i, sk) in st.active_skill_list.iter().enumerate() {
@@ -364,6 +747,16 @@ pub(super) fn combine(env: &mut Env) -> Combined {
     // :2308-2775 the buff loop
     let mut applied_combustion = false;
     let mut warcry_list: Vec<String> = Vec::new();
+    let mut link_skills: Vec<String> = Vec::new();
+    // :2709-2710 `linksApplyToMinions` (the same for every Link buff)
+    let links_apply_to_minions = minion.as_ref().is_some_and(|mc| {
+        flag(&mod_db, &["Condition:CanLinkToMinions"])
+            && flag(&mod_db, &["Condition:LinkedToMinion"])
+            && !flag(&mc.db, &["Condition:CannotBeDamaged"])
+            && !st.active_skill_list[st.main_skill.expect("mainSkill")]
+                .skill_types
+                .contains(&skill_type_u32("MinionsAreUndamagable"))
+    });
     for i in 0..n_skills {
         let sk = &st.active_skill_list[i];
         let q = SkillQ {
@@ -413,7 +806,20 @@ pub(super) fn combine(env: &mut Env) -> Combined {
                                 out.buffs.get_mut(name).expect("merged").not_buff = true;
                             }
                         }
-                        // :2336-2344 env.minion (nil, R7); :2345-2350 buff export (partyTabEnableExportBuffs false).
+                        // :2334-2342 the minion
+                        if let Some(mc) = &minion
+                            && !mc.hostile
+                            && (buff.apply_minions.truthy() || buff.apply_allies.truthy() || q.flag(None, &["BuffAppliesToAllies"]))
+                        {
+                            let name = buff_name();
+                            set_cond(&mc.db, &format!("AffectedBy{}", no_spaces(name)), true);
+                            let src = new_list();
+                            let inc = store.sum(ModType::Inc, cfg, &["BuffEffect"]) + super::inc(&mc.db, &["BuffEffectOnSelf"]);
+                            let more = store.more(cfg, &["BuffEffect"]) * super::more(&mc.db, None, &["BuffEffectOnSelf"]);
+                            scale_add(&src, &buff.mod_list, (1.0 + inc / 100.0) * more);
+                            merge_buff(&list_mods(&src), &mut out.minion_buffs, name);
+                        }
+                        // :2343-2350 buff export (partyTabEnableExportBuffs false).
                     }
                 }
                 "Guard" => {
@@ -442,12 +848,14 @@ pub(super) fn combine(env: &mut Env) -> Combined {
                             &enemy_db,
                             &mut warcry_list,
                             &mut out.buffs,
+                            minion.as_ref(),
+                            &mut out.minion_buffs,
                         );
                     }
                 }
                 "Aura" => {
                     if mode_buffs {
-                        aura(env, &q, &skill_cfg, &main, sk, buff, &mod_db, &mut out);
+                        aura(env, &q, &skill_cfg, &main, sk, buff, &mod_db, &mut out, minion.as_ref());
                     }
                 }
                 "Debuff" | "AuraDebuff" => {
@@ -515,17 +923,39 @@ pub(super) fn combine(env: &mut Env) -> Combined {
                     }
                 }
                 "Curse" | "CurseBuff" => {
-                    if let Some(c) = curse(env, &q, &skill_cfg, i, buff, &mod_db, &enemy_db) {
+                    if let Some(c) = curse(env, &q, &skill_cfg, i, buff, &mod_db, &enemy_db, minion.as_ref()) {
                         out.curses.push(c);
                     }
                 }
-                // :2710-2752 Link: `env.mode_buffs and #linkSkills < 1 and (partyTabEnableExportBuffs or linksApplyToMinions)` --
-                // both are false/nil here (see the module doc).
+                // :2708-2752 Link: `env.mode_buffs and #linkSkills < 1 and (partyTabEnableExportBuffs or linksApplyToMinions)` --
+                // `partyTabEnableExportBuffs` is false (see the module doc).
+                "Link" if mode_buffs && link_skills.is_empty() && links_apply_to_minions => {
+                    let mc = minion.as_ref().expect("linksApplyToMinions implies env.minion");
+                    let extra = extra_effect_list(&mod_db, Some(&skill_cfg), "ExtraLinkEffect", 2715);
+                    if extra.iter().any(|m| &*m.name == "ParentNonUniqueFlasksAppliedToYou") {
+                        out.non_unique_flasks_apply_to_minion = true;
+                    }
+                    let name = buff_name();
+                    let mut inc = q.sum(ModType::Inc, Some(&skill_cfg), &["LinkEffect", "BuffEffect"]);
+                    let mut more = q.more(Some(&skill_cfg), &["LinkEffect", "BuffEffect"]);
+                    set_cond(&mc.db, &format!("AffectedBy{}", no_spaces(name)), true);
+                    set_cond(&mc.db, "AffectedByLink", true);
+                    inc += super::inc(&mc.db, &["BuffEffectOnSelf", "LinkEffectOnSelf"]);
+                    more *= super::more(&mc.db, None, &["BuffEffectOnSelf", "LinkEffectOnSelf"]);
+                    let mult = (1.0 + inc / 100.0) * more;
+                    let src = new_list();
+                    scale_add(&src, &buff.mod_list, mult);
+                    scale_add(&src, &extra, mult);
+                    merge_buff(&list_mods(&src), &mut out.minion_buffs, name);
+                    link_skills.push(name.to_owned());
+                }
                 _ => {}
             }
         }
-        // :2755-2762 Wither (`activeSkill.minion and env.minion and ...` is nil: env.minion is R7).
-        if q.flag(None, &["Condition:CanWither"]) {
+        // :2755-2762 Wither
+        if q.flag(None, &["Condition:CanWither"])
+            || (sk.minion.is_some() && minion.as_ref().is_some_and(|mc| flag(&mc.db, &["Condition:CanWither"])))
+        {
             let has_minion = sk.minion.is_some();
             let mut wither_effect = super::inc(&mod_db, &[if has_minion { "MinionWitherEffect" } else { "WitherEffect" }]);
             if !has_minion && flag(&mod_db, &["UnholyMight"]) {
@@ -565,12 +995,9 @@ pub(super) fn combine(env: &mut Env) -> Combined {
                 }
             }
         }
-        // :2777-2993 the minion's own skills (`createMinionSkills`, R7).
-        if sk.minion.is_some() {
-            let name = &skills.effects[sk.active_effect.borrow().granted_effect].name;
-            notes.push(format!(
-                "CalcPerform.lua:2777-2993 buffs/auras/curses/debuffs of the minion skills of {name} (R7)"
-            ));
+        // :2777-2993 the minion's own skills (R7.10)
+        if sk.minion.as_ref().is_some_and(|m| m.actor.is_some()) {
+            minion_skill_buffs(env, i, minion.as_ref(), &main, &mod_db, &enemy_db, &mut out);
         }
     }
     // :2997-3115 allies (`allyBuffs.otherEffects/Aura/AuraDebuff`, `partyMembers.Warcry/Link`): the PartyTab stand-in is empty (P5).
@@ -591,6 +1018,8 @@ fn warcry(
     enemy_db: &StoreRef,
     warcry_list: &mut Vec<String>,
     buffs: &mut Buffs,
+    minion: Option<&MinionCtx>,
+    minion_buffs: &mut Buffs,
 ) {
     let buff_name = str_of(&buff.name, 2367, "buff.name");
     // `buff.name:gsub(" Cry", ""):gsub("'s",""):gsub(" ","")` -- plain text in all three patterns.
@@ -694,7 +1123,66 @@ fn warcry(
         }
         merge_buff(&list_mods(&src), buffs, buff_name);
     }
-    // :2405-2433 env.minion (nil, R7); :2434-2441 export (false).
+    // :2404-2433 the minion (R7.10); :2434-2441 export (false).
+    if let Some(mc) = minion {
+        set_cond(&mc.db, &format!("AffectedBy{warcry_name}"), true);
+        let src = new_list();
+        let inc = q.sum(ModType::Inc, Some(skill_cfg), &["BuffEffect"])
+            + super::sum(&mc.db, ModType::Inc, Some(skill_cfg), &["BuffEffectOnSelf"]);
+        let more = q.more(Some(skill_cfg), &["BuffEffect"]) * super::more(&mc.db, Some(skill_cfg), &["BuffEffectOnSelf"]);
+        for wb in &buff.mod_list {
+            let t0 = wb
+                .tags
+                .first()
+                .unwrap_or_else(|| panic!("{CP}:2411: attempt to index a nil value (field '?')"));
+            let bonus = t0.get("warcryPowerBonus");
+            let bonus = if bonus.truthy() {
+                num_of(&bonus, 2411, "warcryPowerBonus")
+            } else {
+                1.0
+            };
+            scale_add(&src, std::slice::from_ref(wb), (1.0 + inc / 100.0) * more * bonus * uptime);
+        }
+        // :2415-2431 Rallying Cry: the flat weapon damage for the minion
+        if buff_name == "Rallying Cry" {
+            let extra = new_list();
+            let power_bonus = (min2(warcry_power, 30.0) / 5.0).floor();
+            let effect = (q.sum(ModType::Base, Some(main_cfg), &["RallyingCryAllyDamageBonusPer5Power"]) * power_bonus).floor();
+            let inc = q.sum(ModType::Inc, Some(skill_cfg), &["BuffEffect"])
+                + super::sum(&mc.db, ModType::Inc, Some(skill_cfg), &["BuffEffectOnSelf"]);
+            let more_mult = 1.0 + q.sum(ModType::Base, Some(main_cfg), &["RallyingCryMinionDamageBonusMultiplier"]);
+            let wd1 = env.player.borrow().weapon_data1.clone();
+            let gtag = || {
+                vec![tag(&[
+                    ("type", s("GlobalEffect")),
+                    ("effectType", s("Warcry")),
+                    ("div", n(5.0)),
+                    ("limit", n(30.0)),
+                ])]
+            };
+            for dt in ["Physical", "Lightning", "Cold", "Fire", "Chaos"] {
+                for suffix in ["Min", "Max"] {
+                    let k = format!("{dt}{suffix}");
+                    let v = wd1.get(&k);
+                    if v.truthy() {
+                        let v = num_of(&v, 2425, &k);
+                        nm(
+                            &extra,
+                            &k,
+                            ModType::Base,
+                            v * effect / 100.0,
+                            "Rallying Cry",
+                            0,
+                            keyword_flag("Attack"),
+                            gtag(),
+                        );
+                    }
+                }
+            }
+            scale_add(&src, &list_mods(&extra), (1.0 + inc / 100.0) * more_mult * uptime);
+        }
+        merge_buff(&list_mods(&src), minion_buffs, buff_name);
+    }
 }
 
 fn num_of(v: &Value, line: u32, what: &str) -> f64 {
@@ -717,6 +1205,7 @@ fn aura(
     buff: &crate::active_skill::Buff,
     mod_db: &StoreRef,
     out: &mut Combined,
+    minion: Option<&MinionCtx>,
 ) {
     let name = str_of(&buff.name, 2462, "buff.name");
     // :2444-2460 extra modifiers to apply to aura skills
@@ -750,7 +1239,22 @@ fn aura(
         || flag(mod_db, &["SelfAurasOnlyAffectYou"])
         || flag(mod_db, &["SelfAuraSkillsCannotAffectAllies"]))
     {
-        // :2479-2492 env.minion (nil, R7). :2493-2502 buffExports (write-only).
+        // :2479-2492 the minion (R7.10); `allyBuffs["Aura"]` is nil (P5). :2493-2502 buffExports (write-only).
+        if let Some(mc) = minion
+            && (!mc.hostile || flag(mod_db, &["AurasAffectEnemies"]))
+        {
+            let inc = q.sum(ModType::Inc, Some(skill_cfg), &["AuraEffect", "BuffEffect"])
+                + super::sum(&mc.db, ModType::Inc, Some(skill_cfg), &["BuffEffectOnSelf", "AuraEffectOnSelf"]);
+            let more = q.more(Some(skill_cfg), &["AuraEffect", "BuffEffect"])
+                * super::more(&mc.db, Some(skill_cfg), &["BuffEffectOnSelf", "AuraEffectOnSelf"]);
+            let mult = (1.0 + inc / 100.0) * more;
+            set_cond(&mc.db, &format!("AffectedBy{}", no_spaces(name)), true);
+            set_cond(&mc.db, "AffectedByAura", true);
+            let src = new_list();
+            scale_add(&src, &buff.mod_list, mult);
+            scale_add(&src, &extra, mult);
+            merge_buff(&list_mods(&src), &mut out.minion_buffs, name);
+        }
         let names = ["AuraEffect", "BuffEffect"];
         let inc = q.sum(ModType::Inc, Some(skill_cfg), &names);
         let more = q.more(Some(skill_cfg), &names);
@@ -792,6 +1296,7 @@ fn aura(
 }
 
 /// :2610-2708 a `Curse` / `CurseBuff` buff -> the curse table, or nothing.
+#[allow(clippy::too_many_arguments)]
 fn curse(
     env: &Env,
     q: &SkillQ<'_>,
@@ -800,6 +1305,7 @@ fn curse(
     buff: &crate::active_skill::Buff,
     mod_db: &StoreRef,
     enemy_db: &StoreRef,
+    minion: Option<&MinionCtx>,
 ) -> Option<Curse> {
     let st = env.skills.as_ref().expect("skills on");
     let sk = &st.active_skill_list[i];
@@ -844,6 +1350,7 @@ fn curse(
         socketed_curses_hex_limit,
         mod_list: None,
         buff_mod_list: None,
+        minion_buff_mod_list: None,
     };
     if buff.ty.as_str() == Some("Curse") {
         let l = new_list();
@@ -859,7 +1366,14 @@ fn curse(
         let buff_more = super::more(mod_db, Some(skill_cfg), &["BuffEffectOnSelf"]);
         scale_add(&l, &list_mods(&temp), (1.0 + buff_inc / 100.0) * buff_more);
         c.buff_mod_list = Some(list_mods(&l));
-        // :2661-2666 env.minion (nil, R7).
+        // :2661-2666 the minion (R7.10)
+        if let Some(mc) = minion {
+            let ml = new_list();
+            let buff_inc = super::inc(&mc.db, &["BuffEffectOnSelf"]);
+            let buff_more = super::more(&mc.db, None, &["BuffEffectOnSelf"]);
+            scale_add(&ml, &list_mods(&temp), (1.0 + buff_inc / 100.0) * buff_more);
+            c.minion_buff_mod_list = Some(list_mods(&ml));
+        }
     }
     Some(c)
 }

@@ -134,7 +134,8 @@ impl std::fmt::Debug for EffectRef {
 pub struct ActiveSkill {
     pub active_effect: EffectRef,
     pub support_list: Vec<EffectRef>,
-    /// `activeSkill.summonSkill` -- always nil for the player's skills (minions are R7).
+    /// `activeSkill.summonSkill` -- nil for the player's skills; for a minion skill (`createMinionSkills`, R7.10) the index of the summoning
+    /// skill in `env.player.activeSkillList`.
     pub summon_skill: Option<usize>,
     /// `activeSkill.socketGroup` -- index into `socketGroupList`; nil for the default Melee.
     pub socket_group: Option<usize>,
@@ -160,7 +161,7 @@ pub struct ActiveSkill {
     pub buff_list: Vec<Buff>,
     pub extra_skill_mod_list: Option<Vec<Rc<Mod>>>,
     pub minion_list: Option<Vec<String>>,
-    pub minion: Option<MinionStub>,
+    pub minion: Option<Box<crate::minion::Minion>>,
     pub triggered_by: Option<EffectRef>,
     pub skill_part: Option<f64>,
     pub skill_part_name: Option<String>,
@@ -273,17 +274,6 @@ pub struct Buff {
     pub mod_list: Vec<Rc<Mod>>,
 }
 
-/// `activeSkill.minion` as far as R6 builds it (CalcActiveSkill.lua:704-723); the minion actor itself (weapon data, life table, skills)
-/// is R7.
-#[derive(Clone, Debug)]
-pub struct MinionStub {
-    pub ty: String,
-    /// `minion.minionData` present in `data.minions`.
-    pub has_minion_data: bool,
-    pub hostile: bool,
-    pub level: f64,
-}
-
 /// What `createActiveSkill` reads of the actor and the gem instances.
 pub struct ActorView<'a> {
     pub weapon1: WeaponView<'a>,
@@ -314,6 +304,37 @@ pub fn create_active_skill(
     socket_group: Option<usize>,
     src_from_item: bool,
     from_item: &dyn FromItem,
+) -> Result<ActiveSkill, LuaError> {
+    create_active_skill_summoned(
+        skills,
+        active_effect,
+        support_list,
+        actor,
+        socket_group,
+        src_from_item,
+        from_item,
+        None,
+    )
+}
+
+/// The summoning skill of a minion skill as `createActiveSkill` gets it (`summonSkill`, R7.10): its index in `env.player.activeSkillList`
+/// and what `canGrantedEffectSupportActiveSkill` reads of it.
+pub struct Summon<'a> {
+    pub index: usize,
+    pub view: crate::calc_tools::SummonView<'a>,
+}
+
+/// [`create_active_skill`] with `summonSkill` (CalcActiveSkill.lua:83-165): the supports' `addFlags` are not applied to a minion skill (:153).
+#[allow(clippy::too_many_arguments)]
+pub fn create_active_skill_summoned(
+    skills: &Skills,
+    active_effect: EffectRef,
+    support_list: Vec<EffectRef>,
+    actor: &ActorView<'_>,
+    socket_group: Option<usize>,
+    src_from_item: bool,
+    from_item: &dyn FromItem,
+    summon: Option<Summon<'_>>,
 ) -> Result<ActiveSkill, LuaError> {
     let (act_idx, has_gem_data, src_instance) = {
         let e = active_effect.borrow();
@@ -349,7 +370,7 @@ pub fn create_active_skill(
             src_instance_from_item: src_from_item,
             skill_types: Some(types),
             minion_skill_types: minion_skill_types.as_ref(),
-            summon: None,
+            summon: summon.as_ref().map(|s| s.view),
             actor_is_player: actor.is_player,
             weapon1: actor.weapon1,
             weapon2: actor.weapon2,
@@ -425,7 +446,7 @@ pub fn create_active_skill(
                     set.push(src);
                 }
             }
-            if let Some(flags) = &ge.add_flags {
+            if let Some(flags) = ge.add_flags.as_ref().filter(|_| summon.is_none()) {
                 for (k, _) in flags.iter() {
                     skill_flags.insert(k.clone(), true);
                 }
@@ -436,7 +457,7 @@ pub fn create_active_skill(
     Ok(ActiveSkill {
         active_effect,
         support_list,
-        summon_skill: None,
+        summon_skill: summon.as_ref().map(|s| s.index),
         socket_group,
         skill_types,
         minion_skill_types,

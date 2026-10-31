@@ -116,6 +116,7 @@ fn experimental_env_disables_the_filter() {
 /// `FullDotDPS` = 0: no `includeInFullDPS` group), OccVortex +16 more (758/757: skill DoT, combined DPS, per-second mana cost).
 /// R7.8 (calcs.triggers; allowlist 778 -> 796): both Cospris goldens 514/513 -> 734/733 (the CoC-triggered Ice Spear now runs offence:
 /// trigger rates, projectiles, the whole offence output); the other four unchanged.
+/// R7.10 (minion actors; allowlist 796 unchanged): the six numbers unchanged (no golden's main skill is a minion).
 /// O9: `VaalArcticArmourMitigation` is `ok`, not `exact` (golden `+0`, Rust `-0`) -- hence exact = ok - 1.
 #[test]
 fn cli_stats_against_goldens() {

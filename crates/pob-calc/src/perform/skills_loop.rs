@@ -4,7 +4,7 @@
 //!
 //! Hash-order walks (MINEFIELD-RUST R13): `pairs(minionCounts)` (:1492) is keyed by strings (`minionData.limit` or `<effect id>:<type>`):
 //! LuaJIT's order differs per process; it only decides the insertion order of the `Multiplier:*Minion` mods (a multiset at the checkpoints),
-//! so Rust takes the insertion order. Minions as actors (`activeSkill.minion.modDB`, `createMinionSkills`) are R7.
+//! so Rust takes the insertion order. Minions as actors (`activeSkill.minion.modDB`, `createMinionSkills`): [`crate::minion`].
 
 use std::rc::Rc;
 
@@ -30,26 +30,19 @@ pub(crate) struct LoopOut {
 }
 
 /// :1294-1303 `activeSkill.skillModList = new("ModList"):ModList(activeSkill.baseSkillModList)` for every skill; the minion half
-/// (`activeSkill.minion.modDB`, `createMinionSkills`, `skillPartName`) is R7. Also fills the mod core's `actor.activeSkillList` (the same Lua
+/// (`activeSkill.minion.modDB`, `createMinionSkills`, `skillPartName`) is [`crate::minion::build_minion`] (R7.10). Also fills the mod core's `actor.activeSkillList` (the same Lua
 /// table, read by `ModStore:GetStat` for `ManaReservedPercent`/`LifeReservedPercent`) with what it reads -- `skillData` as it is now.
 pub(super) fn child_skill_lists(env: &mut Env) {
     let st = env.skills.as_ref().expect("skills on");
     let mut lists = Vec::with_capacity(st.active_skill_list.len());
     let mut core = Vec::with_capacity(st.active_skill_list.len());
     let mut notes = Vec::new();
-    for (i, sk) in st.active_skill_list.iter().enumerate() {
+    for sk in &st.active_skill_list {
         let base = sk
             .skill_mod_list
             .clone()
             .unwrap_or_else(|| panic!("Modules/CalcPerform.lua:1296: activeSkill.baseSkillModList is nil"));
         lists.push(ModStore::new_list(Some(base)));
-        if sk.minion.is_some() {
-            let name = &st.skills.effects[sk.active_effect.borrow().granted_effect].name;
-            notes.push(format!(
-                "CalcPerform.lua:1297-1302 minion of active skill {} ({name}): minion modDB, createMinionSkills, skillPartName (R7)",
-                i + 1
-            ));
-        }
         core.push(pob_mods::ActiveSkill {
             skill_types: sk.skill_types.iter().map(|&t| f64::from(t)).collect(),
             disable: sk.skill_flags.get("disable").copied(),
@@ -60,6 +53,12 @@ pub(super) fn child_skill_lists(env: &mut Env) {
                 .filter_map(|(k, v)| v.as_num().map(|x| (Rc::from(k.as_str()), x)))
                 .collect(),
         });
+    }
+    // :1297-1302 the minions: `minion.modDB`, `createMinionSkills`, `skillPartName` (R7.10, [`crate::minion::build_minion`])
+    for (i, list) in lists.iter().enumerate() {
+        if env.skills.as_ref().expect("skills on").active_skill_list[i].minion.is_some() {
+            crate::minion::build_minion(env, i, list, &mut notes);
+        }
     }
     env.skill_mod_lists = lists;
     env.player.borrow().actor.borrow_mut().active_skill_list = Some(core);

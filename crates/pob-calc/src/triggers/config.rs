@@ -424,10 +424,11 @@ pub(crate) fn config_table(env: &mut Env, st: &mut PerformState, key: &str) -> R
                 return Ok(None);
             }
         }
-        // :1172-1179 `if env.minion and env.minion.mainSkill` -- the minion actor is R7.10
+        // :1172-1179 `if env.minion and env.minion.mainSkill` -- the minion's "Nova" (Summon Holy Relic) is reached by `calcs.triggers(env, env.minion)`
+        // (CalcPerform.lua:3807) only, which is not ported (the minion offence boundary, R7.10)
         "nova" => {
             if skill(env, m).minion.is_some() {
-                return Err("CalcTriggers.lua:1173-1178 configTable[\"nova\"]: config.actor = env.minion (minion actors are R7.10)".into());
+                return Err("CalcTriggers.lua:1173-1178 configTable[\"nova\"]: config.actor = env.minion (calcs.triggers(env, env.minion), CalcPerform.lua:3807, is not ported)".into());
             }
             return Ok(None);
         }

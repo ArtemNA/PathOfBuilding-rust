@@ -6,7 +6,7 @@
 //! table values never reach `getStats`
 //! (`output_to_stats` skips them, as boot.lua's `engine_outputJSON` does) and are kept beside the scalars, under the same keys (a key
 //! holds either a scalar or a table, as one Lua slot does). `output.MainHand` / `output.OffHand` live in the offence state (R7.4);
-//! `output.Minion` (CalcPerform.lua:1319, the minion actor's output) is R7.10.
+//! `output.Minion` (CalcPerform.lua:1319, the minion actor's output) is [`OutTable::Minion`] (R7.10).
 //! The mod core reads the same table through `store.actor.output` (`PerStat`/`StatThreshold`/`GetStat`, ModStore.lua:
 //! 308-357) as numbers only (`pob_mods::Actor::output`), so [`Output`] owns the full table and mirrors every number into the
 //! mod core's actor on each write -- one Lua table, two typed views kept in step. A non-number value is invisible to the mod
@@ -35,6 +35,22 @@ pub enum OutTable {
     SkillDps(Vec<FullDpsSkill>),
     /// Calcs.lua:420/:430 `output[<cost>.."WarningList"]` / `output[<cost>.."PercentCostWarningList"]` -- skill names, in insertion order.
     Names(Vec<String>),
+    /// CalcPerform.lua:1319-1320 `output.Minion = { }` -- `env.minion.output` itself (R7.10): one table, shared with the minion's perform
+    /// state.
+    Minion(MinionOutput),
+}
+
+/// The minion actor's perform state as the player's `output.Minion` holds it.
+#[derive(Clone)]
+pub struct MinionOutput(pub Rc<std::cell::RefCell<crate::perform::ActorState>>);
+
+impl std::fmt::Debug for MinionOutput {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self.0.try_borrow() {
+            Ok(a) => write!(f, "Minion output ({} keys)", a.output.len()),
+            Err(_) => write!(f, "Minion output (borrowed)"),
+        }
+    }
 }
 
 /// One `fullDPS.skills` entry (Calcs.lua:180/:217/:254/:298-353): `{ name, dps, count, trigger, skillPart, source }` (nil fields absent).

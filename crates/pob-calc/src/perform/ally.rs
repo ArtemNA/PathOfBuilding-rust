@@ -4,8 +4,8 @@
 //! * The pool tables are the file-level locals of :1255-1271. `allyLifeRedirects` (:1267-1271) appends the redirects of
 //!   `pairs({ minionLifePoolBySkill, totemLifePoolByStat })` -- string keys inside, a per-process order in LuaJIT (MINEFIELD-RUST R13); it is
 //!   only the name list of one `Sum`, so Rust takes the source order.
-//! * Minions as actors are R7: `initMinionModDB` / `addMinionModifiers` / `doActorAttribsConditions(env, minion)` / `doActorLifeMana(minion)`
-//!   (:3712-3729) build the minion's Life. Where a pool needs it, the skill is recorded in `env.unimplemented` and adds nothing.
+//! * A minion's Life (:3711-3728, R7.10): another skill's minion is built here (`initMinionModDB` / `addMinionModifiers` /
+//!   `doActorAttribsConditions(env, minion)`), `env.minion` only gets `doActorLifeMana` again ([`minion_life_of`]).
 //! * Totems are the player's own data: `calcs.calcTotemLife` (CalcOffence.lua:338-342) is ported here.
 
 use indexmap::IndexMap;
@@ -13,6 +13,10 @@ use pob_build::ConfigValue;
 use pob_lua::number::min2;
 use pob_mods::ModType;
 
+use std::cell::RefCell;
+use std::rc::Rc;
+
+use super::buffs::Buffs;
 use super::{ActorState, base, nm, nm_flag, override_, skill_cfg_of, skill_list_of, skill_type_u32};
 use crate::env::Env;
 
@@ -20,9 +24,7 @@ use crate::env::Env;
 struct Pool {
     life: &'static str,
     redirect: &'static str,
-    #[allow(dead_code)] // read by the minion half (`pool.source`, :3738), which needs the minion's Life (R7)
     source: &'static str,
-    #[allow(dead_code)] // read by the minion half (`pool.limit`, :3732), which needs the minion's Life (R7)
     limit: Option<&'static str>,
 }
 
@@ -117,10 +119,18 @@ struct Totem {
 }
 
 /// :3667-3790. `summoned_minion_override` is the local of :1504-1505 (`multiplierSummonedMinion`, nil when 0).
-pub(super) fn ally_life(env: &mut Env, player: &mut ActorState, summoned_minion_override: Option<&ConfigValue>) {
+pub(super) fn ally_life(
+    env: &mut Env,
+    player: &mut ActorState,
+    summoned_minion_override: Option<&ConfigValue>,
+    skip_ehp: bool,
+    buffs: Option<&(Buffs, Buffs)>,
+    env_minion_state: Option<&Rc<RefCell<ActorState>>>,
+    aegis_item: Option<Rc<pob_items::Item>>,
+) {
     let mod_db = env.mod_db.clone();
-    // :3668 `not skipEHP and ...` -- buildOutput (MAIN) never passes `skipEHP`.
-    let needs_ally_life = base(&mod_db, &ALLY_LIFE_REDIRECTS) != 0.0;
+    // :3668
+    let needs_ally_life = !skip_ehp && base(&mod_db, &ALLY_LIFE_REDIRECTS) != 0.0;
     let mut list: AllyLifeList = IndexMap::new();
     if needs_ally_life {
         let skill_names: Vec<String> = match &env.skills {
@@ -141,55 +151,125 @@ pub(super) fn ally_life(env: &mut Env, player: &mut ActorState, summoned_minion_
 
         // :3675-3751 the minions.
         let undamagable = skill_type_u32("MinionsAreUndamagable");
-        let mut notes = Vec::new();
-        if let Some(st) = &env.skills {
-            for (i, sk) in st.active_skill_list.iter().enumerate() {
+        let n_skills = env.skills.as_ref().map_or(0, |st| st.active_skill_list.len());
+        let mut calculated: Vec<&'static str> = Vec::new();
+        let mut spectre_count = 0.0;
+        // `firstSpectre`: (its minion's Life, the pool list key, the entry index)
+        let mut first_spectre: Option<(f64, usize)> = None;
+        for (i, skill_name) in skill_names.iter().enumerate().take(n_skills) {
+            let (skip, name, pools) = {
+                let st = env.skills.as_ref().expect("skills on");
+                let sk = &st.active_skill_list[i];
                 if sk.minion.is_none() || sk.flag("disable") || sk.skill_types.contains(&undamagable) {
+                    (true, String::new(), Vec::new())
+                } else {
+                    let name = skill_name.clone();
+                    let skill_pool = if sk.flag("spectre") {
+                        Some(&SPECTRE_LIFE_POOL)
+                    } else {
+                        MINION_LIFE_POOL_BY_SKILL.iter().find(|(k, _)| *k == name).map(|(_, p)| p)
+                    };
+                    let mut pools: Vec<&'static Pool> = skill_pool.into_iter().collect();
+                    // :3681-3693 Companionship is stored on the supported skill.
+                    let has_companionship = sk
+                        .buff_list
+                        .iter()
+                        .any(|b| b.mod_list.iter().any(|m| *m.name == *COMPANIONSHIP_LIFE_POOL.redirect));
+                    if has_companionship {
+                        pools.push(&COMPANIONSHIP_LIFE_POOL);
+                        if let Some(sp) = skill_pool
+                            && base(&mod_db, &[sp.redirect]) != 0.0
+                            && base(&mod_db, &[COMPANIONSHIP_LIFE_POOL.redirect]) != 0.0
+                        {
+                            pools = vec![&COMPANIONSHIP_LIFE_POOL];
+                            nm_flag(&mod_db, &format!("MinionLifeShares{}", sp.life), "Companionship");
+                        }
+                    }
+                    (false, name, pools)
+                }
+            };
+            if skip {
+                continue;
+            }
+            let mut minion_life: Option<f64> = None;
+            for pool in pools {
+                let is_spectre = pool.life == SPECTRE_LIFE_POOL.life;
+                let can_add = ((is_spectre && spectre_count < spectre_limit) || (!is_spectre && !calculated.contains(&pool.life)))
+                    && base(&mod_db, &[pool.redirect]) != 0.0
+                    && !override_(&mod_db, &[pool.life]).is_some_and(|v| v.truthy());
+                if !can_add {
                     continue;
                 }
-                let name = &skill_names[i];
-                let skill_pool = if sk.flag("spectre") {
-                    Some(&SPECTRE_LIFE_POOL)
-                } else {
-                    MINION_LIFE_POOL_BY_SKILL.iter().find(|(k, _)| k == name).map(|(_, p)| p)
+                let life = match minion_life {
+                    Some(l) => l,
+                    None => {
+                        let l = minion_life_of(env, i, buffs, env_minion_state, aegis_item.clone());
+                        minion_life = Some(l);
+                        l
+                    }
                 };
-                let mut pools: Vec<&Pool> = skill_pool.into_iter().collect();
-                // :3681-3693 Companionship is stored on the supported skill.
-                let has_companionship = sk
-                    .buff_list
-                    .iter()
-                    .any(|b| b.mod_list.iter().any(|m| *m.name == *COMPANIONSHIP_LIFE_POOL.redirect));
-                if has_companionship {
-                    pools.push(&COMPANIONSHIP_LIFE_POOL);
-                    if let Some(sp) = skill_pool
-                        && base(&mod_db, &[sp.redirect]) != 0.0
-                        && base(&mod_db, &[COMPANIONSHIP_LIFE_POOL.redirect]) != 0.0
-                    {
-                        pools = vec![&COMPANIONSHIP_LIFE_POOL];
-                        nm_flag(&mod_db, &format!("MinionLifeShares{}", sp.life), "Companionship");
-                    }
+                // :3731-3736 Void Spawn redirects scale from their summon limit
+                let mut count = match pool.limit {
+                    Some(lim) => match player.output.opt_num(lim) {
+                        Some(v) => v,
+                        None => {
+                            let st = env.skills.as_ref().expect("skills on");
+                            let sk = &st.active_skill_list[i];
+                            super::skill_guard(&sk.malformed_mods, &[lim]);
+                            crate::setup::ok(crate::calc_lib::val(&skill_list_of(env, i).borrow(), lim, None))
+                        }
+                    },
+                    None => 1.0,
+                };
+                if is_spectre {
+                    count = 1.0;
+                    spectre_count += 1.0;
                 }
-                // :3703-3750 `canAdd` for each pool; the first pool that can add needs `minion.output.Life` (R7).
-                // `calculatedLifePool` / `spectreCount` only change after a pool is added, which needs that Life: here they stay empty / 0.
-                for pool in pools {
-                    let is_spectre = std::ptr::eq(pool, &SPECTRE_LIFE_POOL);
-                    let can_add = ((is_spectre && 0.0 < spectre_limit) || !is_spectre)
-                        && base(&mod_db, &[pool.redirect]) != 0.0
-                        && !override_(&mod_db, &[pool.life]).is_some_and(|v| v.truthy());
-                    if can_add {
-                        notes.push(format!(
-                            "CalcPerform.lua:3712-3729 Life of the minion of active skill {} ({name}) for {}: initMinionModDB / addMinionModifiers / \
-                             doActorAttribsConditions / doActorLifeMana on the minion actor (R7)",
-                            i + 1,
-                            pool.life
-                        ));
-                        break;
+                let total = life * count;
+                nm(&mod_db, pool.life, ModType::Base, total, pool.source, 0, 0, vec![]);
+                let minion_name = {
+                    let st = env.skills.as_ref().expect("skills on");
+                    let n = st.active_skill_list[i].minion.as_ref().expect("minion").md("name");
+                    n.as_str()
+                        .unwrap_or_else(|| panic!("Modules/CalcPerform.lua:3741: minionData.name is not a string"))
+                        .to_owned()
+                };
+                let entries = list.entry(pool.life.to_owned()).or_default();
+                entries.push(AllyLifeEntry {
+                    name: minion_name,
+                    life: total,
+                    count: Some(count),
+                });
+                if is_spectre {
+                    if first_spectre.is_none() {
+                        first_spectre = Some((life, entries.len() - 1));
                     }
+                } else {
+                    calculated.push(pool.life);
                 }
             }
+            let _ = name;
         }
-        env.unimplemented.extend(notes);
-        // :3752-3758 the leftover spectre slots: `firstSpectre` is only set once a spectre pool was added (R7 above) -- nil here.
+        // :3752-3758 the leftover spectre slots: the first Raise Spectre group fills them.
+        if let Some((life, k)) = first_spectre
+            && spectre_count < spectre_limit
+        {
+            let count = spectre_limit - spectre_count;
+            let total = life * count;
+            let e = &mut list.get_mut(SPECTRE_LIFE_POOL.life).expect("spectre pool")[k];
+            e.count = Some(e.count.unwrap_or(0.0) + count);
+            e.life += total;
+            nm(
+                &mod_db,
+                SPECTRE_LIFE_POOL.life,
+                ModType::Base,
+                total,
+                SPECTRE_LIFE_POOL.source,
+                0,
+                0,
+                vec![],
+            );
+        }
 
         // :3760-3771 the totems.
         let mut normal_totem: Option<Totem> = None;
@@ -274,4 +354,58 @@ pub(super) fn ally_life(env: &mut Env, player: &mut ActorState, summoned_minion_
         }
     }
     player.ally_life_list = Some(list);
+}
+
+/// :3711-3728 `minion.output.Life` of `env.player.activeSkillList[i]`'s minion. Another skill's minion gets its DB here
+/// (`initMinionModDB(env, activeSkill)` -- `minion.output` a fresh table --, its skill's and the buffs' `MinionModifier`s, the minion buffs,
+/// its keystones) and its attributes (`doActorAttribsConditions`, through `env.minion` pointed at it for the call); `env.minion` only
+/// its life and mana again (`doActorLifeMana`).
+fn minion_life_of(
+    env: &mut Env,
+    i: usize,
+    buffs: Option<&(Buffs, Buffs)>,
+    env_minion_state: Option<&Rc<RefCell<ActorState>>>,
+    aegis_item: Option<Rc<pob_items::Item>>,
+) -> f64 {
+    let (actor, ty) = {
+        let st = env.skills.as_ref().expect("skills on");
+        let m = st.active_skill_list[i].minion.as_deref().expect("activeSkill.minion");
+        (m.actor.clone().expect("minion.modDB (:1297)"), m.ty.clone())
+    };
+    let mdb = actor.borrow().mod_db.clone();
+    let is_env_minion = env.minion.as_ref().is_some_and(|a| Rc::ptr_eq(a, &actor));
+    if is_env_minion {
+        let ms = env_minion_state.expect("env.minion has its output");
+        let mut ms = ms.borrow_mut();
+        super::do_actor_life_mana(&mdb, &mut ms.output);
+        return ms.output.num("Life");
+    }
+    let saved = env.minion.replace(actor.clone());
+    let mut state = ActorState::new(&actor.borrow().actor);
+    crate::minion::init_minion_mod_db(env, i, aegis_item);
+    let (list, cfg, malformed) = {
+        let st = env.skills.as_ref().expect("skills on");
+        let sk = &st.active_skill_list[i];
+        (skill_list_of(env, i), skill_cfg_of(st, sk), sk.malformed_mods.clone())
+    };
+    super::skill_guard(&malformed, &["MinionModifier"]);
+    crate::minion::add_minion_modifiers(&list, Some(&cfg), &mdb, &ty);
+    if let Some((b, mb)) = buffs {
+        for l in b.values() {
+            let tmp = pob_mods::ModStore::new_list(None);
+            tmp.borrow_mut().add_list(&l.mods);
+            crate::minion::add_minion_modifiers(&tmp, Some(&cfg), &mdb, &ty);
+        }
+        for l in mb.values() {
+            mdb.borrow_mut().add_list(&l.mods);
+        }
+    }
+    for name in super::list(&mdb, &["Keystone"]) {
+        if let Some(mods) = name.as_str().and_then(|n| env.spec.tree.keystone_mods(n)) {
+            mdb.borrow_mut().add_list(mods);
+        }
+    }
+    super::do_actor_attribs_conditions(env, super::Who::Minion, &mut state);
+    env.minion = saved;
+    state.output.num("Life")
 }

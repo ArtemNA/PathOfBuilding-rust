@@ -112,6 +112,7 @@ fn allowlist_is_the_measured_set() {
     // R7.6 (offence part D, ailments; OC5 = LuaJIT on every offence run Rust executes but the 3 R7.10 minion runs): 760 / 13;
     // R7.7 (offence part E + calcFullDPS + buildOutput tail; OC6 = LuaJIT on the same runs): 778 / 11;
     // R7.8 (calcs.triggers; Cospris x2 top offence runs, OC1-OC6 = LuaJIT): 796 / 11
+    // R7.10 (minion actors; OC1-OC6 = LuaJIT on all 73 Rust runs incl. the 4 nested golem runs; no golden main skill is a minion): 796 / 11
     assert_eq!(ALLOWLIST.len(), 796, "pinned size of the measured allowlist");
     assert_eq!(EXCLUDED.len(), 11, "pinned size of the measured exclusions");
 }

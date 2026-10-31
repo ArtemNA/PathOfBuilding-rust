@@ -539,7 +539,7 @@ fn set_cond(db: &StoreRef, key: &str, v: bool) {
 }
 
 /// `item.modList or item.slotModList[slotNum]` as shared mod objects. `nil` (no list at all) is the caller's business.
-fn src_list_of(item: &Item, slot_num: Option<f64>) -> Option<Vec<Rc<Mod>>> {
+pub(crate) fn src_list_of(item: &Item, slot_num: Option<f64>) -> Option<Vec<Rc<Mod>>> {
     if let Some(list) = &item.mod_list {
         return Some(list.iter().map(|m| Rc::new(m.m.clone())).collect());
     }
@@ -919,6 +919,7 @@ fn init_env_core(
         unimplemented: Vec::new(),
         limited_skills: None,
         session: std::rc::Weak::new(),
+        minion: None,
         spec,
     };
     // The config apply closures this port has no entry for (R3.5): visible, not silent.
@@ -2074,6 +2075,9 @@ fn init_env_core(
                 spectre_list: &spectres,
                 character_level: build.level,
                 enemy_level: env.enemy_level,
+                items: &env.items,
+                item_sets: &build.item_sets,
+                the_iron_mass: env.the_iron_mass.is_some(),
             };
             crate::skill_modlist::build_all(&mut st, &inp).map_err(InitEnvError)?
         };
@@ -2294,7 +2298,8 @@ fn rebuild_skill_data(env: &mut Env) {
 /// requirementsItems, requirementsGems, skills, everything } })` -- the re-init `calcFullDPS` makes of its env after every skill
 /// (Calcs.lua:337-344), on that env in place: what CalcSetup.lua:475-1975 still does with every accelerator on.
 pub fn reinit_accelerated(env: &mut Env, spec: &SpecDbs) {
-    // :306-326 `wipeEnv`: the mods, conditions and multipliers of modDB and enemyDB (`env.minion`: none, R7.10), then
+    // :306-326 `wipeEnv`: the mods, conditions and multipliers of modDB and enemyDB (`env.minion.modDB` too -- moot: perform gives every
+    // minion a fresh modDB at CalcPerform.lua:1297, and `cachedMinionDB` is always nil, R7.2b/R7.10), then
     // `accelerate.everything` returns -- allocNodes, itemModDB, the item/flask/radius-jewel lists, the active skills are kept.
     for db in [&env.mod_db, &env.enemy_db] {
         let mut d = db.borrow_mut();

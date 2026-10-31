@@ -208,6 +208,9 @@ pub struct Env {
     /// The [`crate::session::CalcSession`] that built this env (what upstream reaches as the globals `calcs`/`GlobalCache`):
     /// nested runs (`getCachedOutputValue`, triggers, mirages) go through it. Weak -- the session's cache owns envs.
     pub session: Weak<crate::session::SessionCore>,
+    /// `env.minion = env.player.mainSkill.minion` (CalcPerform.lua:1316, R7.10): the main skill's minion actor while perform runs (the same
+    /// `Rc` as that skill's [`crate::minion::Minion::actor`]); `None` = nil.
+    pub minion: Option<Rc<RefCell<CalcActor>>>,
 }
 
 impl Env {
@@ -225,6 +228,11 @@ impl Drop for Env {
     /// Cuts the strong `actor.enemy`/`actor.player` links of the mod core's actor tables (the only cycles of the graph,
     /// `player.player = player` among them), so dropping the `Env` frees every actor and store (R3-ARCH §2.2).
     fn drop(&mut self) {
+        if let Some(m) = &self.minion
+            && let Ok(a) = m.try_borrow()
+        {
+            a.actor.borrow_mut().actors.clear();
+        }
         for a in [&self.player, &self.enemy] {
             if let Ok(a) = a.try_borrow() {
                 a.actor.borrow_mut().actors.clear();

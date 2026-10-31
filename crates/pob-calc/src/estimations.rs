@@ -627,13 +627,23 @@ fn calc_mom_eb_pool(out: &Output, db: &StoreRef, life_pool: f64, mom_effect: f64
 
 /// The phase `calculate` plugs into CalcPerform.lua:3793-3795.
 pub fn estimations(env: &mut Env, state: &mut PerformState, who: Who) {
-    let (db, enemy_db) = match who {
-        Who::Player => (env.player.borrow().mod_db.clone(), env.enemy_db.clone()),
-        Who::Enemy => (env.enemy.borrow().mod_db.clone(), env.mod_db.clone()),
-    };
+    let (db, enemy_db) = (crate::perform::db_of(env, who), crate::perform::enemy_db_of(env, who));
     let env_mod_db = env.mod_db.clone();
     let is_player = who == Who::Player;
-    let out = &mut state.actor(who).output;
+    // the minion's state is a shared cell; `actor.parent` is the player (the enemy for a hostile minion), R7.10
+    let minion_rc = (who == Who::Minion).then(|| state.minion.clone().expect("env.minion.output"));
+    let hostile = who == Who::Minion && crate::perform::env_minion(env).hostile;
+    let mut minion_guard = minion_rc.as_ref().map(|rc| rc.borrow_mut());
+    let (out, parent): (&mut Output, Option<&Output>) = match minion_guard.as_mut() {
+        Some(g) => (
+            &mut g.output,
+            Some(if hostile { &state.enemy.output } else { &state.player.output }),
+        ),
+        None => match who {
+            Who::Player => (&mut state.player.output, None),
+            _ => (&mut state.enemy.output, None),
+        },
+    };
     let fl = |names: &[&str]| flag(&db, names);
     let input = &env.config.input;
     let placeholder = &env.config.placeholder;
@@ -1469,7 +1479,10 @@ pub fn estimations(env: &mut Env, state: &mut PerformState, who: Who) {
         // :2561-2570 allied energy shield. The player has no parent; its party stub's output is empty (P5).
         out.set_num("SoulLinkMitigation", base(&db, &["TakenFromParentESBeforeYou"]));
         if on(out, "SoulLinkMitigation") != 0.0 {
-            panic!("{}: attempt to index field 'parent' (a nil value)", site(2564));
+            let p = parent.unwrap_or_else(|| panic!("{}: attempt to index field 'parent' (a nil value)", site(2564)));
+            // `actor.parent.output.EnergyShieldRecoveryCap or 0`
+            let v = p.opt_num("EnergyShieldRecoveryCap").unwrap_or(0.0);
+            out.set_num("AlliedEnergyShield", v);
         } else {
             out.set_num("SoulLinkMitigation", base(&db, &["TakenFromPartyMemberESBeforeYou"]));
             if on(out, "SoulLinkMitigation") != 0.0 {

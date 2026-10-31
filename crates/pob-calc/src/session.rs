@@ -750,7 +750,7 @@ impl CalcSession {
                     return Ok(FullDpsOutcome::Unimplemented {
                         processed,
                         note: format!(
-                            "Calcs.lua:178-212 calcFullDPS roll-up of the minion skill {name} (usedEnv.minion.output; minion actors are R7.10)"
+                            "Calcs.lua:178-212 calcFullDPS roll-up of the minion skill {name} (usedEnv.minion.output.TotalDPS: the minion's offence, CalcPerform.lua:3807-3808, is not ported)"
                         ),
                     });
                 }

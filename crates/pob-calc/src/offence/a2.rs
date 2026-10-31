@@ -58,11 +58,25 @@ pub(super) fn skill_type_stats(off: &mut Off<'_>) {
     let cfg = off.cfg.clone();
     let c = Some(&cfg);
 
-    // :1057-1065 minion skills -- `activeSkill.minion.minionData` (minion actors, R7.10)
-    if off.sk().minion.is_some() {
-        off.note(format!(
-            "{LUA}:1057-1065 ActiveMinionLimit / SummonedMinionsPerCast (activeSkill.minion.minionData, R7.10)"
-        ));
+    // :1057-1065 minion skills -- `activeSkill.minion.minionData` (R7.10)
+    if let Some(limit) = off.sk().minion.as_deref().map(|m| m.md("limit")) {
+        if limit.truthy() {
+            let name = limit
+                .as_str()
+                .unwrap_or_else(|| panic!("{LUA}:1059: minionData.limit is not a string ({limit:?})"))
+                .to_owned();
+            let ov = ok(off.env.mod_db.borrow().override_(None, &[&name]));
+            let v = match ov {
+                Some(v) if v.truthy() => v
+                    .as_num()
+                    .unwrap_or_else(|| panic!("{LUA}:1059: bad argument #1 to 'floor' (number expected, got {})", v.type_name())),
+                _ => q.calc_val(&name, c) * q.more(c, &["ActiveMinionLimit"]),
+            };
+            off.out().set_num("ActiveMinionLimit", v.floor());
+        }
+        let per_cast = q.calc_val("MinionPerCastCount", c).floor();
+        off.out()
+            .set_num("SummonedMinionsPerCast", if per_cast == 0.0 { 1.0 } else { per_cast });
     }
     // :1066-1080 chains
     if off.flag("chaining") {

@@ -52,6 +52,8 @@ use crate::skills::SkillsState;
 pub enum Who {
     Player,
     Enemy,
+    /// `env.minion` (R7.10).
+    Minion,
 }
 
 /// What perform hangs on an actor table besides `modDB`/`itemList`/`weaponData` (those live in [`CalcActor`]).
@@ -111,16 +113,49 @@ pub struct PerformState {
     pub party_members: PartyStub,
     /// `env.aegisItem` (:1315) -- read by the minion half only.
     pub aegis_item: Option<Rc<Item>>,
+    /// `env.minion.output` (= `output.Minion`, :1319-1320, R7.10): shared with the player's output table value `Minion`.
+    pub minion: Option<std::rc::Rc<std::cell::RefCell<ActorState>>>,
     /// `calcs.offence(env, env.player, env.player.mainSkill)` (:3799) ran to its end (R7.7): false when the triggers / mirages dispatch
     /// (:3797-3798) took an unported branch, or the skill phase is off.
     pub offence_ran: bool,
 }
 
 impl PerformState {
-    pub fn actor(&mut self, who: Who) -> &mut ActorState {
+    pub fn actor(&mut self, who: Who) -> ActorMut<'_> {
         match who {
-            Who::Player => &mut self.player,
-            Who::Enemy => &mut self.enemy,
+            Who::Player => ActorMut::Own(&mut self.player),
+            Who::Enemy => ActorMut::Own(&mut self.enemy),
+            Who::Minion => ActorMut::Cell(
+                self.minion
+                    .as_ref()
+                    .unwrap_or_else(|| panic!("Modules/CalcPerform.lua: env.minion is nil"))
+                    .borrow_mut(),
+            ),
+        }
+    }
+}
+
+/// `actor.output` and the rest of an actor's perform state, mutably: the player's / enemy's own, or the minion's shared cell.
+pub enum ActorMut<'a> {
+    Own(&'a mut ActorState),
+    Cell(std::cell::RefMut<'a, ActorState>),
+}
+
+impl std::ops::Deref for ActorMut<'_> {
+    type Target = ActorState;
+    fn deref(&self) -> &ActorState {
+        match self {
+            ActorMut::Own(a) => a,
+            ActorMut::Cell(a) => a,
+        }
+    }
+}
+
+impl std::ops::DerefMut for ActorMut<'_> {
+    fn deref_mut(&mut self) -> &mut ActorState {
+        match self {
+            ActorMut::Own(a) => a,
+            ActorMut::Cell(a) => a,
         }
     }
 }
@@ -235,6 +270,23 @@ pub(crate) fn skill_list_of(env: &Env, i: usize) -> StoreRef {
 
 /// `actor.mainSkill` -- `None` where upstream's field is nil (the enemy).
 pub(crate) fn main_skill(env: &Env, who: Who) -> Option<MainSkill> {
+    if who == Who::Minion {
+        // `env.minion.mainSkill` -- a minion skill: its `skillModList` is its `baseSkillModList` (perform makes no child list for it)
+        let st = env.skills.as_ref().expect("skills on");
+        let m = env_minion(env);
+        let sk = m.main();
+        let list = sk.skill_mod_list.clone().expect("minion skill skillModList");
+        return Some(MainSkill {
+            list: list.clone(),
+            base: list,
+            cfg: skill_cfg_of(st, sk),
+            flags: sk.skill_flags.clone(),
+            types: sk.skill_types.clone(),
+            triggered: sk.skill_data.get("triggered").is_some_and(Value::truthy),
+            malformed: sk.malformed_mods.clone(),
+            has_minion: false,
+        });
+    }
     if who == Who::Player
         && let Some(st) = &env.skills
     {
@@ -263,6 +315,21 @@ pub(crate) fn main_skill(env: &Env, who: Who) -> Option<MainSkill> {
         malformed: Vec::new(),
         has_minion: false,
     })
+}
+
+/// `env.minion` as the minion table (`env.player.mainSkill.minion`, :1316) -- perform only asks while `env.minion` is set.
+pub(crate) fn env_minion(env: &Env) -> &crate::minion::Minion {
+    // the minion whose actor `env.minion` is (the main skill's; :3711-3725 runs the actor helpers on another skill's minion through it)
+    let actor = env
+        .minion
+        .as_ref()
+        .unwrap_or_else(|| panic!("Modules/CalcPerform.lua: attempt to index field 'minion' (a nil value)"));
+    let st = env.skills.as_ref().expect("skills on");
+    st.active_skill_list
+        .iter()
+        .filter_map(|sk| sk.minion.as_deref())
+        .find(|m| m.actor.as_ref().is_some_and(|a| Rc::ptr_eq(a, actor)))
+        .expect("env.minion is the minion of an active skill")
 }
 
 /// `env.player.mainSkill` -- upstream indexes it unconditionally.
@@ -376,22 +443,35 @@ fn skill_type(name: &str) -> Value {
     n(*globals().skill_type.get(name).unwrap_or_else(|| panic!("SkillType.{name} is nil")))
 }
 
-fn actor_of(env: &Env, who: Who) -> &Rc<std::cell::RefCell<CalcActor>> {
+pub(crate) fn actor_of(env: &Env, who: Who) -> &Rc<std::cell::RefCell<CalcActor>> {
     match who {
         Who::Player => &env.player,
         Who::Enemy => &env.enemy,
+        Who::Minion => env
+            .minion
+            .as_ref()
+            .unwrap_or_else(|| panic!("Modules/CalcPerform.lua: attempt to index field 'minion' (a nil value)")),
     }
 }
 
-fn db_of(env: &Env, who: Who) -> StoreRef {
+pub(crate) fn db_of(env: &Env, who: Who) -> StoreRef {
     actor_of(env, who).borrow().mod_db.clone()
 }
 
 /// `actor.enemy.modDB`.
-fn enemy_db_of(env: &Env, who: Who) -> StoreRef {
+pub(crate) fn enemy_db_of(env: &Env, who: Who) -> StoreRef {
     match who {
         Who::Player => env.enemy_db.clone(),
         Who::Enemy => env.mod_db.clone(),
+        // `minion.enemy` (CalcActiveSkill.lua:710-716): the player for a hostile minion
+        Who::Minion => actor_of(env, who)
+            .borrow()
+            .enemy
+            .upgrade()
+            .expect("minion.enemy")
+            .borrow()
+            .mod_db
+            .clone(),
     }
 }
 
@@ -539,7 +619,7 @@ fn attribute_conditions(db: &StoreRef, output: &mut Output) {
 const ATTRIBUTES: [&str; 3] = ["Str", "Dex", "Int"];
 
 #[allow(clippy::too_many_lines)]
-fn do_actor_attribs_conditions(env: &mut Env, who: Who, st: &mut ActorState) {
+pub(super) fn do_actor_attribs_conditions(env: &mut Env, who: Who, st: &mut ActorState) {
     let db = db_of(env, who);
 
     // --- :146-245 weapon / slot conditions ------------------------------------------------------------------------------
@@ -1065,10 +1145,42 @@ fn apply_enemy_modifiers(db: &StoreRef, enemy_db: &StoreRef, st: &mut ActorState
     }
 }
 
+/// CalcPerform.lua:1947-1963 (R7.10): a hostile minion gets a copy of every `EnemyModifier` mod of the player; a friendly one the player's
+/// main skill's `MinionModifier`s (`addMinionModifiers`) and the mods of the keystones its DB lists.
+fn minion_modifiers(env: &Env) {
+    let mdb = db_of(env, Who::Minion);
+    let m = env_minion(env);
+    if m.hostile {
+        for e in ok(env.mod_db.borrow().tabulate(None, None, &["EnemyModifier"])) {
+            let Value::Mod(md) = (if e.value.truthy() { e.value.get("mod") } else { Value::Nil }) else {
+                continue;
+            };
+            // `copyTable(mod, true)` then `setSource(copy, mod.source or value.mod.source)`
+            let source = md
+                .source
+                .clone()
+                .or_else(|| e.mod_.source.clone())
+                .unwrap_or_else(|| panic!("Modules/ModTools.lua:239: setSource with a nil source"));
+            let mut c = (*md).clone();
+            pob_mods::format::set_source(&mut c, &source);
+            mdb.borrow_mut().add_mod(Rc::new(c));
+        }
+    } else {
+        let pm = player_main_skill(env, 1957);
+        pm.guard(&["MinionModifier"]);
+        crate::minion::add_minion_modifiers(&pm.list, Some(&pm.cfg), &mdb, &m.ty);
+        for name in list(&mdb, &["Keystone"]) {
+            if let Some(mods) = name.as_str().and_then(|n| env.spec.tree.keystone_mods(n)) {
+                mdb.borrow_mut().add_list(mods);
+            }
+        }
+    }
+}
+
 // --- CalcPerform.lua:636-977 `doActorMisc` ------------------------------------------------------------------------------
 
 #[allow(clippy::too_many_lines)]
-fn do_actor_misc(env: &mut Env, who: Who, st: &mut ActorState, party: &PartyStub) {
+fn do_actor_misc(env: &mut Env, who: Who, st: &mut ActorState, party: &PartyStub, parent: Option<&Output>) {
     use ModType::{Base, Inc, More};
     let db = db_of(env, who);
     let enemy_db = enemy_db_of(env, who);
@@ -1089,8 +1201,15 @@ fn do_actor_misc(env: &mut Env, who: Who, st: &mut ActorState, party: &PartyStub
             set_mult(&db, "Rage", base(&db, &["MinimumRage"]));
         }
         // :653 `A and B or C and D and E or 0`
-        let allied_fortify = if fl("YourFortifyEqualToParent") {
-            panic!("Modules/CalcPerform.lua:653: attempt to index field 'parent' (a nil value)")
+        let parent_fortify = if fl("YourFortifyEqualToParent") {
+            parent
+                .unwrap_or_else(|| panic!("Modules/CalcPerform.lua:653: attempt to index field 'parent' (a nil value)"))
+                .opt_num("FortificationStacks")
+        } else {
+            None
+        };
+        let allied_fortify = if let Some(v) = parent_fortify {
+            v
         } else if flag(&party.mod_db, &["PartyMemberFortifyEqualToYours"]) {
             party_output(party, "FortificationStacks").unwrap_or(0.0)
         } else {
@@ -2178,13 +2297,23 @@ pub fn perform_skip_ehp(
     } else {
         None
     };
-    // :1316 `env.minion = env.player.mainSkill.minion` -- the minion actor (`initMinionModDB`, its modDB, every `if env.minion` branch
-    // below) is R7: perform runs as if `env.minion` were nil and records it (the stub has no minion).
+    // :1316-1321 `env.minion = env.player.mainSkill.minion`; `output.Minion = { }` is the minion's output; `initMinionModDB` (R7.10)
+    env.minion = None;
+    let mut minion_state: Option<Rc<std::cell::RefCell<ActorState>>> = None;
     if player_main_skill(env, 1316).has_minion {
-        skip(
-            env,
-            "1316-1320 env.minion = mainSkill.minion: initMinionModDB and every env.minion branch (R7)",
-        );
+        let i = env.skills.as_ref().and_then(|s| s.main_skill).expect("mainSkill");
+        let actor = env.skills.as_ref().expect("skills on").active_skill_list[i]
+            .minion
+            .as_ref()
+            .and_then(|m| m.actor.clone())
+            .expect("minion.modDB (:1297)");
+        let ms = Rc::new(std::cell::RefCell::new(ActorState::new(&actor.borrow().actor)));
+        env.minion = Some(actor);
+        player
+            .output
+            .set_table("Minion", crate::output::OutTable::Minion(crate::output::MinionOutput(ms.clone())));
+        crate::minion::init_minion_mod_db(env, i, aegis_item.clone());
+        minion_state = Some(ms);
     }
     if env.aegis_mod_list.is_some() {
         let mut p = env.player.borrow_mut();
@@ -2267,8 +2396,11 @@ pub fn perform_skip_ehp(
     player.output.set_num("WarcryPower", wp);
     set_mult(&mod_db, "WarcryPower", wp);
 
-    // :1350-1354 (`applyEnemyModifiers(env.minion, true)` -- env.minion is nil, see :1316)
+    // :1350-1354
     apply_enemy_modifiers(&mod_db, &enemy_db, &mut player, true);
+    if let Some(ms) = &minion_state {
+        apply_enemy_modifiers(&db_of(env, Who::Minion), &enemy_db_of(env, Who::Minion), &mut ms.borrow_mut(), true);
+    }
     let mut enemy = enemy;
     apply_enemy_modifiers(&enemy_db, &mod_db, &mut enemy, true);
 
@@ -2361,6 +2493,11 @@ pub fn perform_skip_ehp(
         h(Checkpoint::Cp1, env, &player, &enemy);
     }
     do_actor_life_mana(&mod_db, &mut player.output);
+    // :1946-1965 the minion: the player's enemy modifiers (hostile) or the skill's minion modifiers and keystones, then its attributes
+    if let Some(ms) = &minion_state {
+        minion_modifiers(env);
+        do_actor_attribs_conditions(env, Who::Minion, &mut ms.borrow_mut());
+    }
 
     // --- :1967-2092 reservations ----------------------------------------------------------------------------------------
     player.reserved_life_base = Some(0.0);
@@ -2523,21 +2660,34 @@ pub fn perform_skip_ehp(
     do_actor_charges(env, Who::Player, &mut player, &party);
 
     // --- :2193-3376 buffs / debuffs / curses / guards -------------------------------------------------------------------
-    match flask_state.as_ref() {
+    // `buffs` / `minionBuffs` as :3713-3718 reads them again (the ally Life pools of other skills' minions)
+    let mut ally_buffs: Option<(buffs::Buffs, buffs::Buffs)> = None;
+    match flask_state.as_mut() {
         Some((fx, _)) => {
             // :2193-2995 combine buffs/debuffs/curses/guards ([`buffs`]).
             let mut combined = buffs::combine(env);
+            // :2727-2729 a Link's `ParentNonUniqueFlasksAppliedToYou` sets the local `nonUniqueFlasksApplyToMinion` (:1609)
+            if combined.non_unique_flasks_apply_to_minion {
+                fx.non_unique_flasks_apply_to_minion = true;
+            }
             // :3118-3122 the recovery half of the flasks (`mergeFlasks(env.flasks, true, nonUniqueFlasksApplyToMinion)`).
             if env.mode_combat {
                 flasks::merge_flasks(env, fx, true, fx.non_unique_flasks_apply_to_minion);
             }
             // :3124-3141 alternate charges; :3143-3316 extra curses, curse limit, slots ([`curses`]).
             buffs::alternate_charges(env);
-            curses::extra_curses(env, &mut combined.curses);
-            let slots = curses::curse_slots(env, &mut player.output, &combined.curses);
+            curses::extra_curses(env, &mut combined.curses, &mut combined.minion_curses);
+            let slots = curses::curse_slots(
+                env,
+                &mut player.output,
+                &combined.curses,
+                &combined.minion_curses,
+                combined.minion_curse_limit,
+            );
             // :3317-3376 guards, then apply everything ([`guards`]).
             guards::guard_slots(env, &combined.guards, &mut combined.buffs, &mut player.output);
-            guards::apply(env, &combined.buffs, &combined.debuffs, &slots);
+            guards::apply(env, &combined.buffs, &combined.minion_buffs, &combined.debuffs, &slots);
+            ally_buffs = Some((combined.buffs, combined.minion_buffs));
         }
         None => {
             skip(env, "2193-3341 buffs/debuffs/curses/guards/links/auras (needs the skill phase, P5)");
@@ -2654,9 +2804,16 @@ pub fn perform_skip_ehp(
                 bump_mult(&mod_db, "BuffOnSelf", 1.0);
             }
         }
-        // :3433-3459 `fromAllies or not SelfAurasCannotAffectAllies` -> the minion copy (env.minion is nil, :1316) and the totem
+        // :3433-3459 `fromAllies or not SelfAurasCannotAffectAllies` -> the minion copy (above) and the totem
         // copy (`env.player.mainSkill.skillFlags.totem`, never set on the stub).
         if value.get("fromAllies").truthy() || !flag(&mod_db, &["SelfAurasCannotAffectAllies"]) {
+            // :3430-3434 the minion (R7.10)
+            if env.minion.is_some() {
+                let mdb = db_of(env, Who::Minion);
+                let i = inc(&mdb, &["BuffEffectOnSelf", "AuraEffectOnSelf"]);
+                let m = more(&mdb, None, &["BuffEffectOnSelf", "AuraEffectOnSelf"]);
+                ok(mdb.borrow_mut().scale_add_list(&mod_list, (1.0 + i / 100.0) * m, false));
+            }
             let src = &mod_list[0];
             let name: &str = &src.name;
             let blacklisted = name == "Speed" || name == "CritMultiplier" || name == "CritChance";
@@ -2710,10 +2867,20 @@ pub fn perform_skip_ehp(
         h(Checkpoint::Cp3, env, &player, &enemy);
     }
     defence_for_conditionals(env, Who::Player, &mut player);
+    if let Some(ms) = &minion_state {
+        defence_for_conditionals(env, Who::Minion, &mut ms.borrow_mut());
+    }
 
-    // --- :3490-3491 misc buffs / modifiers ------------------------------------------------------------------------------
+    // --- :3490-3495 misc buffs / modifiers ------------------------------------------------------------------------------
     do_actor_charges(env, Who::Player, &mut player, &party);
-    do_actor_misc(env, Who::Player, &mut player, &party);
+    do_actor_misc(env, Who::Player, &mut player, &party, None);
+    if let Some(ms) = &minion_state {
+        // `actor.parent` -- the player (a hostile minion's parent is the enemy)
+        let hostile = env_minion(env).hostile;
+        let parent_out = if hostile { &enemy.output } else { &player.output };
+        do_actor_charges(env, Who::Minion, &mut ms.borrow_mut(), &party);
+        do_actor_misc(env, Who::Minion, &mut ms.borrow_mut(), &party, Some(parent_out));
+    }
 
     // --- :3497-3622 non-damaging ailments, chill/shock multipliers ([`ailments`]) ---------------------------------------
     if skills_on {
@@ -2725,11 +2892,19 @@ pub fn perform_skip_ehp(
         );
     }
     do_actor_charges(env, Who::Enemy, &mut enemy, &party);
-    do_actor_misc(env, Who::Enemy, &mut enemy, &party);
+    do_actor_misc(env, Who::Enemy, &mut enemy, &party, None);
     // --- :3627-3665 exposures / Elemental Equilibrium / consecrated ground; :3667-3790 ally life pools ([`ally`]) --------
     if skills_on {
         ailments::exposures_consecrated(env);
-        ally::ally_life(env, &mut player, summoned_override.as_ref());
+        ally::ally_life(
+            env,
+            &mut player,
+            summoned_override.as_ref(),
+            skip_ehp,
+            ally_buffs.as_ref(),
+            minion_state.as_ref(),
+            aegis_item.clone(),
+        );
     } else {
         skip(env, "3627-3665 exposures / Elemental Equilibrium (P5)");
         skip(env, "3667-3789 ally life pools (Vaal Rejuvenation Totem, spectres; P5)");
@@ -2740,6 +2915,7 @@ pub fn perform_skip_ehp(
         enemy,
         party_members: party,
         aegis_item,
+        minion: minion_state,
         offence_ran: false,
     };
 
@@ -2781,9 +2957,31 @@ pub fn perform_skip_ehp(
     } else {
         skip(env, "3797-3801 triggers / mirages / offence (P5)");
     }
-    skip(env, "3803-3990 minion output, buff export, party export (P5)");
+    // --- :3802-3809 the minion: defence, estimations (R7.10); its triggers and offence are a boundary of the port --------------
+    if state.minion.is_some() {
+        match defence {
+            Some(def) => {
+                def(env, &mut state, Who::Minion);
+                if !skip_ehp {
+                    match estimations {
+                        Some(est) => est(env, &mut state, Who::Minion),
+                        None => skip(env, "3804-3806 buildDefenceEstimations(env, env.minion) (P4.4c)"),
+                    }
+                }
+            }
+            None => skip(env, "3803 calcs.defence(env, env.minion) (P4.4b)"),
+        }
+        skip(env, MINION_OFFENCE_BOUNDARY);
+        skip(env, "3811-3990 buff export, party export (P5)");
+    } else {
+        skip(env, "3803-3990 minion output, buff export, party export (P5)");
+    }
     state
 }
+
+/// CalcPerform.lua:3807-3808 -- `calcs.triggers(env, env.minion)` and `calcs.offence(env, env.minion, env.minion.mainSkill)`: `crate::triggers`
+/// and `crate::offence` run the player's main skill only (their actor is `env.player` throughout; the files are outside the R7.10 card).
+pub(crate) const MINION_OFFENCE_BOUNDARY: &str = "3807-3808 calcs.triggers(env, env.minion) / calcs.offence(env, env.minion, env.minion.mainSkill): the minion actor's triggers and offence (R7.10 boundary: crate::triggers / crate::offence take env.player only)";
 
 // --- Calcs.lua:392-449 -- the MAIN tail of `calcs.buildOutput` ----------------------------------------------------------
 

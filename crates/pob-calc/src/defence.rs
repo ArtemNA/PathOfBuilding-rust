@@ -171,6 +171,17 @@ fn parent_output(line: u32) -> ! {
     panic!("{}: attempt to index field 'parent' (a nil value)", site(line))
 }
 
+/// `output[key] = actor.parent.output[key]` (nil removes the key).
+fn from_parent(out: &mut Output, parent: Option<&Output>, key: &str, line: u32) {
+    let p = parent.unwrap_or_else(|| parent_output(line));
+    match p.get(key).cloned() {
+        Some(crate::output::OutValue::Num(v)) => out.set_num(key, v),
+        Some(crate::output::OutValue::Bool(b)) => out.set_bool(key, b),
+        Some(crate::output::OutValue::Str(s)) => out.set_str(key, &s),
+        None => out.remove(key),
+    }
+}
+
 /// `actor.partyMembers.output[key]` -- PartyTab is P5; the stub's output table is empty (as perform's `party_output`).
 fn party_output(_key: &str) -> Option<f64> {
     None
@@ -463,30 +474,57 @@ pub fn resistances(db: &StoreRef, out: &mut Output) {
 #[allow(clippy::too_many_lines)]
 pub fn defence(env: &mut Env, state: &mut PerformState, who: Who) {
     let (db, enemy_db, item_list) = {
-        let a = match who {
-            Who::Player => env.player.borrow(),
-            Who::Enemy => env.enemy.borrow(),
-        };
-        let enemy_db = match who {
-            Who::Player => env.enemy_db.clone(),
-            Who::Enemy => env.mod_db.clone(),
-        };
-        (a.mod_db.clone(), enemy_db, a.item_list.clone())
+        let a = crate::perform::actor_of(env, who).borrow();
+        (a.mod_db.clone(), crate::perform::enemy_db_of(env, who), a.item_list.clone())
     };
-    let out = &mut state.actor(who).output;
+    // the minion's state is a shared cell (`output.Minion`); `actor.parent` is the player (the enemy for a hostile minion), R7.10
+    let minion_rc = (who == Who::Minion).then(|| state.minion.clone().expect("env.minion.output"));
+    let hostile = who == Who::Minion && crate::perform::env_minion(env).hostile;
+    let mut minion_guard = minion_rc.as_ref().map(|rc| rc.borrow_mut());
+    let (actor_state, parent): (&mut crate::perform::ActorState, Option<&Output>) = match minion_guard.as_mut() {
+        Some(g) => (&mut **g, Some(if hostile { &state.enemy.output } else { &state.player.output })),
+        None => match who {
+            Who::Player => (&mut state.player, None),
+            _ => (&mut state.enemy, None),
+        },
+    };
     let fl = |names: &[&str]| flag(&db, names);
     let efl = |names: &[&str]| flag(&enemy_db, names);
     // :660 `local condList = modDB.conditions` -- never read.
 
     // --- :662-676 action speed, resistances, minion branches ------------------------------------------------------
-    out.set_num("ActionSpeedMod", action_speed_mod(&db));
-    resistances(&db, out);
-    // :665-670 `if env.minion and ...` / :672-676 `if actor == env.minion` -- `env.minion` is nil here: dead.
+    actor_state.output.set_num("ActionSpeedMod", action_speed_mod(&db));
+    resistances(&db, &mut actor_state.output);
+    // :666-671 `ResistanceAddedToMinions` -- the actor's final resistances into `env.minion.modDB`
+    if let Some(m) = env.minion.clone() {
+        let added = base(&db, &["ResistanceAddedToMinions"]);
+        if added > 0.0 {
+            let mdb = m.borrow().mod_db.clone();
+            for elem in ["Fire", "Cold", "Lightning", "Chaos"] {
+                let fin = actor_state.output.num(&format!("{elem}Resist"));
+                mdb.borrow_mut().new_mod(pob_mods::create_mod(
+                    &format!("{elem}Resist"),
+                    Some(ModType::Base),
+                    pob_mods::Value::Num((fin * added / 100.0).floor()),
+                    Some("Player"),
+                    0,
+                    0,
+                    Vec::new(),
+                ));
+            }
+        }
+    }
+    // :673-676 Formless Inferno: `if actor == env.minion`
+    if who == Who::Minion {
+        crate::perform::do_actor_life_mana(&db, &mut actor_state.output);
+        crate::perform::do_actor_life_mana_reservation(&db, actor_state, false);
+    }
+    let out = &mut actor_state.output;
 
     // --- :678-790 block -----------------------------------------------------------------------------------------------
     out.set_num("BlockChanceMax", min2(base(&db, &["BlockChanceMax"]), misc("BlockChanceCap")));
     if fl(&["MaximumBlockAttackChanceIsEqualToParent"]) {
-        parent_output(681); // not covered by goldens
+        from_parent(out, parent, "BlockChanceMax", 681);
     } else if fl(&["MaximumBlockAttackChanceIsEqualToPartyMember"]) {
         set_from_party(out, "BlockChanceMax"); // not covered by goldens
     }
@@ -505,10 +543,18 @@ pub fn defence(env: &mut Env, state: &mut PerformState, who: Who) {
     if !env.keystones_added.get("Necromantic Aegis").copied().unwrap_or(false) {
         base_block_chance = or_override(override_(&db, "ReplaceShieldBlock"), base_block_chance, 696);
     }
-    // :699 `actor == env.minion and ...` -- false (no minion): `baseBlockChance` unchanged, Override not evaluated.
+    // :699 `actor == env.minion and env.keystonesAdded["Necromantic Aegis"] and env.player.modDB:Override(nil, "ReplaceShieldBlock") or baseBlockChance`
+    if who == Who::Minion && env.keystones_added.get("Necromantic Aegis").copied().unwrap_or(false) {
+        base_block_chance = or_override(override_(&env.mod_db, "ReplaceShieldBlock"), base_block_chance, 699);
+    }
 
     if fl(&["BlockAttackChanceIsEqualToParent"]) {
-        parent_output(702); // not covered by goldens
+        let p = parent.unwrap_or_else(|| parent_output(702));
+        let v = p
+            .opt_num("BlockChance")
+            .unwrap_or_else(|| panic!("{}: bad argument #1 to 'min' (number expected, got nil)", site(702)));
+        let m = out.num("BlockChanceMax");
+        out.set_num("BlockChance", min2(v, m));
     } else if fl(&["BlockAttackChanceIsEqualToPartyMember"]) {
         // :704 `m_min(nil, ...)` with the empty party output -- not covered by goldens
         let v = party_output("BlockChance").unwrap_or_else(|| panic!("{}: bad argument #1 to 'min' (number expected, got nil)", site(704)));
@@ -1027,7 +1073,7 @@ pub fn defence(env: &mut Env, state: &mut PerformState, who: Who) {
     out.set_num("MaxLifeLeechInstance", life * cval(&db, "MaxLifeLeechInstance") / 100.0);
     out.set_num("MaxLifeLeechRatePercent", cval(&db, "MaxLifeLeechRate"));
     if fl(&["MaximumLifeLeechIsEqualToParent"]) {
-        parent_output(1223); // not covered by goldens
+        from_parent(out, parent, "MaxLifeLeechRatePercent", 1223);
     } else if fl(&["MaximumLifeLeechIsEqualToPartyMember"]) {
         set_from_party(out, "MaxLifeLeechRatePercent"); // not covered by goldens
     }

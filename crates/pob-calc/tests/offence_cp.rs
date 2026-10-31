@@ -105,6 +105,8 @@ fn table_json(t: &OutTable) -> Json {
         }
         // written by the buildOutput tail (Calcs.lua:395/:420/:430), after every offence checkpoint
         OutTable::SkillDps(_) | OutTable::Names(_) => json!("<table>"),
+        // `output.Minion` -- the minion actor's output, dumped key by key (R7.10)
+        OutTable::Minion(m) => Json::Object(m.0.borrow().output.iter().map(|(k, v)| (k.to_string(), out_json(v))).collect()),
     }
 }
 
@@ -622,23 +624,22 @@ fn compare_all() -> (Vec<String>, [usize; 12]) {
     (bad, tot)
 }
 
-/// The strict gate: every LuaJIT player offence run is either compared OC1-OC6-equal or explained by a recorded gate. Currently RED on
-/// one known class only (R7.4 report): the nested runs of a minion skill (`Summon Ice Golem` x2, `Summon Lightning Golem`) -- the table
-/// `output.Minion` and `ActiveMinionLimit` / `SummonedMinionsPerCast` (CalcOffence.lua:1057-1065, `activeSkill.minion.minionData`);
-/// un-ignore when R7.10 (minion actors) is ported.
+/// The strict gate: every LuaJIT player offence run is either compared OC1-OC6-equal or explained by a recorded gate. GREEN since R7.10
+/// (minion actors): the nested runs of a minion skill (`Summon Ice Golem` x3, `Summon Lightning Golem`) now match `output.Minion` (the
+/// minion actor's output, compared key by key) and `ActiveMinionLimit` / `SummonedMinionsPerCast` (CalcOffence.lua:1057-1065).
 #[test]
-#[ignore = "R7.4-R7.7: known divergences on nested minion runs only (output.Minion, :1057-1065 -- R7.10)"]
 fn oc1_oc4_equal_luajit_on_all_offence_runs() {
     let (bad, _) = compare_all();
     assert!(bad.is_empty(), "offence runs != LuaJIT ({}):\n{}", bad.len(), bad.join("\n"));
 }
 
-/// The R7.10 class: the keys a minion skill's offence writes from `activeSkill.minion` (not built yet) -- `output.Minion` (a table:
-/// the minion actor's output, CalcPerform.lua:1319-1320 `initMinionModDB`) at OC1-OC6, `ActiveMinionLimit` / `SummonedMinionsPerCast`
+/// The R7.10 class (closed by R7.10): the keys a minion skill's offence writes from `activeSkill.minion` -- `output.Minion` (a table: the
+/// minion actor's output, CalcPerform.lua:1319-1320 `initMinionModDB`) at OC1-OC6, `ActiveMinionLimit` / `SummonedMinionsPerCast`
 /// (:1057-1065) from OC2 on.
 const MINION_CLASS: [&str; 3] = ["output.Minion:", "output.ActiveMinionLimit:", "output.SummonedMinionsPerCast:"];
 
-/// Pins the measured state so it cannot drift silently. R7.8 (`calcs.triggers` ported): 82 LuaJIT player offence runs, 73 Rust runs (all
+/// Pins the measured state so it cannot drift silently. R7.10 (minion actors): 82 / 73 / 73, OC1-OC6 73/73 equal, 0 difference lines
+/// (the 64 lines of the R7.10 class closed). R7.8 (`calcs.triggers` ported): 82 LuaJIT player offence runs, 73 Rust runs (all
 /// matched; 2 of them -- Cyclone of both Cospris goldens, built by `findTriggerSkill` inside the top perform -- compared on their
 /// reproduction, [`repro_nested`]), 9 not run (the recorded mirage gates), OC1-OC6 69/73 equal; the 64 difference lines are all the R7.10
 /// class ([`MINION_CLASS`]) on the 4 nested minion runs (Generals' Summon Ice Golem joined: its CWDT dispatch is ported). New against
@@ -651,8 +652,8 @@ const MINION_CLASS: [&str; 3] = ["output.Minion:", "output.ActiveMinionLimit:", 
 #[test]
 fn offence_runs_state_is_pinned() {
     let (bad, tot) = compare_all();
-    assert_eq!(tot, [82, 73, 73, 69, 69, 69, 69, 69, 69, 64, 9, 2], "{}", bad.join("\n"));
-    assert_eq!(bad.len(), 64, "unexplained gaps or differences:\n{}", bad.join("\n"));
+    assert_eq!(tot, [82, 73, 73, 73, 73, 73, 73, 73, 73, 0, 9, 2], "{}", bad.join("\n"));
+    assert_eq!(bad.len(), 0, "unexplained gaps or differences:\n{}", bad.join("\n"));
     let other: Vec<&String> = bad.iter().filter(|l| !MINION_CLASS.iter().any(|c| l.contains(c))).collect();
     assert!(other.is_empty(), "differences outside the R7.10 minion class:\n{other:?}");
 }

@@ -470,13 +470,34 @@ pub(super) fn setup(off: &mut Off<'_>) -> bool {
             }
         }
     }
-    // :713-730 Law of the Wilds -- `env.minion.modDB` (minion actors are R7.10)
-    for (flag, line) in [
-        ("ClawCritChanceAppliesToMinions", "713-721"),
-        ("ClawCritMultiplierAppliesToMinions", "722-730"),
+    // :713-730 Law of the Wilds -- the claw mods into `env.minion.modDB` (R7.10)
+    for (flag, name, ty, line) in [
+        ("ClawCritChanceAppliesToMinions", "CritChance", ModType::Inc, 718),
+        ("ClawCritMultiplierAppliesToMinions", "CritMultiplier", ModType::Base, 727),
     ] {
         if q.flag(None, &[flag]) {
-            off.note(format!("{LUA}:{line} {flag}: env.minion.modDB (minion actors, R7.10)"));
+            for e in q.tabulate(Some(ty), Some(&flags_cfg(claw_hit, None)), &[name]) {
+                let m = &e.mod_;
+                if m.flags & mod_flag("Claw") != 0 {
+                    let mdb = off
+                        .env
+                        .minion
+                        .as_ref()
+                        .unwrap_or_else(|| panic!("{LUA}:{line}: attempt to index field 'minion' (a nil value)"))
+                        .borrow()
+                        .mod_db
+                        .clone();
+                    mdb.borrow_mut().new_mod(pob_mods::create_mod(
+                        name,
+                        m.ty,
+                        m.value.clone(),
+                        m.source.as_deref(),
+                        0,
+                        0,
+                        Vec::new(),
+                    ));
+                }
+            }
         }
     }
     // :731-765 the first FLAG mod's source

@@ -8,7 +8,7 @@
 //! * :3566 `enemyDB:Sum(...) > 0 or modDB:Sum(...)`: a number is always truthy in Lua (L4), so the left half of the `and` never stops an
 //!   ailment -- only the `not (...)` half does; both sums still run (their errors stay errors).
 //! * `breakdown` (:3526/:3542) is set in MAIN (MINEFIELD-RUST R8): the stacking Shock/Scorch branches add a second mod there.
-//! * `env.minion` is nil (R7): nothing here reads it.
+//! * `env.minion`: nothing here reads it.
 
 use pob_lua::number::{max2, min2};
 use pob_mods::{Mod, ModType, StoreRef, Tag, Value, create_mod};

@@ -86,7 +86,7 @@ fn table_json(t: &OutTable) -> Json {
             Json::Object(o)
         }
         // written by the buildOutput tail (Calcs.lua:395/:420/:430), after every perform checkpoint
-        OutTable::SkillDps(_) | OutTable::Names(_) => json!("<table>"),
+        OutTable::SkillDps(_) | OutTable::Names(_) | OutTable::Minion(_) => json!("<table>"),
     }
 }
 
