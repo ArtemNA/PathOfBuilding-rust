@@ -146,7 +146,7 @@ pub fn filter_stats(stats: &IndexMap<String, StatValue>) -> IndexMap<String, Sta
 /// string where LuaJIT's `calcs.mirages` (CalcMirages.lua:157) leaves the CALCULATOR perform's number) is that number now.
 pub const SYNTH_EXCLUDED: &[&str] = &[];
 
-/// 847 keys, sorted (byte order): `ok` on every golden that emits them, on none `mismatch` or `extra` (R5.4: measured
+/// 851 keys, sorted (byte order): `ok` on every golden that emits them, on none `mismatch` or `extra` (R5.4: measured
 /// with `ParseMode::Full`, the default; R5.5a re-measured with the cluster-jewel subgraphs: +20; R5.5b radius jewels: +1;
 /// R5.5c timeless jewels: +23; R6.3 gem requirements: +4; R6.5 skills + flasks in perform: +30; R6.6 reservations: +4, `ReqIntString` -1;
 /// R6.7 buffs/curses/guards: +128; R6.8 ailments/exposures/ally life: +13; R7.3 offence part A: +43; R7.4 offence part B: +7;
@@ -527,6 +527,10 @@ pub const ALLOWLIST: &[&str] = &[
     "Gear:EnergyShield",
     "Gear:Evasion",
     "Gear:Ward",
+    "GemHasLevel",
+    "GemHasQuality",
+    "GemLevel",
+    "GemQuality",
     "GhostShrouds",
     "GlobalWarcryUptimeRatio",
     "GuardSkillActive",

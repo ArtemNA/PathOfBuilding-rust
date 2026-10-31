@@ -114,7 +114,8 @@ fn allowlist_is_the_measured_set() {
     // R7.8 (calcs.triggers; Cospris x2 top offence runs, OC1-OC6 = LuaJIT): 796 / 11
     // R7.10 (minion actors; OC1-OC6 = LuaJIT on all 73 Rust runs incl. the 4 nested golem runs; no golden main skill is a minion): 796 / 11
     // R7.9 (calcs.mirages; OC1-OC6 = LuaJIT on all 82 offence runs, Dual Savior's output = its mirage's): 847 / 0
-    assert_eq!(ALLOWLIST.len(), 847, "pinned size of the measured allowlist");
+    // R7 tail (CalcPerform.lua:3935-3986, the main skill's gem level/quality): 851 / 0
+    assert_eq!(ALLOWLIST.len(), 851, "pinned size of the measured allowlist");
     assert_eq!(EXCLUDED.len(), 0, "pinned size of the measured exclusions");
 }
 

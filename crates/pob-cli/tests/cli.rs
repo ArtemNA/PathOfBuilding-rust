@@ -35,7 +35,7 @@ fn calc_file_json_has_meta_and_allowlisted_stats() {
     let parsed = CandidateOutput::from_json(std::str::from_utf8(&out.stdout).unwrap()).unwrap();
     assert_eq!(
         parsed.stats.len(),
-        628,
+        632,
         "Dual Savior: every ALLOWLIST key it emits (= oracle ok count)"
     );
     assert!(
@@ -120,12 +120,12 @@ fn experimental_env_disables_the_filter() {
 #[test]
 fn cli_stats_against_goldens() {
     let pinned: [(&str, usize, usize); 6] = [
-        ("Dual Savior", 628, 627),
-        ("Dual Wield Cospris CoC", 745, 744),
-        ("Dual Wield Cospris CoC - Lethal Pride", 745, 744),
-        ("Generals Perforate Zerker", 645, 644),
-        ("Mirage Archer Toxic Rain", 654, 653),
-        ("OccVortex", 769, 768),
+        ("Dual Savior", 632, 631),
+        ("Dual Wield Cospris CoC", 749, 748),
+        ("Dual Wield Cospris CoC - Lethal Pride", 749, 748),
+        ("Generals Perforate Zerker", 649, 648),
+        ("Mirage Archer Toxic Rain", 658, 657),
+        ("OccVortex", 773, 772),
     ];
     let mut got = Vec::new();
     for (g, (name, _, _)) in GOLDEN_BUILDS.iter().zip(pinned) {

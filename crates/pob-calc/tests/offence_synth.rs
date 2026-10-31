@@ -354,8 +354,8 @@ const FULLDPS_KNOWN: [(&str, &[&str]); 0] = [];
 
 /// The class every R7-synth scenario shares that is not the trigger code's: `output.GemHasLevel` / `GemLevel` / `GemHasQuality` /
 /// `GemQuality` are written by CalcPerform.lua:3935-3975 (the perform tail after offence, "3803-3990 minion output, buff export, party
-/// export (P5)") -- MISSING in Rust on all 186 scenarios.
-const PERFORM_TAIL_GEM: [&str; 4] = ["GemHasLevel", "GemHasQuality", "GemLevel", "GemQuality"];
+/// export (P5)") -- MISSING in Rust on all 186 scenarios until the R7 tail ported CalcPerform.lua:3935-3986; empty since.
+const PERFORM_TAIL_GEM: [&str; 0] = [];
 
 /// R7.8 gate (card p. 2): the 21 `trigger` scenarios of R7-synth (CoC, CoMK, CWC, CWDT, Cospri's, Mjolner, Arcanist Brand, Spellslinger,
 /// Hextouch, cast on death / stun / block, spell on (bow) attack, traps / mines) against LuaJIT, EVERY scalar key exactly (bit for bit);

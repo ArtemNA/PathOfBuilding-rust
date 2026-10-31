@@ -3000,7 +3000,38 @@ pub fn perform_skip_ehp(
     } else {
         skip(env, "3803-3990 minion output, buff export, party export (P5)");
     }
+    gem_level_quality(env, &mut state);
     state
+}
+
+/// CalcPerform.lua:3935-3986 -- the main skill's gem level and quality (`output.GemHasLevel/GemLevel/GemHasQuality/GemQuality`);
+/// the `env.player.breakdown.Gem*` lines are display only (R8).
+fn gem_level_quality(env: &Env, state: &mut PerformState) {
+    let Some(st) = &env.skills else { return };
+    let Some(i) = st.main_skill else { return };
+    let (has_src, level, quality) = {
+        let eff = st.skill(i).active_effect.borrow();
+        (eff.src_instance.is_some(), eff.level.is_some(), eff.quality.is_some())
+    };
+    if !has_src {
+        return;
+    }
+    let ms = main_skill(env, Who::Player).expect("player mainSkill");
+    let s = |name: &str| {
+        ms.guard(&[name]);
+        sum(&ms.list, ModType::Base, Some(&ms.cfg), &[name])
+    };
+    let output = &mut state.player.output;
+    if level {
+        let (base, item, support) = (s("GemLevel"), s("GemItemLevel"), s("GemSupportLevel"));
+        output.set_bool("GemHasLevel", true);
+        output.set_num("GemLevel", base + support + item);
+    }
+    if quality {
+        let (base, item, support, socket) = (s("GemQuality"), s("GemItemQuality"), s("GemSupportQuality"), s("GemSocketQuality"));
+        output.set_bool("GemHasQuality", true);
+        output.set_num("GemQuality", base + support + item + socket);
+    }
 }
 
 /// CalcPerform.lua:3807-3808 -- `calcs.triggers(env, env.minion)` and `calcs.offence(env, env.minion, env.minion.mainSkill)`: `crate::triggers`
