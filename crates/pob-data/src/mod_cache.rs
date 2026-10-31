@@ -50,9 +50,9 @@ impl ModCache {
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-struct RawEntry {
-    line: String,
-    mods: Option<Vec<Json>>,
+pub(crate) struct RawEntry {
+    pub(crate) line: String,
+    pub(crate) mods: Option<Vec<Json>>,
     extra: Option<String>,
 }
 
@@ -105,7 +105,8 @@ thread_local! {
 pub fn mod_cache() -> Rc<ModCache> {
     CACHE.with(|c| {
         c.get_or_init(|| {
-            let raw: Vec<RawEntry> = crate::load("mod-cache.json");
+            let mut raw: Vec<RawEntry> = crate::load("mod-cache.json");
+            crate::patches::apply_mod_cache(&mut raw).unwrap_or_else(|e| panic!("{e}"));
             Rc::new(build(raw).unwrap_or_else(|e| panic!("pob-data: {e}")))
         })
         .clone()

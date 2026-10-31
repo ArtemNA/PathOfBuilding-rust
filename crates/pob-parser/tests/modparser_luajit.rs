@@ -298,28 +298,9 @@ fn fixtures() -> Vec<PathBuf> {
     v
 }
 
-/// Lines where the DATA differs from upstream, not the parser: `data/mod-parser.json` (pob-ts converter P5.1a,
-/// `normalizeMod` -> `JSON.stringify`) writes `math.huge` as `null`, so the static `specialModList` mod has no value
-/// (ModParser.lua:2454, :4559 `mod(..., m_huge, ...)`). The pin is exact: the only difference allowed on these lines is
-/// LuaJIT's first mod `value = {n: "inf"}` against no value here. `data/mod-cache.json` has the same two nulls.
-const DATA_INF_AS_NULL: [&str; 2] = [
-    "Projectiles can Chain from any number of additional targets in Close Range",
-    "Your Hexes have infinite Duration",
-];
-
-/// `want` with the first mod's `value` dropped when it is `{n: "inf"}` (the DATA_INF_AS_NULL pin).
-fn without_inf_value(want: &J) -> Option<J> {
-    let J::Obj(o) = strip(want) else { return None };
-    let mut o = o;
-    let Some(J::Arr(mods)) = o.get_mut("mods") else { return None };
-    let J::Obj(m) = mods.first_mut()? else { return None };
-    (m.remove("value")? == obj(vec![("n", J::Str("inf".into()))])).then_some(J::Obj(o))
-}
-
 #[derive(Default)]
 struct Side {
     equal: usize,
-    data_pinned: usize,
     unported: BTreeMap<String, usize>,
     unported_lines: usize,
     mismatches: Vec<String>,
@@ -337,8 +318,6 @@ impl Side {
                 let g = enc_parse(&r);
                 if g == strip(want) {
                     self.equal += 1;
-                } else if DATA_INF_AS_NULL.contains(&line) && without_inf_value(want).is_some_and(|w| w == g) {
-                    self.data_pinned += 1;
                 } else {
                     self.mismatches.push(format!("{line:?}:\n   rust {g:?}\n luajit {:?}", strip(want)));
                 }
@@ -392,9 +371,8 @@ fn parser_equals_luajit_inner_parse_mod() {
         let mut top: Vec<_> = s.unported.iter().collect();
         top.sort_by(|a, b| b.1.cmp(a.1).then(a.0.cmp(b.0)));
         println!(
-            "{name}: {lines} lines {sources:?}: = LuaJIT {}, data-pinned {}, unported {} ({} closure ids), mismatches {}",
+            "{name}: {lines} lines {sources:?}: = LuaJIT {}, unported {} ({} closure ids), mismatches {}",
             s.equal,
-            s.data_pinned,
             s.unported_lines,
             s.unported.len(),
             s.mismatches.len()
@@ -420,7 +398,6 @@ fn parser_equals_luajit_inner_parse_mod() {
         "Rust != LuaJIT (see output)"
     );
     for s in [&inner, &wrapped] {
-        assert_eq!(s.equal + s.data_pinned + s.unported_lines, lines);
-        assert_eq!(s.data_pinned, DATA_INF_AS_NULL.len());
+        assert_eq!(s.equal + s.unported_lines, lines);
     }
 }

@@ -1,0 +1,20 @@
+{"format":1,"producer":{"tool":"tools/lua-corpus/export-data-patch.ts","luajit":"LuaJIT 2.1.1784580905","pobSha":"ed354c2f8c42e148bc904c7508dbe851fb2cf952"},"manifestSha256":"994fbd41821a85e3474c371f578eed91986e624e1266077f41433b56403fbf59","patches":[
+{"file":"mod-cache.json","path":["0% reduced Area of Effect for Attacks","mods",0,"value"],"value":"-0"},
+{"file":"mod-cache.json","path":["0% reduced Attack Speed","mods",0,"value"],"value":"-0"},
+{"file":"mod-cache.json","path":["0% reduced Charges per use","mods",0,"value"],"value":"-0"},
+{"file":"mod-cache.json","path":["0% reduced Duration of Curses on you","mods",0,"value"],"value":"-0"},
+{"file":"mod-cache.json","path":["0% reduced Duration","mods",0,"value"],"value":"-0"},
+{"file":"mod-cache.json","path":["0% reduced Mana Burn rate","mods",0,"value"],"value":"-0"},
+{"file":"mod-cache.json","path":["0% reduced Mana Reservation Efficiency of Skills","mods",0,"value"],"value":"-0"},
+{"file":"mod-cache.json","path":["0% reduced Projectile Speed","mods",0,"value"],"value":"-0"},
+{"file":"mod-cache.json","path":["0% reduced Quantity of Items found","mods",0,"value"],"value":"-0"},
+{"file":"mod-cache.json","path":["0% reduced Rarity of Items found","mods",0,"value"],"value":"-0"},
+{"file":"mod-cache.json","path":["0% reduced Skill Effect Duration","mods",0,"value"],"value":"-0"},
+{"file":"mod-cache.json","path":["0% reduced maximum Life","mods",0,"value"],"value":"-0"},
+{"file":"mod-cache.json","path":["Curse Skills have 0% reduced Skill Effect Duration","mods",0,"value"],"value":"-0"},
+{"file":"mod-cache.json","path":["Debuffs on you expire 0% slower","mods",0,"value"],"value":"-0"},
+{"file":"mod-cache.json","path":["Projectiles can Chain from any number of additional targets in Close Range","mods",0,"value"],"value":"inf"},
+{"file":"mod-cache.json","path":["Your Hexes have infinite Duration","mods",0,"value"],"value":"inf"},
+{"file":"mod-parser.json","path":["tables","specialModList","^projectiles can chain from any number of additional targets in close range$",0,"value"],"value":"inf"},
+{"file":"mod-parser.json","path":["tables","specialModList","^your hexes have infinite duration$",0,"value"],"value":"inf"}
+]}

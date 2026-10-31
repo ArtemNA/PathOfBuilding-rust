@@ -386,7 +386,8 @@ thread_local! {
 pub fn mod_parser() -> Rc<ModParserData> {
     DATA.with(|c| {
         c.get_or_init(|| {
-            let j: Json = crate::load("mod-parser.json");
+            let mut j: Json = crate::load("mod-parser.json");
+            crate::patches::apply_mod_parser(&mut j).unwrap_or_else(|e| panic!("{e}"));
             Rc::new(build(&j).unwrap_or_else(|e| panic!("pob-data: {e}")))
         })
         .clone()

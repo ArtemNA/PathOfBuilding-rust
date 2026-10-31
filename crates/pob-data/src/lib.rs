@@ -20,6 +20,7 @@ pub mod mod_cache;
 pub mod mod_parser;
 pub mod mod_scalability;
 pub mod pantheons;
+pub mod patches;
 pub mod rules;
 pub mod sha256;
 pub mod tree;
