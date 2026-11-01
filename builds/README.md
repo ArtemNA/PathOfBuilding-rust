@@ -12,6 +12,7 @@ The goal is that the new data and mechanics of each release are compared too.
 ## Layout
 
 - `user/`: the user's builds (added by hand; the agent neither deletes nor changes them).
+- `pc/`: a copy of the user's `Documents\Path of Building\Builds` (138 XML, leagues 3.24-3.29; **a copy only**: leave the originals alone, update only by copying from there; not in git (`.gitignore`), because they are personal builds and the repo is pushed to GitHub).
 - `corpus/`: builds collected by the orchestrator or an agent: goldens, synthetic R4/R7/R8 (filled in R-UP).
 
 Update agent: every build from here -> LuaJIT reference -> Rust = LuaJIT (output, breakdown, display); a build that failed in LuaJIT
