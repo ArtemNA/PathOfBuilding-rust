@@ -8,9 +8,8 @@
 //!   `for type in pairs(globalConv)` sums `round(...)` -- whole numbers, exact in any order. The tables are built in `dmgTypeList` order.
 //! * nothing else here walks a hash table.
 //!
-//! Breakdown (R8): every `if breakdown` branch of this section only fills breakdown tables (`breakdown.Accuracy`, `.HitChance`,
-//! `.Speed`, `.Time`, `.HitTime`, `.HitSpeed`, `.SustainableTrauma`, the `combineStat` rows) -- not ported; the one query such a
-//! branch makes (`calcLib.mod(skillModList, skillCfg, "SkillAttackTime")`, :2459) is still made so a malformed mod raises as upstream.
+//! Breakdown (R8.5): the `if breakdown` branches of this section (`breakdown.MainHand`/`.OffHand` modules, `Accuracy`, `HitChance`,
+//! `Speed`, `Time`, `HitTime`, `HitSpeed`, `SustainableTrauma`, the `combineStat` rows) are ported where they stand.
 
 use indexmap::IndexMap;
 use pob_lua::number::{max2, min2, round};
@@ -18,8 +17,12 @@ use pob_mods::{ModCfg, ModType, Str, Value};
 
 use super::helpers::{ConvEntry, ConversionTable, DMG_TYPE_LIST, Q};
 use super::{CombineMode, HandOut, Off, Pass, PassOut, Source};
+use crate::breakdown::{BTable, BVal, Breakdown};
+use crate::breakdown::{Chain, multi_chain, step};
 use crate::output::OutValue;
 use crate::setup::{misc, ok};
+use crate::sf;
+use pob_lua::tostring_num;
 
 const LUA: &str = "Modules/CalcOffence.lua";
 
@@ -161,6 +164,11 @@ pub(super) fn build_passes(off: &mut Off<'_>) {
                     source.set("AttackRate", Value::Num(1000.0 / t));
                 }
             }
+            // :2005-2007 / :2022-2024 `breakdown.MainHand = require(calcs.breakdownModule)(skillModList, output.MainHand)`
+            off.bd_set(
+                if n == 1 { "MainHand" } else { "OffHand" },
+                Some(BVal::Module(Box::new(Breakdown::new()))),
+            );
             off.passes.push(Pass {
                 label: if n == 1 { "Main Hand" } else { "Off Hand" },
                 source: Source::Weapon(source),
@@ -178,7 +186,7 @@ pub(super) fn build_passes(off: &mut Off<'_>) {
     }
 }
 
-/// :2066-2171 `combineStat(stat, mode, ...)` (breakdown rows excluded, R8). `chance_key` is the `...` of `CHANCE`/`CHANCE_AILMENT`.
+/// :2066-2171 `combineStat(stat, mode, ...)` (with its `breakdown[stat]` rows, R8.5). `chance_key` is the `...` of `CHANCE`/`CHANCE_AILMENT`.
 pub(crate) fn combine_stat(off: &mut Off<'_>, stat: &str, mode: CombineMode, chance_key: Option<&str>) {
     let both = off.flag("bothWeaponAttack");
     let hands = off
@@ -208,6 +216,8 @@ pub(crate) fn combine_stat(off: &mut Off<'_>, stat: &str, mode: CombineMode, cha
             other => panic!("{LUA}:{line}: attempt to perform arithmetic on field '{k}' ({other:?})"),
         }
     };
+    // the breakdown rows appended to `breakdown[stat]` (:2089-2101, :2109-2121, :2139-2154, :2158-2161); `{stat}` = the final value
+    let mut rows: Option<Vec<Row>> = None;
     let result: Option<OutValue> = if mode == CombineMode::Or || !both {
         either
     } else {
@@ -228,14 +238,42 @@ pub(crate) fn combine_stat(off: &mut Off<'_>, stat: &str, mode: CombineMode, cha
                     let k = chance_key.unwrap_or_else(|| panic!("{LUA}:2083: attempt to index a nil key"));
                     let mut main_chance = hand_num(0, k, 2083) * hand_num(0, "HitChance", 2083);
                     let mut off_chance = hand_num(1, k, 2084) * hand_num(1, "HitChance", 2084);
+                    let (m, o) = (num(&mh, 2088), num(&oh, 2088));
+                    let hand_rows = |mp: f64, op: f64, what_m: &str, what_o: &str| {
+                        vec![
+                            Row::S("Contribution from Main Hand:".into()),
+                            Row::S(sf!("%.1f", m)),
+                            Row::S(crate::breakdown::format(what_m, &[pob_lua::Arg::Num(mp)])),
+                            Row::S(sf!("= %.1f", m * mp)),
+                            Row::S("Contribution from Off Hand:".into()),
+                            Row::S(sf!("%.1f", o)),
+                            Row::S(crate::breakdown::format(what_o, &[pob_lua::Arg::Num(op)])),
+                            Row::S(sf!("= %.1f", o * op)),
+                            Row::S("Total:".into()),
+                            Row::S(sf!("%.1f + %.1f", m * mp, o * op)),
+                            Row::Total("= %.1f"),
+                        ]
+                    };
                     if off.sd_truthy("doubleHitsWhenDualWielding") {
                         main_chance /= 10000.0;
                         off_chance /= 10000.0;
-                        Some(OutValue::Num(num(&mh, 2088) * main_chance + num(&oh, 2088) * off_chance))
+                        rows = Some(hand_rows(
+                            main_chance,
+                            off_chance,
+                            "x %.3f ^8(chance of main hand)",
+                            "x %.3f ^8(chance of  off hand)",
+                        ));
+                        Some(OutValue::Num(m * main_chance + o * off_chance))
                     } else {
                         let main_portion = main_chance / (main_chance + off_chance);
                         let off_portion = off_chance / (main_chance + off_chance);
-                        Some(OutValue::Num(num(&mh, 2108) * main_portion + num(&oh, 2108) * off_portion))
+                        rows = Some(hand_rows(
+                            main_portion,
+                            off_portion,
+                            "x %.3f ^8(portion of instances created by main hand)",
+                            "x %.3f ^8(portion of instances created by off hand)",
+                        ));
+                        Some(OutValue::Num(m * main_portion + o * off_portion))
                     }
                 } else {
                     either
@@ -258,10 +296,38 @@ pub(crate) fn combine_stat(off: &mut Off<'_>, stat: &str, mode: CombineMode, cha
                         other => panic!("{LUA}:2137: attempt to perform arithmetic on field '{k}' ({other:?})"),
                     };
                     let max_instance_stacks = min2(1.0, g(&stack_name) / g(&format!("{stack_name}Max")));
+                    let mut r = vec![
+                        Row::S(sf!("")),
+                        Row::S(sf!("%.2f%% of ailment stacks use maximum damage", max_instance_stacks * 100.0)),
+                        Row::S(sf!("Max Damage comes from %s", if a >= b { "Main Hand" } else { "Off Hand" })),
+                        Row::S(sf!("= %.1f", max_instance * max_instance_stacks)),
+                    ];
+                    if max_instance_stacks < 1.0 {
+                        r.push(Row::S(sf!(
+                            "%.2f%% of ailment stacks use non-maximum damage",
+                            (1.0 - max_instance_stacks) * 100.0
+                        )));
+                        r.push(Row::S(sf!("= %.1f", min_instance * (1.0 - max_instance_stacks))));
+                    }
+                    r.push(Row::S(String::new()));
+                    r.push(Row::S("Total:".into()));
+                    if max_instance_stacks < 1.0 {
+                        r.push(Row::S(sf!(
+                            "%.1f + %.1f",
+                            max_instance * max_instance_stacks,
+                            min_instance * (1.0 - max_instance_stacks)
+                        )));
+                    }
+                    r.push(Row::Total("= %.1f"));
+                    rows = Some(r);
                     Some(OutValue::Num(
                         max_instance * max_instance_stacks + min_instance * (1.0 - max_instance_stacks),
                     ))
                 } else {
+                    rows = Some(vec![Row::S(sf!(
+                        "All ailment stacks comes from %s",
+                        if truthy(&mh) { "Main Hand" } else { "Off Hand" }
+                    ))]);
                     either
                 }
             }
@@ -274,6 +340,10 @@ pub(crate) fn combine_stat(off: &mut Off<'_>, stat: &str, mode: CombineMode, cha
             }
         }
     };
+    let final_num = match &result {
+        Some(OutValue::Num(x)) => Some(*x),
+        _ => None,
+    };
     let o = off.out();
     match result {
         None => o.remove(stat),
@@ -281,6 +351,32 @@ pub(crate) fn combine_stat(off: &mut Off<'_>, stat: &str, mode: CombineMode, cha
         Some(OutValue::Bool(b)) => o.set_bool(stat, b),
         Some(OutValue::Str(s)) => o.set_str(stat, &s),
     }
+    // `if breakdown then if not breakdown[stat] then breakdown[stat] = { } end; t_insert(breakdown[stat], ...) end`
+    if let Some(rows) = rows
+        && let Some(bd) = off.bd()
+    {
+        if bd.get(stat).is_none_or(|v| matches!(v, BVal::Bool(false))) {
+            bd.put(stat, BTable::new());
+        }
+        let t = bd.table_mut(stat);
+        for r in rows {
+            match r {
+                Row::S(s) => t.push(s),
+                Row::Total(fmt) => t.push(crate::breakdown::format(
+                    fmt,
+                    &[pob_lua::Arg::Num(final_num.unwrap_or_else(|| {
+                        panic!("{LUA}: bad argument #2 to 'format' (number expected, got nil)")
+                    }))],
+                )),
+            }
+        }
+    }
+}
+
+/// A breakdown row of `combineStat`: a string, or `s_format(fmt, output[stat])` after the assignment.
+enum Row {
+    S(String),
+    Total(&'static str),
 }
 
 /// `activeSkill.activeEffect.grantedEffect.castTime`.
@@ -296,12 +392,14 @@ fn gnum(off: &Off<'_>, k: &str, line: u32) -> f64 {
 
 /// :2174-2488 -- the first walk of the pass list: accuracy, hit chance, enemy block, attack/cast speed, trauma, hit time.
 #[allow(clippy::too_many_lines)]
-pub(super) fn speed_accuracy(off: &mut Off<'_>) {
+pub(super) fn speed_accuracy(off: &mut Off<'_>) -> BTable {
     let q = off.q.clone();
     let skill_cfg = off.cfg.clone();
     let sc = Some(&skill_cfg);
     let tick = misc("ServerTickRate");
     let (mut stored_mh_accuracy, mut stored_mh_accuracy_vs_enemy): (Option<f64>, Option<f64>) = (None, None);
+    // :2174 `storedSustainedTraumaBreakdown`
+    let mut stored_trauma_bd = BTable::new();
     for pi in 0..off.passes.len() {
         let label = off.passes[pi].label;
         // :2183-2187
@@ -325,8 +423,42 @@ pub(super) fn speed_accuracy(off: &mut Off<'_>) {
                 q.more(c, &["Accuracy", "AccuracyVsEnemy"]),
             )
         };
-        off.pset_num(pi, "Accuracy", max2(0.0, (base * (1.0 + inc / 100.0) * more).floor()));
+        let accuracy = max2(0.0, (base * (1.0 + inc / 100.0) * more).floor());
+        off.pset_num(pi, "Accuracy", accuracy);
         let mut accuracy_vs_enemy = max2(0.0, (base_vs * (1.0 + inc_vs / 100.0) * more_vs).floor());
+        // :2199-2216
+        if off.breakdown {
+            let mut t = BTable::new();
+            multi_chain(
+                &mut t,
+                &Chain {
+                    base: Some(step("%g ^8(base)", base)),
+                    steps: vec![
+                        step("%.2f ^8(increased/reduced)", 1.0 + inc / 100.0),
+                        step("%.2f ^8(more/less)", more),
+                    ],
+                    total: Some(sf!("= %g", accuracy)),
+                    ..Chain::default()
+                },
+            );
+            if accuracy != accuracy_vs_enemy {
+                t.push(sf!(""));
+                multi_chain(
+                    &mut t,
+                    &Chain {
+                        label: Some("Effective Accuracy vs Enemy".into()),
+                        base: Some(step("%g ^8(base)", base_vs)),
+                        steps: vec![
+                            step("%.2f ^8(increased/reduced)", 1.0 + inc_vs / 100.0),
+                            step("%.2f ^8(more/less)", more_vs),
+                        ],
+                        total: Some(sf!("= %g", accuracy_vs_enemy)),
+                        ..Chain::default()
+                    },
+                );
+            }
+            off.pbd_put(pi, "Accuracy", t);
+        }
         let offhand_is_main = q.flag(None, &["Condition:OffHandAccuracyIsMainHandAccuracy"]);
         if offhand_is_main && label == "Main Hand" {
             stored_mh_accuracy = off.pnum(pi, "Accuracy");
@@ -337,6 +469,11 @@ pub(super) fn speed_accuracy(off: &mut Off<'_>) {
         {
             off.pset_num(pi, "Accuracy", a);
             accuracy_vs_enemy = stored_mh_accuracy_vs_enemy.expect("stored with the accuracy");
+            // :2224-2228
+            if off.breakdown {
+                let t = BTable::lines([format!("Using Main Hand Accuracy due to Mastery: {}", tostring_num(a))]);
+                off.pbd_put(pi, "Accuracy", t);
+            }
         }
         let cannot_be_evaded = !off.is_attack
             || q.flag(Some(off.pcfg(pi)), &["CannotBeEvaded"])
@@ -348,11 +485,22 @@ pub(super) fn speed_accuracy(off: &mut Off<'_>) {
             let ev = ok(crate::calc_lib::val(&off.enemy_db.borrow(), "Evasion", None));
             let enemy_evasion = max2(round(ev, None), 0.0);
             let m = q.calc_mod(Some(off.pcfg(pi)), &["HitChance"]);
-            off.pset_num(
-                pi,
-                "AccuracyHitChance",
-                crate::defence::hit_chance(enemy_evasion, accuracy_vs_enemy) * m,
-            );
+            let ahc = crate::defence::hit_chance(enemy_evasion, accuracy_vs_enemy) * m;
+            off.pset_num(pi, "AccuracyHitChance", ahc);
+            // :2234-2240
+            if off.breakdown {
+                let note = if super::c::config_truthy(off, "enemyLevel") {
+                    " ^8(overridden from the Configuration tab"
+                } else {
+                    " ^8(can be overridden in the Configuration tab)"
+                };
+                let t = BTable::lines([
+                    format!("Enemy level: {}{note}", tostring_num(off.env.enemy_level)),
+                    format!("Enemy evasion: {}", tostring_num(enemy_evasion)),
+                    format!("Approximate hit chance: {}%", tostring_num(ahc)),
+                ]);
+                off.pbd_put(pi, "AccuracyHitChance", t);
+            }
         }
         // :2243-2247 enemy block chance
         let enemy_block = ok(off.enemy_db.borrow().sum(ModType::Base, Some(off.pcfg(pi)), &["BlockChance"]));
@@ -363,9 +511,20 @@ pub(super) fn speed_accuracy(off: &mut Off<'_>) {
         }
         let ahc = off.pnum_req(pi, "AccuracyHitChance", 2249);
         let ebc = off.pnum_req(pi, "enemyBlockChance", 2249);
-        off.pset_num(pi, "HitChance", ahc * (1.0 - ebc / 100.0));
+        let hit_chance = ahc * (1.0 - ebc / 100.0);
+        off.pset_num(pi, "HitChance", hit_chance);
         if ebc > 0.0 && !off.is_attack {
             off.out().set_bool("enemyHasSpellBlock", true);
+        }
+        // :2253-2266
+        if off.breakdown && ebc > 0.0 {
+            let mut t = BTable::new();
+            if ahc < 100.0 {
+                t.push(format!("Accuracy Hit Chance: {}%", tostring_num(ahc)));
+            }
+            t.push(format!("Enemy Block Chance: {}%", tostring_num(ebc)));
+            t.push(format!("Approximate hit chance: {}%", tostring_num(hit_chance)));
+            off.pbd_put(pi, "HitChance", t);
         }
 
         // :2268-2270 Precise Technique condition, per pass
@@ -454,8 +613,11 @@ pub(super) fn speed_accuracy(off: &mut Off<'_>) {
                 let trauma_rate_before_inc = trauma_per_attack * (hit_chance / 100.0) * attack_speed_before_inc / repeats;
                 let mut trauma =
                     trauma_rate_before_inc * (1.0 + inc / 100.0) / (1.0 / duration - trauma_rate_before_inc * inc_per_trauma / 100.0);
+                let trauma_breakdown = trauma;
+                let mut invalid = false;
                 if trauma < 0.0 || inc_per_trauma * trauma > inc_per_trauma_cap {
                     trauma = trauma_per_attack * (hit_chance / 100.0) * effective_attack_rate_cap / repeats * duration;
+                    invalid = true;
                 }
                 if off.flag("bothWeaponAttack") {
                     trauma /= 2.0;
@@ -469,6 +631,94 @@ pub(super) fn speed_accuracy(off: &mut Off<'_>) {
                     0,
                     vec![],
                 );
+                // :2339-2401 (`storedSustainedTraumaBreakdown`, :2174, handed to `breakdown.SustainableTrauma` at :2501)
+                if off.breakdown {
+                    let mut t = BTable::new();
+                    let chance = step("%.2f ^8(chance to hit)", hit_chance / 100.0);
+                    if inc_per_trauma == 0.0 {
+                        multi_chain(
+                            &mut t,
+                            &Chain {
+                                label: Some("Trauma".into()),
+                                base: Some(step("%.2f ^8(attack speed)", attack_speed_before_inc * (1.0 + inc / 100.0))),
+                                steps: vec![
+                                    step("%.2f ^8(trauma per attack)", trauma_per_attack),
+                                    chance.clone(),
+                                    step("%.2f ^8(duration)", duration),
+                                ],
+                                no_total: true,
+                                ..Chain::default()
+                            },
+                        );
+                        if repeats != 1.0 {
+                            t.push(sf!("/ %.2f ^8(repeats)", repeats));
+                        }
+                    } else {
+                        multi_chain(
+                            &mut t,
+                            &Chain {
+                                label: Some("Attack Speed before increased Attack Speed".into()),
+                                base: Some(step("%.2f ^8(base)", 1.0 / base_time)),
+                                steps: vec![
+                                    step("%.2f ^8(more/less)", more),
+                                    step("%.2f ^8(action speed modifier)", gnum(off, "ActionSpeedMod", 2357)),
+                                ],
+                                total: Some(sf!("= %.2f ^8attacks per second", attack_speed_before_inc)),
+                                ..Chain::default()
+                            },
+                        );
+                        t.push("");
+                        multi_chain(
+                            &mut t,
+                            &Chain {
+                                label: Some("Trauma per second before increased Attack Speed".into()),
+                                base: Some(step("%.2f ^8(base)", attack_speed_before_inc)),
+                                steps: vec![step("%.2f ^8(trauma per attack)", trauma_per_attack), chance.clone()],
+                                no_total: true,
+                                ..Chain::default()
+                            },
+                        );
+                        if repeats != 1.0 {
+                            t.push(sf!("/ %.2f ^8(repeats)", repeats));
+                        }
+                        t.push(sf!("= %.2f ^8trauma per second", trauma_rate_before_inc));
+                        t.push("");
+                        t.push("Trauma");
+                        t.push(sf!("%.2f ^8(base)", trauma_rate_before_inc));
+                        t.push(sf!("x %.2f ^8(increased/reduced)", 1.0 + inc / 100.0));
+                        t.push(sf!(
+                            "/ %.4f ^8(1 / duration - trauma per second * increased attack speed per trauma / 100)",
+                            1.0 / duration - trauma_rate_before_inc * inc_per_trauma / 100.0
+                        ));
+                    }
+                    let neg = if invalid { crate::breakdown::color("NEGATIVE") } else { "" };
+                    t.push(crate::breakdown::format(
+                        &format!("= {neg}%d ^8trauma"),
+                        &[pob_lua::Arg::Num(trauma_breakdown)],
+                    ));
+                    if invalid {
+                        t.push("");
+                        t.push("Attack Speed exceeds cap; Recalculating");
+                        multi_chain(
+                            &mut t,
+                            &Chain {
+                                base: Some(step("%.2f ^8(base)", effective_attack_rate_cap)),
+                                steps: vec![
+                                    step("%.2f ^8(trauma per attack)", trauma_per_attack),
+                                    chance,
+                                    step("%.2f ^8(duration)", duration),
+                                ],
+                                no_total: true,
+                                ..Chain::default()
+                            },
+                        );
+                        if repeats != 1.0 {
+                            t.push(sf!("/ %.2f ^8(repeats)", repeats));
+                        }
+                        t.push(sf!("= %d ^8trauma", trauma));
+                    }
+                    stored_trauma_bd = t;
+                }
             }
             if q.base(sc, &["Multiplier:TraumaStacks"]) == 0.0 {
                 let v = q.base(sc, &["Multiplier:SustainableTraumaStacks"]);
@@ -532,10 +782,61 @@ pub(super) fn speed_accuracy(off: &mut Off<'_>) {
                 off.pset_num(pi, "Speed", s);
             }
             let s = off.pnum_req(pi, "Speed", 2448);
-            off.pset_num(pi, "Time", if s == 0.0 { 0.0 } else { 1.0 / s });
+            let time = if s == 0.0 { 0.0 } else { 1.0 / s };
+            off.pset_num(pi, "Time", time);
+            // :2453-2470
             if off.breakdown {
-                // :2462 the condition of a breakdown-only branch (R8)
-                let _ = q.calc_mod(sc, &["SkillAttackTime"]);
+                let cast_rate = off.pnum_req(pi, "CastRate", 2459);
+                let action = if off.flag("totem") && off.ptruthy(pi, "TotemActionSpeed") {
+                    off.pnum_req(pi, "TotemActionSpeed", 2458)
+                } else if off.flag("selfCast") && !matches!(off.gval("ActionSpeedMod"), None | Some(OutValue::Bool(false))) {
+                    gnum(off, "ActionSpeedMod", 2458)
+                } else {
+                    1.0
+                };
+                let mut t = BTable::new();
+                multi_chain(
+                    &mut t,
+                    &Chain {
+                        base: Some(step("%.2f ^8(base)", 1.0 / base_time)),
+                        steps: vec![
+                            step("%.2f ^8(increased/reduced)", 1.0 + inc / 100.0),
+                            step("%.2f ^8(more/less)", more),
+                            step("%.2f ^8(action speed modifier)", action),
+                        ],
+                        total: Some(sf!("= %.2f ^8casts per second", cast_rate)),
+                        ..Chain::default()
+                    },
+                );
+                if off.ptruthy(pi, "Cooldown") {
+                    let cd = off.pnum_req(pi, "Cooldown", 2461);
+                    if (1.0 / cd) < cast_rate {
+                        t.push(sf!("\n"));
+                        t.push(sf!("1 / %.2f ^8(skill cooldown)", cd));
+                        if repeats > 1.0 {
+                            t.push(sf!("x %d ^8(repeat count)", repeats));
+                        }
+                        t.push(sf!("= %.2f ^8(casts per second)", repeats / cd));
+                        t.push(sf!("\n"));
+                        t.push(sf!("= %.2f ^8(lower of cast rates)", s));
+                    }
+                }
+                off.pbd_put(pi, "Speed", t);
+                // :2472-2479
+                let sat = q.calc_mod(sc, &["SkillAttackTime"]);
+                if sat > 0.0 {
+                    let mut t = BTable::new();
+                    multi_chain(
+                        &mut t,
+                        &Chain {
+                            base: Some(step("%.2f ^8(base)", 1.0 / (s * sat))),
+                            steps: vec![step("%.2f ^8(total modifier)", sat)],
+                            total: Some(sf!("= %.2f ^8seconds per attack", time)),
+                            ..Chain::default()
+                        },
+                    );
+                    off.pbd_put(pi, "Time", t);
+                }
             }
         }
         // :2473-2487 hit time
@@ -562,12 +863,13 @@ pub(super) fn speed_accuracy(off: &mut Off<'_>) {
             off.pset_num(pi, "HitSpeed", hs);
         }
     }
+    stored_trauma_bd
 }
 
 /// :2489-2605 -- misc DPS multipliers, combined hit chance / speed of the two hands, quantity multiplier (returned: the local
 /// `quantityMultiplier` the damage pass reads, :3801).
 #[allow(clippy::too_many_lines)]
-pub(super) fn misc_dps(off: &mut Off<'_>) -> f64 {
+pub(super) fn misc_dps(off: &mut Off<'_>, stored_trauma_bd: BTable) -> f64 {
     let q = off.q.clone();
     let skill_cfg = off.cfg.clone();
     let sc = Some(&skill_cfg);
@@ -593,6 +895,8 @@ pub(super) fn misc_dps(off: &mut Off<'_>) -> f64 {
     if q.flag(None, &["TriggeredBySnipe"]) {
         off.set_flag("channelRelease", true);
     }
+    // :2500-2502
+    off.bd_put("SustainableTrauma", stored_trauma_bd);
     // :2504 `Flag(...) and Sum(...)` -- `Flag` answers nil when no mod matched (the key is then absent), false for a false flag
     crate::perform::skill_guard(&q.malformed, &["HasTrauma"]);
     match ok(q.list.borrow().flag(None, &["HasTrauma"])) {
@@ -640,6 +944,53 @@ pub(super) fn misc_dps(off: &mut Off<'_>) -> f64 {
             let (s, t) = (hands[1].map.get("Speed").cloned(), hands[1].map.get("Time").cloned());
             off.set_out_value("Speed", s);
             off.set_out_value("Time", t);
+            // :2528-2533
+            if off.breakdown {
+                let t = BTable::lines([
+                    "Use Offhand Weapon Attack Speed:".to_owned(),
+                    sf!("= %.2f", off.out_num("Speed", 2531)),
+                ]);
+                off.bd_put("Speed", t);
+            }
+        } else if off.flag("bothWeaponAttack") && off.breakdown {
+            // :2534-2542
+            let t = BTable::lines([
+                "Both weapons:".to_owned(),
+                sf!(
+                    "2 / (1 / %.2f + 1 / %.2f)",
+                    hand_num(off, 0, "Speed", 2538),
+                    hand_num(off, 1, "Speed", 2538)
+                ),
+                sf!("= %.2f", off.out_num("Speed", 2539)),
+            ]);
+            off.bd_put("Speed", t);
+        }
+        // :2543-2554
+        if off.breakdown {
+            if off.flag("bothWeaponAttack") {
+                let t = BTable::lines([
+                    "Both weapons:".to_owned(),
+                    sf!("%.2f%% ^8(main hand)", hand_num(off, 0, "HitChance", 2547)),
+                    sf!("%.2f%% ^8(off hand)", hand_num(off, 1, "HitChance", 2548)),
+                    sf!("= %.2f%% ^8(average)", off.out_num("HitChance", 2549)),
+                ]);
+                off.bd_put("HitChance", t);
+            } else {
+                let hand = if off.flag("weapon1Attack") { "MainHand" } else { "OffHand" };
+                let bd = off.bd().expect("breakdown");
+                let (hc, sp) = {
+                    let hb = bd.module_mut(hand);
+                    let hc = match hb.get("HitChance") {
+                        Some(v) if !matches!(v, BVal::Bool(false)) => Some(v.clone()),
+                        _ => hb.get("AccuracyHitChance").cloned(),
+                    };
+                    (hc, hb.get("Speed").cloned())
+                };
+                bd.set("HitChance", hc);
+                if bd.get("Speed").is_none_or(|v| matches!(v, BVal::Bool(false))) {
+                    bd.set("Speed", sp);
+                }
+            }
         }
         let triggered_on_death = off.sd_truthy("triggeredOnDeath");
         if off.sd_truthy("hitTimeOverride") && !triggered_on_death {
@@ -663,6 +1014,53 @@ pub(super) fn misc_dps(off: &mut Off<'_>) -> f64 {
                 None => min2(1.0 / ht, misc("ServerTickRate")),
             };
             off.out().set_num("HitSpeed", hs);
+        }
+    }
+    // :2575-2598
+    if off.breakdown {
+        let triggered_on_death = off.sd_truthy("triggeredOnDeath");
+        let gtruthy = |off: &Off<'_>, k: &str| !matches!(off.gval(k), None | Some(OutValue::Bool(false)));
+        if off.sd_truthy("hitTimeOverride") && !triggered_on_death {
+            let t = BTable::lines([
+                sf!("1 / %.2f ^8(hit time override)", off.out_num("HitTime", 2578)),
+                sf!("= %.2f", off.out_num("HitSpeed", 2579)),
+            ]);
+            off.bd_put("HitSpeed", t);
+        } else if off.sd_truthy("hitTimeMultiplier") && gtruthy(off, "Time") && !triggered_on_death {
+            let m = off.sd_num("hitTimeMultiplier", 2582).expect("truthy");
+            let (time, ht) = (off.out_num("Time", 2587), off.out_num("HitTime", 2592));
+            let mut t = BTable::new();
+            if m.floor() != m {
+                t.push(crate::breakdown::format(
+                    &format!(
+                        "{}NOTE: First stage has a %.2fx channel time multiplier",
+                        crate::breakdown::color("CUSTOM")
+                    ),
+                    &[pob_lua::Arg::Num(m - m.floor())],
+                ));
+            }
+            if off.is_attack {
+                t.push(sf!("%.2f ^8(attack time)", time));
+            } else {
+                t.push(sf!("%.2f ^8(cast time)", time));
+            }
+            t.push(sf!("x %.2f ^8(channel time multiplier)", m));
+            t.push(sf!("= %.2f", ht));
+            off.bd_put("HitTime", t);
+            let mut t = BTable::new();
+            if gtruthy(off, "Cooldown") && off.sd_truthy("triggered") {
+                t.push(sf!(
+                    "1 / min(%.2f, %.2f) ^8min(hit time, cooldown)",
+                    ht,
+                    off.out_num("Cooldown", 2595)
+                ));
+            } else if gtruthy(off, "Cooldown") {
+                t.push(sf!("1 / (%.2f + %.2f) ^8(hit time + cooldown)", ht, off.out_num("Cooldown", 2597)));
+            } else {
+                t.push(sf!("1 / %.2f ^8(hit time)", ht));
+            }
+            t.push(sf!("= %.2f", off.out_num("HitSpeed", 2601)));
+            off.bd_put("HitSpeed", t);
         }
     }
     // :2600-2604 (`activeSkill.skillModList` / `activeSkill.skillCfg` -- the same tables as the locals)
@@ -779,5 +1177,16 @@ impl Off<'_> {
             PassOut::Hand(h) => self.weapon_conversion[h].as_ref().unwrap_or(&self.conversion_table),
             PassOut::Global => &self.conversion_table,
         }
+    }
+}
+
+/// `output.MainHand[k]` (h = 0) / `output.OffHand[k]` (h = 1) in arithmetic.
+pub(super) fn hand_num(off: &Off<'_>, h: usize, k: &str, line: u32) -> f64 {
+    match off.hands.as_ref().and_then(|hs| hs[h].map.get(k)) {
+        Some(OutValue::Num(x)) => *x,
+        other => panic!(
+            "{LUA}:{line}: bad argument to 'format' (output.{}.{k} is {other:?})",
+            if h == 0 { "MainHand" } else { "OffHand" }
+        ),
     }
 }

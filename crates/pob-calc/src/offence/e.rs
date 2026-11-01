@@ -14,7 +14,7 @@
 //! `activeSkill.mirage` (:6213) is set by `calcs.mirages` (CalcMirages.lua:76/:302, [`crate::mirages`], R7.9) before offence runs: the
 //! mirage block (:6212-6248) adds the mirage run's DPS to the combined DPS.
 //!
-//! Breakdown (R8): every `if breakdown` branch of this part only fills breakdown tables; the queries their conditions make
+//! Breakdown (R8.5): the `if breakdown` branches of this part are ported where they stand; the queries their conditions make
 //! (`Flag(nil, "Enemy<T>ResistEqualToYours")` :5835, `Sum("BASE", skillCfg, "Multiplier:SustainableTraumaStacks")` :6050) are still made.
 //! `activeSkill.dotCfg` / `activeSkill["dot<T>Cfg"]` (:5803/:5812) are read nowhere else upstream (`grep`): they live as locals.
 
@@ -25,8 +25,10 @@ use super::c::{LUA, dflag, dmore, dsum, num_at, or_num};
 use super::c2::resist_for_type;
 use super::helpers::{DMG_TYPE_LIST, Q};
 use super::{Off, run_skill_func};
+use crate::breakdown::{BTable, BVal};
 use crate::output::OutValue;
 use crate::setup::{keyword_flag, misc, mod_flag};
+use crate::sf;
 
 /// `isElemental` (:31).
 fn is_elemental(t: &str) -> bool {
@@ -155,12 +157,29 @@ fn skill_dot(off: &mut Off<'_>, q: &Q, quantity_multiplier: f64) {
             };
             eff_mult = (1.0 - resist / 100.0) * (1.0 + taken_inc / 100.0) * taken_more;
             off.gset(&format!("{dt}DotEffMult"), eff_mult);
+            // :5834-5837
             if off.breakdown && eff_mult != 1.0 {
-                // :5835 `sourceRes` (breakdown text only; the queries are made)
                 let f = format!("Enemy{dt}ResistEqualToYours");
-                if !dflag(&off.env_db, None, &[&f]) {
-                    let _ = dflag(&off.st.party_members.mod_db, None, &[&f]);
-                }
+                let source_res = if dflag(&off.env_db, None, &[&f]) {
+                    format!("Your {dt} Resistance")
+                } else if dflag(&off.st.party_members.mod_db, None, &[&f]) {
+                    format!("Party Member {dt} Resistance")
+                } else {
+                    dt.to_owned()
+                };
+                let t = crate::breakdown::eff_mult(
+                    dt,
+                    resist,
+                    0.0,
+                    taken_inc,
+                    eff_mult,
+                    taken_more,
+                    Some(&source_res),
+                    true,
+                    None,
+                    None,
+                );
+                off.bd_put(&format!("{dt}DotEffMult"), t);
             }
         }
         let el = is_elemental(dt);
@@ -178,11 +197,13 @@ fn skill_dot(off: &mut Off<'_>, q: &Q, quantity_multiplier: f64) {
         let mult = q.override_num(Some(&dot_type_cfg), &["DotMultiplier"], &site).unwrap_or_else(|| {
             q.base(Some(&dot_type_cfg), &["DotMultiplier"]) + q.base(Some(&dot_type_cfg), &[&format!("{dt}DotMultiplier")])
         });
-        let aura = if off.has_type("Aura") && !off.has_type("RemoteMined") && !off.has_type("Banner") {
-            q.calc_mod(Some(&dot_type_cfg), &["AuraEffect"])
+        // `aura` is false when not an aura skill
+        let aura_v = if off.has_type("Aura") && !off.has_type("RemoteMined") && !off.has_type("Banner") {
+            Some(q.calc_mod(Some(&dot_type_cfg), &["AuraEffect"]))
         } else {
-            1.0
+            None
         };
+        let aura = aura_v.unwrap_or(1.0);
         let total = base_val * (1.0 + inc / 100.0) * more * (1.0 + mult / 100.0) * aura * eff_mult;
         let tdi = gn(off, "TotalDotInstance", 5850);
         let cur = off.gval(&dot_key).cloned();
@@ -197,6 +218,12 @@ fn skill_dot(off: &mut Off<'_>, q: &Q, quantity_multiplier: f64) {
         } else {
             let prev = or_num(cur.as_ref(), 0.0, &dot_key, 5852);
             off.gset("TotalDotInstance", min2(tdi + total + prev, cap));
+        }
+        // :5854-5857
+        if off.breakdown {
+            let mut t = BTable::new();
+            crate::breakdown::dot(&mut t, base_val, inc, more, Some(mult), None, aura_v, Some(eff_mult), total);
+            off.bd_put(&dot_key, t);
         }
     }
     // :5861-5914
@@ -219,6 +246,22 @@ fn skill_dot(off: &mut Off<'_>, q: &Q, quantity_multiplier: f64) {
         );
         off.gset("TotalDot", v);
         off.gset("TotalDotCalcSection", v);
+        // :5873-5886
+        if off.breakdown {
+            let mut t = BTable::lines([
+                sf!("%.1f ^8(Damage per Instance)", gn(off, "TotalDotInstance", 5875)),
+                sf!("x %.2f ^8(hits per second)", speed),
+                sf!("x %.2f ^8(skill duration)", gn(off, "Duration", 5877)),
+            ]);
+            if dps_mult != 1.0 {
+                t.push(sf!("x %g ^8(DPS multiplier for this skill)", dps_mult));
+            }
+            if quantity_multiplier > 1.0 {
+                t.push(sf!("x %g ^8(quantity multiplier for this skill)", quantity_multiplier));
+            }
+            t.push(sf!("= %.1f", v));
+            off.bd_put("TotalDot", t);
+        }
     } else if q.flag(None, &["dotIsBurningGround"]) {
         ground(off, "BurningGroundDPS", Some("BurningGroundFromIgnite"), 5890);
     } else if q.flag(None, &["dotIsCausticGround"]) {
@@ -278,7 +321,7 @@ const COSTS_ORDER: [(&str, bool); 13] = [
     ("ESPercentPerMinute", false),
 ];
 
-/// :5917-5957 the per-second cost of the upfront costs (breakdown rows excluded).
+/// :5917-5957 the per-second cost of the upfront costs (with the `<Resource>PerSecondCost` breakdown, R8.5).
 fn per_second_costs(off: &mut Off<'_>, q: &Q) {
     let sc = off.cfg.clone();
     for (resource, upfront) in COSTS_ORDER {
@@ -309,6 +352,19 @@ fn per_second_costs(off: &mut Off<'_>, q: &Q) {
         }
         let used = if eb && resource == "Mana" { "ES" } else { resource };
         let repeats = or_num(off.gval("Repeats"), 1.0, "Repeats", 5927);
+        let time_type = if off.flag("trap") || off.flag("mine") {
+            if off.flag("trap") { "trap throwing" } else { "mine laying" }
+        } else if off.flag("totem") {
+            "totem placement"
+        } else if q.flag(None, &["HasSeals"]) && q.flag(None, &["UseMaxUnleash"]) && off.player_main_sd("hitTimeOverride").truthy() {
+            "full unleash"
+        } else if off.sd_truthy("triggered") {
+            "trigger"
+        } else if off.flag("attack") {
+            "attack"
+        } else {
+            "cast"
+        };
         let use_speed = if off.flag("trap") || off.flag("mine") {
             // :5931-5933
             let pre = if gt(off, "TrapThrowingSpeed") {
@@ -359,6 +415,20 @@ fn per_second_costs(off: &mut Off<'_>, q: &Q) {
         let ps_key = format!("{used}PerSecondCost");
         let v = g0(off, &ps_key, 5948) + gn(off, &cost_key, 5948) * use_speed;
         off.gset(&ps_key, v);
+        // :5950-5955 `copyTable(breakdown[resource.."Cost"])` minus its last row
+        if let Some(bd) = off.bd() {
+            let mut t = match bd.get(&cost_key) {
+                Some(BVal::Table(t)) => t.clone(),
+                other => panic!("Modules/Common.lua: bad argument #1 to 'pairs' (table expected, got {other:?}) (CalcOffence.lua:5951)"),
+            };
+            t.list.pop();
+            t.push(crate::breakdown::format(
+                &format!("x %.2f ^8({time_type} speed)"),
+                &[pob_lua::Arg::Num(use_speed)],
+            ));
+            t.push(sf!("= %.2f per second", v));
+            bd.put(&ps_key, t);
+        }
     }
 }
 
@@ -389,8 +459,9 @@ fn title_words(s: &str) -> String {
 }
 
 /// `calcs.applyDmgTakenConversion(activeSkill, output, breakdown, sourceType, baseDmg)` (CalcDefence.lua:84-142) -> the total damage
-/// taken (the breakdown lines are R8).
-pub(super) fn apply_dmg_taken_conversion(off: &Off<'_>, q: &Q, source: &str, base_dmg: f64) -> f64 {
+/// taken and the breakdown lines (`damageBreakdown`, built when `breakdown` is set).
+pub(super) fn apply_dmg_taken_conversion(off: &Off<'_>, q: &Q, source: &str, base_dmg: f64) -> (Vec<String>, f64) {
+    let mut lines: Vec<String> = Vec::new();
     const CD: &str = "Modules/CalcDefence.lua";
     let el = is_elemental(source);
     // :88-92
@@ -482,9 +553,35 @@ pub(super) fn apply_dmg_taken_conversion(off: &Off<'_>, q: &Q, source: &str, bas
         }
         let reduct_mult = (1.0 - max2(min2(dr_max, armour_reduct + reduction), 0.0) / 100.0) * taken_mods;
         let combined = res_mult * reduct_mult;
-        total += damage * combined;
+        let final_damage = damage * combined;
+        total += final_damage;
+        // :129-137
+        if off.breakdown {
+            lines.push(format!("{dt} Damage Taken"));
+            if taken_as != 1.0 {
+                lines.push(sf!(
+                    "^8=^7 %d^8 (Base Damage)^7 * %.2f^8 (Damage taken as %s)",
+                    base_dmg,
+                    taken_as,
+                    *dt
+                ));
+            }
+            if combined != 1.0 {
+                lines.push(sf!("^8=^7 %d^8 (%s Damage)^7 * %.4f^8 (Damage taken multi)", damage, *dt, combined));
+            }
+            lines.push(sf!("^8=^7 %d^8 (%s Damage taken)", final_damage, *dt));
+            lines.push(sf!(""));
+        }
     }
-    total
+    (lines, total)
+}
+
+/// `t_insert(dmgBreakdown, 1, a); t_insert(dmgBreakdown, 2, ""); t_insert(dmgBreakdown, z)` of a self hit handler.
+fn handler_lines(mut lines: Vec<String>, head: String, tail: String) -> Vec<String> {
+    lines.insert(0, head);
+    lines.insert(1, String::new());
+    lines.push(tail);
+    lines
 }
 
 /// `for _, value in ipairs(skillModList:List(nil, name))` -> `(baseDamage or dmgMult, damageType)` of each mod value.
@@ -511,14 +608,15 @@ fn val_num(v: &Value, what: &str, line: u32) -> f64 {
     })
 }
 
-/// :5960-6105 the self hit damage (the breakdown lines are R8).
+/// :5960-6105 the self hit damage (with `breakdown.SelfHitDamage`, R8.5).
 #[allow(clippy::too_many_lines)]
 fn self_hit(off: &mut Off<'_>, q: &Q) {
     let name = {
         let st = off.env.skills.as_ref().expect("skills on");
         st.skills.effects[off.sk().active_effect.borrow().granted_effect].name.clone()
     };
-    let mut taken: Vec<f64> = Vec::new();
+    // (the handler's breakdown rows, its damage taken)
+    let mut taken: Vec<(Vec<String>, f64)> = Vec::new();
     // "Heartbound Loop" (:5963-5977)
     if name == "Summon Skeletons" {
         let mut acc: Option<(f64, String)> = None;
@@ -527,8 +625,19 @@ fn self_hit(off: &mut Off<'_>, q: &Q) {
             acc = Some((prev + val_num(&v, "baseDamage", 5966), ty));
         }
         if let Some((val, ty)) = acc {
-            let t = apply_dmg_taken_conversion(off, q, &ty, val);
-            taken.push(t * gn(off, "SummonedMinionsPerCast", 5974));
+            let (lines, t) = apply_dmg_taken_conversion(off, q, &ty, val);
+            let per_cast = gn(off, "SummonedMinionsPerCast", 5974);
+            let lines = handler_lines(
+                lines,
+                sf!("Heartbound Loop base damage: %d", val),
+                sf!(
+                    "Total Heartbound Loop damage taken per cast/attack: %.2f * %d ^8(minions per cast)^7 = %.2f",
+                    t,
+                    per_cast,
+                    t * per_cast
+                ),
+            );
+            taken.push((lines, t * per_cast));
         }
     }
     // "Storm Secret" (:5978-5993)
@@ -539,7 +648,13 @@ fn self_hit(off: &mut Off<'_>, q: &Q) {
             acc = Some((prev + val_num(&v, "baseDamage", 5982), ty));
         }
         if let Some((val, ty)) = acc {
-            taken.push(apply_dmg_taken_conversion(off, q, &ty, val));
+            let (lines, t) = apply_dmg_taken_conversion(off, q, &ty, val);
+            let lines = handler_lines(
+                lines,
+                sf!("Storm Secret base damage: %d", val),
+                sf!("Total Storm Secret damage taken per Herald of Thunder Hit: %.2f", t),
+            );
+            taken.push((lines, t));
         }
     }
     // "Eye of Innocence" (:5994-6008)
@@ -550,7 +665,13 @@ fn self_hit(off: &mut Off<'_>, q: &Q) {
             && v.truthy()
         {
             let val = val_num(&v, "baseDamage", 6003);
-            taken.push(apply_dmg_taken_conversion(off, q, &ty, val));
+            let (lines, t) = apply_dmg_taken_conversion(off, q, &ty, val);
+            let lines = handler_lines(
+                lines,
+                sf!("Eye of Innocence base damage: %d", val),
+                sf!("Total Eye of Innocence damage taken per cast/attack: %.2f ", t),
+            );
+            taken.push((lines, t));
         }
     }
     // "Echoes of Creation" (:6009-6028)
@@ -565,7 +686,19 @@ fn self_hit(off: &mut Off<'_>, q: &Q) {
         {
             let m = val_num(&m, "dmgMult", 6020);
             let life = g0(off, "Life", 6020);
-            taken.push(apply_dmg_taken_conversion(off, q, &ty, life * m / 100.0 * avg));
+            let (lines, t) = apply_dmg_taken_conversion(off, q, &ty, life * m / 100.0 * avg);
+            let lines = handler_lines(
+                lines,
+                sf!(
+                    "Echoes of Creation base damage: %d ^8(Life)^7 * %d%% * %.2f ^8(Avg. Warcry Count)^7 = %.2f",
+                    life,
+                    m,
+                    avg,
+                    life * m / 100.0 * avg
+                ),
+                sf!("Total Echoes of Creation damage taken per Attack: %.2f ", t),
+            );
+            taken.push((lines, t));
         }
     }
     // "Scold's Bridle" (:6029-6043)
@@ -577,7 +710,18 @@ fn self_hit(off: &mut Off<'_>, q: &Q) {
         {
             let m = val_num(&m, "dmgMult", 6036);
             let cost = g0(off, "ManaCost", 6036);
-            taken.push(apply_dmg_taken_conversion(off, q, &ty, cost * m / 100.0));
+            let (lines, t) = apply_dmg_taken_conversion(off, q, &ty, cost * m / 100.0);
+            let lines = handler_lines(
+                lines,
+                sf!(
+                    "Scold's Bridle base damage: %d ^8(Mana Cost)^7 * %d%% = %.2f",
+                    cost,
+                    m,
+                    cost * m / 100.0
+                ),
+                sf!("Total Scold's Bridle damage taken per cast/attack: %.2f ", t),
+            );
+            taken.push((lines, t));
         }
     }
     // "Trauma" (:6044-6056)
@@ -590,11 +734,23 @@ fn self_hit(off: &mut Off<'_>, q: &Q) {
         };
         if base.flag(None, &["HasTrauma"]) {
             let val = per * stacks;
-            let t = apply_dmg_taken_conversion(off, q, "Physical", val);
-            if off.breakdown {
-                let _ = q.base(Some(&off.cfg), &["Multiplier:SustainableTraumaStacks"]);
-            }
-            taken.push(t);
+            let (lines, t) = apply_dmg_taken_conversion(off, q, "Physical", val);
+            // :6051 `Sum("BASE", skillCfg, ...)` (the offence local `skillCfg`, an upvalue of the handler)
+            let sustainable = q.base(Some(&off.cfg), &["Multiplier:SustainableTraumaStacks"]) == stacks;
+            let lines = handler_lines(
+                lines,
+                sf!(
+                    "%d ^8(base %s damage)^7 * %.2f ^8(%s trauma)^7 = %.2f %s damage",
+                    per,
+                    "Physical",
+                    stacks,
+                    if sustainable { "sustainable" } else { "current" },
+                    val,
+                    "Physical"
+                ),
+                sf!("Total Trauma damage taken per cast/attack: %.2f ", t),
+            );
+            taken.push((lines, t));
         }
     }
     // "Enmity's Embrace" (:6057-6071)
@@ -605,21 +761,41 @@ fn self_hit(off: &mut Off<'_>, q: &Q) {
             acc = Some((prev + val_num(&v, "baseDamage", 6061), ty));
         }
         if let Some((val, ty)) = acc {
-            taken.push(apply_dmg_taken_conversion(off, q, &ty, val));
+            let (lines, t) = apply_dmg_taken_conversion(off, q, &ty, val);
+            let lines = handler_lines(
+                lines,
+                sf!("Enmity's Embrace base damage: %d", val),
+                sf!("Total Enmity's Embrace damage taken per cast/attack: %.2f ", t),
+            );
+            taken.push((lines, t));
         }
     }
-    // :6077-6088 `pairs(nameToHandler)` (see the module doc)
+    // :6077-6088 `pairs(nameToHandler)` (see the module doc; the breakdown rows follow the same order)
     if taken.len() >= 3 {
         off.note(format!(
             "CalcOffence.lua:6077 pairs(nameToHandler): {} self hit sources summed in a hash order (R13, Rust: constructor order)",
             taken.len()
         ));
     }
-    for t in taken {
+    // with two or more handlers the rows of `breakdown.SelfHitDamage` also follow that order (R13 in LuaJIT)
+    for (lines, t) in taken {
         let v = g0(off, "SelfHitDamage", 6080) + t;
         off.gset("SelfHitDamage", v);
+        if let Some(bd) = off.bd() {
+            let tb = bd.table_or("SelfHitDamage", BTable::new);
+            for l in lines {
+                tb.push(l);
+            }
+            tb.push("");
+        }
     }
-    // :6091-6101 `ipairs` over a hash-only table: no iteration.
+    // :6091-6098 `ipairs` over a hash-only table: no iteration.
+    // :6101-6103 remove the trailing empty row
+    if let Some(bd) = off.bd()
+        && let Some(BVal::Table(t)) = bd.get_mut("SelfHitDamage")
+    {
+        t.list.pop();
+    }
 }
 
 /// :6107-6262 the combined DPS (with the mirage block, see the module doc).
@@ -697,7 +873,10 @@ fn combined_dps(off: &mut Off<'_>, quantity_multiplier: f64) {
             .sd_num("dpsMultiplier", 6158)
             .unwrap_or_else(|| panic!("{LUA}:6158: attempt to perform arithmetic on field 'dpsMultiplier' (a nil value)"));
         let mut impale;
-        if off.flag("attack") && off.sd_truthy("doubleHitsWhenDualWielding") && off.flag("bothWeaponAttack") {
+        // (MH, OH) impale DPS of the separate combine (breakdown rows)
+        let mut hand_dps: Option<(f64, f64)> = None;
+        let both = off.flag("attack") && off.sd_truthy("doubleHitsWhenDualWielding") && off.flag("bothWeaponAttack");
+        if both {
             let hands = off
                 .hands
                 .as_ref()
@@ -712,6 +891,7 @@ fn combined_dps(off: &mut Off<'_>, quantity_multiplier: f64) {
                     * dps_mult
             };
             impale = hand(0) + hand(1);
+            hand_dps = Some((hand(0), hand(1)));
         } else {
             let m = g_or1(off, "ImpaleModifier", 6160);
             impale = gn(off, "impaleStoredHitAvg", 6160) * (m - 1.0) * gn(off, "HitChance", 6160) / 100.0 * dps_mult;
@@ -744,6 +924,61 @@ fn combined_dps(off: &mut Off<'_>, quantity_multiplier: f64) {
         }
         let v = gn(off, "CombinedDPS", 6176) + impale;
         off.gset("CombinedDPS", v);
+        // :6176-6209
+        if off.breakdown {
+            let mut t = BTable::new();
+            if let Some((mh, oh)) = hand_dps {
+                use super::b::hand_num;
+                let m = |off: &Off<'_>, h: usize| match off.hands.as_ref().and_then(|hs| hs[h].map.get("ImpaleModifier")) {
+                    None | Some(OutValue::Bool(false)) => 1.0,
+                    v => num_at(v, "ImpaleModifier", 6182),
+                };
+                t.push(sf!("Main Hand:"));
+                t.push(sf!(
+                    "%.2f ^8(MH average physical hit before mitigation)",
+                    hand_num(off, 0, "impaleStoredHitAvg", 6180)
+                ));
+                t.push(sf!("x %.2f ^8(MH chance to hit)", hand_num(off, 0, "HitChance", 6181) / 100.0));
+                t.push(sf!("x %.2f ^8(MH impale damage multiplier)\n", m(off, 0) - 1.0));
+                t.push(sf!("= %.2f", mh));
+                t.push(sf!("Off Hand:"));
+                t.push(sf!(
+                    "%.2f ^8(OH average physical hit before mitigation)",
+                    hand_num(off, 1, "impaleStoredHitAvg", 6185)
+                ));
+                t.push(sf!("x %.2f ^8(OH chance to hit)", hand_num(off, 1, "HitChance", 6186) / 100.0));
+                t.push(sf!("x %.2f ^8(OH impale damage multiplier)", m(off, 1) - 1.0));
+                t.push(sf!("= %.2f", oh));
+                t.push(sf!("Combined total:"));
+                t.push(sf!("%.2f + %.2f", mh, oh));
+            } else {
+                t.push(sf!(
+                    "%.2f ^8(average physical hit before mitigation)",
+                    gn(off, "impaleStoredHitAvg", 6192)
+                ));
+                t.push(sf!("x %.2f ^8(chance to hit)", gn(off, "HitChance", 6193) / 100.0));
+                t.push(sf!("x %.2f ^8(impale damage multiplier)", g_or1(off, "ImpaleModifier", 6194) - 1.0));
+            }
+            if off.flag("notAverage") {
+                if gt(off, "HitSpeed") {
+                    t.push(sf!("x %.2f ^8(hit rate)", gn(off, "HitSpeed", 6197)));
+                } else {
+                    let what = if off.flag("attack") { "attack" } else { "cast" };
+                    t.push(sf!("x %.2f ^8(%s rate)", gn(off, "Speed", 6197), what));
+                }
+            }
+            if dps_mult != 1.0 {
+                t.push(sf!("x %g ^8(dps multiplier for this skill)", dps_mult));
+            }
+            if quantity_multiplier > 1.0 {
+                t.push(sf!("x %g ^8(quantity multiplier for this skill)", quantity_multiplier));
+            }
+            if gn(off, "ImpaleDuration", 6205) <= 0.0 {
+                t.push(sf!("x 0 ^8(no Impale Duration)"));
+            }
+            t.push(sf!("= %.1f", impale));
+            off.bd_put("ImpaleDPS", t);
+        }
     }
     // :6212-6248 `activeSkill.mirage` (set by `calcs.mirages` before offence: Mirage Archer / Sacred Wisps, R7.9)
     let mut best_cull = 1.0;

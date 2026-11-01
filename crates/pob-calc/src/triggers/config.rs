@@ -9,11 +9,13 @@ use super::{
     ensure_cached, find_trigger_skill, flag, ge_of, group_slot, has_type, is_triggered, line_err, main_idx, name_of, package, player_db,
     q_of, sd, sd_num, sd_truthy, set_flag, set_sd, skill, skill_count, skill_mut, slot_match, src_instance, with_cached,
 };
+use crate::breakdown::BTable;
 use crate::env::Env;
 use crate::output::Output;
 use crate::perform::Who;
 use crate::session::cache_skill_uuid;
 use crate::setup::{mod_flag, tag};
+use crate::sf;
 
 /// `config.customHandler`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -23,7 +25,7 @@ pub(crate) enum Custom {
 }
 
 /// The table a `configTable` entry returns (nil fields = `None` / `false`). `stagesAreOverlaps` and `allowTriggered` are never set by an
-/// entry (nil everywhere they are read); `useCastRate`, `assumingEveryHitKills` and `sourceName` only feed breakdown text (R8).
+/// entry (nil everywhere they are read); `useCastRate`, `assumingEveryHitKills` and `sourceName` only feed breakdown text.
 #[derive(Default)]
 pub(crate) struct Config {
     pub trigger_name: Option<String>,
@@ -45,6 +47,10 @@ pub(crate) struct Config {
     pub actor: Option<Who>,
     /// `actor.mainSkill.triggeredBy.<field>` written by the entry.
     pub tb: TriggeredByExtra,
+    /// `useCastRate` / `assumingEveryHitKills` / `sourceName` (breakdown text, :439-442).
+    pub use_cast_rate: bool,
+    pub assuming_every_hit_kills: bool,
+    pub source_name: Option<String>,
 }
 
 fn types_any(env: &Env, i: usize, names: &[&str]) -> bool {
@@ -110,8 +116,14 @@ fn borrow_active_part(env: &mut Env, name: &str, line: u32) {
 
 /// `configTable[key](env)` -- `Ok(None)` for a key not in the table or an entry returning nil.
 #[allow(clippy::too_many_lines)]
-/// `out` is `env.player.output` (the entries write the player's output whichever actor `calcs.triggers` runs for).
-pub(crate) fn config_table(env: &mut Env, out: &mut Output, key: &str) -> Result<Option<Config>, String> {
+/// `out` / `bd` are `env.player.output` / `env.player.breakdown` (the entries write the player's whichever actor `calcs.triggers` runs
+/// for).
+pub(crate) fn config_table(
+    env: &mut Env,
+    out: &mut Output,
+    bd: Option<&mut crate::breakdown::Breakdown>,
+    key: &str,
+) -> Result<Option<Config>, String> {
     let m = main_idx(env);
     let main_name = name_of(env, m);
     let c = match key {
@@ -148,6 +160,19 @@ pub(crate) fn config_table(env: &mut Env, out: &mut Output, key: &str) -> Result
             set_flag(env, m, "globalTrigger");
             set_sd(env, m, "triggerRateCapOverride", Value::Num(2.0));
             if player_flag(env, "Condition:Phasing") {
+                // :933-938
+                if let Some(bd) = bd {
+                    bd.put(
+                        "TriggerRateCap",
+                        BTable::lines([
+                            sf!(
+                                "%.2f ^8(Unseen Strike from The Hidden Blade has no cooldown but is still triggered)",
+                                2.0
+                            ),
+                            sf!("= %.2f", 2.0),
+                        ]),
+                    );
+                }
                 return Ok(Some(Config {
                     source: Some(m),
                     ..Config::default()
@@ -212,12 +237,14 @@ pub(crate) fn config_table(env: &mut Env, out: &mut Output, key: &str) -> Result
         "rigwald's crest" | "jorrhast's blacksteel" | "ashcaller" => {
             set_sd(env, m, "sourceRateIsFinal", Value::Bool(true));
             Config {
+                assuming_every_hit_kills: true,
                 trigger_skill_cond: damage_or_attack(),
                 ..Config::default()
             }
         }
         // :1002-1013
         "arakaali's fang" | "sporeguard" | "mark of the elder" | "mark of the shaper" => Config {
+            assuming_every_hit_kills: true,
             trigger_skill_cond: damage_or_attack(),
             ..Config::default()
         },
@@ -257,6 +284,7 @@ pub(crate) fn config_table(env: &mut Env, out: &mut Output, key: &str) -> Result
             let is_replica = matches!(pob_lua::find(name.as_bytes(), b"Replica.", None, false), Ok(Some(_)));
             Config {
                 trigger_on_use: true,
+                use_cast_rate: is_replica,
                 trigger_name: Some(name),
                 trigger_skill_cond: cond(move |env, s| {
                     let attack = has_type(env, s, "Attack") && has_flags(env, s, mod_flag("Bow")) && !is_replica;
@@ -280,6 +308,7 @@ pub(crate) fn config_table(env: &mut Env, out: &mut Output, key: &str) -> Result
         },
         // :1045-1050
         "vixen's entrapment" => Config {
+            use_cast_rate: true,
             trigger_skill_cond: cond(|env, s| has_type(env, s, "Hex")),
             ..Config::default()
         },
@@ -300,6 +329,7 @@ pub(crate) fn config_table(env: &mut Env, out: &mut Output, key: &str) -> Result
             }
             let mut found = Found::default();
             let mut triggered = Vec::new();
+            let mut use_cast_rate = false;
             for s in 0..skill_count(env) {
                 if types_any(env, s, &["Damage", "Attack", "Spell"])
                     && !flag(env, s, "aura")
@@ -319,6 +349,7 @@ pub(crate) fn config_table(env: &mut Env, out: &mut Output, key: &str) -> Result
                             .and_then(|l| ge.level(l))
                             .unwrap_or_else(|| line_err(1072, "attempt to index field '?' (a nil value)"));
                         found.rate = Some(1.0 / (ct + lvl.cooldown.unwrap_or(0.0)));
+                        use_cast_rate = true;
                     }
                 }
                 if sd_truthy(env, s, "triggeredByCraft") && same_slot_as_main(env, s, 1080) {
@@ -327,6 +358,7 @@ pub(crate) fn config_table(env: &mut Env, out: &mut Output, key: &str) -> Result
             }
             Config {
                 trig_rate: found.rate,
+                use_cast_rate,
                 source: found.source,
                 triggered_skills: Some(triggered),
                 ..Config::default()
@@ -390,6 +422,7 @@ pub(crate) fn config_table(env: &mut Env, out: &mut Output, key: &str) -> Result
         "squirming terror" => {
             if player_flag(env, "Condition:KilledRecently") {
                 Config {
+                    assuming_every_hit_kills: true,
                     trigger_skill_cond: cond(|env, s| has_type(env, s, "Attack") && has_type(env, s, "Melee")),
                     triggered_skill_cond: cond(|env, s| sd_truthy(env, s, "triggeredBySquirmingTerror") && slot_match(env, s)),
                     ..Config::default()
@@ -417,6 +450,7 @@ pub(crate) fn config_table(env: &mut Env, out: &mut Output, key: &str) -> Result
         "cast on melee kill" => {
             if player_flag(env, "Condition:KilledRecently") {
                 Config {
+                    assuming_every_hit_kills: true,
                     trigger_skill_cond: cond(|env, s| has_type(env, s, "Attack") && has_type(env, s, "Melee") && slot_match(env, s)),
                     triggered_skill_cond: cond(|env, s| sd_truthy(env, s, "triggeredByMeleeKill") && slot_match(env, s)),
                     ..Config::default()
@@ -454,6 +488,19 @@ pub(crate) fn config_table(env: &mut Env, out: &mut Output, key: &str) -> Result
             };
             let threshold_mod = q_of(env, m).calc_mod(None, &["CWDTThreshold"]);
             out.set_num("CWDTThreshold", base * threshold_mod);
+            // :1184-1190
+            if let Some(bd) = bd
+                && base * threshold_mod != base
+            {
+                bd.put(
+                    "CWDTThreshold",
+                    BTable::lines([
+                        sf!("%.2f ^8(base threshold)", base),
+                        sf!("x %.2f ^8(threshold modifier)", threshold_mod),
+                        sf!("= %.2f", base * threshold_mod),
+                    ]),
+                );
+            }
             global_self(env)
         }
         // :1195-1204
@@ -506,6 +553,7 @@ pub(crate) fn config_table(env: &mut Env, out: &mut Output, key: &str) -> Result
             }
             Config {
                 trigger_on_use: true,
+                use_cast_rate: true,
                 source: Some(m),
                 ..Config::default()
             }
@@ -553,6 +601,17 @@ pub(crate) fn config_table(env: &mut Env, out: &mut Output, key: &str) -> Result
                 .unwrap_or_else(|| line_err(1305, "attempt to index field '?' (a nil value)"))
                 .unwrap_or_else(|| line_err(1305, "attempt to perform arithmetic on field 'Duration' (a nil value)"));
             set_sd(env, m, "triggerRateCapOverride", Value::Num(1.0 / d));
+            // :1306-1312
+            if let Some(bd) = bd {
+                bd.put(
+                    "SkillTriggerRate",
+                    BTable::lines([
+                        sf!("Shattershard uses duration as pseudo cooldown"),
+                        sf!("1 / %.2f ^8(Shattershard duration)", d),
+                        sf!("= %.2f ^8per second", 1.0 / d),
+                    ]),
+                );
+            }
             Config {
                 source: Some(m),
                 ..Config::default()
@@ -681,6 +740,7 @@ pub(crate) fn config_table(env: &mut Env, out: &mut Output, key: &str) -> Result
             };
             Config {
                 overlaps,
+                use_cast_rate: true,
                 custom_trigger_name: Some("Doom Blast triggering Hex: ".into()),
                 trigger_skill_cond: cond(|env, s| has_type(env, s, "Hex") && slot_match(env, s)),
                 ..Config::default()
@@ -727,6 +787,8 @@ pub(crate) fn config_table(env: &mut Env, out: &mut Output, key: &str) -> Result
                 triggered_skill_cond: cond(move |env, s| has_type(env, s, "Spell") && slot_match(env, s) && Some(s) != link),
                 trig_rate: Some(rate),
                 source: link,
+                source_name: Some("Custom source".into()),
+                use_cast_rate: true,
                 tb: TriggeredByExtra {
                     main_skill: link,
                     ..TriggeredByExtra::default()
@@ -774,6 +836,7 @@ pub(crate) fn config_table(env: &mut Env, out: &mut Output, key: &str) -> Result
                 .unwrap_or_else(|| line_err(1552, "attempt to perform arithmetic on field 'triggerChance' (a nil value)"));
             let chance = base + player_db(env).base(None, &["BloodShrineExplodingToadTriggerChance"]);
             Config {
+                assuming_every_hit_kills: true,
                 trigger_chance: Some(min2(chance, 100.0)),
                 trigger_skill_cond: damage_or_attack(),
                 ..Config::default()
@@ -790,6 +853,16 @@ pub(crate) fn config_table(env: &mut Env, out: &mut Output, key: &str) -> Result
             if interval < f64::INFINITY {
                 set_flag(env, m, "globalTrigger");
                 set_sd(env, m, "triggerRateCapOverride", Value::Num(1.0 / interval));
+                // :1567-1572
+                if let Some(bd) = bd {
+                    bd.put(
+                        "TriggerRateCap",
+                        BTable::lines([
+                            sf!("1 / %.2f ^8(Hextoad trigger interval)", interval),
+                            sf!("= %.2f", 1.0 / interval),
+                        ]),
+                    );
+                }
                 Config {
                     source: Some(m),
                     ..Config::default()

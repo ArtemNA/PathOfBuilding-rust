@@ -6,17 +6,20 @@
 //! Hash-order walks (R13/D13): none -- every walk is `ipairs(dmgTypeList)`; the totals are summed in that fixed order.
 //! `^` (R2): `rolls` here is never a power; the crit roll / cull / PvP powers are `f64::powf` (UCRT = desktop LuaJIT).
 //!
-//! Breakdown (R8): the `if breakdown` branches only fill breakdown tables; the queries in their conditions that no earlier code made
+//! Breakdown (R8.5): the `if breakdown` branches are ported where they stand; the queries in their conditions that no earlier code made
 //! (`Flag(skillCfg, "CritLucky")`, :3815/:3819) are still made.
 
 use pob_lua::number::{max2, min2};
 use pob_mods::{ModCfg, ModType, Str, Value};
 
+use super::bdh::take_pbd_table;
 use super::c::{LUA, config_is, config_truthy, dflag, dmore, dsum, num_at, or_num};
 use super::helpers::{DMG_TYPE_LIST, calc_damage};
 use super::{CombineMode, Off};
+use crate::breakdown::{BTable, BVal};
 use crate::output::OutValue;
 use crate::setup::{misc, ok};
+use crate::sf;
 
 /// `isElemental` (:31).
 fn is_elemental(t: &str) -> bool {
@@ -98,12 +101,47 @@ pub(super) fn hit_damage(off: &mut Off<'_>, pi: usize, hit_rate: f64, quantity_m
         let base_max = (src(&dmax) + src(&format!("{dt}BonusMax"))) * base_multiplier + added_max * damage_effectiveness * added_mult;
         off.pset_num(pi, &format!("{dmin}Base"), base_min);
         off.pset_num(pi, &format!("{dmax}Base"), base_max);
+        // :3359-3382
+        if off.breakdown {
+            let mut t = BTable::new().with("damageTypes", BTable::new());
+            if base_min != 0.0 && base_max != 0.0 {
+                t.push("Base damage:");
+                let mut plus = "";
+                let (smin, smax) = (off.source_val(pi, &dmin), off.source_val(pi, &dmax));
+                let or0 = |v: &Value| if v.truthy() { v.as_num().unwrap_or(f64::NAN) } else { 0.0 };
+                if or0(&smin) != 0.0 || or0(&smax) != 0.0 {
+                    let from = if off.source_val(pi, "type").truthy() { "weapon" } else { "skill" };
+                    let arg = |v: &Value| match v {
+                        Value::Num(x) => pob_lua::Arg::Num(*x),
+                        _ => pob_lua::Arg::Nil,
+                    };
+                    t.push(crate::breakdown::format(
+                        "%d to %d ^8(base damage from %s)",
+                        &[arg(&smin), arg(&smax), pob_lua::Arg::Str(from)],
+                    ));
+                    if base_multiplier != 1.0 {
+                        t.push(sf!("x %.2f ^8(base damage multiplier)", base_multiplier));
+                    }
+                    plus = "+ ";
+                }
+                if added_min != 0.0 || added_max != 0.0 {
+                    t.push(sf!("%s%d to %d ^8(added damage)", plus, added_min, added_max));
+                    if damage_effectiveness != 1.0 {
+                        t.push(sf!("x %.2f ^8(damage effectiveness)", damage_effectiveness));
+                    }
+                    if added_mult != 1.0 {
+                        t.push(sf!("x %.2f ^8(added damage multiplier)", added_mult));
+                    }
+                }
+                t.push(sf!("= %.1f to %.1f", base_min, base_max));
+            }
+            off.pbd_put(pi, dt, t);
+        }
     }
 
     // :3385-3690 hit damage for each damage type
     let (mut total_hit_min, mut total_hit_max, mut total_hit_avg) = (0.0, 0.0, 0.0);
-    // `totalCritMin` / `totalCritMax` feed only the breakdown (:3816-3820)
-    let mut total_crit_avg = 0.0;
+    let (mut total_crit_min, mut total_crit_max, mut total_crit_avg) = (0.0, 0.0, 0.0);
     let ghost_reaver = q.flag(None, &["GhostReaver"]);
     let mut ghost_reaver_life_leech = 0.0;
     for k in [
@@ -132,6 +170,8 @@ pub(super) fn hit_damage(off: &mut Off<'_>, pi: usize, hit_rate: f64, quantity_m
         for dt in DMG_TYPE_LIST {
             let (mut hit_min, mut hit_max, mut hit_avg) = (0.0, 0.0, 0.0);
             if off.flag("hit") && off.can_deal.get(dt).copied().unwrap_or(false) {
+                // :3409 `pass == 2 and breakdown and breakdown[damageType]`
+                let mut bd_t = if pass == 2 { take_pbd_table(off, pi, dt) } else { None };
                 let (mn, mx) = {
                     let base = |t: &str| -> (f64, f64) {
                         (
@@ -139,8 +179,11 @@ pub(super) fn hit_damage(off: &mut Off<'_>, pi: usize, hit_rate: f64, quantity_m
                             num_at(off.pval(pi, &format!("{t}MaxBase")), "MaxBase", 93),
                         )
                     };
-                    calc_damage(&q, off.pass_conversion(pi), &base, Some(off.pcfg(pi)), dt, 0, None)
+                    calc_damage(&q, off.pass_conversion(pi), &base, Some(off.pcfg(pi)), bd_t.as_mut(), dt, 0, None)
                 };
+                if let Some(t) = bd_t {
+                    off.pbd_put(pi, dt, t);
+                }
                 hit_min = mn;
                 hit_max = mx;
                 let conv_mult = off
@@ -148,6 +191,65 @@ pub(super) fn hit_damage(off: &mut Off<'_>, pi: usize, hit_rate: f64, quantity_m
                     .get(dt)
                     .map(|e| e.mult)
                     .unwrap_or_else(|| panic!("{LUA}:3411: attempt to index a nil value"));
+                // :3412-3439
+                if pass == 2 && off.breakdown {
+                    let pn = |off: &Off<'_>, k: &str| num_at(off.pval(pi, k), k, 3418);
+                    let mut lines = vec!["Hit damage:".to_owned(), sf!("%d to %d ^8(total damage)", hit_min, hit_max)];
+                    if conv_mult != 1.0 {
+                        lines.push(sf!(
+                            "x %g ^8(%g%% converted to other damage types)",
+                            conv_mult,
+                            (1.0 - conv_mult) * 100.0
+                        ));
+                    }
+                    let (dde, tde) = (pn(off, "DoubleDamageEffect"), pn(off, "TripleDamageEffect"));
+                    if dde != 0.0 {
+                        if tde != 0.0 {
+                            lines.push(sf!(
+                                "x %.2f ^8(1 + %.2f + %.2f multiplier from %.1f%% chance to deal double damage and %d%% chance to deal triple damage)",
+                                1.0 + dde + tde,
+                                dde,
+                                tde,
+                                pn(off, "DoubleDamageChance"),
+                                pn(off, "TripleDamageChance")
+                            ));
+                        } else {
+                            lines.push(sf!(
+                                "x %.2f ^8(multiplier from %d%% chance to deal double damage)",
+                                1.0 + dde,
+                                pn(off, "DoubleDamageChance")
+                            ));
+                        }
+                    } else if tde != 0.0 {
+                        lines.push(sf!(
+                            "x %.2f ^8(multiplier from %d%% chance to deal triple damage)",
+                            1.0 + tde,
+                            pn(off, "TripleDamageChance")
+                        ));
+                    }
+                    let rb = pn(off, "RuthlessBlowHitEffect");
+                    if rb != 1.0 {
+                        lines.push(sf!("x %.2f ^8(ruthless blow effect modifier)", rb));
+                    }
+                    let fow = pn(off, "FistOfWarDamageEffect");
+                    if fow != 1.0 {
+                        lines.push(sf!("x %.2f ^8(fist of war effect modifier)", fow));
+                    }
+                    let owe = num_at(off.gval("OffensiveWarcryEffect"), "OffensiveWarcryEffect", 3433);
+                    if owe != 1.0 && !q.flag(None, &["Condition:WarcryMaxHit"]) {
+                        lines.push(sf!("x %.2f ^8(aggregated warcry exerted effect modifier)", owe));
+                    }
+                    let mowe = num_at(off.gval("MaxOffensiveWarcryEffect"), "MaxOffensiveWarcryEffect", 3436);
+                    if mowe != 1.0 && q.flag(None, &["Condition:WarcryMaxHit"]) {
+                        lines.push(sf!("x %.2f ^8(aggregated max warcry exerted effect modifier)", mowe));
+                    }
+                    if let Some(bd) = off.pbd(pi) {
+                        let t = bd.table_mut(dt);
+                        for l in lines {
+                            t.push(l);
+                        }
+                    }
+                }
                 let warcry_max_hit = q.flag(None, &["Condition:WarcryMaxHit"]);
                 let warcry = if warcry_max_hit {
                     num_at(off.gval("MaxOffensiveWarcryEffect"), "MaxOffensiveWarcryEffect", 3441)
@@ -213,6 +315,12 @@ pub(super) fn hit_damage(off: &mut Off<'_>, pi: usize, hit_rate: f64, quantity_m
                         off.pset_num(pi, &format!("{dt}EffMult"), eff_mult);
                     }
                 }
+                // :3609-3611
+                if pass == 2
+                    && let Some(bd) = off.pbd(pi)
+                {
+                    bd.table_mut(dt).push(sf!("= %d to %d", hit_min, hit_max));
+                }
 
                 // :3613-3639 leech for this damage type
                 let c = Some(off.pcfg(pi));
@@ -269,10 +377,15 @@ pub(super) fn hit_damage(off: &mut Off<'_>, pi: usize, hit_rate: f64, quantity_m
                 if es_leech > 0.0 && !no_es_leech {
                     es_leech_total += hit_avg * es_leech / 100.0;
                 }
+            } else if off.breakdown {
+                // :3640-3646
+                off.pbd_put(pi, dt, BTable::lines([format!("You can't deal {dt} damage")]));
             }
             if pass == 1 {
                 off.pset_num(pi, &format!("{dt}CritAverage"), hit_avg);
                 total_crit_avg += hit_avg;
+                total_crit_min += hit_min;
+                total_crit_max += hit_max;
             } else {
                 if calcs {
                     off.pset_num(pi, &format!("{dt}Min"), hit_min);
@@ -341,6 +454,7 @@ pub(super) fn hit_damage(off: &mut Off<'_>, pi: usize, hit_rate: f64, quantity_m
     let mut highest_type = "Physical";
     for dt in DMG_TYPE_LIST {
         if hit_avg_of(off, dt) > 0.0 {
+            let portion = hit_avg_of(off, dt) / total_hit_avg * 100.0;
             q.new_mod(
                 &format!("Condition:{dt}HasDamage"),
                 Some(ModType::Flag),
@@ -352,6 +466,10 @@ pub(super) fn hit_damage(off: &mut Off<'_>, pi: usize, hit_rate: f64, quantity_m
             );
             if hit_avg_of(off, dt) > hit_avg_of(off, highest_type) {
                 highest_type = dt;
+            }
+            // :3711-3713
+            if let Some(bd) = off.pbd(pi) {
+                bd.table_mut(dt).push(sf!("Portion of total damage: %d%%", portion));
             }
         }
     }
@@ -515,16 +633,97 @@ pub(super) fn hit_damage(off: &mut Off<'_>, pi: usize, hit_rate: f64, quantity_m
         .unwrap_or_else(|| panic!("{LUA}:3801: attempt to perform arithmetic on field 'dpsMultiplier' (a nil value)"));
     let total_dps = average_damage * off.g_hit_speed(3801) * dps_mult * quantity_multiplier;
     off.pset_num(pi, "TotalDPS", total_dps);
-    if off.breakdown && pnum(off, "CritEffect", 3803) != 1.0 {
-        // :3815/:3819 the conditions' `Flag(skillCfg, "CritLucky")` (breakdown rows themselves: R8)
-        let dr = or_num(off.pval(pi, "DamageRolls"), 0.0, "DamageRolls", 3805);
-        let cr = or_num(off.pval(pi, "CritDamageRolls"), 0.0, "CritDamageRolls", 3806);
-        if !(dr > 0.0 || cr > 0.0) {
-            let _ = q.flag(Some(&off.cfg), &["CritLucky"]);
+    // :3802-3834
+    if off.breakdown {
+        if pnum(off, "CritEffect", 3803) != 1.0 {
+            let dr = or_num(off.pval(pi, "DamageRolls"), 0.0, "DamageRolls", 3805);
+            let cr = or_num(off.pval(pi, "CritDamageRolls"), 0.0, "CritDamageRolls", 3806);
+            let (rolls, rolls_crit) = (dr.abs() + 2.0, cr.abs() + 2.0);
+            let mut t = BTable::new();
+            if dr > 0.0 {
+                t.push(sf!(
+                    "(1/%d) x %d + (%d/%d) x %d = %.1f ^8(average from non-crits)",
+                    rolls,
+                    total_hit_min,
+                    rolls - 1.0,
+                    rolls,
+                    total_hit_max,
+                    total_hit_avg
+                ));
+            }
+            if dr < 0.0 {
+                t.push(sf!(
+                    "(%d/%d) x %d + (1/%d) x %d = %.1f ^8(average from non-crits)",
+                    rolls - 1.0,
+                    rolls,
+                    total_hit_min,
+                    rolls,
+                    total_hit_max,
+                    total_hit_avg
+                ));
+            }
+            if dr > 0.0 || cr > 0.0 || q.flag(Some(&off.cfg), &["CritLucky"]) {
+                t.push(sf!(
+                    "(1/%d) x %d + (%d/%d) x %d = %.1f ^8(average from crits)",
+                    rolls_crit,
+                    total_crit_min,
+                    rolls_crit - 1.0,
+                    rolls_crit,
+                    total_crit_max,
+                    total_crit_avg
+                ));
+                t.push("");
+            }
+            if dr < 0.0 && !q.flag(Some(&off.cfg), &["CritLucky"]) {
+                t.push(sf!(
+                    "(%d/%d) x %d + (1/%d) x %d = %.1f ^8(average from crits)",
+                    rolls - 1.0,
+                    rolls,
+                    total_crit_min,
+                    rolls,
+                    total_crit_max,
+                    total_crit_avg
+                ));
+                t.push("");
+            }
+            t.push(sf!("%.1f x (1 - %.4f) ^8(damage from non-crits)", total_hit_avg, cc / 100.0));
+            t.push(sf!("+ %.1f x %.4f ^8(damage from crits)", total_crit_avg, cc / 100.0));
+            t.push(sf!("= %.1f", average_hit));
+            off.pbd_put(pi, "AverageHit", t);
         }
-        if dr < 0.0 {
-            let _ = q.flag(Some(&off.cfg), &["CritLucky"]);
+        let hc = pnum(off, "HitChance", 3827);
+        if hc < 100.0 {
+            let t = BTable::lines([
+                sf!("%s:", off.passes[pi].label),
+                sf!("%.1f ^8(average hit)", average_hit),
+                sf!("x %.2f ^8(chance to hit)", hc / 100.0),
+                sf!("= %.1f", average_damage),
+            ]);
+            off.pbd_put(pi, "AverageDamage", t);
         }
+    }
+    // :3835-3854
+    let burst = num_at(off.gval("AverageBurstDamage"), "AverageBurstDamage", 3835);
+    if off.breakdown && burst > 0.0 {
+        let hc = pnum(off, "HitChance", 3838);
+        let mut t = BTable::lines([sf!("%.1f ^8(average hit)", average_hit)]);
+        if hc < 100.0 {
+            t.push(sf!("x %.2f ^8(chance to hit)", hc / 100.0));
+        }
+        if repeat_penalty < 1.0 {
+            t.push(sf!("x %.2f ^8(number of repeats)", burst_hits - 1.0));
+            t.push(sf!("x %.2f ^8(repeat penalty)", repeat_penalty));
+            t.push(sf!("= %.1f ^8(repeat damage total)", burst - average_damage));
+            t.push("");
+            t.push(sf!("+ %.1f ^8(first hit)", average_hit));
+            if hc < 100.0 {
+                t.push(sf!("x %.2f ^8(chance to hit)", hc / 100.0));
+            }
+        } else {
+            t.push(sf!("x %.2f ^8(number of hits)", burst_hits));
+        }
+        t.push(sf!("= %.1f ^8(total burst damage)", burst));
+        off.bd_put("AverageBurstDamage", t);
     }
 
     // :3857-3954 PvP
@@ -552,6 +751,8 @@ fn enemy_eff_mult(off: &mut Off<'_>, q: &super::Q, pi: usize, pass: u8, dt: &'st
     let mut pen = 0.0;
     let dtt = format!("{dt}DamageTaken");
     let mut taken_inc = dsum(&edb, ModType::Inc, c, &["DamageTaken", &dtt]);
+    // `sourceRes` (:3491), `elementUsed` after :3558
+    let mut source_res_type: &str = dt;
     let taken_more = dmore(&edb, c, &["DamageTaken", &dtt]);
     let use_this_resist = |off: &Off<'_>, t: &str| -> f64 {
         let c = Some(off.pcfg(pi));
@@ -637,6 +838,7 @@ fn enemy_eff_mult(off: &mut Off<'_>, q: &super::Q, pi: usize, pass: u8, dt: &'st
             } else if element_used == "Chaos" {
                 pen = q.base(c, &["ChaosPenetration"]);
             }
+            source_res_type = element_used;
         } else if is_elemental(dt) {
             pen = q.base(c, &[&format!("{dt}Penetration"), "ElementalPenetration"]);
             taken_inc += dsum(&edb, ModType::Inc, c, &["ElementalDamageTaken"]);
@@ -654,7 +856,18 @@ fn enemy_eff_mult(off: &mut Off<'_>, q: &super::Q, pi: usize, pass: u8, dt: &'st
     } else {
         0.0
     };
-    // :3570 `sourceRes` (breakdown only) -- its flag queries are on `env.modDB` / the party stand-in (no malformed guard): skipped
+    // :3570 `sourceRes` (breakdown text)
+    let source_res = {
+        let sr = source_res_type;
+        let flag_name = format!("Enemy{sr}ResistEqualToYours");
+        if dflag(&off.env_db, None, &[&flag_name]) {
+            format!("Your {sr} Resistance")
+        } else if dflag(&off.st.party_members.mod_db, None, &[&flag_name]) {
+            format!("Party Member {sr} Resistance")
+        } else {
+            sr.to_owned()
+        }
+    };
     if off.flag("projectile") {
         taken_inc += dsum(&edb, ModType::Inc, None, &["ProjectileDamageTaken"]);
     }
@@ -669,18 +882,38 @@ fn enemy_eff_mult(off: &mut Off<'_>, q: &super::Q, pi: usize, pass: u8, dt: &'st
     let use_res = use_res_chance > 0.0;
     // `Flag(cfg, isElemental[damageType] and "CannotElePenIgnore" or nil)` -- a nil name matches nothing
     let cannot_ele_pen_ignore = is_elemental(dt) && q.flag(Some(off.pcfg(pi)), &["CannotElePenIgnore"]);
+    let mut effective = resist;
     if cannot_ele_pen_ignore {
-        let effective = if invert > 0.0 { resist - 2.0 * invert * resist } else { resist };
+        effective = if invert > 0.0 { resist - 2.0 * invert * resist } else { resist };
         eff_mult *= 1.0 - effective / 100.0;
     } else if use_res {
-        let effective = if invert > 0.0 {
+        effective = if invert > 0.0 {
             ((resist - pen) * (1.0 - invert) + (-resist - pen) * invert) * use_res_chance
         } else {
             (resist - pen) * use_res_chance
         };
         eff_mult *= 1.0 - effective / 100.0;
     }
-    // :3601 the breakdown branch's condition repeats `Flag(cfg, "CannotElePenIgnore")` (same query): nothing new
+    // :3601-3607
+    if pass == 2 && off.breakdown && (eff_mult != 1.0 || source_res != dt || invert > 0.0) {
+        let p = if cannot_ele_pen_ignore { 0.0 } else { pen };
+        let t = crate::breakdown::eff_mult(
+            dt,
+            resist,
+            p,
+            taken_inc,
+            eff_mult,
+            taken_more,
+            Some(&source_res),
+            use_res,
+            Some(invert),
+            Some(effective),
+        );
+        if let Some(bd) = off.pbd(pi) {
+            bd.table_mut(dt).push(sf!("x %.3f ^8(effective DPS modifier)", eff_mult));
+            bd.put(format!("{dt}EffMult"), t);
+        }
+    }
     eff_mult
 }
 
@@ -750,11 +983,109 @@ fn pvp(off: &mut Off<'_>, pi: usize, total_hit_min: f64, total_hit_max: f64) {
     off.pset_num(pi, "PvpAverageHit", pvp_hit);
     off.pset_num(pi, "PvpAverageDamage", pvp_dmg);
     off.pset_num(pi, "PvpTotalDPS", pvp_dps);
+    // :3917-3953
+    if off.breakdown {
+        let mut b = BTable::new();
+        let both = (pct_non_ele > 0.0) && (pct_ele > 0.0);
+        b.push(sf!(
+            "Pvp Formula is (D/(T*M))^E*T*%s, where D is the damage, T is the time taken,",
+            if both { "M*P" } else { "M" }
+        ));
+        b.push(sf!(
+            " M is the multiplier%s",
+            if both {
+                ", E is the exponent and P is the percentage of that type (ele or non ele)"
+            } else {
+                " and E is the exponent"
+            }
+        ));
+        if both {
+            b.push(sf!(
+                "(M= %.1f for ele and %.1f for non-ele)(E= %.2f for ele and %.2f for non-ele)",
+                e2,
+                ne2,
+                e1,
+                ne1
+            ));
+            b.push(sf!(
+                "(%.1f / (%.2f * %.1f)) ^ %.2f * %.2f * %.1f * %.2f = %.1f",
+                avg_hit,
+                t,
+                ne2,
+                ne1,
+                t,
+                ne2,
+                pct_non_ele,
+                portion_non_ele
+            ));
+            b.push(sf!(
+                "(%.1f / (%.2f * %.1f)) ^ %.2f * %.2f * %.1f * %.2f = %.1f",
+                avg_hit,
+                t,
+                e2,
+                e1,
+                t,
+                e2,
+                pct_ele,
+                portion_ele
+            ));
+            b.push(sf!(
+                "(portionNonElemental + portionElemental)%s",
+                if mult != 1.0 { " * PvP multiplier" } else { " " }
+            ));
+            if mult != 1.0 {
+                b.push(sf!("(%.1f + %.1f) * %g", portion_non_ele, portion_ele, mult));
+            } else {
+                b.push(sf!("%.1f + %.1f", portion_non_ele, portion_ele));
+            }
+        } else if pct_ele <= 0.0 {
+            b.push(sf!("(M= %.1f for non-ele)(E= %.2f for non-ele)", ne2, ne1));
+            b.push(sf!(
+                "(%.1f / (%.2f * %.1f)) ^ %.2f * %.2f * %.1f = %.1f",
+                avg_hit,
+                t,
+                ne2,
+                ne1,
+                t,
+                ne2,
+                portion_non_ele
+            ));
+            if mult != 1.0 {
+                b.push(sf!("%.1f * %g ^8(portionNonElemental * PvP multiplier)", portion_non_ele, mult));
+            }
+        } else if pct_non_ele <= 0.0 {
+            b.push(sf!("(M= %.1f for ele)(E= %.2f for ele)", e2, e1));
+            b.push(sf!(
+                "(%.1f / (%.2f * %.1f)) ^ %.2f * %.2f * %.1f = %.1f",
+                avg_hit,
+                t,
+                e2,
+                e1,
+                t,
+                e2,
+                portion_ele
+            ));
+            if mult != 1.0 {
+                b.push(sf!("%.1f * %g ^8(portionElemental * PvP multiplier)", portion_ele, mult));
+            }
+        }
+        b.push(sf!("= %.1f", pvp_hit));
+        off.pbd_put(pi, "PvpAverageHit", b);
+        if off.is_attack {
+            let b = BTable::lines([
+                sf!("%s:", off.passes[pi].label),
+                sf!("%.1f ^8(average pvp hit)", pvp_hit),
+                sf!("x %.2f ^8(chance to hit)", pn(off, "HitChance") / 100.0),
+                sf!("= %.1f", pvp_dmg),
+            ]);
+            off.pbd_put(pi, "PvpAverageDamage", b);
+        }
+    }
 }
 
 /// :3957-4153 after the pass loop: the hand combine, `DisplayDamage` (CALCS), the minion summon speed, the leech rates.
 #[allow(clippy::too_many_lines)]
-pub(super) fn after_passes(off: &mut Off<'_>) {
+pub(super) fn after_passes(off: &mut Off<'_>, quantity_multiplier: f64) {
     let q = off.q.clone();
     if off.is_attack {
         use super::b::combine_stat;
@@ -794,12 +1125,134 @@ pub(super) fn after_passes(off: &mut Off<'_>) {
         ] {
             combine_stat(off, stat, CombineMode::Dps, None);
         }
-        // :3991-4042 breakdown only
+        // :3991-4020
+        if off.breakdown {
+            let both = off.flag("bothWeaponAttack");
+            let w1 = off.flag("weapon1Attack");
+            if both {
+                for crit_stat in ["PreEffectiveCritChance", "CritChance"] {
+                    let mut combined = BTable::lines(["Both weapons:".to_owned()]);
+                    for pi in 0..off.passes.len() {
+                        combined.push(format!("{}:", off.passes[pi].label));
+                        let lines = match off.pbd(pi).and_then(|b| b.get(crit_stat)) {
+                            Some(BVal::Table(t)) => Some(t.list.clone()),
+                            Some(BVal::Bool(false)) | None => None,
+                            Some(other) => panic!("{LUA}:3998: bad argument #1 to 'ipairs' (table expected, got {other:?})"),
+                        };
+                        match lines {
+                            Some(l) => combined.list.extend(l),
+                            None => {
+                                let v = num_at(off.pval(pi, crit_stat), crit_stat, 4002);
+                                combined.push(sf!("%.2f%%", v));
+                            }
+                        }
+                    }
+                    combined.push(sf!("= %.2f%% ^8(average)", num_at(off.gval(crit_stat), crit_stat, 4005)));
+                    off.bd_put(crit_stat, combined);
+                }
+            } else {
+                let bd = off.bd().expect("breakdown");
+                let (pe, cc) = {
+                    let hb = bd.module_mut(if w1 { "MainHand" } else { "OffHand" });
+                    (hb.get("PreEffectiveCritChance").cloned(), hb.get("CritChance").cloned())
+                };
+                bd.set("PreEffectiveCritChance", pe);
+                bd.set("CritChance", cc);
+            }
+            let source = if w1 { "MainHand.CritChance" } else { "OffHand.CritChance" };
+            let bd = off.bd().expect("breakdown");
+            for k in ["PreEffectiveCritChance", "CritChance"] {
+                match bd.get_mut(k) {
+                    Some(BVal::Table(t)) => {
+                        t.fields.insert("breakdownSource".into(), source.into());
+                    }
+                    None | Some(BVal::Bool(false)) => {}
+                    Some(other) => panic!("{LUA}:4015: attempt to index field '{k}' ({other:?})"),
+                }
+            }
+        }
+        // :4021-4042
+        if off.flag("bothWeaponAttack") && off.breakdown {
+            use super::b::hand_num;
+            let double = off.sd_truthy("doubleHitsWhenDualWielding");
+            let mut t = BTable::lines(["Both weapons:".to_owned()]);
+            let (m, o) = (hand_num(off, 0, "AverageDamage", 4026), hand_num(off, 1, "AverageDamage", 4026));
+            if double {
+                t.push(sf!("%.1f + %.1f ^8(skill hits with both weapons at once)", m, o));
+            } else {
+                t.push(sf!("(%.1f + %.1f) / 2 ^8(skill alternates weapons)", m, o));
+            }
+            t.push(sf!("= %.1f", num_at(off.gval("AverageDamage"), "AverageDamage", 4030)));
+            off.bd_put("AverageDamage", t);
+            if off.flag("isPvP") {
+                let mut t = BTable::lines(["Both weapons:".to_owned()]);
+                let (m, o) = (
+                    hand_num(off, 0, "PvpAverageDamage", 4035),
+                    hand_num(off, 1, "PvpAverageDamage", 4035),
+                );
+                if double {
+                    t.push(sf!("%.1f + %.1f ^8(skill hits with both weapons at once)", m, o));
+                } else {
+                    t.push(sf!("(%.1f + %.1f) / 2 ^8(skill alternates weapons)", m, o));
+                }
+                t.push(sf!("= %.1f", num_at(off.gval("PvpAverageDamage"), "PvpAverageDamage", 4039)));
+                off.bd_put("PvpAverageDamage", t);
+            }
+        }
     }
     if off.env.mode == "CALCS" {
         off.note(format!(
             "{LUA}:4044-4050 output.DisplayDamage (formatNumSep: main.showThousandsSeparators / decimalSeparator, CALCS mode; R8)"
         ));
+    }
+    // :4051-4094
+    if off.breakdown {
+        let g = |off: &Off<'_>, k: &str| num_at(off.gval(k), k, 4053);
+        let rate = |off: &Off<'_>, what: &str| match off.gval("HitSpeed") {
+            Some(OutValue::Num(h)) => sf!("x %.2f ^8(hit rate)", *h),
+            None | Some(OutValue::Bool(false)) => crate::breakdown::format(
+                &format!("x %.2f ^8({what} rate)"),
+                &[pob_lua::Arg::Num(num_at(off.gval("Speed"), "Speed", 4055))],
+            ),
+            Some(o) => panic!("{LUA}:4055: bad argument #2 to 'format' ({o:?})"),
+        };
+        let avg = g(off, "AverageDamage");
+        let mut t = if off.is_attack {
+            BTable::lines([sf!("%.1f ^8(average damage)", avg), rate(off, "attack")])
+        } else if off.sd_truthy("triggered") {
+            BTable::lines([sf!("%.1f ^8(average damage)", avg), rate(off, "trigger")])
+        } else {
+            BTable::lines([sf!("%.1f ^8(average hit)", avg), rate(off, "cast")])
+        };
+        let dps_mult = off
+            .sd_num("dpsMultiplier", 4068)
+            .unwrap_or_else(|| panic!("{LUA}:4068: attempt to compare number with nil"));
+        if dps_mult != 1.0 {
+            t.push(sf!("x %g ^8(DPS multiplier for this skill)", dps_mult));
+        }
+        if quantity_multiplier > 1.0 {
+            t.push(sf!("x %g ^8(quantity multiplier for this skill)", quantity_multiplier));
+        }
+        t.push(sf!("= %.1f", g(off, "TotalDPS")));
+        off.bd_put("TotalDPS", t);
+        if off.flag("isPvP") {
+            let rate_type = if off.is_attack {
+                "attack"
+            } else if off.sd_truthy("triggered") {
+                "trigger"
+            } else {
+                "cast"
+            };
+            let mut t = BTable::lines([sf!("%.1f ^8(average pvp hit)", g(off, "PvpAverageDamage")), rate(off, rate_type)]);
+            if dps_mult != 1.0 {
+                t.push(sf!("x %g ^8(DPS multiplier for this skill)", dps_mult));
+            }
+            if quantity_multiplier > 1.0 {
+                t.push(sf!("x %g ^8(quantity multiplier for this skill)", quantity_multiplier));
+            }
+            t.push(sf!("= %.1f", g(off, "PvpTotalDPS")));
+            off.bd_put("PvpTotalDPS", t);
+        }
     }
     // :4096-4098
     if off.sk().minion.is_some() {
@@ -880,5 +1333,35 @@ pub(super) fn after_passes(off: &mut Off<'_>) {
             off.gset(&format!("{pool}LeechGainRate"), v);
         }
     }
-    // :4142-4153 breakdown only
+    // :4142-4153
+    if off.breakdown {
+        let dps_mult = off
+            .sd_num("dpsMultiplier", 4143)
+            .unwrap_or_else(|| panic!("{LUA}:4143: attempt to perform arithmetic on field 'dpsMultiplier' (a nil value)"));
+        let hit_rate = g(off, "HitChance", 4143) / 100.0 * off.g_hit_speed(4143) * dps_mult;
+        let show_average = off.sd_truthy("showAverage");
+        for (flag, pool, key, line) in [
+            ("leechLife", "Life", "LifeLeech", 4145),
+            ("leechES", "EnergyShield", "EnergyShieldLeech", 4148),
+            ("leechMana", "Mana", "ManaLeech", 4151),
+        ] {
+            if !off.flag(flag) {
+                continue;
+            }
+            let rate_mod = super::d::dmod(&off.mod_db, None, &[&format!("{pool}LeechRate")]);
+            let t = crate::breakdown::leech(
+                show_average,
+                rate_mod,
+                g(off, &format!("{pool}LeechInstant"), line),
+                g(off, &format!("{pool}LeechInstantRate"), line),
+                g(off, &format!("{pool}LeechInstances"), line),
+                g(off, pool, line),
+                g(off, &format!("Max{pool}LeechRate"), line),
+                g(off, &format!("{pool}LeechDuration"), line),
+                g(off, &format!("{pool}LeechInstantProportion"), line),
+                hit_rate,
+            );
+            off.bd_put(key, t);
+        }
+    }
 }

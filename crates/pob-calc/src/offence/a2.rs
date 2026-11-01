@@ -10,12 +10,16 @@ use pob_lua::number::{floor, max2, min2, round};
 use pob_lua::tostring_num;
 use pob_mods::{ModCfg, ModType, Value};
 
+use super::bdh::{calc_radius_breakpoints, molten_strike_tertiary_breakdown};
+use super::c::{dmore, dsum};
 use super::helpers::{
     DMG_TYPE_LIST, calc_area_mod, calc_molten_strike_tertiary_radius, calc_radius, calc_skill_cooldown, calc_skill_duration,
     calc_totem_life, calc_warcry_cast_time,
 };
 use super::{Off, Q, run_skill_func};
+use crate::breakdown::{BTable, Chain, multi_chain, step};
 use crate::setup::{cc, misc, ok};
+use crate::sf;
 
 const LUA: &str = "Modules/CalcOffence.lua";
 
@@ -220,6 +224,10 @@ pub(super) fn skill_type_stats(off: &mut Off<'_>) {
         }
         let v = q.calc_mod(c, &["ProjectileSpeed"]);
         off.out().set_num("ProjectileSpeedMod", v);
+        // :1153-1155
+        if off.breakdown {
+            off.bd_set("ProjectileSpeedMod", bmod(&q.list, c, &["ProjectileSpeed"]));
+        }
     }
     // :1157-1183 melee
     if off.flag("melee") {
@@ -256,6 +264,8 @@ pub(super) fn skill_type_stats(off: &mut Off<'_>) {
             let o = off.out();
             o.set_num("WeaponRange", range + 2.0);
             o.set_num("WeaponRangeMetre", (range + 2.0) / 10.0);
+            // :1174-1178
+            off.bd_put("WeaponRange", BTable::new().with("radius", range + 2.0));
             let v = 1.0 + q.base(c, &["AdditionalStrikeTarget"]);
             off.out().set_num("StrikeTargets", v);
         }
@@ -272,6 +282,9 @@ pub(super) fn skill_type_stats(off: &mut Off<'_>) {
         }
         let v = q.calc_mod(c, &names);
         off.out().set_num("AuraEffectMod", v);
+        if off.breakdown {
+            off.bd_set("AuraEffectMod", bmod(&q.list, c, &names));
+        }
     }
     // :1193-1212
     if off.has_type("HasReservation") && !off.has_type("ReservationBecomesCost") {
@@ -284,12 +297,30 @@ pub(super) fn skill_type_stats(off: &mut Off<'_>) {
                     / max2(0.0, q.calc_mod(c, &[&pe, "ReservationEfficiency"]));
                 off.out().set_num(&key, v);
             }
+            // :1199-1210
+            if off.breakdown {
+                let names = [pr.as_str(), "Reserved", "SupportManaMultiplier"];
+                let inc = dsum(&q.list, ModType::Inc, c, &names);
+                let more = dmore(&q.list, c, &names);
+                if inc != 0.0 && more != 1.0 {
+                    let t = BTable::lines([
+                        sf!("%.2f ^8(increased/reduced)", 1.0 + inc / 100.0),
+                        sf!("x %.2f ^8(more/less)", more),
+                        sf!("/ %.2f ^8(reservation efficiency)", q.calc_mod(c, &[&pe, "ReservationEfficiency"])),
+                        sf!("= %.2f", off.out_num(&key, 1207)),
+                    ]);
+                    off.bd_put(&key, t);
+                }
+            }
         }
     }
     // :1213-1218
     if off.has_type("Hex") || off.has_type("Mark") {
         let v = q.calc_mod(c, &["CurseEffect"]);
         off.out().set_num("CurseEffectMod", v);
+        if off.breakdown {
+            off.bd_set("CurseEffectMod", bmod(&q.list, c, &["CurseEffect"]));
+        }
     }
     // :1219-1239
     if off.has_type("Warcry") {
@@ -310,15 +341,35 @@ pub(super) fn skill_type_stats(off: &mut Off<'_>) {
         let uptime = if max_hit { 1.0 } else { min2(full_duration / actual_cooldown, 1.0) };
         let unscaled = q.calc_mod(c, &["WarcryEffect", "BuffEffect"]);
         off.out().set_num("WarcryEffectMod", unscaled * uptime);
+        // :1226-1238
+        if off.breakdown {
+            let mut t = BTable::lines([sf!("%.2f ^8(effect modifiers)", unscaled)]);
+            if max_hit || uptime != 1.0 {
+                if max_hit {
+                    t.push("* 100% uptime (WarcryMaxHit Override)");
+                } else if uptime != 1.0 {
+                    t.push(sf!("* %.2f%% ^8(uptime)", uptime * 100.0));
+                }
+                t.push(sf!("= %.1f%%", unscaled * uptime * 100.0));
+            }
+            off.bd_put("WarcryEffectMod", t);
+        }
     }
     // :1240-1251
     if off.has_type("Link") {
         let v = q.calc_mod(c, &["LinkEffect", "BuffEffect"]);
         off.out().set_num("LinkEffectMod", v);
+        if off.breakdown {
+            off.bd_set("LinkEffectMod", bmod(&q.list, c, &["LinkEffect", "BuffEffect"]));
+        }
     }
     if off.has_type("Buff") && off.has_type("Herald") {
         let v = q.calc_mod(c, &["BuffEffect", "BuffEffectOnSelf"]);
         off.out().set_num("HeraldBuffEffectMod", v);
+        if off.breakdown {
+            let db = off.env_db.clone();
+            off.bd_set("HeraldBuffEffectMod", bmod(&db, c, &["BuffEffect", "BuffEffectOnSelf"]));
+        }
     }
     // :1252-1256
     let has_cd = off.sd_truthy("trapCooldown") || off.sd_truthy("cooldown");
@@ -331,13 +382,42 @@ pub(super) fn skill_type_stats(off: &mut Off<'_>) {
     if off.flag("trap") {
         trap(off, &q, &cfg);
     } else if off.sd_truthy("cooldown") || q.base(c, &["CooldownRecovery"]) != 0.0 {
-        let (cooldown, _, _) = calc_skill_cooldown(&q, &cfg, &off.sk().skill_data);
+        let (cooldown, rounded, added) = calc_skill_cooldown(&q, &cfg, &off.sk().skill_data);
         off.out().set_num("Cooldown", cooldown);
+        // :1322-1331
+        if off.breakdown {
+            // `skillData.cooldown or 0 + addedCooldown` (precedence: `cooldown or (0 + addedCooldown)`)
+            let base = off.sd_num("cooldown", 1324).unwrap_or_else(|| {
+                0.0 + added.unwrap_or_else(|| panic!("{LUA}:1324: attempt to perform arithmetic on local 'addedCooldown' (a nil value)"))
+            });
+            let mut t = BTable::lines([
+                sf!("%.2fs ^8(base)", base),
+                sf!(
+                    "/ %.2f ^8(increased/reduced cooldown recovery)",
+                    1.0 + q.inc(c, &["CooldownRecovery"]) / 100.0
+                ),
+            ]);
+            if rounded {
+                t.push(sf!("rounded up to nearest server tick"));
+            }
+            t.push(sf!("= %.3fs", cooldown));
+            off.bd_put("Cooldown", t);
+        }
     }
     // :1333-1344
     if let Some(base_uses) = off.sd_num("storedUses", 1334) {
-        let v = base_uses + q.base(c, &["AdditionalCooldownUses", "AdditionalUses"]);
+        let additional = q.base(c, &["AdditionalCooldownUses", "AdditionalUses"]);
+        let v = base_uses + additional;
         off.out().set_num("StoredUses", v);
+        if off.breakdown {
+            let s = |n: f64| if n == 1.0 { "" } else { "s" };
+            let mut t = BTable::lines([sf!("%d ^8(skill use%s)", base_uses, s(base_uses))]);
+            if additional != 0.0 {
+                t.push(sf!("+ %d ^8(additional use%s)", additional, s(additional)));
+                t.push(sf!("= %d ^8(total use%s)", v, s(v)));
+            }
+            off.bd_put("StoredUses", t);
+        }
     }
     // :1345-1412
     if off.flag("mine") {
@@ -360,6 +440,37 @@ pub(super) fn skill_type_stats(off: &mut Off<'_>) {
         o.set_num("TotemPlacementTime", 1.0 / speed);
         o.set_num("ActiveTotemLimit", limit);
         o.set_num("TotemsSummoned", summoned);
+        // :1422-1441
+        if off.breakdown {
+            let mut t = BTable::new();
+            multi_chain(
+                &mut t,
+                &Chain {
+                    label: Some("Placement speed:".into()),
+                    base: Some(step("%.2f ^8(base placement speed)", base_speed)),
+                    steps: vec![
+                        step(
+                            "%.2f ^8(increased/reduced placement speed)",
+                            1.0 + q.inc(c, &["TotemPlacementSpeed"]) / 100.0,
+                        ),
+                        step("%.2f ^8(more/less placement speed)", q.more(c, &["TotemPlacementSpeed"])),
+                        step("%.2f ^8(action speed modifier)", action),
+                    ],
+                    total: Some(sf!("= %.2f ^8per second", speed)),
+                    ..Chain::default()
+                },
+            );
+            off.bd_put("TotemPlacementTime", t);
+            let note = if super::c::config_truthy(off, "TotemsSummoned") {
+                " ^8(overridden from the Configuration tab)"
+            } else {
+                " ^8(can be overridden in the Configuration tab)"
+            };
+            off.bd_put(
+                "ActiveTotemLimit",
+                BTable::lines([format!("Totems Summoned: {}{note}", tostring_num(summoned))]),
+            );
+        }
         let level = off
             .sd_num("totemLevel", 340)
             .unwrap_or_else(|| panic!("{LUA}:340: attempt to index field '?' (a nil value)"));
@@ -375,6 +486,31 @@ pub(super) fn skill_type_stats(off: &mut Off<'_>) {
         o.set_num("TotemEnergyShield", es);
         o.set_num("TotemBlockChance", block);
         o.set_num("TotemArmour", armour);
+        // :1444-1456
+        if off.breakdown {
+            off.bd_set("TotemLifeMod", bmod(&q.list, c, &["TotemLife"]));
+            let consts = constants();
+            let ally = monster_table_at(&consts.monster_ally_life_table, level).expect("checked by calcTotemLife");
+            let mult = off
+                .sk()
+                .skill_totem_id
+                .and_then(|t| consts.totem_life_mult.0.get(&tostring_num(t)).copied())
+                .expect("checked by calcTotemLife");
+            let lv = tostring_num(level);
+            off.bd_put(
+                "TotemLife",
+                BTable::lines([
+                    format!("Totem level: {lv}"),
+                    format!("{} ^8(base life for a level {lv} monster)", tostring_num(ally)),
+                    format!("x {} ^8(life multiplier for this totem type)", tostring_num(mult)),
+                    format!("x {} ^8(totem life modifier)", tostring_num(life_mod)),
+                    format!("= {}", tostring_num(life)),
+                ]),
+            );
+            off.bd_set("TotemEnergyShield", bmod(&q.list, c, &["TotemEnergyShield"]));
+            off.bd_set("TotemBlockChance", bmod(&q.list, c, &["TotemBlockChance"]));
+            off.bd_set("TotemArmour", bmod(&q.list, c, &["TotemArmour"]));
+        }
     }
     // :1458-1466
     if off.has_type("Brand") {
@@ -386,6 +522,7 @@ pub(super) fn skill_type_stats(off: &mut Off<'_>) {
         o.set_num("BrandAttachmentRangeMetre", range / 10.0);
         o.set_num("ActiveBrandLimit", limit);
         off.set_out("AttachedBrandCount", attached);
+        off.bd_put("BrandAttachmentRange", BTable::new().with("radius", range));
     }
     // :1468-1470
     if off.flag("warcry") {
@@ -418,6 +555,30 @@ pub(super) fn skill_type_stats(off: &mut Off<'_>) {
         o.set_num("BaseCorpseLife", base_life);
         o.set_num("CorpseLifeInc", inc);
         o.set_num("CorpseLife", base_life * inc);
+        // :1477-1487
+        if off.breakdown {
+            let variety_s = match &variety {
+                Value::Str(s) => s.to_string(),
+                Value::Nil => "nil".to_owned(),
+                v => panic!("{LUA}:1480: corpseMonsterVariety is a {}", v.type_name()),
+            };
+            off.bd_put(
+                "CorpseLife",
+                BTable::lines([
+                    sf!("%d ^8(base life of a level %d monster)", life, level),
+                    sf!("x %.2f ^8(%s variety multiplier)", variety_mult, variety_s),
+                    sf!(
+                        "x %.2f ^8(map level %d monster life multiplier from config)",
+                        map_mult,
+                        off.env.enemy_level
+                    ),
+                    sf!(" = %d ^8(base corpse life)", base_life),
+                    sf!(""),
+                    sf!("x %.2f ^8(corpse maximum life increases)", inc),
+                    sf!(" = %d", base_life * inc),
+                ]),
+            );
+        }
     }
 
     durations(off, &q, &cfg);
@@ -504,7 +665,7 @@ fn or_override(db: &pob_mods::StoreRef, name: &str, fallback: f64, line: u32) ->
     }
 }
 
-/// :374-492 `calcAreaOfEffect` (breakdown tables excluded, R8).
+/// :374-492 `calcAreaOfEffect` (with its breakdown tables, R8.5).
 #[allow(clippy::too_many_lines)]
 pub(super) fn calc_area_of_effect(off: &mut Off<'_>, q: &Q, cfg: &ModCfg) {
     let c = Some(cfg);
@@ -523,6 +684,7 @@ pub(super) fn calc_area_of_effect(off: &mut Off<'_>, q: &Q, cfg: &ModCfg) {
         off.set_sd("radius", Value::Num(range + 2.0));
     }
     let Some(radius) = off.sd_num("radius", 390) else {
+        area_mod_breakdown(off, q, cfg, area_mod);
         return;
     };
     off.set_flag("area", true);
@@ -531,6 +693,13 @@ pub(super) fn calc_area_of_effect(off: &mut Off<'_>, q: &Q, cfg: &ModCfg) {
     let r = calc_radius(base_radius, area_mod, Some(radius_mod));
     off.out().set_num("AreaOfEffectRadius", r);
     off.out().set_num("AreaOfEffectRadiusMetres", r / 10.0);
+    // :393-396
+    if off.breakdown {
+        let bps = calc_radius_breakpoints(base_radius, inc_area, more_area, Some(radius_mod));
+        let label = sd_label(off, "radiusLabel");
+        let t = crate::breakdown::area(base_radius, area_mod, r, bps, label.as_deref(), Some(radius_mod));
+        off.bd_put("AreaOfEffectRadius", t);
+    }
     // :397-410
     let secondary = off.sd_num("radiusSecondary", 400);
     if let Some(sec) = secondary {
@@ -541,6 +710,17 @@ pub(super) fn calc_area_of_effect(off: &mut Off<'_>, q: &Q, cfg: &ModCfg) {
         o.set_num("AreaOfEffectModSecondary", am2);
         o.set_num("AreaOfEffectRadiusSecondary", r2);
         o.set_num("AreaOfEffectRadiusSecondaryMetres", r2 / 10.0);
+        // :403-409
+        if off.breakdown {
+            let bps = if off.sd_truthy("projectileSpeedAppliesToMSAreaOfEffect") {
+                None
+            } else {
+                calc_radius_breakpoints(sec + extra, i2, m2, Some(radius_mod))
+            };
+            let label = sd_label(off, "radiusSecondaryLabel");
+            let t = crate::breakdown::area(sec + extra, am2, r2, bps, label.as_deref(), Some(radius_mod));
+            off.bd_put("AreaOfEffectRadiusSecondary", t);
+        }
     }
     // :411-480
     if let Some(ter) = off.sd_num("radiusTertiary", 414) {
@@ -553,7 +733,14 @@ pub(super) fn calc_area_of_effect(off: &mut Off<'_>, q: &Q, cfg: &ModCfg) {
             let speed_mod = round(round(is * ms, Some(10.0)), Some(2.0));
             off.out().set_num("SpeedModTertiary", speed_mod);
             let dead = secondary.unwrap_or_else(|| panic!("{LUA}:418: attempt to perform arithmetic on a nil value"));
-            calc_molten_strike_tertiary_radius(base3, dead, am3, speed_mod)
+            let r3 = calc_molten_strike_tertiary_radius(base3, dead, am3, speed_mod);
+            // :419-424
+            if off.breakdown {
+                let label = sd_label(off, "radiusTertiaryLabel");
+                let bd = off.bd().expect("breakdown");
+                molten_strike_tertiary_breakdown(bd, dead, base3, label.as_deref(), i3, m3, is, ms);
+            }
+            r3
         } else if let Some(margin_pct) = off.sd_num("radiusTertiaryBaseMargin", 426) {
             let margin = margin_pct / 100.0;
             let margin_width = margin_pct * 2.0 + 1.0;
@@ -582,12 +769,105 @@ pub(super) fn calc_area_of_effect(off: &mut Off<'_>, q: &Q, cfg: &ModCfg) {
                 .map(|k| (k as i64, occ[&(k as i64)]))
                 .collect();
             off.radius_tertiary_occurrences = Some(occ);
-            sum / margin_width
+            let r3 = sum / margin_width;
+            // :446-471
+            if off.breakdown {
+                let mut out = BTable::new();
+                let (mut inc_bp, mut more_bp, mut red_bp, mut less_bp) = (f64::INFINITY, f64::INFINITY, f64::INFINITY, f64::INFINITY);
+                if let Some(l) = sd_label(off, "radiusTertiaryLabel") {
+                    out.push(l);
+                }
+                out.push(sf!(
+                    "R ^8(base radius)^7 x %.2f ^8(square root of area of effect modifier)",
+                    (100.0 * am3.sqrt()).floor() / 100.0
+                ));
+                if radius_mod != 1.0 {
+                    out.push(sf!("x %.2f ^8(final radius modifier)", radius_mod));
+                }
+                // `pairs(baseRadiiOccurrences)` then `table.sort(a < b)`: integer keys, ascending
+                let mut base_radii: Vec<i64> = base_occ.keys().copied().collect();
+                base_radii.sort_unstable();
+                for adj in base_radii {
+                    let adjf = adj as f64;
+                    out.push(sf!(
+                        "%.1f%% ^8chance of^7 %.1fm ^8base radius resulting in^7 %.1fm ^8final radius",
+                        base_occ[&adj] / margin_width * 100.0,
+                        adjf / 10.0,
+                        calc_radius(adjf, am3, Some(radius_mod)) / 10.0
+                    ));
+                    // `m_min(x, nil)` is a Lua error when the radius is 0
+                    let (a, b, c3, d) = calc_radius_breakpoints(adjf, i3, m3, Some(radius_mod))
+                        .unwrap_or_else(|| panic!("{LUA}:463: bad argument #2 to 'min' (number expected, got nil)"));
+                    inc_bp = min2(inc_bp, a);
+                    more_bp = min2(more_bp, b);
+                    red_bp = min2(red_bp, c3);
+                    less_bp = min2(less_bp, d);
+                }
+                out.push(sf!(
+                    "^8Next closest 0.1m breakpoint: %d%% increased AoE / a %d%% more AoE multiplier",
+                    inc_bp,
+                    more_bp
+                ));
+                out.push(sf!(
+                    "^8Previous closest 0.1m breakpoint: %d%% reduced AoE / a %d%% less AoE multiplier",
+                    red_bp,
+                    less_bp
+                ));
+                out.push(sf!("On average, the radius is %.2fm", r3 / 10.0));
+                off.bd_put("AreaOfEffectRadiusTertiary", out);
+            }
+            r3
         } else {
-            calc_radius(base3, am3, Some(radius_mod))
+            let r3 = calc_radius(base3, am3, Some(radius_mod));
+            // :474-477
+            if off.breakdown {
+                let bps = calc_radius_breakpoints(base3, i3, m3, Some(radius_mod));
+                let label = sd_label(off, "radiusTertiaryLabel");
+                let t = crate::breakdown::area(base3, am3, r3, bps, label.as_deref(), Some(radius_mod));
+                off.bd_put("AreaOfEffectRadiusTertiary", t);
+            }
+            r3
         };
         off.out().set_num("AreaOfEffectRadiusTertiary", r3);
         off.out().set_num("AreaOfEffectRadiusTertiaryMetres", r3 / 10.0);
+    }
+    area_mod_breakdown(off, q, cfg, area_mod);
+}
+
+/// :482-491 (the tail of `calcAreaOfEffect`, also reached when `skillData.radius` is nil).
+fn area_mod_breakdown(off: &mut Off<'_>, q: &Q, cfg: &ModCfg, area_mod: f64) {
+    if !off.breakdown {
+        return;
+    }
+    let c = Some(cfg);
+    let mut t = BTable::new();
+    if area_mod != 1.0 {
+        multi_chain(
+            &mut t,
+            &Chain {
+                steps: vec![
+                    step("%.2f ^8(increased/reduced)", 1.0 + q.inc(c, &["AreaOfEffect"]) / 100.0),
+                    step("%.2f ^8(more/less)", q.more(c, &["AreaOfEffect"])),
+                ],
+                total: Some(sf!("= %.2f", area_mod)),
+                ..Chain::default()
+            },
+        );
+    }
+    off.bd_put("AreaOfEffectMod", t);
+}
+
+/// `breakdown.mod(db, cfg, ...)` (CalcBreakdown.lua:68-78) as a breakdown value (nil -> `None`).
+fn bmod(db: &pob_mods::StoreRef, cfg: Option<&ModCfg>, names: &[&str]) -> Option<crate::breakdown::BVal> {
+    crate::breakdown::mod_(db, cfg, names).map(Into::into)
+}
+
+/// `skillData[k]` as a breakdown label (`t_insert(out, label)`: nil inserts nothing).
+fn sd_label(off: &Off<'_>, k: &str) -> Option<String> {
+    match off.sd(k) {
+        Value::Nil => None,
+        Value::Str(s) => Some(s.to_string()),
+        v => panic!("{LUA}: skillData.{k} is a {} (breakdown label)", v.type_name()),
     }
 }
 
@@ -614,17 +894,73 @@ fn trap(off: &mut Off<'_>, q: &Q, cfg: &ModCfg) {
     o.set_num("TrapThrowingSpeed", speed);
     o.set_num("TrapThrowingTime", time);
     off.set_sd("timeOverride", Value::Num(time / count));
+    // :1272-1291
+    if off.breakdown {
+        let mut t = BTable::new();
+        multi_chain(
+            &mut t,
+            &Chain {
+                label: Some("Throwing rate:".into()),
+                base: Some(step("%.2f ^8(base throwing rate)", base_speed)),
+                steps: vec![
+                    step(
+                        "%.2f ^8(increased/reduced throwing speed)",
+                        1.0 + q.inc(c, &["TrapThrowingSpeed"]) / 100.0,
+                    ),
+                    step("%.2f ^8(more/less throwing speed)", q.more(c, &["TrapThrowingSpeed"])),
+                    step("%.2f ^8(action speed modifier)", action),
+                ],
+                total: Some(sf!("= %.2f ^8per second", speed)),
+                ..Chain::default()
+            },
+        );
+        off.bd_put("TrapThrowingSpeed", t);
+        if time_mod > 0.0 {
+            let mut t = BTable::new();
+            multi_chain(
+                &mut t,
+                &Chain {
+                    label: Some("Throwing time:".into()),
+                    base: Some(step("%.2f ^8(base throwing time)", 1.0 / (speed * time_mod))),
+                    steps: vec![step("%.2f ^8(total modifier)", time_mod)],
+                    total: Some(sf!("= %.2f ^8seconds per throw", time)),
+                    ..Chain::default()
+                },
+            );
+            off.bd_put("TrapThrowingTime", t);
+        }
+    }
     if base_cooldown.is_some() || q.base(c, &["CooldownRecovery"]) != 0.0 {
         let cd = match base_cooldown {
             Some(b) => to_tick(b / q.calc_mod(c, &["CooldownRecovery"])),
             None => calc_skill_cooldown(q, cfg, &off.sk().skill_data).0,
         };
         off.out().set_num("TrapCooldown", cd);
+        // :1302-1309
+        if off.breakdown {
+            let t = BTable::lines([
+                sf!("%.2fs ^8(base)", base_cooldown.unwrap_or(4.0)),
+                sf!(
+                    "/ %.2f ^8(increased/reduced cooldown recovery)",
+                    1.0 + q.inc(c, &["CooldownRecovery"]) / 100.0
+                ),
+                "rounded up to nearest server tick".to_owned(),
+                sf!("= %.3fs", cd),
+            ]);
+            off.bd_put("TrapCooldown", t);
+        }
     }
     let (inc, more) = q.calc_mods(c, &["TrapTriggerAreaOfEffect"]);
-    let r = calc_radius(misc("TrapTriggerRadiusBase"), calc_area_mod(inc, more), None);
+    let area_mod = calc_area_mod(inc, more);
+    let r = calc_radius(misc("TrapTriggerRadiusBase"), area_mod, None);
     off.out().set_num("TrapTriggerRadius", r);
     off.out().set_num("TrapTriggerRadiusMetre", r / 10.0);
+    // :1315-1318
+    if off.breakdown {
+        let base = misc("TrapTriggerRadiusBase");
+        let bps = calc_radius_breakpoints(base, inc, more, None);
+        off.bd_put("TrapTriggerRadius", crate::breakdown::area(base, area_mod, r, bps, None, None));
+    }
 }
 
 /// :1345-1412 mines.
@@ -657,15 +993,66 @@ fn mine(off: &mut Off<'_>, q: &Q, cfg: &ModCfg) {
         time / count
     };
     off.set_sd("timeOverride", Value::Num(t));
+    // :1373-1394
+    if off.breakdown {
+        let mut t = BTable::new();
+        multi_chain(
+            &mut t,
+            &Chain {
+                label: Some("Throwing rate:".into()),
+                base: Some(step("%.2f ^8(base throwing rate)", base_speed)),
+                steps: vec![
+                    step(
+                        "%.2f ^8(increased/reduced throwing speed)",
+                        1.0 + q.inc(c, &["MineLayingSpeed"]) / 100.0,
+                    ),
+                    step("%.2f ^8(more/less throwing speed)", q.more(c, &["MineLayingSpeed"])),
+                    step("%.2f ^8(action speed modifier)", action),
+                    step("%.2f ^8(additional mine thrown)", 1.0 / (1.0 + (count - 1.0) * 0.1)),
+                ],
+                total: Some(sf!("= %.2f ^8per second", speed)),
+                ..Chain::default()
+            },
+        );
+        off.bd_put("MineLayingTime", t);
+        if time_mod > 0.0 {
+            let mut t = BTable::new();
+            multi_chain(
+                &mut t,
+                &Chain {
+                    label: Some("Throwing time:".into()),
+                    base: Some(step("%.2f ^8(base throwing time)", 1.0 / (speed * time_mod))),
+                    steps: vec![step("%.2f ^8(total modifier)", time_mod)],
+                    total: Some(sf!("= %.2f ^8seconds per throw", time)),
+                    ..Chain::default()
+                },
+            );
+            off.bd_put("MineThrowingTime", t);
+        }
+    }
     let (inc, more) = q.calc_mods(c, &["MineDetonationAreaOfEffect"]);
-    let r = calc_radius(misc("MineDetonationRadiusBase"), calc_area_mod(inc, more), None);
+    let area_mod = calc_area_mod(inc, more);
+    let r = calc_radius(misc("MineDetonationRadiusBase"), area_mod, None);
     off.out().set_num("MineDetonationRadius", r);
     off.out().set_num("MineDetonationRadiusMetre", r / 10.0);
+    // :1399-1402
+    if off.breakdown {
+        let base = misc("MineDetonationRadiusBase");
+        let bps = calc_radius_breakpoints(base, inc, more, None);
+        off.bd_put("MineDetonationRadius", crate::breakdown::area(base, area_mod, r, bps, None, None));
+    }
     if off.has_type("Aura") {
         let am = off.out_num("AreaOfEffectMod", 1404);
         let r = calc_radius(misc("MineAuraRadiusBase"), am, None);
         off.out().set_num("MineAuraRadius", r);
         off.out().set_num("MineAuraRadiusMetre", r / 10.0);
+        // :1406-1410
+        if off.breakdown {
+            let (inc, more) = q.calc_mods(c, &["AreaOfEffect"]);
+            let base = misc("MineAuraRadiusBase");
+            let bps = calc_radius_breakpoints(base, inc, more, None);
+            off.bd_put("MineAuraRadius", crate::breakdown::area(base, am, r, bps, None, None));
+        }
     }
 }
 
@@ -692,6 +1079,16 @@ fn durations(off: &mut Off<'_>, q: &Q, cfg: &ModCfg) {
     // :1496-1524
     let duration_mod = max2(q.calc_mod(c, &with_mine(vec!["Duration", "PrimaryDuration"])), 0.0);
     off.out().set_num("DurationMod", duration_mod);
+    // :1498-1503
+    if off.breakdown {
+        let mut t = crate::breakdown::mod_(&q.list, c, &with_mine(vec!["Duration", "PrimaryDuration"]));
+        if let Some(t) = t.as_mut()
+            && off.sd_truthy("durationSecondary")
+        {
+            t.insert(1, "Primary duration:");
+        }
+        off.bd_set("DurationMod", t.map(Into::into));
+    }
     let duration_base = off.sd_num("duration", 1504).unwrap_or(0.0) + q.base(c, &["Duration", "PrimaryDuration"]);
     let permanent = match off.sk().minion.as_ref().map(|m| m.ty.clone()) {
         Some(t) => q.flag(c, &[&format!("{t}PermanentDuration")]),
@@ -699,30 +1096,75 @@ fn durations(off: &mut Off<'_>, q: &Q, cfg: &ModCfg) {
     };
     if duration_base > 0.0 && !permanent {
         let mut d = duration_base * duration_mod;
-        if off.sd_truthy("debuff") {
+        let debuff = off.sd_truthy("debuff");
+        if debuff {
             d *= debuff_mult;
         }
-        off.out().set_num("Duration", to_tick(d));
+        let d = to_tick(d);
+        off.out().set_num("Duration", d);
+        // :1511-1523
+        if off.breakdown && d != duration_base {
+            let mut t = BTable::lines([sf!("%.2fs ^8(base)", duration_base)]);
+            if duration_mod != 1.0 {
+                t.push(sf!("x %.4f ^8(duration modifier)", duration_mod));
+            }
+            if debuff && debuff_mult != 1.0 {
+                t.push(sf!("/ %.3f ^8(debuff expires slower/faster)", 1.0 / debuff_mult));
+            }
+            t.push(sf!("rounded up to nearest server tick"));
+            t.push(sf!("= %.3fs", d));
+            off.bd_put("Duration", t);
+        }
     }
     // :1525-1578 secondary / tertiary
-    for (data_key, mod_name, out_key, debuff_key, line) in [
+    for (data_key, mod_name, out_key, debuff_key, bd_mod, label, line) in [
         (
             "durationSecondary",
             "SecondaryDuration",
             "DurationSecondary",
             "debuffSecondary",
+            "SecondaryDurationMod",
+            "Secondary duration:",
             1525,
         ),
-        ("durationTertiary", "TertiaryDuration", "DurationTertiary", "debuffTertiary", 1552),
+        (
+            "durationTertiary",
+            "TertiaryDuration",
+            "DurationTertiary",
+            "debuffTertiary",
+            "TertiaryDurationMod",
+            "Tertiary duration:",
+            1552,
+        ),
     ] {
         let base = off.sd_num(data_key, line).unwrap_or(0.0) + q.base(c, &["Duration", mod_name]);
         if base > 0.0 {
             let m = max2(q.calc_mod(c, &with_mine(vec!["Duration", mod_name])), 0.0);
             let mut d = base * m;
-            if off.sd_truthy(debuff_key) {
+            let debuff = off.sd_truthy(debuff_key);
+            if debuff {
                 d *= debuff_mult;
             }
-            off.out().set_num(out_key, to_tick(d));
+            let d = to_tick(d);
+            off.out().set_num(out_key, d);
+            // :1534-1550 / :1561-1577 (the duration modifier row tests the primary `output.DurationMod`)
+            if off.breakdown && d != base {
+                let mut t = crate::breakdown::mod_(&q.list, c, &with_mine(vec!["Duration", mod_name]));
+                if let Some(t) = t.as_mut() {
+                    t.insert(1, label);
+                }
+                off.bd_set(bd_mod, t.map(Into::into));
+                let mut t = BTable::lines([sf!("%.2fs ^8(base)", base)]);
+                if duration_mod != 1.0 {
+                    t.push(sf!("x %.4f ^8(duration modifier)", m));
+                }
+                if debuff && debuff_mult != 1.0 {
+                    t.push(sf!("/ %.3f ^8(debuff expires slower/faster)", 1.0 / debuff_mult));
+                }
+                t.push(sf!("rounded up to nearest server tick"));
+                t.push(sf!("= %.3fs", d));
+                off.bd_put(out_key, t);
+            }
         }
     }
     // :1579-1608 aura / reserve duration
@@ -730,7 +1172,17 @@ fn durations(off: &mut Off<'_>, q: &Q, cfg: &ModCfg) {
         let base = off.sd_num(data_key, line).unwrap_or(0.0);
         if base > 0.0 {
             let m = max2(q.calc_mod(c, &["Duration"]), 0.0);
-            off.out().set_num(out_key, to_tick(base * m));
+            let d = to_tick(base * m);
+            off.out().set_num(out_key, d);
+            if off.breakdown && d != base {
+                let t = BTable::lines([
+                    sf!("%.2fs ^8(base)", base),
+                    sf!("x %.4f ^8(duration modifier)", m),
+                    "rounded up to nearest server tick".to_owned(),
+                    sf!("= %.3fs", d),
+                ]);
+                off.bd_put(out_key, t);
+            }
         }
     }
     // :1609-1623
@@ -743,18 +1195,53 @@ fn durations(off: &mut Off<'_>, q: &Q, cfg: &ModCfg) {
         let m = max2(q.calc_mod(c, &with_mine(names)), 0.0);
         let d = max2(((base * m) * tick()).ceil(), 1.0) / tick();
         off.out().set_num("SoulGainPreventionDuration", d);
+        if off.breakdown && d != base {
+            let t = BTable::lines([
+                sf!("%.2fs ^8(base)", base),
+                sf!("x %.4f ^8(duration modifier)", m),
+                sf!("rounded up to nearest server tick"),
+                sf!("= %.3fs", d),
+            ]);
+            off.bd_put("SoulGainPreventionDuration", t);
+        }
     }
     // :1624-1627
     let totem_mod = max2(q.calc_mod(c, &["TotemDuration"]), 0.0);
     let totem_base = q.base(c, &["TotemDuration"]);
+    let totem_dur = to_tick(totem_base * totem_mod);
     off.out().set_num("TotemDurationMod", totem_mod);
-    off.out().set_num("TotemDuration", to_tick(totem_base * totem_mod));
+    off.out().set_num("TotemDuration", totem_dur);
+    // :1628-1638
+    if off.breakdown {
+        off.bd_set("TotemDurationMod", bmod(&q.list, c, &["TotemDuration"]));
+        let mut t = BTable::lines([sf!("%.2fs ^8(base)", totem_base)]);
+        if totem_mod != 1.0 {
+            t.push(sf!("x %.4f ^8(duration modifier)", totem_mod));
+        }
+        t.push(sf!("rounded up to nearest server tick"));
+        t.push(sf!("= %.3fs", totem_dur));
+        off.bd_put("TotemDuration", t);
+    }
     // :1639-1642
     let impale_mod = max2(q.calc_mod(c, &["ImpaleDuration"]), 0.0);
     let impale_base = cc("impaled_debuff_base_duration_ms") / 1000.0;
+    let impale_dur = (impale_base * impale_mod * tick() * debuff_mult).ceil() / tick();
     off.out().set_num("ImpaleDurationMod", impale_mod);
-    off.out()
-        .set_num("ImpaleDuration", (impale_base * impale_mod * tick() * debuff_mult).ceil() / tick());
+    off.out().set_num("ImpaleDuration", impale_dur);
+    // :1643-1656
+    if off.breakdown {
+        off.bd_set("ImpaleDurationMod", bmod(&q.list, c, &["ImpaleDuration"]));
+        let mut t = BTable::lines([sf!("%.2fs ^8(base)", impale_base)]);
+        if debuff_mult != 1.0 {
+            t.push(sf!("/ %.3f ^8(debuff expires slower/faster)", 1.0 / debuff_mult));
+        }
+        if impale_mod != 1.0 {
+            t.push(sf!("x %.4f ^8(duration modifier)", impale_mod));
+        }
+        t.push(sf!("rounded up to nearest server tick"));
+        t.push(sf!("= %.3fs", impale_dur));
+        off.bd_put("ImpaleDuration", t);
+    }
 }
 
 /// :1659-1690 skill uptime.
@@ -772,12 +1259,23 @@ fn uptime(off: &mut Off<'_>, q: &Q, cfg: &ModCfg) {
     ] {
         let duration = off.st.player.output.opt_num(dt).unwrap_or(0.0);
         if duration != 0.0 && cooldown != 0.0 {
-            let up = if q.flag(Some(cfg), &["NoCooldownRecoveryInDuration"]) {
+            let no_cdr = q.flag(Some(cfg), &["NoCooldownRecoveryInDuration"]);
+            let up = if no_cdr {
                 duration / (cooldown + duration)
             } else {
                 duration / cooldown
             };
-            off.out().set_num(&format!("{dt}Uptime"), min2(up, 1.0) * 100.0);
+            let v = min2(up, 1.0) * 100.0;
+            off.out().set_num(&format!("{dt}Uptime"), v);
+            // :1674-1686
+            if off.breakdown {
+                let first = if q.flag(Some(cfg), &["NoCooldownRecoveryInDuration"]) {
+                    sf!("%.2fs / (%.2fs + %.2fs)", duration, cooldown, duration)
+                } else {
+                    sf!("%.2fs / %.2fs", duration, cooldown)
+                };
+                off.bd_put(&format!("{dt}Uptime"), BTable::lines([first, sf!("= %d%%", v)]));
+            }
         }
     }
 }
@@ -815,7 +1313,7 @@ const fn cost(name: &'static str, ty: &'static str, upfront: bool, percent: bool
     }
 }
 
-/// :1692-1896 costs (breakdown rows excluded, R8).
+/// :1692-1896 costs (with the `<Resource>Cost` breakdown, R8.5).
 #[allow(clippy::too_many_lines)]
 fn costs(off: &mut Off<'_>, q: &Q, cfg: &ModCfg) {
     let c = Some(cfg);
@@ -981,10 +1479,13 @@ fn costs(off: &mut Off<'_>, q: &Q, cfg: &ModCfg) {
         let raw_name = format!("{cost_name}Raw");
         let efficiency = q.calc_mod(c, &[&format!("{}CostEfficiency", v.ty), "CostEfficiency"]);
         let type_cost = format!("{}Cost", v.ty);
+        // `moreType` / `moreCost` / `inc` as the breakdown below reads them (1 / 1 / 0 unless assigned)
+        let (bd_more_type, bd_more_cost, bd_inc);
         let (value, raw) = if !v.unaffected {
             let more_type = q.more(c, &[&type_cost]);
             let more_cost = q.more(c, &["Cost"]);
             let inc = q.inc(c, &[&type_cost, "Cost"]);
+            (bd_more_type, bd_more_cost, bd_inc) = (more_type, more_cost, inc);
             let mut raw = v.base_cost_raw.map(|r| {
                 max2(
                     0.0,
@@ -1020,6 +1521,7 @@ fn costs(off: &mut Off<'_>, q: &Q, cfg: &ModCfg) {
         } else {
             let more_type = q.more(c, &[&type_cost]);
             let inc = q.inc(c, &[&type_cost]);
+            (bd_more_type, bd_more_cost, bd_inc) = (more_type, 1.0, inc);
             let mut x = (v.base_cost + v.base_cost_no_mult).floor();
             x = max2(0.0, (1.0 + inc / 100.0) * x);
             x = max2(0.0, more_type * x);
@@ -1041,6 +1543,71 @@ fn costs(off: &mut Off<'_>, q: &Q, cfg: &ModCfg) {
         match raw {
             Some(r) => off.out().set_num(&raw_name, r),
             None => off.out().remove(&raw_name),
+        }
+        // :1859-1894
+        if off.breakdown && has_cost {
+            let pct = if v.percent { "%%" } else { "" };
+            let text = v.text;
+            let mut t = BTable::lines([crate::breakdown::format(
+                &format!("%.2f{pct} ^8(base {text} cost)"),
+                &[pob_lua::Arg::Num(v.base_cost)],
+            )]);
+            if mult != 1.0 {
+                t.push(sf!("x %.4f ^8(cost multiplier)", mult));
+            }
+            if v.base_cost_no_mult != 0.0 {
+                t.push(crate::breakdown::format(
+                    &format!("+ %d ^8(additional {text} cost)"),
+                    &[pob_lua::Arg::Num(v.base_cost_no_mult)],
+                ));
+            }
+            if v.ty == "Life" && (hybrid_life_cost + additional_life_cost) != 0.0 && !q.flag(c, &["CostLifeInsteadOfMana"]) {
+                t.push(sf!("x %.2f ^8(mana cost conversion)", hybrid_life_cost + additional_life_cost));
+            }
+            if v.ty == "ES"
+                && additional_es_cost != 0.0
+                && !q.flag(c, &["CostLifeInsteadOfMana"])
+                && !q.flag(c, &["CostESInsteadOfManaOrLife"])
+            {
+                t.push(sf!("x %.2f ^8(mana cost conversion)", additional_es_cost));
+            }
+            if bd_inc != 0.0 {
+                t.push(crate::breakdown::format(
+                    &format!("x %.2f ^8(increased/reduced {text} cost)"),
+                    &[pob_lua::Arg::Num(1.0 + bd_inc / 100.0)],
+                ));
+            }
+            if bd_more_cost != 1.0 {
+                t.push(sf!("x %.2f ^8(more/less cost)", bd_more_cost));
+            }
+            if bd_more_type != 1.0 {
+                t.push(crate::breakdown::format(
+                    &format!("x %.2f ^8(more/less {text} cost)"),
+                    &[pob_lua::Arg::Num(bd_more_type)],
+                ));
+            }
+            if efficiency != 1.0 {
+                t.push(crate::breakdown::format(
+                    &format!("/ %.2f ^8({text} cost efficiency)"),
+                    &[pob_lua::Arg::Num(efficiency)],
+                ));
+            }
+            if v.total_cost != 0.0 {
+                t.push(crate::breakdown::format(
+                    &format!("%+d ^8(total {text} cost)"),
+                    &[pob_lua::Arg::Num(v.total_cost)],
+                ));
+            }
+            if v.ty == "Mana" && hybrid_life_cost > 0.0 {
+                t.push(sf!(
+                    "x %.2f ^8(%d%% paid for with life)",
+                    1.0 - hybrid_life_cost,
+                    hybrid_life_cost * 100.0
+                ));
+            }
+            let fmt = format!("= %{}{pct}", if v.upfront { "d" } else { ".2f" });
+            t.push(crate::breakdown::format(&fmt, &[pob_lua::Arg::Num(value)]));
+            off.bd_put(&cost_name, t);
         }
     }
 }

@@ -1,8 +1,8 @@
 //! CalcOffence.lua:70-347 -- the file-level helpers of the offence module (line numbers: `grep -n` on upstream `ed354c2f8`, 2026-10-31).
 //!
 //! `calcDamage` (:70) / `calcAilmentSourceDamage` (:143) read `activeSkill.conversionTable` (built at :1989, R7.4) -- ported here with the
-//! table type ([`ConversionTable`]) and first called from R7.4/R7.5. `calcRadiusBreakpoints` (:202) and
-//! `setMoltenStrikeTertiaryRadiusBreakdown` (:241) only fill breakdown tables (R8): not ported.
+//! table type ([`ConversionTable`]) and first called from R7.4/R7.5; their breakdown rows are R8.5. `calcRadiusBreakpoints` (:202) and
+//! `setMoltenStrikeTertiaryRadiusBreakdown` (:241): [`super::bdh`].
 
 use indexmap::IndexMap;
 use pob_data::constants::{constants, monster_table_at};
@@ -11,9 +11,11 @@ use pob_lua::number::{max2, min2, round};
 use pob_lua::tostring_num;
 use pob_mods::{ModCfg, ModType, StoreRef, Value};
 
+use crate::breakdown::{BTable, BVal};
 use crate::calc_lib;
 use crate::perform::skill_guard;
 use crate::setup::{misc, ok};
+use crate::sf;
 
 /// `dmgTypeList` (:35) -- the conversion order.
 pub(crate) const DMG_TYPE_LIST: [&str; 5] = ["Physical", "Lightning", "Cold", "Fire", "Chaos"];
@@ -286,13 +288,16 @@ pub(crate) struct ConvEntry {
 
 pub(crate) type ConversionTable = IndexMap<&'static str, ConvEntry>;
 
-/// :70-141 `calcDamage(activeSkill, output, cfg, breakdown, damageType, typeFlags, convDst)` without the breakdown rows (R8). `base`
-/// reads `output[<type>MinBase]` / `output[<type>MaxBase]`; `cfg` is the pass cfg (the conversion table is passed resolved).
+/// :70-141 `calcDamage(activeSkill, output, cfg, breakdown, damageType, typeFlags, convDst)`. `base` reads `output[<type>MinBase]` /
+/// `output[<type>MaxBase]`; `cfg` is the pass cfg (the conversion table is passed resolved); `bd` = `breakdown` (its `damageTypes`
+/// rows, :95-103 / :121-132).
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn calc_damage(
     q: &Q,
     conv: &ConversionTable,
     base: &dyn Fn(&str) -> (f64, f64),
     cfg: Option<&ModCfg>,
+    mut bd: Option<&mut BTable>,
     damage_type: &'static str,
     type_flags: u32,
     conv_dst: Option<&'static str>,
@@ -310,13 +315,38 @@ pub(crate) fn calc_damage(
             .copied()
             .unwrap_or_else(|| panic!("Modules/CalcOffence.lua:82: attempt to compare nil with number"));
         if conv_mult > 0.0 {
-            let (min, max) = calc_damage(q, conv, base, cfg, other, type_flags, Some(damage_type));
+            let (min, max) = calc_damage(q, conv, base, cfg, bd.as_deref_mut(), other, type_flags, Some(damage_type));
             add_min += min * conv_mult;
             add_max += max * conv_mult;
         }
     }
     let (base_min, base_max) = base(damage_type);
+    let entry = || {
+        conv.get(damage_type)
+            .unwrap_or_else(|| panic!("Modules/CalcOffence.lua:99: attempt to index a nil value"))
+    };
+    let pct = |m: &IndexMap<&'static str, f64>, d: &str| -> f64 {
+        *m.get(d)
+            .unwrap_or_else(|| panic!("Modules/CalcOffence.lua:99: attempt to perform arithmetic on a nil value"))
+    };
+    let span = |a: f64, b: f64| format!("{} to {}", tostring_num(round(a, None)), tostring_num(round(b, None)));
     if base_min == 0.0 && base_max == 0.0 {
+        // :95-103
+        if let Some(t) = bd.as_deref_mut()
+            && (add_min != 0.0 || add_max != 0.0)
+        {
+            let mut row = BTable::new().with("source", damage_type);
+            row.fields.insert("convSrc".into(), span(add_min, add_max).into());
+            row.fields.insert("total".into(), span(add_min, add_max).into());
+            if let Some(d) = conv_dst {
+                let e = entry();
+                row.fields
+                    .insert("convDst".into(), sf!("%d%% to %s", pct(&e.conversion, d) * 100.0, d).into());
+                row.fields
+                    .insert("gainDst".into(), sf!("%d%% gained as %s", pct(&e.gain, d) * 100.0, d).into());
+            }
+            t.field_mut("damageTypes").push(row);
+        }
         if conv_dst.is_some() {
             return (add_min, add_max);
         }
@@ -333,6 +363,36 @@ pub(crate) fn calc_damage(
     let more_max = q.more(cfg, &[&max_n]);
     let inc_min = 1.0 + q.inc(cfg, &[&min_n]) / 100.0;
     let inc_max = 1.0 + q.inc(cfg, &[&max_n]) / 100.0;
+    // :121-132
+    if let Some(t) = bd {
+        let or_false = |c: bool, s: &dyn Fn() -> String| if c { BVal::Str(s()) } else { BVal::Bool(false) };
+        let mut row = BTable::new().with("source", damage_type);
+        row.fields.insert(
+            "base".into(),
+            format!("{} to {}", tostring_num(base_min), tostring_num(base_max)).into(),
+        );
+        row.fields
+            .insert("inc".into(), or_false(inc != 1.0, &|| format!("x {}", tostring_num(inc))));
+        row.fields
+            .insert("more".into(), or_false(more != 1.0, &|| format!("x {}", tostring_num(more))));
+        row.fields.insert(
+            "convSrc".into(),
+            or_false(add_min != 0.0 || add_max != 0.0, &|| span(add_min, add_max)),
+        );
+        row.fields.insert(
+            "total".into(),
+            span(base_min * inc * more + add_min, base_max * inc * more + add_max).into(),
+        );
+        if let Some(d) = conv_dst {
+            let e = entry();
+            let (c, g) = (pct(&e.conversion, d), pct(&e.gain, d));
+            row.fields
+                .insert("convDst".into(), or_false(c > 0.0, &|| sf!("%d%% to %s", c * 100.0, d)));
+            row.fields
+                .insert("gainDst".into(), or_false(g > 0.0, &|| sf!("%d%% gained as %s", g * 100.0, d)));
+        }
+        t.field_mut("damageTypes").push(row);
+    }
     let min = ((base_min * inc * more) * generic_more_min + add_min) * more_min * inc_min;
     let max = ((base_max * inc * more) * generic_more_max + add_max) * more_max * inc_max;
     if conv_dst.is_some() {
@@ -341,19 +401,34 @@ pub(crate) fn calc_damage(
     (round(min, None), round(max, None))
 }
 
-/// :143-153 `calcAilmentSourceDamage` without the breakdown rows (R8).
+/// :143-153 `calcAilmentSourceDamage(activeSkill, output, cfg, breakdown, damageType, typeFlags)` (`bd` = `breakdown`).
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn calc_ailment_source_damage(
     q: &Q,
     conv: &ConversionTable,
     base: &dyn Fn(&str) -> (f64, f64),
     cfg: Option<&ModCfg>,
+    mut bd: Option<&mut BTable>,
     damage_type: &'static str,
     type_flags: u32,
 ) -> (f64, f64) {
-    let (min, max) = calc_damage(q, conv, base, cfg, damage_type, type_flags, None);
+    let (min, max) = calc_damage(q, conv, base, cfg, bd.as_deref_mut(), damage_type, type_flags, None);
     let conv_mult = conv
         .get(damage_type)
         .map(|e| e.mult)
         .unwrap_or_else(|| panic!("Modules/CalcOffence.lua:146: attempt to index a nil value"));
+    // :147-152
+    if let Some(t) = bd
+        && conv_mult != 1.0
+    {
+        t.push("Source damage:");
+        t.push(sf!("%d to %d ^8(total damage)", min, max));
+        t.push(sf!(
+            "x %g ^8(%g%% converted to other damage types)",
+            conv_mult,
+            (1.0 - conv_mult) * 100.0
+        ));
+        t.push(sf!("= %d to %d", min * conv_mult, max * conv_mult));
+    }
     (min * conv_mult, max * conv_mult)
 }

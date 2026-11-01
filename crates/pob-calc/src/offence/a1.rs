@@ -710,6 +710,29 @@ pub(super) fn setup(off: &mut Off<'_>) -> bool {
                 off.set_player_main_sd("dpsMultiplier", Value::Num(dps));
             }
         }
+        // :968-977
+        if off.breakdown {
+            use crate::breakdown::{BTable, Chain, multi_chain, step};
+            let mut t = BTable::new();
+            let action = off.out_num("ActionSpeedMod", 974);
+            multi_chain(
+                &mut t,
+                &Chain {
+                    label: Some("Gain frequency:".into()),
+                    base: Some(step("%.2fs ^8(base gain frequency)", q.base(Some(&cfg), &["SealGainFrequency"]))),
+                    steps: vec![
+                        step(
+                            "%.2f ^8(increased/reduced gain frequency)",
+                            1.0 + q.inc(Some(&cfg), &["SealGainFrequency"]) / 100.0,
+                        ),
+                        step("%.2f ^8(action speed modifier)", action),
+                    ],
+                    total: Some(crate::sf!("= %.2fs ^8per Seal", seal_cooldown)),
+                    ..Chain::default()
+                },
+            );
+            off.bd_put("SealGainTime", t);
+        }
     }
 
     // :979-1036 random phys

@@ -21,7 +21,8 @@
 //! Upstream shapes kept:
 //! * `actor.breakdown` exists iff `env.buildBreakdown` (CalcPerform.lua:1514-1519). Branches under `if breakdown` that write anything
 //!   other than breakdown tables are ported (MINEFIELD-RUST R8: :1104-1109 `SplitCountString`, the skill functions'
-//!   `NormalHitsPerCast`); pure breakdown tables are R8.
+//!   `NormalHitsPerCast`); the breakdown tables themselves are R8.5 ([`bdh`]: `actor.breakdown` / `pass.breakdown`, the hand modules
+//!   `breakdown.MainHand` / `.OffHand`). The skill functions' own breakdown rows (Data/Skills/*.lua) are not built.
 //! * `activeSkill.skillCfg` is read through a [`ModCfg`] snapshot that is rebuilt after the only `skillCond` writes of part A (:518-525).
 //! * Hash-order walks (R13/D13): `pairs` over string keys in part A are `pairs({ ["Weapon 1"] = ..., ["Weapon 2"] = ... })` (Energy
 //!   Blade, not ported) and `baseRadiiOccurrences` (integer keys, an integer sum: order-free).
@@ -29,6 +30,7 @@
 mod a1;
 mod a2;
 mod b;
+mod bdh;
 mod c;
 mod c2;
 mod d;
@@ -430,12 +432,12 @@ fn offence_of(env: &mut Env, st: &mut PerformState, mut hook: Hook<'_, '_>, who:
     }
     // :1937-2605
     b::build_passes(&mut off);
-    b::speed_accuracy(&mut off);
-    let quantity_multiplier = b::misc_dps(&mut off);
+    let trauma_bd = b::speed_accuracy(&mut off);
+    let quantity_multiplier = b::misc_dps(&mut off, trauma_bd);
     hook_with_hands(&mut off, &mut hook, Checkpoint::Oc3);
     // :2606-4154
     c::damage_passes(&mut off, quantity_multiplier);
-    c2::after_passes(&mut off);
+    c2::after_passes(&mut off, quantity_multiplier);
     hook_with_hands(&mut off, &mut hook, Checkpoint::Oc4);
     // :4155-5770
     d::ailment_passes(&mut off, quantity_multiplier);

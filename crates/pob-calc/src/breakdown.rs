@@ -22,6 +22,9 @@ pub enum BVal {
     Item(String),
     /// A function value (`row.sourceNameTooltip`, CalcPerform.lua:2139).
     Fn,
+    /// A nested breakdown module table: `breakdown.MainHand` / `breakdown.OffHand` = `require(calcs.breakdownModule)(skillModList,
+    /// output.MainHand)` (CalcOffence.lua:2006/:2023) -- the pass breakdown of an attack, filled like `actor.breakdown`.
+    Module(Box<Breakdown>),
 }
 
 impl From<String> for BVal {
@@ -107,6 +110,27 @@ impl BTable {
         self.list.len()
     }
 
+    /// `t_insert(t, pos, v)` (1-based `pos`).
+    pub fn insert(&mut self, pos: usize, v: impl Into<BVal>) {
+        self.list.insert(pos - 1, v.into());
+    }
+
+    /// `t_remove(t, pos)` (1-based `pos`; nothing when out of range).
+    pub fn remove(&mut self, pos: usize) {
+        if pos >= 1 && pos <= self.list.len() {
+            self.list.remove(pos - 1);
+        }
+    }
+
+    /// `t[i] = s` for `1 <= i <= #t + 1`.
+    pub fn set_at(&mut self, i: usize, v: impl Into<BVal>) {
+        if i == self.list.len() + 1 {
+            self.list.push(v.into());
+        } else {
+            self.list[i - 1] = v.into();
+        }
+    }
+
     pub fn is_empty(&self) -> bool {
         self.list.is_empty()
     }
@@ -144,7 +168,7 @@ pub fn row(fields: &[(&str, String)]) -> BTable {
 }
 
 /// `actor.breakdown` -- the entries the calc modules assign (`breakdown[key] = ...`).
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct Breakdown {
     entries: IndexMap<String, BVal>,
 }
@@ -174,6 +198,23 @@ impl Breakdown {
 
     pub fn get(&self, k: &str) -> Option<&BVal> {
         self.entries.get(k)
+    }
+
+    pub fn get_mut(&mut self, k: &str) -> Option<&mut BVal> {
+        self.entries.get_mut(k)
+    }
+
+    /// `breakdown[k]` is a table (`breakdown[k] and ...`).
+    pub fn has_table(&self, k: &str) -> bool {
+        matches!(self.entries.get(k), Some(BVal::Table(_)))
+    }
+
+    /// `breakdown[k]` as a nested breakdown module (`breakdown.MainHand`, CalcOffence.lua:2006/:2023).
+    pub fn module_mut(&mut self, k: &str) -> &mut Breakdown {
+        match self.entries.get_mut(k) {
+            Some(BVal::Module(b)) => b,
+            _ => panic!("Modules/CalcOffence: attempt to index field '{k}' (a nil value)"),
+        }
     }
 
     /// `breakdown[k]` as a table (a Lua "attempt to index a nil value" when absent).
@@ -464,4 +505,272 @@ pub fn slot(
     let total = sf!("%.2f", total.unwrap_or(base * (1.0 + inc / 100.0) * more));
     let e = slot_entry(base, Some(inc), more, total, source, source_name, item);
     bd.table_mut(names[0]).field_mut("slots").push(e);
+}
+
+/// CalcBreakdown.lua:95-112 `breakdown.area(base, areaMod, total, incBreakpoint, moreBreakpoint, redBreakpoint, lessBreakpoint, label,
+/// radiusMod)`. `bps` = the four breakpoints when all are non-nil; `label` nil is not inserted (`t_insert(out, nil)`).
+pub fn area(
+    base: f64,
+    area_mod: f64,
+    total: f64,
+    bps: Option<(f64, f64, f64, f64)>,
+    label: Option<&str>,
+    radius_mod: Option<f64>,
+) -> BTable {
+    let mut out = BTable::new();
+    if let Some(l) = label {
+        out.push(l);
+    }
+    if base != total {
+        out.push(sf!("%.1fm ^8(base radius)", base / 10.0));
+        out.push(sf!(
+            "x %.2f ^8(square root of area of effect modifier)",
+            (100.0 * area_mod.sqrt()).floor() / 100.0
+        ));
+        if let Some(r) = radius_mod
+            && r != 1.0
+        {
+            out.push(sf!("x %.2f ^8(final radius modifier)", r));
+        }
+        out.push(sf!("= %.1fm", total / 10.0));
+    }
+    if let Some((inc, more, red, less)) = bps {
+        out.push(sf!(
+            "^8Next 0.1m breakpoint: %d%% increased AoE / a %d%% more AoE multiplier",
+            inc,
+            more
+        ));
+        out.push(sf!(
+            "^8Previous 0.1m breakpoint: %d%% reduced AoE / a %d%% less AoE multiplier",
+            red,
+            less
+        ));
+    }
+    out.fields.insert("radius".into(), BVal::Num(total));
+    out
+}
+
+/// CalcBreakdown.lua:114-160 `breakdown.effMult(damageType, resist, pen, taken, mult, takenMore, sourceRes, useRes, invertChance,
+/// effectiveResist)`.
+#[allow(clippy::too_many_arguments)]
+pub fn eff_mult(
+    damage_type: &str,
+    resist: f64,
+    pen: f64,
+    taken: f64,
+    mult: f64,
+    taken_more: f64,
+    source_res: Option<&str>,
+    use_res: bool,
+    invert_chance: Option<f64>,
+    effective_resist: Option<f64>,
+) -> BTable {
+    let mut out = BTable::new();
+    let resist_form = if damage_type == "Physical" {
+        "physical damage reduction"
+    } else {
+        "resistance"
+    };
+    let effective_resist = effective_resist.unwrap_or(resist - pen);
+    if let Some(sr) = source_res
+        && sr != damage_type
+    {
+        out.push(sf!("Enemy %s: %d%% ^8(%s)", resist_form, resist, sr));
+    } else if resist != 0.0 {
+        out.push(sf!("Enemy %s: %d%%", resist_form, resist));
+    }
+    if let Some(ic) = invert_chance.filter(|ic| *ic != 0.0 && use_res) {
+        out.push("Effective resistance:");
+        out.push(sf!("%g%% ^8(non-inverted hit after penetration)", resist - pen));
+        out.push(sf!("%g%% ^8(inverted hit after penetration)", -resist - pen));
+        out.push(sf!(
+            "= %g%% ^8(weighted average from %.0f%% inversion chance)",
+            effective_resist,
+            ic * 100.0
+        ));
+    } else if pen != 0.0 || !use_res {
+        out.push("Effective resistance:");
+        out.push(sf!("%d%% ^8(resistance)", resist));
+        if pen < 0.0 {
+            out.push(sf!("+ %d%% ^8(penetration)", -pen));
+        } else if pen > 0.0 {
+            out.push(sf!("- %d%% ^8(penetration)", pen));
+        }
+        if use_res {
+            out.push(sf!("= %d%%", resist - pen));
+        } else {
+            out.push(sf!("x %d%% ^8(resistance ignored)", 0.0));
+            out.push(sf!("= %d%%", 0.0));
+        }
+    }
+    if use_res {
+        multi_chain(
+            &mut out,
+            &Chain {
+                label: Some("Effective DPS modifier:".into()),
+                steps: vec![
+                    step_s("%.2f ^8(%s)", 1.0 - effective_resist / 100.0, resist_form),
+                    step("%.2f ^8(increased/reduced damage taken)", 1.0 + taken / 100.0),
+                    step("%.2f ^8(more/less damage taken)", taken_more),
+                ],
+                total: Some(sf!("= %.3f", mult)),
+                ..Chain::default()
+            },
+        );
+    } else {
+        out.push("Effective DPS modifier:");
+        out.push(sf!("= %.3f ^8(increased/reduced damage taken)", mult));
+    }
+    out
+}
+
+/// CalcBreakdown.lua:162-173 `breakdown.dot(out, baseVal, inc, more, mult, rate, aura, effMult, total)` (`mult` nil -> 0; a nil
+/// `rate` / `aura` / `effMult` is a chain step multiChain skips, `mult[2]` nil).
+#[allow(clippy::too_many_arguments)]
+pub fn dot(
+    out: &mut BTable,
+    base_val: f64,
+    inc: f64,
+    more: f64,
+    mult: Option<f64>,
+    rate: Option<f64>,
+    aura: Option<f64>,
+    eff_mult: Option<f64>,
+    total: f64,
+) {
+    let mut steps = vec![
+        step("%.2f ^8(increased/reduced)", 1.0 + inc / 100.0),
+        step("%.2f ^8(more/less)", more),
+        step("%.2f ^8(multiplier)", 1.0 + mult.unwrap_or(0.0) / 100.0),
+    ];
+    if let Some(r) = rate {
+        steps.push(step("%.2f ^8(rate modifier)", r));
+    }
+    if let Some(a) = aura {
+        steps.push(step("%.3f ^8(aura effect modifier)", a));
+    }
+    if let Some(e) = eff_mult {
+        steps.push(step("%.3f ^8(effective DPS modifier)", e));
+    }
+    multi_chain(
+        out,
+        &Chain {
+            base: Some(step("%.1f ^8(base damage per second)", base_val)),
+            steps,
+            total: Some(sf!("= %.1f ^8per second", total)),
+            ..Chain::default()
+        },
+    );
+}
+
+/// CalcBreakdown.lua:175-196 `breakdown.critDot(dotMulti, critMulti, dotChance, critChance)`.
+pub fn crit_dot(dot_multi: f64, crit_multi: f64, dot_chance: f64, crit_chance: f64) -> BTable {
+    let combined = (dot_multi * dot_chance) + (crit_multi * crit_chance);
+    let mut out = BTable::new();
+    if dot_chance > 0.0 {
+        out.push("Contribution from Non-crits:");
+        out.push(sf!("%.2f ^8(dot multiplier for non-crits)", dot_multi));
+        out.push(sf!("x %.4f ^8(portion of instances created by non-crits)", dot_chance));
+        out.push(sf!("= %.2f", dot_multi * dot_chance));
+    }
+    if crit_chance > 0.0 {
+        out.push("Contribution from Crits:");
+        out.push(sf!("%.2f ^8(dot multiplier for crits)", crit_multi));
+        out.push(sf!("x %.4f ^8(portion of instances created by crits)", crit_chance));
+        out.push(sf!("= %.2f", crit_multi * crit_chance));
+    }
+    if (dot_chance > 0.0 && crit_chance > 0.0) && (dot_multi != crit_multi) {
+        out.push("Effective DoT Multiplier:");
+        out.push(sf!("%.2f + %.2f", dot_multi * dot_chance, crit_multi * crit_chance));
+        out.push(sf!("= %.2f", combined));
+    }
+    out
+}
+
+/// CalcBreakdown.lua:198-252 `breakdown.leech(instant, instantRate, instances, pool, rate, max, dur, instantLeechProportion, hitRate)`:
+/// `show_average` = `actor.mainSkill.skillData.showAverage`, `rate_mod` = `calcLib.mod(modDB, skillCfg, rate)` (the module's `modDB`;
+/// `skillCfg` there is the global, nil).
+#[allow(clippy::too_many_arguments)]
+pub fn leech(
+    show_average: bool,
+    rate_mod: f64,
+    instant: f64,
+    instant_rate: f64,
+    instances: f64,
+    pool: f64,
+    max: f64,
+    dur: f64,
+    instant_leech_proportion: f64,
+    hit_rate: f64,
+) -> BTable {
+    let base = crate::setup::misc("LeechRateBase");
+    let mut out = BTable::new();
+    let instant_line = |out: &mut BTable| {
+        if instant_leech_proportion != 1.0 {
+            out.push(sf!(
+                "Instant Leech: %.1f ^8(%d%% x %.1f)",
+                instant,
+                instant_leech_proportion * 100.0,
+                dur * pool * base / (1.0 - instant_leech_proportion)
+            ));
+        } else {
+            out.push(sf!("Instant Leech: %.1f", instant));
+        }
+    };
+    if show_average {
+        if instant > 0.0 {
+            instant_line(&mut out);
+        }
+        if instances > 0.0 {
+            out.push("Total leeched per instance:");
+            out.push(sf!("%d ^8(size of leech destination pool)", pool));
+            out.push(sf!("x %.2f ^8(base leech rate is %d%% per second)", base, 100.0 * base));
+            if rate_mod != 1.0 {
+                out.push(sf!("x %.2f ^8(leech rate modifier)", rate_mod));
+            }
+            out.push(sf!("x %.2fs ^8(instance duration)", dur));
+            out.push(sf!("= %.1f", pool * base * rate_mod * dur));
+        }
+    } else {
+        if instant_rate > 0.0 {
+            instant_line(&mut out);
+            out.push(sf!(
+                "Instant Leech per second: %.1f ^8(%.1f x %.2f)",
+                instant_rate,
+                instant,
+                hit_rate
+            ));
+        }
+        if instances > 0.0 {
+            out.push("Rate per instance:");
+            out.push(sf!("%d ^8(size of leech destination pool)", pool));
+            out.push(sf!("x %.2f ^8(base leech rate is %d%% per second)", base, 100.0 * base));
+            if rate_mod != 1.0 {
+                out.push(sf!("x %.2f ^8(leech rate modifier)", rate_mod));
+            }
+            out.push(sf!("= %.1f ^8per second", pool * base * rate_mod));
+            out.push("Maximum leech rate against one target:");
+            out.push(sf!("%.1f", pool * base * rate_mod));
+            out.push(sf!("x %.2f ^8(average instances)", instances));
+            let total = pool * base * rate_mod * instances;
+            out.push(sf!("= %.1f ^8per second", total));
+            if total <= max {
+                out.push(sf!("Time to reach max: %.1fs", dur));
+            }
+            out.push(sf!("Leech rate cap: %.1f", max));
+            if total > max {
+                out.push(sf!("Time to reach cap: %.1fs", dur / total * max));
+            }
+        }
+    }
+    out
+}
+
+/// `colorCodes[name]` (Data/Global.lua).
+pub fn color(name: &str) -> &'static str {
+    pob_data::globals::globals()
+        .color_codes
+        .get(name)
+        .map(String::as_str)
+        .unwrap_or_else(|| panic!("colorCodes.{name} is nil"))
 }

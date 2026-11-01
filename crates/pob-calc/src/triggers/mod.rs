@@ -273,8 +273,9 @@ pub(crate) fn is_triggered(env: &Env, i: usize) -> bool {
     t("triggeredByUnique") || t("triggered") || has_type(env, i, "InbuiltTrigger") || has_type(env, i, "Triggered") || src_triggered
 }
 
-/// :45-63 `processAddedCastTime(skill, breakdown)` -> `(addsCastTime, csi)`; sets `skill.skillFlags.addsCastTime` (breakdown: R8).
-pub(super) fn process_added_cast_time(env: &mut Env, i: usize) -> Option<(f64, f64)> {
+/// :45-63 `processAddedCastTime(skill, breakdown)` -> `(addsCastTime, csi)`; sets `skill.skillFlags.addsCastTime` and
+/// `breakdown.AddedCastTime`.
+pub(super) fn process_added_cast_time(env: &mut Env, i: usize, bd: Option<&mut crate::breakdown::Breakdown>) -> Option<(f64, f64)> {
     let q = q_of(env, i);
     let cfg = cfg_of(env, i);
     if !q.flag(Some(&cfg), &["SpellCastTimeAddedToCooldownIfTriggered"]) {
@@ -287,7 +288,46 @@ pub(super) fn process_added_cast_time(env: &mut Env, i: usize) -> Option<(f64, f
     let csi = round((1.0 + inc / 100.0) * more, Some(2.0));
     let adds = base / csi;
     set_flag(env, i, "addsCastTime");
+    // :53-60
+    if let Some(bd) = bd {
+        let name = name_of(env, i);
+        bd.put(
+            "AddedCastTime",
+            crate::breakdown::BTable::lines([
+                crate::sf!("%.2f ^8(base cast time of %s)", base, name),
+                crate::sf!("%.2f ^8(increased/reduced)", 1.0 + inc / 100.0),
+                crate::sf!("%.2f ^8(more/less)", more),
+                crate::sf!("= %.2f ^8cast time", adds),
+            ]),
+        );
+    }
     Some((adds, csi))
+}
+
+/// :355-376 / :847-870 `breakdown.SimData` from `simBreakdown.rates` (`{ name = uuid, rate }`, the uuid split on `_`).
+pub(super) fn sim_data(rates: &[(String, f64)]) -> crate::breakdown::BTable {
+    let mut t = crate::breakdown::row_table(
+        None,
+        &[
+            ("Rate", "rate"),
+            ("Skill Name", "skillName"),
+            ("Slot Name", "slotName"),
+            ("Gem Index", "gemIndex"),
+        ],
+    );
+    let rows = t.field_mut("rowList");
+    for (name, rate) in rates {
+        // `for str in string.gmatch(rateData.name, "([^_]+)")`
+        let parts: Vec<&str> = name.split('_').filter(|p| !p.is_empty()).collect();
+        let mut row = crate::breakdown::BTable::new().with("rate", round(*rate, Some(2.0)));
+        for (k, idx) in [("skillName", 0), ("slotName", 1), ("gemIndex", 2)] {
+            if let Some(p) = parts.get(idx) {
+                row.fields.insert(k.into(), (*p).into());
+            }
+        }
+        rows.push(row);
+    }
+    t
 }
 
 /// :65-67 `packageSkillDataForSimulation(skill, env)`.
@@ -297,7 +337,7 @@ pub(super) fn package(env: &mut Env, i: usize) -> SimSkill {
     let q = q_of(env, i);
     let cfg = cfg_of(env, i);
     let cd_override = q.override_num(Some(&cfg), &["CooldownRecovery"], "Modules/CalcTriggers.lua:102");
-    let adds_cast_time = process_added_cast_time(env, i).map(|(a, _)| a);
+    let adds_cast_time = process_added_cast_time(env, i, None).map(|(a, _)| a);
     let icdr = q.calc_mod(Some(&cfg), &["CooldownRecovery"]);
     let added_cooldown = q.base(Some(&cfg), &["CooldownRecovery"]);
     SimSkill {
@@ -555,11 +595,15 @@ pub(crate) fn triggers_of(env: &mut Env, st: &mut PerformState, who: Who, m: usi
     let mut found = None;
     for key in candidates.into_iter().flatten() {
         let c = match who {
-            Who::Player => config::config_table(env, &mut st.player.output, &key)?,
+            Who::Player => {
+                let p = &mut st.player;
+                config::config_table(env, &mut p.output, p.breakdown.as_mut(), &key)?
+            }
             _ => {
                 let cell = st.minion.clone().expect("env.minion output");
                 let mut p = cell.borrow_mut();
-                config::config_table(env, &mut p.output, &key)?
+                let p = &mut *p;
+                config::config_table(env, &mut p.output, p.breakdown.as_mut(), &key)?
             }
         };
         if let Some(c) = c {

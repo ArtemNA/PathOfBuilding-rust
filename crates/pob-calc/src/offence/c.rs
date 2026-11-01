@@ -8,7 +8,7 @@
 //!
 //! Hash-order walks (R13/D13): none -- the warcry list, `dmgTypeList` and `actor.activeSkillList` are arrays.
 //!
-//! Breakdown (R8): every `if breakdown` / `if globalBreakdown` branch of this half only fills breakdown tables; the queries their
+//! Breakdown (R8.5): the `if breakdown` / `if globalBreakdown` branches of this half are ported where they stand; the queries their
 //! conditions make (`Flag(skillCfg, "Unexciting")`, `Every3UseCrit`, ...) are still made where a malformed mod could raise.
 
 use pob_lua::number::{floor, max2, min2, round};
@@ -16,9 +16,11 @@ use pob_mods::{ModCfg, ModType, StoreRef, Str, Value};
 
 use super::helpers::{Q, calc_skill_cooldown, calc_skill_duration, calc_warcry_cast_time};
 use super::{Off, PassOut, run_skill_func};
+use crate::breakdown::BTable;
 use crate::output::OutValue;
 use crate::perform::{skill_cfg_of, skill_list_of};
 use crate::setup::{misc, mod_flag, ok, tag};
+use crate::sf;
 
 pub(super) const LUA: &str = "Modules/CalcOffence.lua";
 
@@ -196,6 +198,19 @@ fn warcry_uptime(off: &mut Off<'_>, j: usize, prefix: &str, count_key: &str, cou
     off.gset(up_key, up);
     let g = num_at(off.gval("GlobalWarcryUptimeRatio"), "GlobalWarcryUptimeRatio", line + 3) + up;
     off.gset("GlobalWarcryUptimeRatio", g);
+    // :2640-2652 (and the same block of each warcry): `globalBreakdown.<Prefix>UpTimeRatio`
+    if off.breakdown {
+        let mut t = BTable::lines([sf!("(%d ^8(number of exerts)", count), sf!("/ %.2f) ^8(attacks per second)", speed)]);
+        if ct > 0.0 {
+            t.push(sf!("/ (%.2f ^8(warcry cooldown)", cd));
+            t.push(sf!("+ %.2f) ^8(warcry casttime)", ct));
+        } else {
+            t.push(sf!("/ %.2f ^8(average warcry cooldown)", cd));
+        }
+        t.push(sf!("* %d ^8(stored uses)", stored));
+        t.push(sf!("= %d%%", up));
+        off.bd_put(up_key, t);
+    }
 }
 
 /// :2626-2974 (`env.mode_buffs`): warcry uptimes, exerted attacks, pacts.
@@ -266,8 +281,28 @@ fn exerts_and_pacts(off: &mut Off<'_>, pi: usize, exerted_double_damage: f64, ex
                 );
                 let avg = 2.0 * (1.0 - dd_chance / 100.0);
                 off.gset("IntimidatingAvgDmg", avg);
+                if off.breakdown {
+                    let t = BTable::lines([
+                        "Average Intimidating Cry Damage:".to_owned(),
+                        sf!(
+                            "%.2f%% ^8(base double damage increase to hit 100%%)",
+                            (1.0 - dd_chance / 100.0) * 100.0
+                        ),
+                        sf!("x %d ^8(double damage multiplier)", 2.0),
+                        sf!("= %.2f", avg),
+                    ]);
+                    off.bd_put("IntimidatingAvgDmg", t);
+                }
                 let up = off.g_or("IntimidatingUpTimeRatio", 0.0, 2712);
                 off.gset("IntimidatingHitEffect", 1.0 + avg * up / 100.0);
+                if off.breakdown {
+                    let t = BTable::lines([
+                        sf!("1 + (%.2f ^8(average exerted damage)", avg),
+                        sf!("x %.2f) ^8(uptime %%)", up / 100.0),
+                        sf!("= %.2f", 1.0 + avg * up / 100.0),
+                    ]);
+                    off.bd_put("IntimidatingHitEffect", t);
+                }
                 off.gset("IntimidatingMaxHitEffect", 1.0 + avg);
                 let t = off.g_or("TheoreticalOffensiveWarcryEffect", 0.0, 2722) * (1.0 + avg * up / 100.0);
                 off.gset("TheoreticalOffensiveWarcryEffect", t);
@@ -290,11 +325,29 @@ fn exerts_and_pacts(off: &mut Off<'_>, pi: usize, exerted_double_damage: f64, ex
                     dsum(&off.env_db, ModType::Base, Some(off.pcfg(pi)), &["Multiplier:NearbyAlly"]),
                     5.0,
                 );
-                let avg = allies * (dsum(&off.env_db, ModType::Base, None, &["RallyingExertMoreDamagePerAlly"]) / 100.0);
+                let per_ally = dsum(&off.env_db, ModType::Base, None, &["RallyingExertMoreDamagePerAlly"]) / 100.0;
+                let avg = allies * per_ally;
                 off.gset("RallyingAvgDmg", avg);
+                if off.breakdown {
+                    let t = BTable::lines([
+                        "Average Rallying Cry Damage:".to_owned(),
+                        sf!("%.2f ^8(average damage multiplier per ally)", per_ally),
+                        sf!("x %d ^8(number of nearby allies (max=5))", allies),
+                        sf!("= %.2f", avg),
+                    ]);
+                    off.bd_put("RallyingAvgDmg", t);
+                }
                 let up = off.g_or("RallyingUpTimeRatio", 0.0, 2757);
                 let hit = 1.0 + avg * up / 100.0;
                 off.gset("RallyingHitEffect", hit);
+                if off.breakdown {
+                    let t = BTable::lines([
+                        sf!("1 + (%.2f ^8(average exerted damage)", avg),
+                        sf!("x %.2f) ^8(uptime %%)", up / 100.0),
+                        sf!("= %.2f", hit),
+                    ]);
+                    off.bd_put("RallyingHitEffect", t);
+                }
                 off.gset("RallyingMaxHitEffect", 1.0 + avg);
                 for (k, m) in [
                     ("OffensiveWarcryEffect", hit),
@@ -376,6 +429,25 @@ fn exerts_and_pacts(off: &mut Off<'_>, pi: usize, exerted_double_damage: f64, ex
             let a = off.g_or("ExertedAttackUptimeRatio", 0.0, 2845);
             let b = off.g_or(cry, 0.0, 2845);
             off.gset("ExertedAttackUptimeRatio", max2(a, b));
+        }
+        // :2847-2856
+        if off.breakdown {
+            let mut t = BTable::lines([sf!("Maximum of:")]);
+            for cry in [
+                "AncestralUpTimeRatio",
+                "InfernalUpTimeRatio",
+                "IntimidatingUpTimeRatio",
+                "RallyingUpTimeRatio",
+                "SeismicUpTimeRatio",
+                "BattlemageUpTimeRatio",
+            ] {
+                if off.gtruthy(cry) {
+                    let name = cry.split_once("Up").map_or(cry, |(n, _)| n);
+                    t.push(sf!("%d%% ^8(%s Cry Uptime)", off.g_or(cry, 0.0, 2852), name));
+                }
+            }
+            t.push(sf!("= %d%%", off.g_or("ExertedAttackUptimeRatio", 0.0, 2855)));
+            off.bd_put("ExertedAttackUptimeRatio", t);
         }
         // :2857-2888
         let uptime = num_at(off.gval("ExertedAttackUptimeRatio"), "ExertedAttackUptimeRatio", 2857);
@@ -479,6 +551,14 @@ fn exerts_and_pacts(off: &mut Off<'_>, pi: usize, exerted_double_damage: f64, ex
             off.gset("ExertedAttackAvgDmg", avg);
             off.gset("ExertedAttackHitEffect", avg * uptime / 100.0);
             off.gset("ExertedAttackMaxHitEffect", avg);
+            if off.breakdown {
+                let t = BTable::lines([
+                    sf!("(%.2f ^8(average exerted damage)", avg),
+                    sf!("x %.2f) ^8(uptime %%)", uptime / 100.0),
+                    sf!("= %.2f", avg * uptime / 100.0),
+                ]);
+                off.bd_put("ExertedAttackHitEffect", t);
+            }
             off.out().set_bool("ExertedAttackUptimeRatioCalculated", true);
         }
     }
@@ -531,6 +611,17 @@ fn exerts_and_pacts(off: &mut Off<'_>, pi: usize, exerted_double_damage: f64, ex
             off.gset(&format!("PactOf{key}CastTime"), cast_time);
             off.gset(&format!("{key}EmpoweredCount"), count);
             off.gset(&format!("{key}UpTimeRatio"), uptime);
+            if off.breakdown {
+                let t = BTable::lines([
+                    sf!("(%.2f ^8(number of Empowered)", count),
+                    sf!("/ %.2f) ^8(casts per second)", speed),
+                    sf!("/ (%.2f ^8(pact cooldown)", cooldown),
+                    sf!("+ %.2f) ^8(pact cast time)", cast_time),
+                    sf!("* %.2f ^8(stored uses)", stored),
+                    sf!("= %.2f%%", uptime),
+                ]);
+                off.bd_put(&format!("{key}UpTimeRatio"), t);
+            }
             if let Some(d) = vq.list(vc, &[&format!("{key}PactDamage")]).first() {
                 let Value::Mod(m) = d.get("mod") else {
                     panic!("{LUA}:2934: attempt to index local 'mod' (a nil value)");
@@ -582,6 +673,15 @@ fn exerts_and_pacts(off: &mut Off<'_>, pi: usize, exerted_double_damage: f64, ex
                         "SoulGainPreventionDuration",
                         max2((duration * duration_mod * tick).ceil(), 1.0) / tick,
                     );
+                    if off.breakdown {
+                        let t = BTable::lines([
+                            sf!("%.3fs ^8(before Pact of K'Tash)", duration),
+                            sf!("x %.4f ^8(average Pact modifier)", duration_mod),
+                            "rounded up to nearest server tick".to_owned(),
+                            sf!("= %.3fs", max2((duration * duration_mod * tick).ceil(), 1.0) / tick),
+                        ]);
+                        off.bd_put("SoulGainPreventionDuration", t);
+                    }
                 }
             }
             off.out().set_bool(&calculated, true);
@@ -644,9 +744,25 @@ fn ruthless_fist_of_war(off: &mut Off<'_>, pi: usize) {
         let speed = num_at(off.gval("Speed"), "Speed", 3002);
         let up = min2((1.0 / speed) / cooldown, 1.0) * 100.0;
         off.gset("FistOfWarUptimeRatio", up);
+        if off.breakdown {
+            let t = BTable::lines([
+                sf!("min( (1 / %.2f) ^8(second per attack)", speed),
+                sf!("/ %.2f, 1) ^8(fist of war cooldown)", cooldown),
+                sf!("= %d%%", up),
+            ]);
+            off.bd_put("FistOfWarUptimeRatio", t);
+        }
         off.gset("AvgFistOfWarDamage", mult);
         let avg_effect = 1.0 + mult * (up / 100.0);
         off.gset("AvgFistOfWarDamageEffect", avg_effect);
+        if off.breakdown {
+            let t = BTable::lines([
+                sf!("1 + (%.2f ^8(fist of war damage multiplier)", mult),
+                sf!("x %.2f) ^8(fist of war uptime ratio)", up / 100.0),
+                sf!("= %.2f", avg_effect),
+            ]);
+            off.bd_put("AvgFistOfWarDamageEffect", t);
+        }
         off.gset("MaxFistOfWarDamageEffect", 1.0 + mult);
         if q.flag(None, &["Condition:WarcryMaxHit"]) {
             off.pset_num(pi, "FistOfWarDamageEffect", 1.0 + mult);
@@ -705,6 +821,15 @@ fn crits(off: &mut Off<'_>, pi: usize) {
                 let r = num_at(off.pval(pi, "Repeats"), "Repeats", 3060);
                 off.pset_num(pi, "PreEffectiveCritChance", 100.0 / r);
                 off.pset_num(pi, "CritChance", 100.0 / r);
+                // :3062-3068
+                if off.breakdown {
+                    let t = BTable::lines([
+                        sf!("100%%"),
+                        sf!("/ %d ^8(number of repeats)", r),
+                        sf!("= %.2f%% average critical strike chance", 100.0 / r),
+                    ]);
+                    off.pbd_put(pi, "CritChance", t);
+                }
             } else {
                 off.pset_num(pi, "PreEffectiveCritChance", 100.0);
                 off.pset_num(pi, "CritChance", 100.0);
@@ -799,7 +924,10 @@ fn crits(off: &mut Off<'_>, pi: usize) {
             if base_crit_n + base > 0.0 {
                 cc = max2(cc, 0.0);
             }
+            let pre_cap = round((base_crit_n + base) * (1.0 + inc / 100.0) * more * 100.0, None) / 100.0;
             off.pset_num(pi, "PreEffectiveCritChance", cc);
+            let pre_effective = cc;
+            let pre_lucky = cc;
             let mut crit_rolls = 0.0;
             if eff && q.flag(Some(off.pcfg(pi)), &["CritChanceLucky"]) {
                 crit_rolls += 1.0;
@@ -816,9 +944,13 @@ fn crits(off: &mut Off<'_>, pi: usize) {
                 }
             }
             off.pset_num(pi, "PreBifurcateCritChance", cc);
+            let pre_bifurcate = cc;
             if eff && q.flag(Some(off.pcfg(pi)), &["BifurcateCrit"]) {
                 cc = (1.0 - (1.0 - cc / 100.0).powf(2.0)) * 100.0;
             }
+            let mut pre_hit_check = cc;
+            let pre_skill_use = cc;
+            let mut ahc = 100.0;
             if eff {
                 if q.flag(Some(&off.cfg), &["Every3UseCrit"]) {
                     cc = (2.0 * cc + 100.0) / 3.0;
@@ -826,12 +958,86 @@ fn crits(off: &mut Off<'_>, pi: usize) {
                 if q.flag(Some(&off.cfg), &["Every5UseCrit"]) {
                     cc = (4.0 * cc + 100.0) / 5.0;
                 }
-                cc = cc * num_at(off.pval(pi, "AccuracyHitChance"), "AccuracyHitChance", 3146) / 100.0;
+                pre_hit_check = cc;
+                ahc = num_at(off.pval(pi, "AccuracyHitChance"), "AccuracyHitChance", 3146);
+                cc = cc * ahc / 100.0;
             }
             off.pset_num(pi, "CritChance", cc);
-            // :3148-3200 breakdown only; the one new query its conditions make (`skillModList:Flag(skillCfg, "Unexciting")`, :3170)
-            if off.breakdown && cc != base_crit_n && eff && crit_rolls != 0.0 {
-                let _ = q.flag(Some(&off.cfg), &["Unexciting"]);
+            // :3148-3200
+            if off.breakdown && cc != base_crit_n {
+                let mut t = BTable::new();
+                let from = if base_crit_from_main_hand {
+                    " from main weapon"
+                } else if base_crit_from_parent {
+                    " from parent main weapon"
+                } else {
+                    ""
+                };
+                if base != 0.0 {
+                    t.push(sf!("(%g + %g) ^8(base%s)", base_crit_n, base, from));
+                } else {
+                    t.push(sf!("%g ^8(base%s)", base_crit_n + base, from));
+                }
+                if inc != 0.0 {
+                    t.push(format!("{} ^8(increased/reduced)", sf!("x %.2f", 1.0 + inc / 100.0)));
+                }
+                if more != 1.0 {
+                    t.push(format!("{} ^8(more/less)", sf!("x %.2f", more)));
+                }
+                t.push(sf!("= %.2f%% ^8(crit chance)", pre_effective));
+                if pre_cap > 100.0 {
+                    let over_cap = pre_cap - 100.0;
+                    t.push(sf!(
+                        "Crit is overcapped by %.2f%% (%d%% increased Critical Strike Chance)",
+                        over_cap,
+                        over_cap / more / (base_crit_n + base) * 100.0
+                    ));
+                }
+                let pre = t.clone();
+                if eff {
+                    if crit_rolls != 0.0 {
+                        if q.flag(Some(&off.cfg), &["Unexciting"]) {
+                            t.push("Crit Chance is Unexciting:");
+                            t.push(sf!("(3 x %.4f^ 2) - (2 x %.4f^ 3)", pre_lucky / 100.0, pre_lucky / 100.0));
+                        } else {
+                            t.push("Crit Chance is Lucky:");
+                            t.push(sf!("1 - (1 - %.4f)^ %d", pre_lucky / 100.0, crit_rolls + 1.0));
+                        }
+                        t.push(sf!("= %.2f%%", pre_bifurcate));
+                    }
+                    if q.flag(Some(off.pcfg(pi)), &["BifurcateCrit"]) {
+                        t.push("Critical Strike Bifurcates:");
+                        t.push(sf!("1 - (1 - %.4f) x (1 - %.4f)", pre_bifurcate / 100.0, pre_bifurcate / 100.0));
+                        t.push(sf!("= %.2f%%", pre_skill_use));
+                    }
+                    let e3 = q.flag(Some(&off.cfg), &["Every3UseCrit"]);
+                    if e3 {
+                        t.push(sf!(
+                            "+ %.2f%% ^8(crit every 3rd use)",
+                            (2.0 * pre_skill_use + 100.0) / 3.0 - pre_skill_use
+                        ));
+                    }
+                    let e5 = q.flag(Some(&off.cfg), &["Every5UseCrit"]);
+                    if e5 {
+                        t.push(sf!(
+                            "+ %.2f%% ^8(crit every 5th use)",
+                            (4.0 * pre_skill_use + 100.0) / 5.0 - pre_skill_use
+                        ));
+                    }
+                    if e3 || q.flag(Some(&off.cfg), &["Every5UseCrit"]) {
+                        t.push(sf!("= %.2f%%", pre_hit_check));
+                    }
+                }
+                if eff && ahc < 100.0 {
+                    t.push("Crit confirmation roll:");
+                    t.push(sf!("%.2f%%", pre_hit_check));
+                    t.push(sf!("x %.2f ^8(chance to hit)", ahc / 100.0));
+                    t.push(sf!("= %.2f%%", cc));
+                }
+                if let Some(bd) = off.pbd(pi) {
+                    bd.put("CritChance", t);
+                    bd.put("PreEffectiveCritChance", pre);
+                }
             }
         }
     }
@@ -851,8 +1057,19 @@ fn crits(off: &mut Off<'_>, pi: usize) {
                 let enemy_inc = 1.0 + dsum(&off.enemy_db, ModType::Inc, None, &["SelfCritMultiplier"]) / 100.0;
                 extra += dsum(&off.enemy_db, ModType::Base, None, &["SelfCritMultiplier"]) / 100.0;
                 extra = round(extra * enemy_inc, Some(2.0));
+                // :3216-3222
                 if off.breakdown && enemy_inc != 1.0 {
-                    let _ = q.base(Some(off.pcfg(pi)), &["CritMultiplier"]);
+                    let t = BTable::lines([
+                        sf!(
+                            "%d%% ^8(additional extra damage)",
+                            (dsum(&off.enemy_db, ModType::Base, None, &["SelfCritMultiplier"])
+                                + q.base(Some(off.pcfg(pi)), &["CritMultiplier"]))
+                                / 100.0
+                        ),
+                        sf!("x %.2f ^8(increased/reduced extra crit damage taken by enemy)", enemy_inc),
+                        sf!("= %d%% ^8(extra crit damage)", extra * 100.0),
+                    ]);
+                    off.pbd_put(pi, "CritMultiplier", t);
                 }
             }
             let crit_override = q.override_(Some(off.pcfg(pi)), &["CritChance"]).filter(Value::truthy);
@@ -874,6 +1091,17 @@ fn crits(off: &mut Off<'_>, pi: usize) {
                 bifurcate_multi_chance *= use_chance;
                 let conditional = if effective > 0.0 { bifurcate_multi_chance / effective } else { 0.0 };
                 off.pset_num(pi, "CritBifurcates", 1.0 + conditional);
+                // :3241-3251
+                if off.breakdown {
+                    let mut t = BTable::lines([sf!("%.2f%% ^8(pre-bifurcate crit chance)", pct), sf!("x %.2f%%", pct)]);
+                    if use_chance < 1.0 {
+                        t.push(sf!("x %.2f%% ^8(uses that can bifurcate)", use_chance * 100.0));
+                    }
+                    t.push(sf!("= %.2f%% ^8(chance both crit rolls succeed)", bifurcate_multi_chance));
+                    t.push(sf!("/ %.2f%% ^8(effective crit chance)", effective));
+                    t.push(sf!("= %.2f ^8(crit Bifurcates effect)", 1.0 + conditional));
+                    off.pbd_put(pi, "CritBifurcates", t);
+                }
                 let bonus = conditional * extra;
                 extra += bonus;
                 q.nm(
@@ -890,7 +1118,17 @@ fn crits(off: &mut Off<'_>, pi: usize) {
         }
         let pct = num_at(off.pval(pi, "CritChance"), "CritChance", 3262) / 100.0;
         let mult = num_at(off.pval(pi, "CritMultiplier"), "CritMultiplier", 3263);
-        off.pset_num(pi, "CritEffect", 1.0 - pct + pct * mult);
+        let effect = 1.0 - pct + pct * mult;
+        off.pset_num(pi, "CritEffect", effect);
+        // :3266-3272
+        if off.breakdown && effect != 1.0 {
+            let t = BTable::lines([
+                sf!("(1 - %.4f) ^8(portion of damage from non-crits)", pct),
+                sf!("+ [ (%.4f x %g) ^8(portion of damage from crits)", pct, mult),
+                sf!("= %.3f", effect),
+            ]);
+            off.pbd_put(pi, "CritEffect", t);
+        }
         let c = Some(off.pcfg(pi));
         let bonus = (q.base(c, &["CritMultiplier"]) - 50.0) * q.base(c, &["CritMultiplierAppliesToDegen"]) / 10000.0;
         off.pset_num(pi, "BonusCritDotMultiplier", bonus);

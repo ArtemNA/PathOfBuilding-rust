@@ -466,12 +466,22 @@ fn calculate_mirage(env: &mut Env, pst: &mut PerformState, hook: Hook<'_, '_>, m
         Kind::Saviour { max_warriors, .. } => {
             // :155-158
             replace_main(env, pst, &run);
+            // :158 `env.player.breakdown = newEnv.player.breakdown or env.player.breakdown` -- the CALCULATOR env has none
+            // (`buildBreakdown` false, CalcSetup.lua:500), so the table perform made stays
+            if let Some(b) = run.borrow().state.player.breakdown.clone() {
+                pst.player.breakdown = Some(b);
+            }
             let name = name_of_skill(st(env), st(env).skill(DETACHED));
             st_mut(env).skill_mut(DETACHED).info_message = Some(format!("{} Mirage Warriors using {name}", tostring_num(max_warriors)));
         }
         Kind::Tawhoa(t) => {
             // :232-239
             replace_main(env, pst, &run);
+            // :241-277 `if newEnv.player.breakdown then ... env.player.breakdown = newEnv.player.breakdown end`: the copy runs in
+            // CALCULATOR mode (CalcActiveSkill.lua:182, `buildBreakdown` false) -- never taken
+            if run.borrow().state.player.breakdown.is_some() {
+                unimplemented!("CalcMirages.lua:241-276 Tawhoa's Chosen breakdown of a mirage env with a breakdown");
+            }
             let name = name_of_skill(st(env), st(env).skill(DETACHED));
             st_mut(env).skill_mut(DETACHED).info_message = Some(format!("Tawhoa's Chosen using {name}"));
             let mut r = run.borrow_mut();
@@ -504,8 +514,12 @@ fn replace_main(env: &mut Env, pst: &mut PerformState, run: &RunRef) {
 }
 
 /// :99-113 / :325-339 `postCalcFunc` of Mirage Archer / Sacred Wisps: `mirage.output`, `skillFlags[flag] = true` (the minion half is the
-/// R7.10 boundary of [`copy_active_skill`]; breakdown is R8).
+/// R7.10 boundary of [`copy_active_skill`]; `mirage.breakdown` needs a breakdown the CALCULATOR copy never has).
 fn mirage_post(env: &mut Env, run: &RunRef, m: usize, flag: &str) {
+    // :107-112 / :333-338 `if newEnv.player.breakdown then mirage.breakdown = ... end`: the CALCULATOR copy has no breakdown
+    if run.borrow().state.player.breakdown.is_some() {
+        unimplemented!("CalcMirages.lua:107-112/:333-338 mirage.breakdown of a mirage env with a breakdown");
+    }
     let out = Rc::new(run.borrow().state.player.output.scalars());
     let sk = st_mut(env).skill_mut(m);
     sk.mirage.get_or_insert_with(Mirage::default).output = Some(out);

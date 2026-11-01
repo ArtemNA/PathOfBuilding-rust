@@ -12,6 +12,7 @@
 
 use std::cell::Ref;
 
+use pob_calc::breakdown::{BVal, Breakdown};
 use pob_calc::{ActorState, CalculateResult, FullDpsSkill, OutTable};
 use pob_lua::{Arg, Repl};
 
@@ -228,11 +229,8 @@ pub fn format_stat(
 pub enum BreakdownKey {
     /// nil: no breakdown popup, the value is not underlined.
     None,
-    Key(&'static str),
-    /// The answer depends on the contents of `env.<actor>.breakdown` (`breakdown[stat]`, its rows / `radius` / `rowList` /
-    /// `reservations` / `damageTypes` / `slots` / `modList`, :1881-1902), which this port does not build yet (R8.4/R8.5 port the
-    /// `if breakdown` branches of the calc modules).
-    Unported,
+    /// The key: `statData.breakdown`, `<stat>.<childStat>` or `statData.stat`.
+    Key(String),
 }
 
 /// `{ height, align, x, [1], [2], breakdown, modNames, underline, actorName, ignoredSections, breakdownColour }` -- one entry of
@@ -248,7 +246,7 @@ pub struct StatBoxEntry {
     pub value: Option<String>,
     pub breakdown: Option<BreakdownKey>,
     pub mod_names: Option<&'static [&'static str]>,
-    /// `underline = { false, not not breakdown }`; the second is `None` when the breakdown key is [`BreakdownKey::Unported`].
+    /// `underline = { false, not not breakdown }`.
     pub underline: Option<[Option<bool>; 2]>,
     pub actor_name: Option<&'static str>,
     /// The keys of the `ignoredSections` set, in the data's order (upstream: a set).
@@ -308,6 +306,8 @@ pub struct DisplayActor<'a> {
     pub mod_db: pob_mods::StoreRef,
     /// `actor.output.SkillDPS` as the in-place sorts leave it (`None` = nil).
     pub skill_dps: Option<Vec<FullDpsSkill>>,
+    /// `env.<actor>.breakdown` of the MAIN env (`None` = nil).
+    pub breakdown: Option<&'a Breakdown>,
 }
 
 /// `build.calcsTab.mainEnv` for the sidebar: the player, the minion (`mainEnv.minion`), the env.
@@ -351,6 +351,7 @@ impl<'a> DisplayEnv<'a> {
             disable_reason: main.disable_reason.as_deref(),
             mod_db: env.player.borrow().mod_db.clone(),
             skill_dps: skill_dps_of(&res.perform.player),
+            breakdown: res.perform.player.breakdown.as_ref(),
         };
         // `mainEnv.minion` = `env.player.mainSkill.minion` (CalcPerform.lua:1316)
         let minion = match (env.minion.as_ref(), minion.0.as_deref()) {
@@ -369,6 +370,7 @@ impl<'a> DisplayEnv<'a> {
                     disable_reason: ms.disable_reason.as_deref(),
                     mod_db: actor.borrow().mod_db.clone(),
                     skill_dps: skill_dps_of(st),
+                    breakdown: st.breakdown.as_ref(),
                 })
             }
             (None, _) => None,
@@ -390,14 +392,49 @@ fn sort_skill_dps(v: &mut [FullDpsSkill]) {
     crate::lua::lua_sort(v, &mut |a, b| (a.dps * a.count) > (b.dps * b.count));
 }
 
-/// Build.lua:1871-1903 `GetStatBreakdownKey(statData, actorName)`. In MAIN `env.<actor>.breakdown` is a table (CalcPerform.lua:1518/
-/// :1520); when the key comes from `statData.breakdown` and the stat has `modNames`, the answer does not read the table's contents.
-fn stat_breakdown_key(sd: &DisplayStat) -> BreakdownKey {
-    match sd.breakdown {
-        // :1881-1882, then :1891-1893 "Modifier-only popups do not require a calculated breakdown"
-        Some(key) if sd.mod_names.is_some() => BreakdownKey::Key(key),
-        // :1894-1902 / :1883-1888: the contents of env.breakdown (R8.4/R8.5)
-        _ => BreakdownKey::Unported,
+/// Build.lua:1871-1903 `GetStatBreakdownKey(statData, actorName)` over `env.<actor>.breakdown` (`bd`, CalcPerform.lua:1518/:1520 in MAIN;
+/// filled by perform / defence / estimations / offence / triggers, R8.4/R8.5).
+fn stat_breakdown_key(sd: &DisplayStat, bd: Option<&Breakdown>) -> BreakdownKey {
+    // :1874-1877
+    let Some(bd) = bd else { return BreakdownKey::None };
+    let truthy = |v: Option<&BVal>| !matches!(v, None | Some(BVal::Bool(false)));
+    // `t[k]` of a breakdown value that is a table (a plain table or a nested module); anything else answers nil here
+    let field = |v: Option<&BVal>, k: &str| -> Option<BVal> {
+        match v {
+            Some(BVal::Table(t)) => t.fields.get(k).cloned(),
+            Some(BVal::Module(m)) => m.get(k).cloned(),
+            _ => None,
+        }
+    };
+    let Some(stat) = sd.stat else { return BreakdownKey::None };
+    // :1878-1888
+    let key: Option<String> = if let Some(b) = sd.breakdown {
+        Some(b.to_owned())
+    } else if let Some(c) = sd.child_stat {
+        let parent = bd.get(stat);
+        (truthy(parent) && truthy(field(parent, c).as_ref())).then(|| format!("{stat}.{c}"))
+    } else if truthy(bd.get(stat)) {
+        Some(stat.to_owned())
+    } else {
+        None
+    };
+    let Some(key) = key else { return BreakdownKey::None };
+    // :1891-1893 "Modifier-only popups do not require a calculated breakdown"
+    if sd.mod_names.is_some() {
+        return BreakdownKey::Key(key);
+    }
+    // :1894-1902 `key:match("^(%a+)%.(%a+)$")`
+    let ns_name = key.split_once('.').filter(|(ns, name)| {
+        !ns.is_empty() && !name.is_empty() && ns.bytes().all(|b| b.is_ascii_alphabetic()) && name.bytes().all(|b| b.is_ascii_alphabetic())
+    });
+    // `namespace and breakdown[namespace] and breakdown[namespace][name] or breakdown[key]`
+    let data: Option<BVal> = match ns_name {
+        Some((ns, name)) if truthy(bd.get(ns)) && truthy(field(bd.get(ns), name).as_ref()) => field(bd.get(ns), name),
+        _ => bd.get(&key).cloned(),
+    };
+    match data {
+        Some(d) if Breakdown::is_populated(&d) => BreakdownKey::Key(key),
+        _ => BreakdownKey::None,
     }
 }
 
@@ -540,11 +577,10 @@ fn add_display_stat_list(
                     if let Some(sfx) = suffix_text(sd, &v, o).map_err(|e| lua_err(1971, e))? {
                         formatted.push_str(&format!("^x808080 ({sfx})"));
                     }
-                    let breakdown = stat_breakdown_key(sd);
+                    let breakdown = stat_breakdown_key(sd, actor.breakdown);
                     let underline = match breakdown {
                         BreakdownKey::None => Some(false),
                         BreakdownKey::Key(_) => Some(true),
-                        BreakdownKey::Unported => None,
                     };
                     // :1989-1993 `labelColor ~= "^7" and hexToRGB(labelColor) or colourCodeMap[labelColor]`
                     let colour_code_map = |c: &str| match c {

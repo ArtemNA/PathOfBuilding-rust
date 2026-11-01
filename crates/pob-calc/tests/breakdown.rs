@@ -1,14 +1,16 @@
-//! R8.4 gate: `env.player.breakdown` / `env.minion.breakdown` against LuaJIT, key by key.
+//! R8.4/R8.5 gate: `env.player.breakdown` / `env.minion.breakdown` against LuaJIT, key by key.
 //!
 //! Corpus `tests/fixtures/breakdown/<slug>.json` (producer `tools/lua-corpus/export-breakdown.ts`): the 6 goldens, R4-synth
 //! (`defence-synth`), R4-synth-2 (`defence-synth2`) and the 20 R7-synth scenarios of the R8.1 display fixtures. Per actor and key the
 //! fixture holds the writers (`<file>:<line>` of every `breakdown[key] = ...`), `snap` (the table at `calcs.triggers`, i.e. after perform +
-//! defence + estimations), `final` (after `BuildOutput`), `class` (`ported` / `R8.5` / `Calcs`) and `gate` = the value the R8.4 modules leave
-//! (`snap`, or `final` for a ported key written after triggers -- `GemLevel`/`GemQuality`, CalcPerform.lua:3948/:3971).
+//! defence + estimations), `final` (after `BuildOutput`), `class` (`ported` = perform / defence / estimations, `R8.5` = offence / triggers /
+//! mirages, `Calcs` = Calcs.lua SkillBuffs/SkillDebuffs) and `gate` (the value the R8.4 modules leave).
 //!
-//! Rule: Rust's breakdown after `calculate_with` (raw XML, as the docker probe read it) has exactly the keys that have a `gate`, each equal
-//! to it (strings byte for byte, numbers `%.17g`, structure). Keys LuaJIT writes only from offence / triggers / mirages (or changes after
-//! the snapshot) are R8.5 and counted apart; `Calcs` (Calcs.lua SkillBuffs/SkillDebuffs) likewise. Nothing is tolerated.
+//! Rule (R8.5): Rust's breakdown after `calculate_with` (raw XML, as the docker probe read it) is the state after `BuildOutput`: every key
+//! of class `ported` or `R8.5` equals LuaJIT's `final` (strings byte for byte, numbers `%.17g`, structure; absent iff `final` is absent),
+//! and Rust has no other key. `Calcs` keys are written by Calcs.lua after `calcs.perform` (not part of `calculate_with`): counted apart,
+//! Rust must not have them. Nothing is tolerated. The nested hand modules (`breakdown.MainHand`/`.OffHand`) serialize as the probe sees
+//! them (see [`ser`]).
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -52,6 +54,10 @@ pub fn ser(v: &BVal) -> Json {
         BVal::Item(name) => json!({ "$item": name }),
         BVal::Fn => json!({ "$fn": 1 }),
         BVal::Table(t) => ser_table(t),
+        // `breakdown.MainHand` / `.OffHand` (CalcOffence.lua:2006/:2023) is a module made by `require(calcs.breakdownModule)` -- in the
+        // probe that is its proxy: `pairs` sees no keys and `v[n + 1]` reads the (empty) array part through `__index`, so LuaJIT's
+        // serialization is `{}` whatever the module holds (export-breakdown.ts `S`); the contents are not observable through the probe.
+        BVal::Module(_) => json!({}),
     }
 }
 
@@ -130,6 +136,8 @@ fn module_of(writers: &[Json]) -> String {
 struct Tally {
     /// module -> (gate keys, equal)
     by_module: BTreeMap<String, (usize, usize)>,
+    /// class -> (keys, equal)
+    by_class: BTreeMap<String, (usize, usize)>,
     r85: usize,
     calcs: usize,
     bad: Vec<String>,
@@ -170,24 +178,32 @@ fn check_actor(slug: &str, actor: &str, fx: &Json, rust: Option<Breakdown>, t: &
     for (k, e) in keys {
         match e["class"].as_str().expect("class") {
             "R8.5" => t.r85 += 1,
-            "Calcs" => t.calcs += 1,
+            "Calcs" => {
+                t.calcs += 1;
+                if rust_map.contains_key(k.as_str()) {
+                    t.bad
+                        .push(format!("{slug} | {actor}.{k} | rust writes a key only Calcs.lua writes"));
+                }
+                continue;
+            }
             _ => {}
         }
-        let Some(gate) = e.get("gate") else {
-            if rust_map.contains_key(k.as_str()) {
-                t.bad.push(format!(
-                    "{slug} | {actor}.{k} | rust writes a key LuaJIT's ported modules do not (class {})",
-                    e["class"]
-                ));
-            }
-            continue;
-        };
         let m = t.by_module.entry(module_of(e["writers"].as_array().expect("writers"))).or_default();
         m.0 += 1;
-        match rust_map.get(k.as_str()) {
-            Some(r) if r == gate => m.1 += 1,
-            Some(r) => t.bad.push(format!("{slug} | {actor}.{k} |\n    rust   {r}\n    luajit {gate}")),
-            None => t.bad.push(format!("{slug} | {actor}.{k} | rust nil, luajit {gate}")),
+        let cl = t.by_class.entry(e["class"].as_str().expect("class").to_owned()).or_default();
+        cl.0 += 1;
+        match (rust_map.get(k.as_str()), e.get("final")) {
+            (Some(r), Some(f)) if r == f => {
+                m.1 += 1;
+                cl.1 += 1;
+            }
+            (None, None) => {
+                m.1 += 1;
+                cl.1 += 1;
+            }
+            (Some(r), Some(f)) => t.bad.push(format!("{slug} | {actor}.{k} |\n    rust   {r}\n    luajit {f}")),
+            (None, Some(f)) => t.bad.push(format!("{slug} | {actor}.{k} | rust nil, luajit {f}")),
+            (Some(r), None) => t.bad.push(format!("{slug} | {actor}.{k} | rust {r}, luajit nil")),
         }
     }
     for k in rust_map.keys() {
@@ -225,12 +241,20 @@ fn breakdown_matches_luajit() {
             e.0 += v.0;
             e.1 += v.1;
         }
+        for (c, v) in t.by_class {
+            let e = total.by_class.entry(c).or_default();
+            e.0 += v.0;
+            e.1 += v.1;
+        }
         total.r85 += t.r85;
         total.calcs += t.calcs;
         total.bad.extend(t.bad);
     }
     for (m, (g, eq)) in &total.by_module {
         println!("module {m:<12} gate keys {g:>6}, equal {eq:>6}");
+    }
+    for (c, (g, eq)) in &total.by_class {
+        println!("class {c:<12} keys {g:>6}, equal {eq:>6}");
     }
     let (g, eq) = total.by_module.values().fold((0, 0), |a, v| (a.0 + v.0, a.1 + v.1));
     println!(
@@ -240,7 +264,8 @@ fn breakdown_matches_luajit() {
         total.calcs,
         total.bad.len()
     );
-    for b in total.bad.iter().take(80) {
+    let show = std::env::var("BD_SHOW").ok().and_then(|s| s.parse().ok()).unwrap_or(80);
+    for b in total.bad.iter().take(show) {
         println!("  {b}");
     }
     assert!(total.bad.is_empty(), "{} divergences", total.bad.len());
