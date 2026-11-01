@@ -283,24 +283,27 @@ fn copy_active_skill(env: &Env, src: &Src) -> Result<Env, String> {
         nst.aux_skill_list.push(DETACHED);
     }
     new_env.unimplemented.extend(notes);
-    // :185-190 a copy with a minion: `createMinionSkills(env, newSkill)` on the copy (the minion actor of a mirage, R7.10)
-    if skill.minion.is_some() {
-        return Err(
-            "CalcActiveSkill.lua:185-190 copyActiveSkill of a skill with a minion (createMinionSkills on the copy, R7.10 boundary)".into(),
-        );
-    }
     // :184 `newSkill.skillModList = new("ModList"):ModList(newSkill.baseSkillModList)`
     let base = skill
         .skill_mod_list
         .clone()
         .unwrap_or_else(|| panic!("Modules/CalcActiveSkill.lua:184: newSkill.baseSkillModList is nil"));
+    let has_minion = skill.minion.is_some();
+    let skill_mod_list = ModStore::new_list(Some(base));
     nst.detached_main = Some(DetachedSkill {
         skill,
-        skill_mod_list: ModStore::new_list(Some(base)),
+        skill_mod_list: skill_mod_list.clone(),
         actor,
         keep,
     });
     new_env.skills = Some(nst);
+    // :185-190 a copy with a minion: `newSkill.minion.modDB = new("ModDB")`, `calcs.createMinionSkills(env, newSkill)` -- the CALLER's env
+    // (R7-synth-2: was a boundary; LuaJIT runs it for Tawhoa's Chosen / The Saviour copying Dominating Blow), `skillPartName`
+    if has_minion {
+        let mut notes = Vec::new();
+        crate::minion::build_minion_detached(env, &mut new_env, &skill_mod_list, &mut notes);
+        new_env.unimplemented.extend(notes);
+    }
     Ok(new_env)
 }
 
