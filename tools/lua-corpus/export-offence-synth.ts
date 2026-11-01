@@ -35,9 +35,15 @@ const FILES: Record<string, string> = { O: 'Modules/CalcOffence.lua', T: 'Module
 type GemSpec = string | { g: string; lvl?: number; q?: number; part?: number; stage?: number; mine?: number; minion?: string; mskill?: number; mset?: number; off?: boolean; count?: number }
 interface Group { gems: GemSpec[]; full?: boolean; slot?: string; label?: string; count?: number; off?: boolean; src?: string; active?: number }
 // covers: "O|T|M|C:<needle>" (a line of CalcOffence/CalcTriggers/CalcMirages/Calcs.lua containing the needle that the scenario really executes) or "F:<closure path>"
-interface Scenario { name: string; cat: string; base: keyof typeof BASES; groups?: Group[]; main?: number; level?: number; fullAll?: boolean; inputs?: Record<string, number | boolean | string>; mods?: string[]; spectres?: string[]; gear?: Record<string, string | null>; covers: string[] }
+interface Scenario { name: string; cat: string; base: keyof typeof BASES; groups?: Group[]; main?: number; level?: number; fullAll?: boolean; inputs?: Record<string, number | boolean | string>; mods?: string[]; spectres?: string[]; gear?: Record<string, string | null>; covers: string[]; r13?: R13 }
+// R7-synth-2 (MINEFIELD-RUST R13): a scenario whose LuaJIT result depends on `pairs` over string keys (hash seeded per process). `probe` = a Lua
+// expression that reveals, in the same process, which order this process took; the docker run is repeated until the order Rust takes (`want`,
+// the data / insertion order) is seen -- the fixture's output is that run -- and until another order is seen too (max R13_TRIES runs), whose
+// scalar keys / tables that differ are recorded (`r13.otherOrder`): the gate is "Rust = the LuaJIT run of Rust's order", the set is documented.
+interface R13 { place: string; probe: string; want: string }
+const R13_TRIES = 30
 const SCENARIOS: Scenario[] = []
-const FN_SKIP = new Set(['FrozenSweep', 'FrozenSweepAltX', 'PoisonousConcoctionAltX', 'ExplosiveTrap']) // never reached with a plain weapon / variant not selectable / ExplosiveTrap: shared statMap with AltX is pairs-order dependent (R13), the 2 runs differ
+const FN_SKIP = new Set(['FrozenSweep', 'FrozenSweepAltX', 'PoisonousConcoctionAltX', 'ExplosiveTrap']) // never reached with a plain weapon / variant not selectable / ExplosiveTrap: shared statMap with AltX is pairs-order dependent (R13), the 2 runs differ -- R7-synth-2 covers FrozenSweep / AltX (a Frozen Legion group) and ExplosiveTrap / AltX (`r13`) as `s2-*`
 const FN_NOGEM = new Set<string>() // closure skills without a gem that are still tried through the skillId-only <Gem>
 const FN_ACTIVE: Record<string, number> = {} // which active skill of the group is the main one (Vaal gems: the Vaal skill)
 const FN_OPTS: Record<string, Partial<Exclude<GemSpec, string>>> = {}
@@ -299,7 +305,8 @@ function coverInfo(sc: Scenario, xml: Buffer, cache: Rec): { covers: string[]; f
     const f = FILES[letter]
     if (!f || c[1] !== ':') throw new Error(`${sc.name}: bad cover ${c}`)
     const exec = new Set<number>(cache.exec[f]), hit = new Set<number>(e.hits[f])
-    const all = srcLines[letter]!.flatMap((l, i) => (l.includes(needle) && exec.has(i + 1) ? [i + 1] : []))
+    // R7-synth-2: "@<line>" names one line exactly (one-line config bodies of CalcTriggers.lua repeat word for word)
+    const all = needle.startsWith('@') ? [Number(needle.slice(1))].filter((n) => exec.has(n)) : srcLines[letter]!.flatMap((l, i) => (l.includes(needle) && exec.has(i + 1) ? [i + 1] : []))
     if (!all.length) throw new Error(`${sc.name}: needle matches no executable ${f} line: ${needle}`)
     const lines = all.filter((n) => hit.has(n))
     if (!lines.length) throw new Error(`${sc.name}: needle ${needle} matches ${f} lines ${all.join(',')} but the scenario executes none of them`)
@@ -351,6 +358,33 @@ async function coverage(): Promise<void> {
   console.log(`scenarios ${ran.length}/${SCENARIOS.length} run, with unmet covers ${bad}`)
 }
 
+async function r13Eval(sc: Scenario, r: R13): Promise<Rec> {
+  const code = loadChunk(scenarioXml(sc), BASES[sc.base]!) + DUMP.replace(/return res\n$/, `res.r13Key = tostring(${r.probe})\nreturn res\n`)
+  if (code === loadChunk(scenarioXml(sc), BASES[sc.base]!) + DUMP) throw new Error('r13Eval: DUMP tail changed')
+  const byKey = new Map<string, Rec>()
+  for (let i = 0; i < R13_TRIES && !(byKey.has(r.want) && byKey.size > 1); i++) {
+    const o = await ljEval(code)
+    const k = String(o.r13Key)
+    delete o.r13Key
+    if (!byKey.has(k)) byKey.set(k, o)
+  }
+  const got = byKey.get(r.want)
+  if (!got) throw new Error(`${sc.name}: R13 order ${r.want} not seen in ${R13_TRIES} runs (seen ${[...byKey.keys()].join(',')}) -- STOP`)
+  const otherOrder: Rec = {}
+  for (const [k, o] of byKey) {
+    if (k === r.want) continue
+    const d: Rec = {}
+    for (const part of ['nums', 'strs', 'bools', 'tables']) {
+      const a = (got.output[part] ?? {}) as Rec, b = (o.output[part] ?? {}) as Rec
+      d[part] = [...new Set([...Object.keys(a), ...Object.keys(b)])].filter((x) => norm(ser(a[x] ?? null)) !== norm(ser(b[x] ?? null))).sort(byteOrder)
+    }
+    d.minion = got.minion || o.minion ? [...new Set([...Object.keys(got.minion?.nums ?? {}), ...Object.keys(o.minion?.nums ?? {})])].filter((x) => got.minion?.nums?.[x] !== o.minion?.nums?.[x]).sort(byteOrder) : []
+    d.fullDPS = norm(ser(got.fullDPS)) !== norm(ser(o.fullDPS))
+    otherOrder[k] = d
+  }
+  return { ...got, r13: { class: 'lj-strhash', place: r.place, order: r.want, ordersSeen: [...byKey.keys()].sort(byteOrder), otherOrder } }
+}
+
 async function fixtures(): Promise<void> {
   mkdirSync(FIX, { recursive: true })
   const only = process.env.SYNTH_ONLY ? new RegExp(process.env.SYNTH_ONLY) : undefined // authoring aid: regenerate a subset (the 2-run check then covers the subset)
@@ -362,7 +396,7 @@ async function fixtures(): Promise<void> {
   const runs: string[][] = []
   for (let r = 0; r < 2; r++) {
     console.error(`run ${r + 1}/2`)
-    const outs = await pool(list, (sc) => ljEval(loadChunk(scenarioXml(sc), BASES[sc.base]!) + DUMP))
+    const outs = await pool(list, (sc) => (sc.r13 ? r13Eval(sc, sc.r13) : ljEval(loadChunk(scenarioXml(sc), BASES[sc.base]!) + DUMP)))
     runs.push(outs.map((o, i) => {
       const sc = list[i]!, xml = scenarioXml(sc), ci = coverInfo(sc, xml, cache)
       const text = norm(ser({ build: BASES[sc.base], base: sc.base, scenario: sc.name, category: sc.cat, covers: ci.covers, fnCalled: ci.fns, newLines: ci.newLines, newLineCount: ci.newLineCount, groups: sc.groups ?? null, gear: sc.gear ?? {}, inputs: sc.inputs ?? {}, mods: sc.mods ?? [], xmlSha256: sha(xml),
@@ -484,6 +518,61 @@ add('mi-generals-cry', 'mirage', 'gen', [g(["General's Cry", 'Lancing Steel'])],
 add('mi-generals-cry-double-strike', 'mirage', 'gen', [g(["General's Cry", 'Double Strike'], { active: 1 })], ['O:breakdown.WarcryEffectMod = {'])
 add('mi-sacred-wisps', 'mirage', 'occ', [g(['Power Siphon', 'Sacred Wisps'])], [])
 add('mi-tawhoa-chosen', 'mirage', 'gen', [g(['@SummonMirageChieftain']), g(['Cyclone'])], TC['mi-tawhoa-chosen']!)
+// (f) R7-synth-2 (tasks/R7-synth-2.md): the branches R7 / R8.5b left without a LuaJIT check -- skill functions outside FN_SKIP's reach, the
+// `configTable` entries of CalcTriggers.lua no scenario executed (T@<line> = that exact line), a minion skill under a mirage
+const s2 = (name: string, base: Scenario['base'], groups: Group[] | undefined, covers: string[], o: Partial<Scenario> = {}): void => add(name, 'synth2', base, groups, covers, o)
+const CLUB = { 'Weapon 1': item('club'), 'Weapon 2': null }
+const ET_R13: R13 = { place: 'Data.lua:1049-1068 pairs(data.skills): statMap._grantedEffect of the statMap ExplosiveTrapAltX shares (act_dex.lua:7326)', probe: 'data.skills.ExplosiveTrap.statMap._grantedEffect.id', want: 'ExplosiveTrapAltX' }
+const EXPLODE = (chance: number, amount: string, type: string): string => `Enemies you Kill have a ${chance}% chance to Explode, dealing ${amount} of their maximum Life as ${type} Damage`
+s2('s2-avenging-flame', 'occ', [g(['Searing Bond', 'Flamewood'], { active: 2 })], ['F:skills.AvengingFlame.preDamageFunc', 'T:skill.skillFlags.totem and slotMatch(env, skill)'])
+for (const [n, id, part] of [['', 'ExplosiveTrap', 1], ['-p2', 'ExplosiveTrap', 2], ['-p3', 'ExplosiveTrap', 3], ['-altx', 'ExplosiveTrapAltX', 1], ['-altx-p2', 'ExplosiveTrapAltX', 2]] as const) s2(`s2-explosive-trap${n}`, 'occ', [g([{ g: '@' + id, part }])], ['F:skills.ExplosiveTrap.preDamageFunc'], { r13: ET_R13 })
+for (const [n, gem, part] of [['', 'Frozen Legion', 1], ['-p2', 'Frozen Legion', 2], ['-altx', 'Frozen Legion of Rallying', 1]] as const) s2(`s2-frozen-sweep${n}`, 'cos', [g([{ g: gem, part }], { active: 2 })], [`F:skills.FrozenSweep${n === '-altx' ? 'AltX' : ''}.preDamageFunc`], { gear: CLUB })
+s2('s2-minion-instability', 'occ', [g([{ g: 'Raise Zombie', mskill: 4 }])], ['F:skills.MinionInstability.preDamageFunc'], { mods: ['Minions Explode when reduced to Low Life, dealing 33% of their Life as Fire Damage to surrounding Enemies'] })
+s2('s2-enemy-explode-item', 'occ', [g(['Arc'])], ['F:skills.EnemyExplode.preDamageFunc'], { main: 2, gear: { Amulet: ITEM('Jade Amulet', EXPLODE(20, 'a tenth', 'Physical')) } })
+s2('s2-enemy-explode-avg', 'occ', [g([{ g: '@EnemyExplode', lvl: 1, part: 3 }])], ['F:skills.EnemyExplode.preDamageFunc'], { mods: [EXPLODE(20, 'a tenth', 'Physical'), EXPLODE(10, 'a quarter', 'Physical'), EXPLODE(5, 'a tenth', 'Physical')] })
+s2('s2-enemy-explode-avg-2types', 'occ', [g([{ g: '@EnemyExplode', lvl: 1, part: 3 }])], ['F:skills.EnemyExplode.preDamageFunc'], { mods: [EXPLODE(20, 'a tenth', 'Physical'), EXPLODE(30, 'a quarter', 'Fire')],
+  r13: { place: 'other.lua:6230 pairs(typeAmountChances) (string keys: ExplodeMod types)', probe: '(function() local t = {} t.Physical = {} t.Fire = {} for k in pairs(t) do return k end end)()', want: 'Physical' } })
+// configTable entries (CalcTriggers.lua:902-1600)
+s2('s2-doom-blast', 'occ', [g(['Despair', 'Impending Doom'], { active: 2 })], ['T:@1394'])
+s2('s2-doom-blast-replacement', 'occ', [g(['Despair', 'Impending Doom'], { active: 2 })], ['T:env.player.modDB:NewMod("UsesCurseOverlaps"'], { inputs: { doomBlastSource: 'replacement' } })
+s2('s2-snipe-standalone', 'mir', [g(['Snipe'])], ['T:env.player.mainSkill.skillData.hitTimeMultiplier = m_max(1, snipeStages) - 0.5'], { inputs: { configSnipeStages: 3 } })
+s2('s2-snipe-source', 'mir', [g(['Snipe', 'Ice Shot'])], ['T:"DealNoLightning"'], { inputs: { configSnipeStages: 3 } })
+s2('s2-snipe-triggered', 'mir', [g(['Snipe', 'Ice Shot'], { active: 2 })], ['T:skill.skillData.hitTimeMultiplier = snipeStages - 0.5'], { inputs: { configSnipeStages: 3 } })
+s2('s2-snipe-not-enough', 'mir', [g(['Snipe', 'Ice Shot'], { active: 2 })], ['T:"Not enough Snipe stages to trigger this skill"'])
+s2('s2-manaforged', 'mir', [g(['Tornado Shot', 'Manaforged Arrows']), g(['Rain of Arrows'])], ['T:@1386'])
+s2('s2-battlemage', 'gen', [g(["Battlemage's Cry", 'Arc'], { active: 2 }), g(['Double Strike'])], ["T:grantedEffect.name ~= \"Battlemage's Cry\""])
+s2('s2-kitava', 'occ', [g(['Arc'], { slot: 'Helmet' }), g(['Fireball'])], ['T:cachedManaCost or 0) >= requiredManaCost'], { gear: { Helmet: ITEM('Zealot Helmet', '50% chance to Trigger Socketed Spells when you Spend at least 0 Mana on an Upfront Cost to Use or Trigger a Skill, with a 0.1 second Cooldown') } })
+s2('s2-kitava-100', 'occ', [g(['Arc'], { slot: 'Helmet' }), g(['Fireball'])], ['T:"KitavaRequiredManaCost"'], { gear: { Helmet: ITEM('Zealot Helmet', '50% chance to Trigger Socketed Spells when you Spend at least 100 Mana on an Upfront Cost to Use or Trigger a Skill, with a 0.1 second Cooldown') } })
+s2('s2-focus', 'occ', [g(['Arc'], { slot: 'Helmet' })], ['T:local icdrFocus = calcLib.mod'], { gear: { Helmet: ITEM('Zealot Helmet', 'Trigger Socketed Spells when you Focus, with a 0.25 second Cooldown') } })
+s2('s2-shattershard', 'occ', [g(['Arc'])], ['T:"Shattershard uses duration as pseudo cooldown"'], { main: 2, gear: { 'Weapon 2': 'Rarity: UNIQUE\nShattershard\nCrimson Round Shield\nImplicits: 0\nTrigger Level 20 Shield Shatter when you Block' } })
+s2('s2-trigger-craft', 'occ', [g(['Arc'], { slot: 'Helmet' }), g(['Fireball'])], ['T:t_insert(triggeredSkills, packageSkillDataForSimulation(skill, env))'], { gear: { Helmet: ITEM('Zealot Helmet', 'Trigger a Socketed Spell when you Use a Skill, with a 8 second Cooldown') } })
+s2('s2-automation', 'occ', [g(['Automation', 'Arc'], { active: 2 })], ['T:grantedEffect.name == "Automation"'])
+s2('s2-autoexertion', 'gen', [g(['Autoexertion', 'Intimidating Cry'], { active: 2 })], ['T:grantedEffect.name == "Autoexertion"'])
+s2('s2-combust', 'gen', [g(['Infernal Cry'], { active: 2 }), g(['Double Strike'])], ['T:output.InfernalUpTimeRatio'])
+s2('s2-prismatic-burst', 'gen', [g(['Double Strike', 'Prismatic Burst'], { active: 2 })], ['T:@1361'])
+s2('s2-voidstorm', 'mir', [g(['Rain of Arrows', 'Voidstorm'], { active: 2 })], ['T:@1364'])
+s2('s2-shockwave', 'cos', [g(['Double Strike', 'Shockwave'], { active: 2 })], ['T:@1367'], { gear: CLUB })
+s2('s2-void-shockwave', 'cos', [g(['Double Strike', 'Void Shockwave'], { active: 2 })], ['T:@1370'], { gear: CLUB })
+s2('s2-fissure', 'cos', [g(['Ground Slam', 'Fissure'], { active: 2 })], ['T:@1278'], { gear: CLUB })
+s2('s2-call-the-pyre', 'gen', [g(['Double Strike', 'Pyre'], { active: 2 })], ['T:@1377'], { inputs: { conditionEnemyIgnited: true } })
+s2('s2-mark-on-hit', 'mir', [g(['Tornado Shot', 'Mark On Hit', "Sniper's Mark"], { active: 2 })], ['T:@1281'])
+s2('s2-cast-on-ward-break', 'occ', [g(['Cast on Ward Break', 'Arc'])], ['T:@1201'])
+s2('s2-intuitive-link', 'occ', [g(['Intuitive Link', 'Arc'], { active: 2 })], ['T:grantedEffect.name == "Intuitive Link" then'])
+s2('s2-tempest-shield', 'occ', [g(['Tempest Shield'])], ['T:@1296'])
+const DLINK: Partial<Scenario> = { mods: ['Link Skills can target Damageable Minions'], inputs: { linkedToMinion: true } }
+// a minion skill under a mirage: General's Cry copies Dominating Blow (copyActiveSkill of a skill with a minion, CalcActiveSkill.lua:185-190); + Destructive Link
+s2('s2-generals-cry-dominating-blow', 'gen', [g(["General's Cry", 'Dominating Blow'])], ['O:breakdown.WarcryEffectMod = {'])
+s2('s2-generals-cry-dominating-blow-main', 'gen', [g(["General's Cry", 'Dominating Blow'], { active: 2 })], ['M:local mainSkillOutputCache = GlobalCache.cachedData[env.mode][uuid].Env.player.output'])
+s2('s2-tawhoa-dominating-blow', 'gen', [g(['@SummonMirageChieftain']), g(['Dominating Blow'])], ['M:local skillTypeMatch = (skill.skillTypes[SkillType.Slam]', 'M:local newSkill, newEnv = calcs.copyActiveSkill(env, "CALCULATOR", mirageSkill)'])
+s2('s2-saviour-dominating-blow', 'ds', [g(['Dominating Blow'])], ['M:SaviourMirageWarriorMaxCount', 'M:local newSkill, newEnv = calcs.copyActiveSkill(env, "CALCULATOR", mirageSkill)'])
+// ... + Destructive Link: the minion reads `actor.parent.output.MainHand` (CalcOffence.lua:3079) after the mirage handed its output over
+// (CalcMirages.lua:157 The Saviour) / after General's Cry's nested run
+s2('s2-saviour-dominating-blow-dlink', 'ds', [g(['Dominating Blow']), g(['Destructive Link'])], ['M:env.player.output = newEnv.player.output', 'O:actor.parent.output.MainHand and actor.parent.output.MainHand.CritChance'], DLINK)
+s2('s2-generals-cry-dominating-blow-main-dlink', 'gen', [g(["General's Cry", 'Dominating Blow'], { active: 2 }), g(['Destructive Link'])], ['O:actor.parent.output.MainHand and actor.parent.output.MainHand.CritChance'], DLINK)
+s2('s2-dominating-blow-destructive-link', 'gen', [g(['Dominating Blow']), g(['Destructive Link'])], ['O:actor.parent.output.MainHand and actor.parent.output.MainHand.CritChance'], DLINK)
+s2('s2-generals-cry-dominating-blow-dlink', 'gen', [g(["General's Cry", 'Dominating Blow']), g(['Destructive Link'])], ['O:actor.parent.output.MainHand and actor.parent.output.MainHand.CritChance'], DLINK)
+// R8.5b breakdown branches without variants: KineticFusillade's sequential projectiles (damagePerProjectile with ProjectileCount > 1, act_int.lua:11021)
+s2('s2-kinetic-fusillade-projectiles', 'occ', [g(['@KineticFusillade'])], ['F:skills.KineticFusillade.preDamageFunc'], { mods: ['Skills fire 2 additional Projectiles'] })
 
 
 if (process.argv[2] === 'coverage') await coverage()

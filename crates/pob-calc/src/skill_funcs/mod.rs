@@ -190,9 +190,15 @@ pub(crate) static SKILL_FUNCS: [SkillFuncEntry; 134] = [
     e("skills.WintertideBrand.preDamageFunc", "act_int.lua", 21107, 21131, "a78ef7b6cb1c7bef2be331229a14f7fd2121b407f0f0e1b3c64454d8c1723e35", Port(f::wintertide_brand)),
 ];
 
+/// Hooks that are another skill's function taken by reference (no closure of their own, so `data/closures.json` has no entry for them):
+/// act_dex.lua:7325 `preDamageFunc = skills.ExplosiveTrap.preDamageFunc` in `skills["ExplosiveTrapAltX"]` (R7-synth-2: the AltX
+/// scenarios panicked here before). Checked by `hook_aliases_cover_every_hook` (tests/offence_synth.rs) against `data/skills.json` hooks.
+pub const HOOK_ALIASES: [(&str, &str); 1] = [("skills.ExplosiveTrapAltX.preDamageFunc", "skills.ExplosiveTrap.preDamageFunc")];
+
 /// `activeSkill.activeEffect.grantedEffect[hook](activeSkill, output, breakdown)` for the effect `id`.
 pub(crate) fn call(off: &mut Off<'_>, id: &str, hook: &str) {
-    let path = format!("skills.{id}.{hook}");
+    let own = format!("skills.{id}.{hook}");
+    let path = HOOK_ALIASES.iter().find(|(a, _)| *a == own).map_or(own.as_str(), |(_, to)| to);
     let Some(en) = SKILL_FUNCS.iter().find(|e| e.path == path) else {
         panic!("Data/Skills: {path} is a hook of the granted effect but not in data/closures.json");
     };

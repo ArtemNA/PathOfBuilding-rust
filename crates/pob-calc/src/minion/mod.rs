@@ -20,6 +20,7 @@ use pob_mods::{Actor, ActorRef, Mod, ModCfg, ModStore, ModType, StoreRef, Value}
 use crate::active_skill::ActiveSkill;
 use crate::env::{CalcActor, Env};
 use crate::setup::{n, new_mod, ok, s, tag};
+use crate::skills::SkillsState;
 
 const CP: &str = "Modules/CalcPerform.lua";
 
@@ -218,7 +219,7 @@ pub(crate) fn init_minion_mod_db(env: &mut Env, i: usize, aegis_item: Option<Rc<
     let mod_db = env.mod_db.clone();
     let (minion, extra, sd_bow, sd_main_hand) = {
         let st = env.skills.as_ref().expect("skills on");
-        let sk = &st.active_skill_list[i];
+        let sk = st.skill(i);
         let m = sk
             .minion
             .as_deref()
@@ -541,7 +542,7 @@ pub(crate) fn init_minion_mod_db(env: &mut Env, i: usize, aegis_item: Option<Rc<
         sync_item_list(&a);
     }
     let st = env.skills.as_mut().expect("skills on");
-    if let Some(m) = st.active_skill_list[i].minion.as_deref_mut() {
+    if let Some(m) = st.skill_mut(i).minion.as_deref_mut() {
         m.item_list = item_list;
     }
 }
@@ -586,12 +587,30 @@ fn config_or(env: &Env, k: &str) -> Value {
 /// minion.mainSkill.activeEffect.grantedEffect.name`. `skill_list` is the skill's perform-time `skillModList` (:1296).
 #[allow(clippy::too_many_lines)]
 pub(crate) fn build_minion(env: &mut Env, i: usize, skill_list: &StoreRef, unimplemented: &mut Vec<String>) {
-    let mut minion = {
-        let st = env.skills.as_mut().expect("skills on");
-        *st.active_skill_list[i].minion.take().expect("activeSkill.minion")
-    };
+    let mut st = env.skills.take().expect("skills on");
+    build_minion_in(env, env, &mut st, i, skill_list, unimplemented);
+    env.skills = Some(st);
+}
+
+/// CalcActiveSkill.lua:185-190 (`calcs.copyActiveSkill` of a skill with a minion, R7-synth-2): the same as [`build_minion`] for the copy
+/// `newSkill` -- the detached main skill of `new_env` ([`crate::skills::DETACHED`]) -- with `calcs.createMinionSkills(env, newSkill)` run
+/// against the CALLER's `env` (:188: its mode, its `buildActiveSkillModList` inputs), while the minion actor's `parent` / `enemy` are
+/// `new_env`'s (`minion.parent = env.player` of `buildActiveSkillModList(newEnv, newSkill)`, :183 / :710-716). `skill_list` is the copy's
+/// `skillModList` (:184). The MAIN write-back of `skillMinionSkill` (:925-927) lands in `new_env`'s copy of the skills tab (Lua: the gem
+/// instance both share; the caller's own perform already wrote the same clamp for it).
+pub(crate) fn build_minion_detached(env: &Env, new_env: &mut Env, skill_list: &StoreRef, unimplemented: &mut Vec<String>) {
+    let mut st = new_env.skills.take().expect("skills on");
+    build_minion_in(env, new_env, &mut st, crate::skills::DETACHED, skill_list, unimplemented);
+    new_env.skills = Some(st);
+}
+
+/// The body of [`build_minion`]: `env` gives what `createMinionSkills(env, ...)` reads, `actor_env` the minion actor's `parent` / `enemy`,
+/// `st` holds the skill `i` (taken out of its env for the call).
+#[allow(clippy::too_many_lines)]
+fn build_minion_in(env: &Env, actor_env: &Env, st: &mut SkillsState, i: usize, skill_list: &StoreRef, unimplemented: &mut Vec<String>) {
+    let mut minion = *st.skill_mut(i).minion.take().expect("activeSkill.minion");
     // :1297-1298
-    let actor = new_minion_actor(env, &minion);
+    let actor = new_minion_actor(actor_env, &minion);
     {
         let mut a = actor.borrow_mut();
         a.item_list = minion.item_list.clone();
@@ -600,9 +619,8 @@ pub(crate) fn build_minion(env: &mut Env, i: usize, skill_list: &StoreRef, unimp
     minion.actor = Some(actor.clone());
     let minion_db = actor.borrow().mod_db.clone();
 
-    let st = env.skills.as_ref().expect("skills on");
     let sk = st.skills.clone();
-    let parent = &st.active_skill_list[i];
+    let parent = st.skill(i);
     let parent_cfg = crate::perform::skill_cfg_of(st, parent);
     // :883-895 the skill ids: the data's (those in `data.skills`), then `ExtraMinionSkill`
     let mut ids: Vec<String> = Vec::new();
@@ -684,7 +702,7 @@ pub(crate) fn build_minion(env: &mut Env, i: usize, skill_list: &StoreRef, unimp
     let (w1t, w1a) = view_of(&minion.weapon_data1);
     let (w2t, w2a) = view_of(&minion.weapon_data2);
     // a minion skill has no `srcInstance` / `socketGroup`: the builder never touches the skills tab for it
-    let tab = &mut env.skills.as_mut().expect("skills on").tab;
+    let tab = &mut st.tab;
     let mut list = Vec::new();
     for id in &ids {
         let ge_idx = sk.index[id.as_str()];
@@ -767,7 +785,6 @@ pub(crate) fn build_minion(env: &mut Env, i: usize, skill_list: &StoreRef, unimp
     // :919-929 the minion's main skill (MAIN writes the choice back to the gem)
     let n_skills = list.len() as f64;
     let mode = env.mode;
-    let st = env.skills.as_mut().expect("skills on");
     let src = parent_src.unwrap_or_else(|| panic!("Modules/CalcActiveSkill.lua:921: attempt to index field 'srcInstance' (a nil value)"));
     let gi = &mut st.tab.socket_group_list_mut()[src.0].gem_list[src.1];
     let skill_index = if mode == "CALCS" {
@@ -787,7 +804,7 @@ pub(crate) fn build_minion(env: &mut Env, i: usize, skill_list: &StoreRef, unimp
         let m = minion.main();
         sk.effects[m.active_effect.borrow().granted_effect].name.clone()
     };
-    let parent = &mut st.active_skill_list[i];
+    let parent = st.skill_mut(i);
     parent.skill_part_name = Some(main_name);
     parent.minion = Some(Box::new(minion));
 }
