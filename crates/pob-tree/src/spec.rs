@@ -584,6 +584,56 @@ impl PassiveSpec {
         }
     }
 
+    /// `PassiveSpec:AllocNode(node)` (:781-818) on spec node `i` (the editing API, R8.8): every node of `node.path` (or the node
+    /// alone with Intuitive Leap-likes affecting it), the multiple-choice siblings dropped, then `BuildAllDependsAndPaths`. A cluster
+    /// jewel socket on the path takes the `BuildClusterJewelGraphs` branch (:813-814) -- an explicit error here.
+    pub fn alloc_node(&mut self, i: usize) -> Result<(), TreeError> {
+        // :782-785 no path: nothing happens
+        let Some(path) = self.nodes[i].path.clone() else { return Ok(()) };
+        let mut rebuild_cluster = false;
+        if !self.nodes[i].intuitive_leap_likes_affecting.is_empty() {
+            rebuild_cluster = !self.nodes[i].alloc && self.nodes[i].tree_node().expansion_jewel.is_some();
+            self.alloc(i);
+        } else {
+            for p in path {
+                rebuild_cluster = rebuild_cluster || (!self.nodes[p].alloc && self.nodes[p].tree_node().expansion_jewel.is_some());
+                self.alloc(p);
+            }
+        }
+        // :802-811
+        if self.nodes[i].tree_node().is_multiple_choice_option
+            && let Some(&parent) = self.nodes[i].linked.first()
+        {
+            for opt in self.nodes[parent].linked.clone() {
+                if opt != i && self.nodes[opt].tree_node().is_multiple_choice_option && self.nodes[opt].alloc {
+                    self.dealloc(opt);
+                }
+            }
+        }
+        if rebuild_cluster {
+            return Err(TreeError(
+                "unimplemented: Classes/PassiveSpec.lua:813-814 AllocNode over a cluster jewel socket (BuildClusterJewelGraphs)".into(),
+            ));
+        }
+        self.build_all_depends_and_paths()
+    }
+
+    /// `PassiveSpec:DeallocNode(node)` (:830-844) on spec node `i`: the node and everything that depends on it, then
+    /// `BuildAllDependsAndPaths` (a cluster jewel socket among them -- :839-840 -- is an explicit error).
+    pub fn dealloc_node(&mut self, i: usize) -> Result<(), TreeError> {
+        let mut rebuild_cluster = false;
+        for d in self.nodes[i].depends.clone() {
+            rebuild_cluster = rebuild_cluster || (self.nodes[d].alloc && self.nodes[d].tree_node().expansion_jewel.is_some());
+            self.dealloc_single_node(d);
+        }
+        if rebuild_cluster {
+            return Err(TreeError(
+                "unimplemented: Classes/PassiveSpec.lua:839-840 DeallocNode of a cluster jewel socket (BuildClusterJewelGraphs)".into(),
+            ));
+        }
+        self.build_all_depends_and_paths()
+    }
+
     fn alloc_nodes_in_order(&self) -> Vec<usize> {
         let mut list: Vec<usize> = self.alloc_nodes.values().copied().collect();
         // Subgraph nodes follow the Init nodes in `nodes`, so the index order is not the id order.

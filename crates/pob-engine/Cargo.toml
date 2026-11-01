@@ -12,8 +12,11 @@ pob-calc = { path = "../pob-calc" }
 pob-lua = { path = "../pob-lua" }
 pob-mods = { path = "../pob-mods" }
 pob-data.workspace = true
+pob-build.workspace = true
+pob-tree.workspace = true
+pob-items.workspace = true
 indexmap.workspace = true
+serde_json.workspace = true
 
 [dev-dependencies]
 pob-golden.workspace = true
-serde_json.workspace = true

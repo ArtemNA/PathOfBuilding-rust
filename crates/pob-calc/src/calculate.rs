@@ -154,16 +154,50 @@ pub fn calculate_with(xml: &str, opts: CalculateOptions) -> Result<CalculateResu
     })
 }
 
+/// `calcsTab:BuildOutput()` (CalcsTab.lua:441-474) over an already loaded model, for the engine API (R8.8; the runs are derived from the
+/// model alone): `buildOutput(MAIN)` + `EstimatePlayerProgress` as [`calculate_with`], then `buildOutput(CALCS)` in the same session -- its
+/// writes to the shared tab state (`calcsInput.skill_number`, `mainActiveSkillCalcs`, the gems' `*Calcs` fields) are what `SaveDB` reads.
+pub fn calculate_model(model: Rc<pob_build::BuildModel>, opts: CalculateOptions) -> Result<(CalculateResult, CalcRun), CalcError> {
+    let (res, calcs) = calculate_session_modes(model, CalculateOptions { skills: true, ..opts }, 0.0, true)?;
+    Ok((res, calcs.expect("the CALCS run was requested")))
+}
+
 /// [`calculate_with`] with the skill phase: `CalcSession::build_output(MAIN)` + `EstimatePlayerProgress`.
 fn calculate_session(model: Rc<pob_build::BuildModel>, opts: CalculateOptions, load_ms: f64) -> Result<CalculateResult, CalcError> {
+    Ok(calculate_session_modes(model, opts, load_ms, false)?.0)
+}
+
+fn calculate_session_modes(
+    model: Rc<pob_build::BuildModel>,
+    opts: CalculateOptions,
+    load_ms: f64,
+    with_calcs: bool,
+) -> Result<(CalculateResult, Option<CalcRun>), CalcError> {
     let t1 = Instant::now();
     let session = CalcSession::new(model, opts);
     let out = session.build_output(CalcMode::Main)?;
+    let calcs = if with_calcs {
+        Some(session.build_output(CalcMode::Calcs)?)
+    } else {
+        None
+    };
     let build_ms = ms(t1);
     let log = session.log().clone();
     // The cache shares the top run: dropping the session leaves the caller its only owner.
     drop(out.full_dps);
+    let calcs = calcs.map(|c| {
+        drop(c.full_dps);
+        c.run
+    });
     drop(session);
+    let calcs = match calcs {
+        Some(r) => Some(
+            Rc::try_unwrap(r)
+                .map_err(|_| CalcError("calculate: the CALCS run is still shared after the session ended".into()))?
+                .into_inner(),
+        ),
+        None => None,
+    };
     let CalcRun { mut env, state, .. } = Rc::try_unwrap(out.run)
         .map_err(|_| CalcError("calculate: the top run is still shared after the session ended".into()))?
         .into_inner();
@@ -177,22 +211,25 @@ fn calculate_session(model: Rc<pob_build::BuildModel>, opts: CalculateOptions, l
     let meta = meta_of(&env);
     let mut unimplemented = env.spec.unimplemented.clone();
     unimplemented.extend(env.unimplemented.iter().cloned());
-    Ok(CalculateResult {
-        stats,
-        meta,
-        unimplemented,
-        timings: Timings {
-            load_ms,
-            init_env_ms,
-            perform_ms: build_ms - init_env_ms,
-            estimate_ms,
+    Ok((
+        CalculateResult {
+            stats,
+            meta,
+            unimplemented,
+            timings: Timings {
+                load_ms,
+                init_env_ms,
+                perform_ms: build_ms - init_env_ms,
+                estimate_ms,
+            },
+            env,
+            perform: state,
+            character_level,
+            config_rebuilt,
+            session_log: Some(log),
         },
-        env,
-        perform: state,
-        character_level,
-        config_rebuilt,
-        session_log: Some(log),
-    })
+        calcs,
+    ))
 }
 
 // --- Build.lua:729-769 `acts` / `actExtra` --------------------------------------------------------------------------

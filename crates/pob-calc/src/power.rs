@@ -863,58 +863,68 @@ pub struct ReportEntry {
     pub path_dist: ReportDist,
 }
 
-/// Common.lua:803-829 `formatNumSep(str)` (ASCII separators).
+fn gsub_str(s: &[u8], pat: &str, repl: &[u8]) -> Vec<u8> {
+    pob_lua::gsub(s, pat.as_bytes(), pob_lua::Repl::Str(repl), None).expect("pattern").0
+}
+
+fn lua_match<'s>(s: &'s [u8], pat: &str) -> Option<&'s [u8]> {
+    let caps = pob_lua::match_(s, pat.as_bytes(), None).expect("pattern")?;
+    caps.get(0)?.bytes(s)
+}
+
+/// `utf8.reverse`: the integer part is ASCII digits and separator bytes; reversed by UTF-8 character.
+fn utf8_reverse(s: &[u8]) -> Vec<u8> {
+    match std::str::from_utf8(s) {
+        Ok(t) => t.chars().rev().collect::<String>().into_bytes(),
+        Err(_) => s.iter().rev().copied().collect(),
+    }
+}
+
+/// Common.lua:803-829 `formatNumSep(str)` -- the single implementation (the sidebar, the Calcs tab, node power and the offence strings;
+/// R8.8 merged the copy `pob-engine` had). Separators may be any UTF-8 text (`utf8.reverse` / `utf8.sub`).
 pub fn format_num_sep(s: &str, nf: &NumberFormat) -> String {
-    let pat = b"(%^?x?%x?%x?%x?%x?%x?%x?-?%d+%.?%d+)";
     let mut f = |subject: &[u8], caps: &pob_lua::Captures| -> Option<Vec<u8>> {
-        let m = caps.get(0).and_then(|c| c.bytes(subject)).unwrap_or(subject).to_vec();
-        let first = |p: &[u8]| -> Option<Vec<u8>> {
-            pob_lua::match_(&m, p, None)
-                .ok()
-                .flatten()
-                .and_then(|c| c.get(0).and_then(|x| x.bytes(&m)).map(<[u8]>::to_vec))
-        };
-        let colour = first(b"(^x%x%x%x%x%x%x)").or_else(|| first(b"(%^%d)")).unwrap_or_default();
-        let s1 = pob_lua::gsub(&m, b"(^x%x%x%x%x%x%x)", pob_lua::Repl::Str(b""), None)
-            .expect("pattern")
-            .0;
-        let st = pob_lua::gsub(&s1, b"(%^%d)", pob_lua::Repl::Str(b""), None).expect("pattern").0;
-        let has_caret = pob_lua::find(&m, b"%^", None, false).ok().flatten().is_some();
-        if st.is_empty() || (colour.is_empty() && has_caret) {
-            return Some(m);
+        let m = caps.get(0).and_then(|c| c.bytes(subject)).unwrap_or(subject);
+        let colour: Vec<u8> = lua_match(m, "(^x%x%x%x%x%x%x)")
+            .or_else(|| lua_match(m, "(%^%d)"))
+            .map_or_else(Vec::new, <[u8]>::to_vec);
+        let stripped = gsub_str(&gsub_str(m, "(^x%x%x%x%x%x%x)", b""), "(%^%d)", b"");
+        if stripped.is_empty() || (colour.is_empty() && lua_match(m, "%^").is_some()) {
+            return Some(m.to_vec());
         }
-        let (_, _, c) = pob_lua::find(&st, b"(-?)(%d+)(%.?%d*)", None, false)
-            .expect("pattern")
-            .expect("a number");
-        let part = |k: usize| c.get(k).and_then(|x| x.bytes(&st)).unwrap_or_default().to_vec();
-        let (minus, integer, fraction) = (part(0), part(1), part(2));
-        let rev: Vec<u8> = integer.iter().rev().copied().collect();
-        let sep: &[u8] = if nf.show_thousands_separators {
-            nf.thousands_separator.as_bytes()
+        let (_, _, c) = pob_lua::find(&stripped, b"(-?)(%d+)(%.?%d*)", None, false).expect("pattern")?;
+        let part = |i: usize| c.get(i).and_then(|x| x.bytes(&stripped)).unwrap_or(b"").to_vec();
+        let (minus, mut integer, fraction) = (part(0), part(1), part(2));
+        if nf.show_thousands_separators {
+            let rev_sep = utf8_reverse(nf.thousands_separator.as_bytes());
+            let mut repl = b"%1".to_vec();
+            repl.extend_from_slice(&rev_sep);
+            integer = utf8_reverse(&gsub_str(&utf8_reverse(&integer), "(%d%d%d)", &repl));
+            if !nf.thousands_separator.is_empty() && integer.starts_with(&rev_sep) {
+                // `utf8.sub(integer, 2)`: drop the first character
+                let first = std::str::from_utf8(&integer)
+                    .ok()
+                    .and_then(|t| t.chars().next())
+                    .map_or(1, char::len_utf8);
+                integer.drain(..first);
+            }
         } else {
-            b""
-        };
-        let rev_sep: Vec<u8> = sep.iter().rev().copied().collect();
-        let mut repl = b"%1".to_vec();
-        repl.extend_from_slice(&rev_sep);
-        let grouped = pob_lua::gsub(&rev, b"(%d%d%d)", pob_lua::Repl::Str(&repl), None)
-            .expect("pattern")
-            .0;
-        let mut integer: Vec<u8> = grouped.into_iter().rev().collect();
-        if nf.show_thousands_separators && !sep.is_empty() && integer.starts_with(&rev_sep) {
-            integer.drain(..rev_sep.len());
+            integer = utf8_reverse(&gsub_str(&utf8_reverse(&integer), "(%d%d%d)", b"%1"));
         }
-        let frac = pob_lua::gsub(&fraction, b"%.", pob_lua::Repl::Str(nf.decimal_separator.as_bytes()), None)
-            .expect("pattern")
-            .0;
         let mut out = colour;
-        out.extend(minus);
-        out.extend(integer);
-        out.extend(frac);
+        out.extend_from_slice(&minus);
+        out.extend_from_slice(&integer);
+        out.extend_from_slice(&gsub_str(&fraction, "%.", nf.decimal_separator.as_bytes()));
         Some(out)
     };
-    let (b, _) = pob_lua::gsub(s.as_bytes(), pat, pob_lua::Repl::Fn(&mut f), None).expect("formatNumSep pattern");
-    String::from_utf8(b).expect("ASCII")
+    let (out, _) = pob_lua::gsub(
+        s.as_bytes(),
+        b"(%^?x?%x?%x?%x?%x?%x?%x?-?%d+%.?%d+)",
+        pob_lua::Repl::Fn(&mut f),
+        None,
+    )
+    .expect("formatNumSep pattern");
+    String::from_utf8(out).expect("formatNumSep keeps UTF-8")
 }
 
 /// TreeTab.lua:1061-1168 `BuildPowerReportList(currentStat)`: `granted` = `mainEnv.grantedPassives`. The final `table.sort` is unstable

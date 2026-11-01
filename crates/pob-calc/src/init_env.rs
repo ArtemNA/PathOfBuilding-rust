@@ -222,7 +222,7 @@ fn build_ordered_slots(spec: &PassiveSpec, set: &pob_build::ItemSetModel) -> Vec
 
 /// `ItemsTab:IsItemValidForSlot(item, slotName)` (ItemsTab.lua:2560-2607) for `orderedSlots`; `sel(name)` is the active item
 /// set's `selItemId` of another slot (`itemSet["Weapon 1"].selItemId`). A `nil` result is `false`.
-fn is_item_valid_for_slot(item: &Item, slot_name: &str, spec: &PassiveSpec, items: &ParsedItems, sel: impl Fn(&str) -> f64) -> bool {
+pub fn is_item_valid_for_slot(item: &Item, slot_name: &str, spec: &PassiveSpec, items: &ParsedItems, sel: impl Fn(&str) -> f64) -> bool {
     let item_ty = item.ty.as_deref();
     let base = item.base.expect("itemsTab.items hold resolved bases (ItemsTab.lua:1264)");
     // :2562 `slotName:match("^([%a ]+) (%d+)$")`

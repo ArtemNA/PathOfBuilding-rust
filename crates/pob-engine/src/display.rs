@@ -46,58 +46,21 @@ fn gsub_str(s: &[u8], pat: &str, repl: &[u8]) -> Vec<u8> {
     pob_lua::gsub(s, pat.as_bytes(), Repl::Str(repl), None).expect("pattern").0
 }
 
-fn lua_match<'s>(s: &'s [u8], pat: &str) -> Option<&'s [u8]> {
-    let caps = pob_lua::match_(s, pat.as_bytes(), None).expect("pattern")?;
-    caps.get(0)?.bytes(s)
-}
-
-fn utf8_reverse(s: &[u8]) -> Vec<u8> {
-    // the integer part is ASCII digits and separator bytes; reverse by UTF-8 character as `utf8.reverse` does
-    match std::str::from_utf8(s) {
-        Ok(t) => t.chars().rev().collect::<String>().into_bytes(),
-        Err(_) => s.iter().rev().copied().collect(),
+impl DisplaySettings {
+    /// The separator settings `formatNumSep` reads.
+    pub fn number_format(&self) -> pob_calc::power::NumberFormat {
+        pob_calc::power::NumberFormat {
+            show_thousands_separators: self.show_thousands_separators,
+            thousands_separator: self.thousands_separator.clone(),
+            decimal_separator: self.decimal_separator.clone(),
+        }
     }
 }
 
-/// Common.lua:803-829 `formatNumSep(str)`.
+/// Common.lua:803-829 `formatNumSep(str)` -- the one implementation is [`pob_calc::power::format_num_sep`] (node power and the offence
+/// strings use it too).
 pub fn format_num_sep(s: &str, st: &DisplaySettings) -> String {
-    let mut f = |subject: &[u8], caps: &pob_lua::Captures| -> Option<Vec<u8>> {
-        let m = caps.get(0).and_then(|c| c.bytes(subject)).unwrap_or(subject);
-        let colour: Vec<u8> = lua_match(m, "(^x%x%x%x%x%x%x)")
-            .or_else(|| lua_match(m, "(%^%d)"))
-            .map_or_else(Vec::new, <[u8]>::to_vec);
-        let stripped = gsub_str(&gsub_str(m, "(^x%x%x%x%x%x%x)", b""), "(%^%d)", b"");
-        if stripped.is_empty() || (colour.is_empty() && lua_match(m, "%^").is_some()) {
-            return Some(m.to_vec());
-        }
-        let (_, _, c) = pob_lua::find(&stripped, b"(-?)(%d+)(%.?%d*)", None, false).expect("pattern")?;
-        let part = |i: usize| c.get(i).and_then(|x| x.bytes(&stripped)).unwrap_or(b"").to_vec();
-        let (minus, mut integer, fraction) = (part(0), part(1), part(2));
-        if st.show_thousands_separators {
-            let rev_sep = utf8_reverse(st.thousands_separator.as_bytes());
-            let mut repl = b"%1".to_vec();
-            repl.extend_from_slice(&rev_sep);
-            integer = utf8_reverse(&gsub_str(&utf8_reverse(&integer), "(%d%d%d)", &repl));
-            if !st.thousands_separator.is_empty() && integer.starts_with(&rev_sep) {
-                // `utf8.sub(integer, 2)`: drop the first character
-                let first = std::str::from_utf8(&integer)
-                    .ok()
-                    .and_then(|t| t.chars().next())
-                    .map_or(1, char::len_utf8);
-                integer.drain(..first);
-            }
-        } else {
-            integer = utf8_reverse(&gsub_str(&utf8_reverse(&integer), "(%d%d%d)", b"%1"));
-        }
-        let mut out = colour;
-        out.extend_from_slice(&minus);
-        out.extend_from_slice(&integer);
-        out.extend_from_slice(&gsub_str(&fraction, "%.", st.decimal_separator.as_bytes()));
-        Some(out)
-    };
-    let (out, _) =
-        pob_lua::gsub(s.as_bytes(), b"(%^?x?%x?%x?%x?%x?%x?%x?-?%d+%.?%d+)", Repl::Fn(&mut f), None).expect("formatNumSep pattern");
-    String::from_utf8(out).expect("formatNumSep keeps UTF-8")
+    pob_calc::power::format_num_sep(s, &st.number_format())
 }
 
 /// `_SimpleGraphic.def.lua:295-298` `StripEscapes(text)`.

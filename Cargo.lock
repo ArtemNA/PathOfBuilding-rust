@@ -141,11 +141,14 @@ name = "pob-engine"
 version = "0.1.0"
 dependencies = [
  "indexmap",
+ "pob-build",
  "pob-calc",
  "pob-data",
  "pob-golden",
+ "pob-items",
  "pob-lua",
  "pob-mods",
+ "pob-tree",
  "serde_json",
 ]
 
