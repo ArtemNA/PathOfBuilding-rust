@@ -378,8 +378,10 @@ pub(crate) fn env_minion(env: &Env) -> &crate::minion::Minion {
         .as_ref()
         .unwrap_or_else(|| panic!("Modules/CalcPerform.lua: attempt to index field 'minion' (a nil value)"));
     let st = env.skills.as_ref().expect("skills on");
+    // R7-synth-2: also the detached main skill's (a mirage's copy with a minion, CalcActiveSkill.lua:185-190 -> :1316)
     st.active_skill_list
         .iter()
+        .chain(st.detached_main.as_ref().map(|d| &d.skill))
         .filter_map(|sk| sk.minion.as_deref())
         .find(|m| m.actor.as_ref().is_some_and(|a| Rc::ptr_eq(a, actor)))
         .expect("env.minion is the minion of an active skill")

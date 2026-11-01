@@ -47,13 +47,20 @@ const R81_SYNTH = ['fd-gen-melee', 'fd-occ-spells', 'fd-occ-dot', 'fd-occ-trap-m
 // pairs-order dependent, R13), FrozenSweep / FrozenSweepAltX (FN_SKIP: never reached with a plain weapon).
 const FN_SYNTH = ['fn-BallLightning', 'fn-BallLightningAltX', 'fn-BallLightningAltY', 'fn-FlamethrowerTrap', 'fn-FlamethrowerTrapAltX', 'fn-ForbiddenRite',
   'fn-ForbiddenRiteAltX', 'fn-KineticFusillade', 'fn-KineticFusilladeAltX', 'fn-LightningSpireTrap', 'fn-LightningSpireTrapAltX', 'fn-LightningSpireTrapAltY',
-  'fn-LightningTendrilsAltX', 'fn-MoltenStrike', 'fn-MoltenStrikeAltX', 'fn-SeismicTrap', 'fn-SeismicTrapAltX']
+  'fn-LightningTendrilsAltX', 'fn-MoltenStrike', 'fn-MoltenStrikeAltX', 'fn-SeismicTrap', 'fn-SeismicTrapAltX',
+  // R7-synth-2 (export-offence-synth.ts `s2-*`, their parts in the XML): ExplosiveTrap / AltX (the R13 statMap owner changes only mod
+  // sources, none of which the breakdown tables carry -- 0 "Skill:ExplosiveTrap*" strings, the 2 passes agree), KineticFusillade with
+  // ProjectileCount > 1 (KineticFusilladeSequentialBreakdown, act_int.lua:11032-11042)
+  's2-explosive-trap', 's2-explosive-trap-p2', 's2-explosive-trap-p3', 's2-explosive-trap-altx', 's2-explosive-trap-altx-p2', 's2-kinetic-fusillade-projectiles']
 // ... and the skill parts whose breakdown branches part 1 does not reach: the scenario XML with `skillPart="<n>"` on its single <Gem>
 // (SkillsTab.lua:502; tests/breakdown.rs applies the same edit -- `withPart`)
 const FN_PARTS: [string, number][] = [['fn-BallLightning', 2], ['fn-BallLightningAltX', 2], ['fn-FlamethrowerTrap', 3], ['fn-ForbiddenRite', 2], ['fn-KineticFusillade', 2],
   ['fn-KineticFusilladeAltX', 2], ['fn-LightningSpireTrap', 2], ['fn-LightningSpireTrap', 3], ['fn-LightningSpireTrap', 4], ['fn-LightningSpireTrap', 5],
   ['fn-LightningSpireTrap', 6], ['fn-LightningSpireTrapAltX', 5], ['fn-LightningSpireTrapAltY', 6], ['fn-MoltenStrike', 2], ['fn-MoltenStrike', 3],
-  ['fn-MoltenStrikeAltX', 5], ['fn-MoltenStrikeAltX', 6], ['fn-SeismicTrap', 5], ['fn-SeismicTrapAltX', 2], ['fn-SeismicTrapAltX', 3]]
+  ['fn-MoltenStrikeAltX', 5], ['fn-MoltenStrikeAltX', 6], ['fn-SeismicTrap', 5], ['fn-SeismicTrapAltX', 2], ['fn-SeismicTrapAltX', 3],
+  // R7-synth-2: the LightningSpire AltX / AltY parts R8.5b left out (act_int.lua:11982-12020, :12214-12252) and MoltenStrikeAltX part 3 (act_str.lua:8047)
+  ['fn-LightningSpireTrapAltX', 2], ['fn-LightningSpireTrapAltX', 3], ['fn-LightningSpireTrapAltX', 4], ['fn-LightningSpireTrapAltX', 6],
+  ['fn-LightningSpireTrapAltY', 2], ['fn-LightningSpireTrapAltY', 3], ['fn-LightningSpireTrapAltY', 4], ['fn-LightningSpireTrapAltY', 5], ['fn-MoltenStrikeAltX', 3]]
 function withPart(xml: Buffer, part: number): Buffer {
   const s = xml.toString('latin1')
   if (s.split('<Gem ').length !== 2) throw new Error('withPart: the scenario must have exactly one <Gem> -- STOP')

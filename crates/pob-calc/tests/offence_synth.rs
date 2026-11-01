@@ -103,6 +103,8 @@ struct Row {
     extra: usize,
     tables_lua: usize,
     minion_keys: usize,
+    /// R7-synth-2: Rust's `unimplemented` notes (a boundary reached although the output matched).
+    unimplemented: Vec<String>,
     bad: Vec<String>,
 }
 
@@ -146,6 +148,7 @@ fn run_scenario(name: &str) -> Row {
             return row;
         }
     };
+    row.unimplemented.clone_from(&res.unimplemented);
     let rust: BTreeMap<&str, Gv> = res.stats.iter().map(|(k, v)| (k.as_str(), to_golden(v))).collect();
     for (k, l) in &lua {
         row.compared += 1;
@@ -243,15 +246,19 @@ fn offence_synth_matches_luajit() {
             v[5], v[0], v[1], v[2], v[3], v[4]
         );
     }
-    let bad_total: usize = rows.iter().map(|r| r.bad.len()).sum();
+    // R7-synth-2: a scenario pinned at a recorded boundary ([`SYNTH2_BOUNDARY`]) is gated by `synth2_scenarios_match_luajit` (exact count)
+    let at_boundary = |r: &Row| SYNTH2_BOUNDARY.iter().any(|(s, _, _)| *s == r.scenario);
+    let bad_total: usize = rows.iter().filter(|r| !at_boundary(r)).map(|r| r.bad.len()).sum();
+    let bounded: usize = rows.iter().filter(|r| at_boundary(r)).map(|r| r.bad.len()).sum();
     println!("--- every divergence (scenario | key | rust | luajit | class | covers) ---");
-    for r in &rows {
+    for r in rows.iter().filter(|r| !at_boundary(r)) {
         for b in &r.bad {
             println!("{b}");
         }
     }
     println!(
-        "--- {bad_total} divergent (scenario, key) pairs; Lua minion scalar keys in the corpus: {} ---",
+        "--- {bad_total} divergent (scenario, key) pairs (+ {bounded} in the {} scenarios at a recorded boundary); Lua minion scalar keys in the corpus: {} ---",
+        SYNTH2_BOUNDARY.len(),
         rows.iter().map(|r| r.minion_keys).sum::<usize>()
     );
     assert_eq!(
@@ -633,4 +640,165 @@ fn minion_scenarios_match_luajit() {
         (23, 23, 23, 14215, 14215, 0),
         "pinned state of the 23 minion scenarios"
     );
+}
+
+// --- R7-synth-2: the branches R7 / R8.5b left without a LuaJIT check ------------------------------------------------------------------
+
+/// `unimplemented` notes a synth2 scenario may carry beyond its base golden's, with the measured reason: `(scenario, note prefix, why)`.
+const SYNTH2_KNOWN_NOTES: [(&str, &str, &str); 1] = [(
+    "s2-enemy-explode-avg-2types",
+    "Data/Skills/other.lua:6230 skills.EnemyExplode.preDamageFunc: pairs(typeAmountChances)",
+    "R13 (lj-strhash): the fixture holds the LuaJIT run of Rust's insertion order; the other order changes no key (r13.otherOrder)",
+)];
+
+/// A scenario with a minion (`env.minion` set) carries this wording of the golden's own P5 note CalcPerform.lua:3803-3990 (party / buff
+/// export) instead -- not a gap of the scenario.
+const MINION_PATH_P5_NOTE: &str = "CalcPerform.lua:3811-3990 buff export, party export (P5)";
+
+/// The synth2 scenarios that stop at a recorded boundary of the port (not = LuaJIT; pinned so the state cannot drift silently):
+/// `(scenario, every own note's prefix, divergent (scenario, key) pairs)`. Empty since R7-synth-2 ported `copyActiveSkill` of a skill with
+/// a minion (CalcActiveSkill.lua:185-190; before: Tawhoa's Chosen + Dominating Blow 131 divergent pairs, The Saviour + Dominating Blow
+/// = LuaJIT but with the boundary note of its cached run).
+const SYNTH2_BOUNDARY: [(&str, &[&str], usize); 0] = [];
+
+/// The CalcPerform.lua:1488-1489 note (The Saviour's Reflection, perform/skills_loop.rs) names the skill's list index, which an extra
+/// socket group shifts (`s2-saviour-dominating-blow-dlink`: skill 3/4 vs the golden's 2/3) -- compared without it.
+fn note_key(u: &str) -> String {
+    const P: &str = "CalcPerform.lua:1488-1489 activeSkill.infoMessage/infoTrigger of skill ";
+    match u.strip_prefix(P) {
+        Some(rest) => format!("{P}#{}", rest.trim_start_matches(|c: char| c.is_ascii_digit())),
+        None => u.to_owned(),
+    }
+}
+
+/// R7-synth-2 gate (tasks/R7-synth-2.md): the `synth2` scenarios -- skill functions FN_SKIP kept out (AvengingFlame, ExplosiveTrap / AltX,
+/// FrozenSweep / AltX, MinionInstability, EnemyExplode "Average Of All Sources"), the `configTable` entries of CalcTriggers.lua no scenario
+/// executed, minion skills under mirages (General's Cry, Tawhoa's Chosen, The Saviour with Dominating Blow), Destructive Link on a minion,
+/// KineticFusillade's sequential projectiles -- against LuaJIT: EVERY scalar key of the player's output and of `Minion.*` bit for bit, no
+/// missing / extra key, and no `unimplemented` note in Rust beyond the base golden's (a boundary reached on the way is a gap even if the
+/// output happened to match) except [`SYNTH2_KNOWN_NOTES`]; [`SYNTH2_BOUNDARY`] scenarios are pinned at their boundary. R13 scenarios
+/// (`r13` in the fixture): the output is the LuaJIT run that took Rust's order (MINEFIELD-RUST R13); `r13.otherOrder` lists what the other
+/// order changes (printed).
+#[test]
+fn synth2_scenarios_match_luajit() {
+    let (mut n, mut equal, mut keys, mut minion_keys) = (0, 0, 0, 0);
+    let mut bad = Vec::new();
+    let mut bounded = Vec::new();
+    let mut baselines: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    for name in scenario_names() {
+        let fx = fixture(&name);
+        if fx["category"].as_str() != Some("synth2") {
+            continue;
+        }
+        n += 1;
+        let (r, mk, mbad) = if fx["minion"].is_object() {
+            let (r, mk, _equal, missing, mut mbad) = minion_scenario(&name);
+            if missing > 0 {
+                mbad.push(format!("{name} | Minion | {missing} keys missing in Rust"));
+            }
+            (r, mk, mbad)
+        } else {
+            (run_scenario(&name), 0, Vec::new())
+        };
+        let r13 = fx
+            .get("r13")
+            .filter(|v| v.is_object())
+            .map(|v| format!("; R13 order {} other {}", v["order"], v["otherOrder"]));
+        // the notes the base golden build itself carries (the P5 / UI-only gaps of every build) are not this scenario's
+        let base = fx["build"].as_str().expect("build");
+        let base_notes = baselines
+            .entry(base.to_owned())
+            .or_insert_with(|| {
+                let g = pob_golden::registry::find_golden(base).expect("golden");
+                let opts = CalculateOptions {
+                    parse_mode: ParseMode::Full,
+                    skills: true,
+                    ..CalculateOptions::default()
+                };
+                calculate_file(g.xml_path(), opts).expect("golden").unimplemented
+            })
+            .clone();
+        let own: Vec<String> = r
+            .unimplemented
+            .iter()
+            .filter(|u| {
+                !base_notes.iter().any(|b| note_key(b) == note_key(u))
+                    && !(fx["minion"].is_object() && u.as_str() == MINION_PATH_P5_NOTE)
+                    && !SYNTH2_KNOWN_NOTES.iter().any(|(s, p, _)| *s == name && u.starts_with(p))
+            })
+            .cloned()
+            .collect();
+        let divergent = r.bad.len() + mbad.len();
+        println!(
+            "{name}: player compared {} exact {} missing {} extra {}; Minion keys {mk}; own unimplemented notes {}{}",
+            r.compared,
+            r.exact,
+            r.missing,
+            r.extra,
+            own.len(),
+            r13.unwrap_or_default()
+        );
+        keys += r.compared;
+        minion_keys += mk;
+        if let Some((_, prefixes, count)) = SYNTH2_BOUNDARY.iter().find(|(s, _, _)| *s == name) {
+            let notes_ok = own.len() == prefixes.len() && prefixes.iter().all(|p| own.iter().any(|u| u.starts_with(p)));
+            println!("  {name}: at a recorded boundary -- {divergent} divergent pairs, notes {own:?}");
+            if notes_ok && divergent == *count {
+                bounded.push(name.clone());
+            } else {
+                bad.push(format!(
+                    "{name}: boundary state changed: {divergent} divergent pairs (pinned {count}), notes {own:?}"
+                ));
+            }
+            continue;
+        }
+        if divergent == 0 && own.is_empty() {
+            equal += 1;
+        }
+        bad.extend(r.bad);
+        bad.extend(mbad);
+        bad.extend(own.into_iter().map(|u| format!("{name} | unimplemented | {u}")));
+    }
+    println!(
+        "synth2: {n} scenarios, {equal} = LuaJIT, {} at a recorded boundary {bounded:?}; {keys} player keys + {minion_keys} Minion keys compared; {} divergences",
+        bounded.len(),
+        bad.len()
+    );
+    assert!(bad.is_empty(), "synth2 scenarios != LuaJIT ({}):\n{}", bad.len(), bad.join("\n"));
+    assert_eq!((n, equal, bounded.len()), (48, 48, 0), "pinned split of the 48 synth2 scenarios");
+}
+
+/// Every hook `data/skills.json` lists is either a closure of `data/closures.json` or a [`pob_calc::skill_funcs::HOOK_ALIASES`] entry whose
+/// target is one (act_dex.lua:7325 -- `skills.ExplosiveTrapAltX.preDamageFunc` is ExplosiveTrap's function; R7-synth-2 found the panic).
+#[test]
+fn hook_aliases_cover_every_hook() {
+    let read = |f: &str| -> Json {
+        serde_json::from_str(&std::fs::read_to_string(pob_data::data_dir().join(f)).expect("data file")).expect("json")
+    };
+    let closures: std::collections::BTreeSet<String> = read("closures.json")["closures"]
+        .as_array()
+        .expect("closures")
+        .iter()
+        .filter_map(|c| c["path"].as_str().map(str::to_owned))
+        .collect();
+    let skills = read("skills.json");
+    let skills = skills.get("skills").unwrap_or(&skills).as_object().expect("skills").clone();
+    let aliases = pob_calc::skill_funcs::HOOK_ALIASES;
+    let mut via_alias = Vec::new();
+    for (id, s) in &skills {
+        for h in s["hooks"].as_array().into_iter().flatten().filter_map(Json::as_str) {
+            let path = format!("skills.{id}.{h}");
+            if closures.contains(&path) {
+                continue;
+            }
+            let to = aliases.iter().find(|(a, _)| *a == path).map(|(_, t)| *t);
+            assert!(
+                to.is_some_and(|t| closures.contains(t)),
+                "{path}: neither a closure nor an alias of one"
+            );
+            via_alias.push(path);
+        }
+    }
+    let want: Vec<String> = aliases.iter().map(|(a, _)| (*a).to_owned()).collect();
+    assert_eq!(via_alias, want, "every alias is used");
 }
