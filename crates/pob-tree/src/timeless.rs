@@ -219,6 +219,13 @@ pub struct SpecJewel {
     pub limit_disabled: bool,
     /// `item.jewelData.conqueredBy` (one shared object, like the Lua table).
     pub conquered_by: Option<Rc<ConqueredBy>>,
+    /// `item.jewelData.intuitiveLeapLike` (R8.7).
+    pub intuitive_leap_like: bool,
+    /// `item.jewelData.intuitiveLeapKeystoneOnly`.
+    pub intuitive_leap_keystone_only: bool,
+    /// The keys of `item.jewelData.impossibleEscapeKeystones` (always a table when `jewelData` exists, Item.lua:2485-2511), in the
+    /// item's order -- string keys (R13); each one only adds the socket once more or answers a membership test.
+    pub impossible_escape_keystones: Vec<String>,
 }
 
 /// :1093-1105 `timelessJewelTypeByConqueror`.
@@ -357,6 +364,112 @@ impl PassiveSpec {
             }
         }
         conquered
+    }
+
+    /// `nodesInRadius[radiusIndex][id]` of the tree node `holder` (a socket or a keystone; `radius_index` 1-based).
+    pub(crate) fn in_radius_of(&self, holder: u32, radius_index: Option<f64>, id: u32) -> bool {
+        radius_index
+            .and_then(crate::tree::as_id)
+            .and_then(|r| (r as usize).checked_sub(1))
+            .and_then(|r| self.tree.nodes_in_radius(holder).and_then(|l| l.get(r)))
+            .is_some_and(|l| l.binary_search(&id).is_ok())
+    }
+
+    /// :1169-1203, the Intuitive Leap half (R8.7): the sockets whose jewel lets node `i` be allocated unconnected
+    /// (`node.intuitiveLeapLikesAffecting`, one entry per reason, in `radiusJewels` order).
+    pub(crate) fn radius_intuitive_leaps(&self, i: usize, radius_jewels: &[RadiusJewel]) -> Vec<usize> {
+        let node = &self.nodes[i];
+        let ty = node.ty();
+        let mut out = Vec::new();
+        if radius_jewels.is_empty() || ty == NodeType::ClassStart || ty == NodeType::Socket || node.ascendancy_name().is_some() {
+            return out;
+        }
+        for rj in radius_jewels {
+            let socket_id = self.nodes[rj.socket].id;
+            let radius_index = rj.jewel.jewel_radius_index;
+            if self.in_radius_of(socket_id, radius_index, node.id)
+                && rj.jewel.id != Some(0.0)
+                && rj.jewel.intuitive_leap_like
+                && !(rj.jewel.intuitive_leap_keystone_only && ty != NodeType::Keystone)
+            {
+                out.push(rj.socket);
+            }
+            // `for keyName in pairs(impossibleEscapeKeystones)` -- each keystone whose radius holds the node adds the socket again.
+            for key in &rj.jewel.impossible_escape_keystones {
+                if let Some(&k) = self.tree.keystone_map.get(key)
+                    && self.in_radius_of(self.tree.nodes[k].id, radius_index, node.id)
+                {
+                    out.push(rj.socket);
+                }
+            }
+        }
+        out
+    }
+
+    /// :1061-1089 `NodesInIntuitiveLeapLikeRadius(node)`: the allocated nodes in the radius of the Intuitive Leap-like jewel socketed
+    /// in `i`. `pairs(inRadius)` is a hash order upstream (D13); here ascending id -- only the order of `depends` entries follows it.
+    /// The Impossible Escape half reads `jewelData.impossibleEscapeKeystone` (singular, :1075) -- always nil: never taken.
+    pub(crate) fn nodes_in_intuitive_leap_like_radius(&self, i: usize) -> Vec<usize> {
+        let id = self.nodes[i].id;
+        let Some(item_id) = self.jewels.get(f64::from(id)).copied().filter(|&v| v > 0.0) else {
+            return Vec::new();
+        };
+        // An item the session did not hand over (none before `set_jewel_items`): upstream would index nil (:1065).
+        let Some(jewel) = self.jewel_item(item_id) else {
+            return Vec::new();
+        };
+        let mut out = Vec::new();
+        if jewel.intuitive_leap_like {
+            let list = jewel
+                .jewel_radius_index
+                .and_then(crate::tree::as_id)
+                .and_then(|r| (r as usize).checked_sub(1))
+                .and_then(|r| self.nodes[i].nodes_in_radius().and_then(|l| l.get(r)));
+            for &affected in list.into_iter().flatten() {
+                let a = self
+                    .node_idx(affected)
+                    .unwrap_or_else(|| panic!("{SPEC}:1069: attempt to index a nil value (self.nodes[{affected}])"));
+                if self.nodes[a].alloc {
+                    out.push(a);
+                }
+            }
+        }
+        out
+    }
+
+    /// :1570-1586 -- whether an allocated socket's Intuitive Leap-like / Impossible Escape jewel holds `dep` (the first such socket in
+    /// `pairs(self.jewels)` order, or `None`).
+    pub(crate) fn intuitive_leap_holder(&self, dep: usize) -> Option<u32> {
+        let dep_id = self.nodes[dep].id;
+        for &(node_id, item_id) in &self.jewels.0 {
+            let Some(nid) = crate::tree::as_id(node_id) else { continue };
+            if !self.alloc_nodes.contains_key(&nid) || item_id == 0.0 {
+                continue;
+            }
+            // A spec loaded without its items (no `set_jewel_items`) cannot tell; upstream always has the items tab.
+            let Some(jewel) = self.jewel_item(item_id) else {
+                assert!(
+                    self.jewel_items.is_empty(),
+                    "{SPEC}:1577: attempt to index a nil value (items[{item_id}])"
+                );
+                continue;
+            };
+            let leap = jewel.intuitive_leap_like
+                && jewel.jewel_radius_index.is_some()
+                && self.node(nid).is_some_and(|s| s.nodes_in_radius().is_some())
+                && self.in_radius_of(nid, jewel.jewel_radius_index, dep_id);
+            let escape = jewel.has_jewel_data
+                && jewel.impossible_escape_keystones.iter().any(|k| {
+                    self.tree
+                        .keystone_map
+                        .get(k)
+                        .is_some_and(|&ki| self.in_radius_of(self.tree.nodes[ki].id, jewel.jewel_radius_index, dep_id))
+                });
+            if leap || escape {
+                return Some(nid);
+            }
+        }
+        None
     }
 
     /// :1222-1406 for one conquered node (not a socket), then `ReconnectNodeToClassStart` (:1406).

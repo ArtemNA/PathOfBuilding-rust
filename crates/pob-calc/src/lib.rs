@@ -26,6 +26,7 @@ pub(crate) mod offence;
 pub mod output;
 pub mod perform;
 pub mod pools;
+pub mod power;
 pub mod session;
 pub mod setup;
 pub mod skill_funcs;

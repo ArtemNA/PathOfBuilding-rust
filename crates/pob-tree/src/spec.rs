@@ -1,7 +1,7 @@
 //! `Classes/PassiveSpec.lua` -- the subset a calculation needs (pob-ts `src/tree/spec.ts`, CALC-ARCH §3): which nodes a
 //! build has allocated, and with what mods. Cluster-jewel subgraphs are `crate::cluster` (R5.5a): their nodes are owned
-//! spec nodes appended after the Init nodes. Other jewels (timeless/abyss/tattoo/Intuitive Leap), the `path`/`pathDist`
-//! machinery that only tree editing uses, and the URL format are P5; each is listed in `unimplemented`.
+//! spec nodes appended after the Init nodes. Other jewels (abyss/tattoo/Intuitive Leap)
+//! and the URL format are P5; each is listed in `unimplemented`. Node paths (`pathDist`/`path`, R8.7) are [`PassiveSpec::build_paths`].
 //!
 //! A spec node is upstream's `setmetatable({ linked = {}, power = {} }, treeNode)`: a view onto the tree node that only grows
 //! own fields when the mastery branch of `BuildAllDependsAndPaths` writes them. `ReplaceNode(old, treeNode)` assigns the
@@ -23,12 +23,14 @@ pub const MASTERY_REMINDER_TEXT: &str = "Tip: Right click to select a different 
 /// What replaces `pairs(self.allocNodes)` in BuildAllDependsAndPaths (D13); the allocated set must not depend on it.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum AllocOrder {
-    /// Ascending node id -- the pob-ts default and the order the fixtures were made with.
-    #[default]
+    /// Ascending node id -- the pob-ts order (R3 fixtures).
     IdAsc,
     IdDesc,
     /// Insertion order of `allocNodes` (= XML order for ImportFromNodeList).
     Insertion,
+    /// LuaJIT's own `pairs` order: the mirrored table ([`crate::lj_table`]) -- the default since R8.7 (= LuaJIT on the 6 goldens).
+    #[default]
+    LuaJit,
 }
 
 /// `{ used, ascUsed, secondaryAscUsed, sockets }` of `CountAllocNodes` (:846-868).
@@ -48,6 +50,7 @@ pub(crate) enum NodeBase {
     Owned(Rc<TreeNode>),
 }
 
+#[derive(Clone)]
 pub struct SpecNode {
     tree: Rc<PassiveTree>,
     base: NodeBase,
@@ -60,8 +63,16 @@ pub struct SpecNode {
     pub intuitive_leap_likes_affecting: Vec<usize>,
     pub visited: bool,
     pub connected_to_start: bool,
-    /// Set by AddMasteryEffectOptionsToNode upstream (display only, P5) -- never true here.
+    /// `node.allMasteryOptions`: set by AddMasteryEffectOptionsToNode (:1029-1059) on an unallocated mastery, cleared when an effect
+    /// is applied (:1422).
     pub all_mastery_options: bool,
+    /// `node.pathDist` (:1621-1683): 0 for a root (an allocated node), else the passive points to the nearest allocated node; 1000 =
+    /// unreachable.
+    pub path_dist: f64,
+    /// `node.path` (:1621-1683): the nodes to allocate, this node first, the one next to a root last; empty for a root; `None` = nil.
+    pub path: Option<Vec<usize>>,
+    /// `node.distanceToClassStart` (:1624-1626, `SetNodeDistanceToClassStart` :925-966) -- jewel sockets only; `None` = nil.
+    pub distance_to_class_start: Option<f64>,
     /// `node.conqueredBy` (PassiveSpec.lua:1110-1200): the timeless jewel's `jewelData.conqueredBy` (one shared table).
     pub conquered_by: Option<Rc<crate::timeless::ConqueredBy>>,
     /// `ReplaceNode(node, legionNode)` (:1697): dn/sd/name/mods/modKey/modList/keystoneMod now come from the legion node.
@@ -99,6 +110,9 @@ impl SpecNode {
             visited: false,
             connected_to_start: false,
             all_mastery_options: false,
+            path_dist: 1000.0,
+            path: None,
+            distance_to_class_start: None,
             conquered_by: None,
             replaced: None,
             own_sd_effect: None,
@@ -234,6 +248,7 @@ impl pob_parser::helpers::JewelNode for SpecNode {
     }
 }
 
+#[derive(Clone)]
 pub struct PassiveSpec {
     pub tree: Rc<PassiveTree>,
     pub tree_version: String,
@@ -278,6 +293,9 @@ pub struct PassiveSpec {
     /// What BuildAllDependsAndPaths reads off `self.build.itemsTab.items[itemId]` for the jewels (`crate::timeless`): set by
     /// the caller once the items are parsed (pob-calc `post_load_spec`); empty = no items (a spec loaded without its build).
     pub(crate) jewel_items: Vec<(f64, Rc<crate::timeless::SpecJewel>)>,
+    /// `self.allocNodes` as a LuaJIT table (R8.7): every store upstream makes into it, mirrored -- its `pairs` order is what the
+    /// dependency pruning (:1470) and the path roots (:1628) walk ([`AllocOrder::LuaJit`]).
+    pub(crate) alloc_table: crate::lj_table::LjTable,
     pub unimplemented: Vec<String>,
 }
 
@@ -314,8 +332,9 @@ impl PassiveSpec {
             allocated_mastery_count: 0,
             allocated_mastery_type_count: 0,
             allocated_mastery_types: IndexMap::new(),
-            alloc_order: AllocOrder::IdAsc,
+            alloc_order: AllocOrder::LuaJit,
             jewel_items: Vec::new(),
+            alloc_table: crate::lj_table::LjTable::new(),
             unimplemented: Vec::new(),
         };
         s.init();
@@ -343,9 +362,8 @@ impl PassiveSpec {
         self.unimplemented.extend(
             [
                 "PassiveSpec.lua:1212-1220 tattoo node replacement (hashOverrides, P5); abyss conquests (:1110-1127, :1253-1268) are an explicit error",
-                "PassiveSpec.lua:1444 AddMasteryEffectOptionsToNode (unallocated mastery display, P5)",
                 "PassiveSpec.lua:1520-1560 Intuitive Leap-like dependency bookkeeping (P5)",
-                "PassiveSpec.lua:1591-1695 node paths / pathDist (tree editing only, P5)",
+                "PassiveSpec.lua:1591-1617 Intuitive Leap-like path dependencies (potentialDeps / intuitiveLeaps, P5)",
                 "PassiveSpec.lua:196 DecodeURL (legacy URL specs, P5)",
             ]
             .map(String::from),
@@ -375,11 +393,23 @@ impl PassiveSpec {
     pub(crate) fn alloc(&mut self, i: usize) {
         self.nodes[i].alloc = true;
         self.alloc_nodes.insert(self.nodes[i].id, i);
+        self.alloc_table.set(f64::from(self.nodes[i].id));
     }
 
     pub(crate) fn dealloc(&mut self, i: usize) {
         self.nodes[i].alloc = false;
         self.alloc_nodes.shift_remove(&self.nodes[i].id);
+        self.alloc_nil(self.nodes[i].id);
+    }
+
+    /// `self.allocNodes[id] = nil` on the mirrored table (the key may be absent: LuaJIT then creates it, dead).
+    pub(crate) fn alloc_nil(&mut self, id: u32) {
+        self.alloc_table.remove(f64::from(id), crate::lj_table::NIL_STORE_CREATES_KEY);
+    }
+
+    /// `pairs(self.allocNodes)` of the mirrored table (ids).
+    pub fn alloc_table_pairs(&self) -> Vec<u32> {
+        self.alloc_table.pairs_keys().into_iter().map(|k| k as u32).collect()
     }
 
     /// :768-777 -- everything but the two kinds of start node.
@@ -447,6 +477,7 @@ impl PassiveSpec {
                 self.nodes[i].alloc = false;
             }
             self.alloc_nodes.shift_remove(&old);
+            self.alloc_nil(old);
         }
     }
 
@@ -548,7 +579,7 @@ impl PassiveSpec {
     fn dealloc_single_node(&mut self, i: usize) {
         self.dealloc(i);
         if self.nodes[i].ty() == NodeType::Mastery {
-            // AddMasteryEffectOptionsToNode is display only (P5); the selection still goes.
+            self.add_mastery_effect_options_to_node(i);
             self.mastery_selections.shift_remove(&self.nodes[i].id);
         }
     }
@@ -560,6 +591,19 @@ impl PassiveSpec {
             AllocOrder::IdAsc => list.sort_unstable_by_key(|&i| self.nodes[i].id),
             AllocOrder::IdDesc => list.sort_unstable_by_key(|&i| std::cmp::Reverse(self.nodes[i].id)),
             AllocOrder::Insertion => {}
+            AllocOrder::LuaJit => {
+                list = self
+                    .alloc_table
+                    .pairs_keys()
+                    .into_iter()
+                    .map(|k| self.alloc_nodes[&(k as u32)])
+                    .collect();
+                debug_assert_eq!(
+                    list.len(),
+                    self.alloc_nodes.len(),
+                    "the mirrored allocNodes table holds the allocated set"
+                );
+            }
         }
         list
     }
@@ -591,10 +635,14 @@ impl PassiveSpec {
             let n = &mut self.nodes[i];
             n.depends.clear();
             n.intuitive_leap_likes_affecting.clear();
-            // `isUnallocatedMastery` is never true without AddMasteryEffectOptionsToNode (P5).
-            self.replace_node(i);
+            // :1162-1166 `isUnallocatedMastery` (no runegrafts: `hashOverrides` is empty) keeps its options.
+            let unallocated_mastery = n.all_mastery_options && n.ty() == NodeType::Mastery;
+            if !unallocated_mastery {
+                self.replace_node(i);
+            }
             // :1167 `node.conqueredBy = abyssConquests[id]` (nil -- see gather_radius_jewels), then :1169-1203.
             self.nodes[i].conquered_by = self.radius_conquest(i, &radius_jewels);
+            self.nodes[i].intuitive_leap_likes_affecting = self.radius_intuitive_leaps(i, &radius_jewels);
             if self.nodes[i].alloc {
                 self.nodes[i].depends.push(i); // :1207 "All nodes depend on themselves"
             }
@@ -648,7 +696,7 @@ impl PassiveSpec {
                     }
                 }
             } else if ty == NodeType::Mastery && !self.nodes[i].all_mastery_options {
-                // AddMasteryEffectOptionsToNode -- display only (P5); see `unimplemented`.
+                self.add_mastery_effect_options_to_node(i);
             } else if ty == NodeType::Notable && self.nodes[i].alloc {
                 self.allocated_notable_count += 1;
             } else if ty == NodeType::Keystone && self.nodes[i].alloc {
@@ -656,12 +704,17 @@ impl PassiveSpec {
             }
         }
 
-        // :1467-1590 -- orphan pruning. `potentialDeps`/`intuitiveLeaps` stay empty without jewels.
+        // :1467-1590 -- orphan pruning, with the Intuitive Leap-like bookkeeping: `potentialDeps` (node id -> the allocated nodes it may
+        // depend on) and `intuitiveLeaps` (node id -> nodes that may depend on it), both keyed in first-insertion order (walked with
+        // `pairs` below: a table of integer keys only ever set, [`crate::lj_table::pairs_order`]).
+        let mut potential_deps: IndexMap<u32, Vec<usize>> = IndexMap::new();
+        let mut intuitive_leaps: IndexMap<u32, Vec<usize>> = IndexMap::new();
         for i in self.alloc_nodes_in_order() {
             // `pairs(self.allocNodes)` skips a key an earlier iteration set to nil; the snapshot does not, hence the check.
             if !self.alloc_nodes.contains_key(&self.nodes[i].id) {
                 continue;
             }
+            let node_id = self.nodes[i].id;
             self.nodes[i].visited = true;
             self.nodes[i].connected_to_start = false;
             let mut any_start_found = self.nodes[i].ty().is_start();
@@ -700,8 +753,15 @@ impl PassiveSpec {
                                 self.nodes[i].depends.push(n);
                             }
                         } else {
-                            // No Intuitive Leap-like jewels: `potentialDeps`/`intuitiveLeaps` stay empty (P5).
-                            self.nodes[i].depends.push(n);
+                            // :1535-1551 -- a node an Intuitive Leap-like jewel affects may depend on this one.
+                            if self.nodes[n].intuitive_leap_likes_affecting.is_empty() {
+                                self.nodes[i].depends.push(n);
+                            } else {
+                                potential_deps.entry(self.nodes[n].id).or_default().push(i);
+                            }
+                            // :1553-1561 -- if `n` holds such a jewel, the nodes in its radius may depend on this one.
+                            let affected = self.nodes_in_intuitive_leap_like_radius(n);
+                            intuitive_leaps.entry(node_id).or_default().extend(affected);
                         }
                         self.nodes[n].visited = false;
                     }
@@ -710,13 +770,179 @@ impl PassiveSpec {
             }
             self.nodes[i].visited = false;
             if !any_start_found {
-                // :1567-1589 -- no jewels, so `prune` is always true.
+                // :1567-1589 -- no start found through ANY node: this node and its dependants are orphans, unless an Intuitive
+                // Leap-like jewel holds them.
                 for d in self.nodes[i].depends.clone() {
-                    self.dealloc_single_node(d);
+                    match self.intuitive_leap_holder(d) {
+                        Some(holder) => intuitive_leaps.entry(holder).or_default().push(d),
+                        None => self.dealloc_single_node(d),
+                    }
                 }
             }
         }
+
+        // :1595-1611 -- the potential dependants whose every jewel socket depends on a node depend on it too.
+        let keys: Vec<f64> = potential_deps.keys().map(|&k| f64::from(k)).collect();
+        for k in crate::lj_table::pairs_order(&keys) {
+            let id = k as u32;
+            let potential = self.node_idx(id).expect("a spec node");
+            let mut seen: Vec<u32> = Vec::new();
+            for &node in &potential_deps[&id] {
+                let all_dep = self.nodes[potential]
+                    .intuitive_leap_likes_affecting
+                    .iter()
+                    .all(|p| self.nodes[node].depends.contains(p));
+                if all_dep && !seen.contains(&self.nodes[node].id) {
+                    self.nodes[node].depends.push(potential);
+                    seen.push(self.nodes[node].id);
+                }
+            }
+        }
+        // :1613-1630
+        let keys: Vec<f64> = intuitive_leaps.keys().map(|&k| f64::from(k)).collect();
+        for k in crate::lj_table::pairs_order(&keys) {
+            let id = k as u32;
+            let node = self.node_idx(id).expect("a spec node");
+            let mut seen: Vec<u32> = Vec::new();
+            for &dep in &intuitive_leaps[&id] {
+                if self.nodes[dep].connected_to_start {
+                    continue;
+                }
+                let all_dep = self.nodes[dep]
+                    .intuitive_leap_likes_affecting
+                    .iter()
+                    .all(|x| self.nodes[node].depends.contains(x));
+                if all_dep && !seen.contains(&self.nodes[dep].id) {
+                    self.nodes[node].depends.push(dep);
+                    seen.push(self.nodes[dep].id);
+                }
+            }
+        }
+
+        let roots = self.alloc_pairs_order();
+        self.build_paths(&roots);
         Ok(())
+    }
+
+    /// `pairs(self.allocNodes)` as indices into `nodes` -- what the path roots (:1628) are walked in. See [`PassiveSpec::alloc_order`].
+    pub fn alloc_pairs_order(&self) -> Vec<usize> {
+        self.alloc_nodes_in_order()
+    }
+
+    /// :1619-1694 -- reset every node's path, then a multi-source 0-1 BFS from the allocated nodes (`roots`, in `pairs(self.allocNodes)`
+    /// order: which of two equally short paths a node gets depends on it), then `SetNodeDistanceToClassStart` for the jewel-socket roots.
+    /// `BuildSplitPersonalityPath` (:1694, `self.splitPersonalityPath`) is read by the tree view only (PassiveTreeView.lua:389).
+    pub fn build_paths(&mut self, roots: &[usize]) {
+        // :1620-1626 `pairs(self.nodes)` -- every node gets its own values, the order cannot matter.
+        for n in &mut self.nodes {
+            n.path_dist = if n.alloc && n.intuitive_leap_likes_affecting.is_empty() {
+                0.0
+            } else {
+                1000.0
+            };
+            n.path = None;
+            let tn = n.tree_node();
+            if tn.is_jewel_socket || tn.expansion_jewel.is_some() {
+                n.distance_to_class_start = Some(0.0);
+            }
+        }
+        // :1627-1632
+        let root_list: Vec<usize> = roots
+            .iter()
+            .copied()
+            .filter(|&i| self.nodes[i].intuitive_leap_likes_affecting.is_empty() || self.nodes[i].connected_to_start)
+            .collect();
+        // :1636-1642 -- a Lua array whose start may move below 1 (front insertions land on slots already consumed): `pad` free
+        // slots before upstream's index 1.
+        let pad = self.nodes.len() + 1;
+        let mut queue: Vec<usize> = vec![usize::MAX; pad];
+        for &i in &root_list {
+            self.nodes[i].path_dist = 0.0;
+            self.nodes[i].path = Some(Vec::new());
+            queue.push(i);
+        }
+        let mut queue_start = pad;
+        let mut queue_length = queue.len() - 1;
+        while queue_start <= queue_length {
+            let node = queue[queue_start];
+            queue_start += 1;
+            let node_dist = self.nodes[node].path_dist;
+            let node_path = self.nodes[node].path.clone().unwrap_or_default();
+            let node_mastery = self.nodes[node].ty() == NodeType::Mastery;
+            for li in 0..self.nodes[node].linked.len() {
+                let other = self.nodes[node].linked[li];
+                let weight = if self.nodes[other].alloc { 0.0 } else { 1.0 };
+                let dist_via_node = node_dist + weight;
+                let other_ty = self.nodes[other].ty();
+                let node_asc = self.nodes[node].ascendancy_name();
+                let other_asc = self.nodes[other].ascendancy_name();
+                let can_traverse = !node_mastery
+                    && other_ty != NodeType::ClassStart
+                    && other_ty != NodeType::AscendClassStart
+                    && (node_asc == other_asc || (node_dist == 0.0 && other_asc.is_none()));
+                if dist_via_node < self.nodes[other].path_dist && can_traverse {
+                    if weight == 0.0 {
+                        // Free nodes go to the front so they can shorten paid paths immediately.
+                        queue_start -= 1;
+                        queue[queue_start] = other;
+                    } else {
+                        queue_length += 1;
+                        if queue.len() <= queue_length {
+                            queue.push(other);
+                        } else {
+                            queue[queue_length] = other;
+                        }
+                    }
+                    self.nodes[other].path_dist = dist_via_node;
+                    let mut path = Vec::with_capacity(node_path.len() + 1);
+                    path.push(other);
+                    path.extend_from_slice(&node_path);
+                    self.nodes[other].path = Some(path);
+                }
+            }
+        }
+        // :1686-1690
+        for &i in &root_list {
+            let tn = self.nodes[i].tree_node();
+            if tn.is_jewel_socket || tn.expansion_jewel.is_some() {
+                self.set_node_distance_to_class_start(i);
+            }
+        }
+    }
+
+    /// :925-966 -- breadth-first over allocated nodes from `root` until the class start is a neighbour.
+    fn set_node_distance_to_class_start(&mut self, root: usize) {
+        self.nodes[root].distance_to_class_start = Some(0.0);
+        if !self.nodes[root].alloc || !self.nodes[root].connected_to_start {
+            return;
+        }
+        let target = self.cur_class().start_node_id;
+        let mut dist: std::collections::HashMap<u32, f64> = std::collections::HashMap::new();
+        dist.insert(self.nodes[root].id, 0.0);
+        let mut queue = vec![root];
+        let mut o = 0;
+        while o < queue.len() {
+            let node = queue[o];
+            o += 1;
+            let cur_dist = dist[&self.nodes[node].id] + 1.0;
+            for li in 0..self.nodes[node].linked.len() {
+                let other = self.nodes[node].linked[li];
+                if Some(self.nodes[other].id) == target {
+                    self.nodes[root].distance_to_class_start = Some(cur_dist - 1.0);
+                    return;
+                }
+                let ot = self.nodes[other].ty();
+                if self.nodes[other].alloc
+                    && self.nodes[node].ty() != NodeType::Mastery
+                    && ot != NodeType::ClassStart
+                    && ot != NodeType::AscendClassStart
+                    && !dist.contains_key(&self.nodes[other].id)
+                {
+                    dist.insert(self.nodes[other].id, cur_dist);
+                    queue.push(other);
+                }
+            }
+        }
     }
 
     /// :1416-1425 for one allocated mastery: `node.sd = effect.sd`, the reminder text, `ProcessStats(node)`.
@@ -747,6 +973,88 @@ impl PassiveSpec {
         }
         node.own_sd = Some(sd);
         node.own_stats = Some(stats);
+    }
+
+    /// CalcsTab.lua:516-529 `buildMasteryEffectNode(node, effect)`: a plain table `{ id, type, name, sd = <copy of effect.sd> }` run through
+    /// `ProcessStats` -- what node power hands initEnv as `override.addNodes` for one effect of the unallocated mastery `i`. Its fields
+    /// beyond those four read through to the mastery's tree node here (a mastery has no ascendancy, socket or keystone fields).
+    pub fn mastery_effect_node(&self, i: usize, effect_key: u64) -> SpecNode {
+        let tree = self.tree.clone();
+        let src = &self.nodes[i];
+        let effect = &tree.mastery_effects[&effect_key];
+        let mut node = SpecNode::with_base(&tree, src.id, src.base.clone());
+        let mut sd = effect.sd.clone();
+        let mut stats = NodeStats::default();
+        let holder = StatHolder {
+            id: f64::from(src.id),
+            str_id: None,
+            ty: Some(src.ty()),
+            dn: "",
+        };
+        process_stats(&holder, &mut sd, &mut stats, 1, tree.parse_mode);
+        if stats.unknown {
+            node.own_unknown = Some(true);
+        }
+        if stats.extra {
+            node.own_extra = Some(true);
+        }
+        node.own_sd = Some(sd);
+        node.own_stats = Some(stats);
+        node.own_reminder_text = Some(Vec::new());
+        node
+    }
+
+    /// The tree node `tree_idx` itself (`tree.clusterNodeMap` entries, CalcsTab.lua:714-736) as initEnv sees it in `override.addNodes`.
+    pub fn tree_node_view(&self, tree_idx: usize) -> SpecNode {
+        SpecNode::new(&self.tree, tree_idx)
+    }
+
+    /// This spec with `extra` appended to `nodes` -- not in the id index, not linked, not allocated: how initEnv reaches the
+    /// `override.addNodes` that are no spec nodes (`env.allocNodes` refers to them by index, as to every node).
+    pub fn with_extra_nodes(&self, extra: Vec<SpecNode>) -> PassiveSpec {
+        let mut s = self.clone();
+        s.nodes.extend(extra);
+        s
+    }
+
+    /// :1029-1059 `AddMasteryEffectOptionsToNode`: the node gets the stats of ALL its effects (`cacheNode` -- `{ id, sd }` run through
+    /// `ProcessStats` after every effect, from line 1 each time, so the last run over every line is what stays), its reminder text goes
+    /// back to the tree's, and `allMasteryOptions` is set. What node power reads of it: `modKey` (CalcsTab.lua:567) and the flag.
+    fn add_mastery_effect_options_to_node(&mut self, i: usize) {
+        let tree = self.tree.clone();
+        let node = &mut self.nodes[i];
+        let mut sd: Vec<String> = Vec::new();
+        for &e in &node.tree_node().mastery_effect_ids {
+            let effect = as_id(e).and_then(|k| tree.mastery_effects.get(&u64::from(k))).unwrap_or_else(|| {
+                panic!(
+                    "Classes/PassiveSpec.lua:1037: attempt to index local 'effect' (a nil value) -- mastery {} effect {e}",
+                    node.id
+                )
+            });
+            sd.extend(effect.sd.iter().cloned());
+        }
+        let mut stats = NodeStats::default();
+        // `cacheNode` has no `type` (no keystone mod) and no `dn`.
+        let holder = StatHolder {
+            id: f64::from(node.id),
+            str_id: None,
+            ty: None,
+            dn: "",
+        };
+        process_stats(&holder, &mut sd, &mut stats, 1, tree.parse_mode);
+        // `for k, v in pairs(cacheNode)`: `unknown`/`extra` exist on it only when set.
+        if stats.unknown {
+            node.own_unknown = Some(true);
+        }
+        if stats.extra {
+            node.own_extra = Some(true);
+        }
+        node.own_sd_effect = None;
+        node.own_sd = Some(sd);
+        node.own_stats = Some(stats);
+        // `node.reminderText = nil` -- the tree node's shows through again.
+        node.own_reminder_text = None;
+        node.all_mastery_options = true;
     }
 
     /// :870-899 -- depth-first search for a start node; a Mastery is never walked through.
@@ -821,7 +1129,33 @@ impl PassiveSpec {
 
     /// `load` against an already built tree.
     pub fn load_with_tree(model: &SpecModel, tree: Rc<PassiveTree>) -> Result<PassiveSpec, TreeError> {
+        PassiveSpec::load_with_tree_jewels(model, tree, Vec::new())
+    }
+
+    /// [`PassiveSpec::load_mode`] with the socketed jewels' item data known from the start (R8.7): the items tab is loaded before the
+    /// tree (Build.lua:655-677), so the BuildAllDependsAndPaths of `ImportFromNodeList` already sees them (conquests, Intuitive Leap).
+    pub fn load_mode_jewels(
+        model: &SpecModel,
+        mode: pob_parser::ParseMode,
+        jewels: Vec<(f64, Rc<crate::timeless::SpecJewel>)>,
+    ) -> Result<PassiveSpec, TreeError> {
+        if model.nodes.is_empty() && model.url.is_some() {
+            return Err(TreeError(
+                "unimplemented: legacy URL spec (Classes/PassiveSpec.lua:191 DecodeURL)".into(),
+            ));
+        }
+        let tree = crate::tree::load_passive_tree_mode(&model.tree_version, mode)?;
+        PassiveSpec::load_with_tree_jewels(model, tree, jewels)
+    }
+
+    /// [`PassiveSpec::load_with_tree`] with the jewels' item data.
+    pub fn load_with_tree_jewels(
+        model: &SpecModel,
+        tree: Rc<PassiveTree>,
+        jewels: Vec<(f64, Rc<crate::timeless::SpecJewel>)>,
+    ) -> Result<PassiveSpec, TreeError> {
         let mut spec = PassiveSpec::new(tree)?;
+        spec.jewel_items = jewels;
         // :105 `tonumber(xml.attrib.clusterHashFormatVersion) or (xml.attrib.nodes and 1 or 2)` (pob-build).
         spec.cluster_hash_format_version = model.cluster_hash_format_version;
         spec.jewels = model.jewels.clone();

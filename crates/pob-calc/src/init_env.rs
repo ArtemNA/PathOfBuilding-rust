@@ -20,7 +20,7 @@ use pob_mods::{Actor, Mod, ModStore, ModType, StoreRef, Value};
 use pob_tree::{ClusterJewel, ConqueredBy, PassiveSpec, SpecJewel, TreeError};
 
 use crate::calc_lib;
-use crate::env::{CalcActor, Env, GrantedSkill, MainSkillStub, RadiusFunc, RadiusJewel, ReqEntry, Slot};
+use crate::env::{CalcActor, CalcOverride, Env, GrantedSkill, MainSkillStub, OverrideNode, RadiusFunc, RadiusJewel, ReqEntry, Slot};
 use crate::setup::{
     apply_soul_mod, base, build_mod_list_for_node_list, cc, cfg_source, cond, cond_neg, init_mod_db, keyword_flag, list_mods, lua_gsub,
     merge_db, merge_keystones, misc, mod_flag, mult, n, new_mod, ok, s, tag, temp_list, title_case_rarity,
@@ -425,7 +425,7 @@ pub fn cluster_jewel_of(item: &Item) -> Option<ClusterJewel> {
 }
 
 /// What BuildAllDependsAndPaths reads off a socketed item (PassiveSpec.lua:1110-1203): `item.id`, `jewelRadiusIndex`,
-/// `jewelData` and its `limitDisabled`/`conqueredBy`.
+/// `jewelData` and its `limitDisabled`/`conqueredBy`/`intuitiveLeapLike`/`intuitiveLeapKeystoneOnly`/`impossibleEscapeKeystones`.
 pub fn spec_jewel_of(item: &Item) -> Result<SpecJewel, TreeError> {
     let jd = item.jewel_data.as_ref();
     Ok(SpecJewel {
@@ -437,22 +437,34 @@ pub fn spec_jewel_of(item: &Item) -> Result<SpecJewel, TreeError> {
             Some(d) => ConqueredBy::from_value(&d.get("conqueredBy"))?.map(Rc::new),
             None => None,
         },
+        intuitive_leap_like: jd.is_some_and(|d| d.get("intuitiveLeapLike").truthy()),
+        intuitive_leap_keystone_only: jd.is_some_and(|d| d.get("intuitiveLeapKeystoneOnly").truthy()),
+        impossible_escape_keystones: match jd.map(|d| d.get("impossibleEscapeKeystones")) {
+            Some(pob_mods::Value::Table(t)) => t.hash.keys().map(ToString::to_string).collect(),
+            _ => Vec::new(),
+        },
     })
+}
+
+/// What BuildAllDependsAndPaths reads of the items socketed in `jewels` (socket id -> item id), by item id.
+pub fn spec_jewels_of(jewels: &pob_build::NumMap<f64>, items: &IndexMap<u64, Rc<Item>>) -> Result<Vec<(f64, Rc<SpecJewel>)>, TreeError> {
+    let mut out: Vec<(f64, Rc<SpecJewel>)> = Vec::new();
+    for &(_, item_id) in &jewels.0 {
+        if item_id < 0.0 || item_id.fract() != 0.0 || out.iter().any(|(id, _)| *id == item_id) {
+            continue;
+        }
+        if let Some(item) = items.get(&(item_id as u64)) {
+            out.push((item_id, Rc::new(spec_jewel_of(item)?)));
+        }
+    }
+    Ok(out)
 }
 
 /// `spec:PostLoad()` (PassiveSpec.lua:251, run by Build.lua:680 once the items tab has loaded): the cluster-jewel subgraphs
 /// of the spec, built from the build's items.
 pub fn post_load_spec(spec: &mut PassiveSpec, items: &IndexMap<u64, Rc<Item>>) -> Result<(), TreeError> {
     // The items tab is loaded before the tree (Build.lua:655-677), so BuildAllDependsAndPaths sees the jewels' conquests.
-    let mut jewels = Vec::new();
-    for &(_, item_id) in &spec.jewels.0 {
-        if item_id < 0.0 || item_id.fract() != 0.0 || jewels.iter().any(|(id, _)| *id == item_id) {
-            continue;
-        }
-        if let Some(item) = items.get(&(item_id as u64)) {
-            jewels.push((item_id, Rc::new(spec_jewel_of(item)?)));
-        }
-    }
+    let jewels = spec_jewels_of(&spec.jewels, items)?;
     spec.set_jewel_items(jewels);
     let lookup = |item_id: f64| -> Option<Rc<ClusterJewel>> {
         if item_id < 0.0 || item_id.fract() != 0.0 {
@@ -695,7 +707,7 @@ pub fn init_env_seeded(
     let parse_mode = opts.parse_mode;
     let (spec, parsed_items) = load_spec(&build, opts)?;
     prof.mark("spec: load + PostLoad");
-    init_env_core(build, spec, parsed_items, parse_mode, None, skills, carry, None).map(|(env, _)| env)
+    init_env_core(build, spec, parsed_items, parse_mode, None, skills, carry, None, None).map(|(env, _)| env)
 }
 
 /// The build state upstream keeps on `build` and every initEnv reads unchanged (R7-perf): `build.spec` after `PostLoad`,
@@ -767,6 +779,18 @@ pub fn init_env_shared_spec(
     carry: Option<&crate::session::SkillsCarry>,
     spec: Option<&SpecDbs>,
 ) -> Result<(Env, SpecDbs), InitEnvError> {
+    init_env_shared_override(build, shared, parse_mode, carry, spec, None)
+}
+
+/// [`init_env_shared_spec`] with an `override` (R8.7, CalcSetup.lua:485-1437): [`CalcOverride`].
+pub fn init_env_shared_override(
+    build: Rc<BuildModel>,
+    shared: &BuildShared,
+    parse_mode: pob_parser::ParseMode,
+    carry: Option<&crate::session::SkillsCarry>,
+    spec: Option<&SpecDbs>,
+    ov: Option<&Rc<CalcOverride>>,
+) -> Result<(Env, SpecDbs), InitEnvError> {
     init_env_core(
         build,
         shared.spec.clone(),
@@ -776,6 +800,7 @@ pub fn init_env_shared_spec(
         true,
         carry,
         spec,
+        ov,
     )
 }
 
@@ -793,14 +818,20 @@ fn load_config(build: &BuildModel, parse_mode: pob_parser::ParseMode) -> Result<
 
 /// The spec (`PassiveSpec:Load`, then `PostLoad` in `ParseMode::Full`) and `build.itemsTab.items`, from `opts` or loaded.
 fn load_spec(build: &BuildModel, opts: InitEnvOptions) -> Result<(Rc<PassiveSpec>, ParsedItems), InitEnvError> {
-    let mut spec = match opts.spec {
-        Some(s) => s,
-        None => PassiveSpec::load_mode(active_spec(build), opts.parse_mode)?,
-    };
-    // `build.itemsTab.items` (ItemsTab:Load) exists before any calculation; the spec's PostLoad needs it.
+    // `build.itemsTab.items` (ItemsTab:Load) exists before any calculation; the spec's Load (R8.7) and PostLoad need it.
     let parsed_items = match opts.items {
         Some(i) => i,
         None => parse_items(build, opts.parse_mode),
+    };
+    let mut spec = match opts.spec {
+        Some(s) => s,
+        // The items tab loads before the tree (Build.lua:655-677): `ImportFromNodeList` already sees the socketed jewels.
+        None if opts.parse_mode == pob_parser::ParseMode::Full => {
+            let sm = active_spec(build);
+            let jewels = spec_jewels_of(&sm.jewels, &parsed_items)?;
+            PassiveSpec::load_mode_jewels(sm, opts.parse_mode, jewels)?
+        }
+        None => PassiveSpec::load_mode(active_spec(build), opts.parse_mode)?,
     };
     // Build.lua:680 `PostLoad` -> BuildClusterJewelGraphs (R5.5a). `ParseMode::CacheOnly` reproduces pob-ts, which has no
     // cluster graphs (its gates -- env (a), perform/defence/full fixtures -- are pinned without them).
@@ -820,8 +851,29 @@ fn init_env_core(
     skills: bool,
     carry: Option<&crate::session::SkillsCarry>,
     spec_in: Option<&SpecDbs>,
+    ov: Option<&Rc<CalcOverride>>,
 ) -> Result<(Env, SpecDbs), InitEnvError> {
     let mut prof = profile::Marker::new();
+    // :501 `env.spec = override.spec or build.spec`. The `override.addNodes` that are no spec nodes (mastery-effect nodes, cluster
+    // notables of the tree) ride on a copy of it, past its own nodes ([`PassiveSpec::with_extra_nodes`]).
+    let spec = ov.and_then(|o| o.spec.clone()).unwrap_or(spec);
+    let base_len = spec.nodes.len();
+    let extra: Vec<pob_tree::SpecNode> = ov
+        .and_then(|o| o.add_nodes.as_ref())
+        .map(|l| {
+            l.iter()
+                .filter_map(|n| match n {
+                    OverrideNode::Other(x) => Some((**x).clone()),
+                    OverrideNode::Spec(_) => None,
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    let spec = if extra.is_empty() {
+        spec
+    } else {
+        Rc::new(spec.with_extra_nodes(extra))
+    };
     let opts = InitEnvMode { parse_mode };
     // --- (1) env + the three ModDBs + the actors (:490-547) ---------------------------------------------------------
     let own_lists;
@@ -920,6 +972,7 @@ fn init_env_core(
         limited_skills: None,
         session: std::rc::Weak::new(),
         minion: None,
+        calc_override: ov.cloned(),
         spec,
     };
     // The config apply closures this port has no entry for (R3.5): visible, not silent.
@@ -1246,20 +1299,50 @@ fn init_env_core(
         }
     };
 
-    // (9) `override.conditions` (:696-700) -- no override in this port.
+    // (9) `override.conditions` (:696-700)
+    for flag in ov.and_then(|o| o.conditions.as_ref()).into_iter().flatten() {
+        set_cond(&mod_db, flag, true);
+    }
 
     prof.mark("(1)-(9) env, base modDB, enemy, config lists");
 
     // --- (10) allocated nodes (:702-776) -------------------------------------------------------------------------------
-    // :702-707 the allocation counts are read from `env.spec` by `alloc_multipliers` (no override changes them here).
-    // `copyTable(env.spec.allocNodes, true)` -- a shallow copy: the same nodes.
-    env.alloc_nodes = env.spec.alloc_nodes.clone();
+    // :702-707 the allocation counts of `env.spec`, then what `override.addNodes` / `removeNodes` change.
+    let mut counts = AllocCounts::of(&env.spec);
+    match ov.filter(|o| o.add_nodes.is_some() || o.remove_nodes.is_some()) {
+        Some(o) => {
+            // :714-771 -- a fresh `nodes` table: the added nodes, then the allocated ones not removed (`pairs`: D13, insertion order).
+            let mut nodes: IndexMap<u32, usize> = IndexMap::new();
+            let mut k = 0;
+            for n in o.add_nodes.iter().flatten() {
+                let idx = match n {
+                    OverrideNode::Spec(i) => *i,
+                    OverrideNode::Other(_) => {
+                        k += 1;
+                        base_len + k - 1
+                    }
+                };
+                nodes.insert(env.spec.nodes[idx].id, idx);
+                counts.add(&env.spec.nodes[idx]);
+            }
+            for (&id, &idx) in &env.spec.alloc_nodes {
+                if o.remove_nodes.as_ref().is_some_and(|r| r.contains(&idx)) {
+                    counts.remove(&env.spec.nodes[idx]);
+                } else {
+                    nodes.insert(id, idx);
+                }
+            }
+            env.alloc_nodes = nodes;
+        }
+        // `copyTable(env.spec.allocNodes, true)` -- a shallow copy: the same nodes.
+        None => env.alloc_nodes = env.spec.alloc_nodes.clone(),
+    }
     let (initial, _) = build_mod_list_for_node_list(&mut env, true);
     env.initial_node_mod_db = initial.clone();
     merge_keystones(&mut env, &initial);
 
     // --- (11) the allocation multipliers (:778-797)
-    alloc_multipliers(&env);
+    alloc_multipliers(&env, &counts);
 
     prof.mark("(10)-(11) allocated nodes");
 
@@ -1316,7 +1399,29 @@ fn init_env_core(
         if slot_name == "Ring 3" && ok(initial.borrow().flag(None, &["AdditionalRingSlot"])) != Some(true) {
             continue;
         }
-        let item = env.item(slot.sel_item_id).cloned();
+        // :815-823 `override.repSlotName` / `repItem`. The Bow clause tests the `item` local before it is assigned (nil): never true.
+        // `slot.nodeId and override.spec` reads `env.spec.jewels` -- the slots were made from `env.spec`, so `selItemId` is that already.
+        let rep = ov.filter(|o| o.rep_slot_name.is_some() || o.rep_item.is_some());
+        let item = match rep {
+            Some(o) if o.rep_slot_name.as_deref() == Some(slot_name.as_str()) => o.rep_item.clone(),
+            Some(o)
+                if o.rep_item.is_some() && {
+                    let rs = o
+                        .rep_slot_name
+                        .as_deref()
+                        .unwrap_or_else(|| panic!("Modules/CalcSetup.lua:817: attempt to index field 'repSlotName' (a nil value)"));
+                    let two_handed = o
+                        .rep_item
+                        .as_ref()
+                        .and_then(|i| i.base)
+                        .is_some_and(|b| matches!(b.ty.as_str(), "Staff" | "Two Handed Sword" | "Two Handed Axe" | "Two Handed Mace"));
+                    rs.starts_with("Weapon 1") && slot_name.starts_with("Weapon 2") && two_handed
+                } =>
+            {
+                continue;
+            }
+            _ => env.item(slot.sel_item_id).cloned(),
+        };
         if let Some(item) = &item {
             // :824-832 `grantedSkill.nameSpec = skillData and skillData.name or nil` (looked up only on the skill path).
             for skill in &item.granted_skills {
@@ -1863,6 +1968,19 @@ fn init_env_core(
             Some(other) => panic!("Modules/CalcSetup.lua:1364: configInput.{key} = {other:?} is not a number"),
         }
     }
+    // :1368-1381 `override.toggleFlask` / `toggleTincture` -- `env.flasks[item]` set / cleared.
+    if let Some(o) = ov {
+        for (toggle, list) in [(&o.toggle_flask, &mut env.flasks), (&o.toggle_tincture, &mut env.tinctures)] {
+            if let Some(t) = toggle {
+                match list.iter().position(|f| Rc::ptr_eq(f, t)) {
+                    Some(p) => {
+                        list.remove(p);
+                    }
+                    None => list.push(t.clone()),
+                }
+            }
+        }
+    }
 
     prof.mark("(12) items");
 
@@ -1870,6 +1988,7 @@ fn init_env_core(
     merge_db(&mod_db, &item_mod_db);
 
     // --- (14) granted passives (:1388-1400) ----------------------------------------------------------------------------
+    // `not override.removeNodes or not override.removeNodes[node.id]` -- `removeNodes` is keyed by node objects: never excluded.
     // `pairs(env.modDB:List(nil, "GrantedPassive"))` -- List returns a sequence, so `pairs` walks it in order.
     for passive in ok(mod_db.borrow().list(None, &["GrantedPassive"])) {
         let name = match &passive {
@@ -1906,8 +2025,15 @@ fn init_env_core(
     merge_node_mods(&mut env);
 
     // --- (16) ExtraJewelFunc (:1426-1437) ------------------------------------------------------------------------------
-    let extra_jewel_funcs = ok(mod_db.borrow().tabulate(Some(ModType::List), None, &["ExtraJewelFunc"]));
-    if !extra_jewel_funcs.is_empty() {
+    // With `override.extraJewelFuncs` given the block is skipped; a non-empty list would feed :875/:905 (P5, as the recursion below).
+    if let Some(l) = ov.and_then(|o| o.extra_jewel_funcs.as_ref()) {
+        if !list_mods(l).is_empty() {
+            env.unimplemented
+                .push("CalcSetup.lua:875/905 override.extraJewelFuncs (radius functions from ExtraJewelFunc mods, P5)".into());
+        }
+    } else if let extra_jewel_funcs = ok(mod_db.borrow().tabulate(Some(ModType::List), None, &["ExtraJewelFunc"]))
+        && !extra_jewel_funcs.is_empty()
+    {
         env.unimplemented.push(format!(
             "CalcSetup.lua:1434 {} ExtraJewelFunc mods (initEnv would recurse; P5)",
             extra_jewel_funcs.len()
@@ -2154,25 +2280,103 @@ fn spec_copy(env: &Env) -> SpecDbs {
     }
 }
 
-/// CalcSetup.lua:778-797 -- the allocation multipliers, deliberately WITHOUT a source. The counts are `env.spec`'s (`override.addNodes`
-/// / `removeNodes`, :711-770, are not ported).
-fn alloc_multipliers(env: &Env) {
-    let alloc_mult = |name: &str, v: f64| new_mod(&env.mod_db, name, ModType::Base, n(v), None, 0, 0, vec![]);
-    let spec = &env.spec;
-    for (name, count) in [
-        ("Multiplier:AllocatedNotable", spec.allocated_notable_count),
-        ("Multiplier:AllocatedKeystone", spec.allocated_keystone_count),
-        ("Multiplier:AllocatedMastery", spec.allocated_mastery_count),
-        ("Multiplier:AllocatedMasteryType", spec.allocated_mastery_type_count),
-    ] {
-        if count > 0 {
-            alloc_mult(name, f64::from(count));
+/// CalcSetup.lua:702-707 the allocation counts initEnv starts from (`env.spec`'s, `copyTable(allocatedMasteryTypes)`), then :714-770 what
+/// `override.addNodes` / `removeNodes` change (tattoos are P5: `allocatedTattooTypes` stays empty).
+#[derive(Clone)]
+struct AllocCounts {
+    notable: f64,
+    keystone: f64,
+    mastery: f64,
+    mastery_type: f64,
+    mastery_types: IndexMap<String, f64>,
+}
+
+impl AllocCounts {
+    fn of(spec: &PassiveSpec) -> AllocCounts {
+        AllocCounts {
+            notable: f64::from(spec.allocated_notable_count),
+            keystone: f64::from(spec.allocated_keystone_count),
+            mastery: f64::from(spec.allocated_mastery_count),
+            mastery_type: f64::from(spec.allocated_mastery_type_count),
+            mastery_types: spec
+                .allocated_mastery_types
+                .iter()
+                .map(|(k, &v)| (k.clone(), f64::from(v)))
+                .collect(),
         }
     }
-    if let Some(&life) = spec.allocated_mastery_types.get("Life Mastery")
-        && life > 0
+
+    /// :718-736
+    fn add(&mut self, node: &pob_tree::SpecNode) {
+        match node.ty() {
+            pob_tree::NodeType::Mastery => {
+                self.mastery += 1.0;
+                let name = node
+                    .name()
+                    .unwrap_or_else(|| {
+                        panic!(
+                            "Modules/CalcSetup.lua:722: table index is nil (allocatedMasteryTypes[node.name], node {})",
+                            node.id
+                        )
+                    })
+                    .to_owned();
+                match self.mastery_types.get(&name).copied() {
+                    None => {
+                        self.mastery_types.insert(name, 1.0);
+                        self.mastery_type += 1.0;
+                    }
+                    Some(prev) => {
+                        self.mastery_types.insert(name, prev + 1.0);
+                        if prev == 0.0 {
+                            self.mastery_type += 1.0;
+                        }
+                    }
+                }
+            }
+            pob_tree::NodeType::Notable => self.notable += 1.0,
+            pob_tree::NodeType::Keystone => self.keystone += 1.0,
+            _ => {}
+        }
+    }
+
+    /// :750-768
+    fn remove(&mut self, node: &pob_tree::SpecNode) {
+        match node.ty() {
+            pob_tree::NodeType::Mastery => {
+                self.mastery -= 1.0;
+                let name = node.name().unwrap_or_default().to_owned();
+                let prev = self.mastery_types.get(&name).copied().unwrap_or_else(|| {
+                    panic!("Modules/CalcSetup.lua:753: attempt to perform arithmetic on a nil value (allocatedMasteryTypes[\"{name}\"])")
+                });
+                self.mastery_types.insert(name, prev - 1.0);
+                if prev - 1.0 == 0.0 {
+                    self.mastery_type -= 1.0;
+                }
+            }
+            pob_tree::NodeType::Notable => self.notable -= 1.0,
+            pob_tree::NodeType::Keystone => self.keystone -= 1.0,
+            _ => {}
+        }
+    }
+}
+
+/// CalcSetup.lua:778-797 -- the allocation multipliers, deliberately WITHOUT a source.
+fn alloc_multipliers(env: &Env, counts: &AllocCounts) {
+    let alloc_mult = |name: &str, v: f64| new_mod(&env.mod_db, name, ModType::Base, n(v), None, 0, 0, vec![]);
+    for (name, count) in [
+        ("Multiplier:AllocatedNotable", counts.notable),
+        ("Multiplier:AllocatedKeystone", counts.keystone),
+        ("Multiplier:AllocatedMastery", counts.mastery),
+        ("Multiplier:AllocatedMasteryType", counts.mastery_type),
+    ] {
+        if count > 0.0 {
+            alloc_mult(name, count);
+        }
+    }
+    if let Some(&life) = counts.mastery_types.get("Life Mastery")
+        && life > 0.0
     {
-        alloc_mult("Multiplier:AllocatedLifeMastery", f64::from(life));
+        alloc_mult("Multiplier:AllocatedLifeMastery", life);
     }
     // :792-796 `allocatedTattooTypes` -- tattoos are P5; the table is always empty.
 }
@@ -2313,8 +2517,13 @@ pub fn reinit_accelerated(env: &mut Env, spec: &SpecDbs) {
     // :562-586 the buff mode: unchanged (`EFFECTIVE` outside CALCS). :688-693 the cached DBs as parents.
     env.mod_db.borrow_mut().parent = Some(spec.player.clone());
     env.enemy_db.borrow_mut().parent = Some(spec.enemy.clone());
-    // :696-700 `override.conditions` -- no override in this port. :711-776 skipped (`accelerate.nodeAlloc`).
-    alloc_multipliers(env);
+    // :696-700 `override.conditions` of the env's override (the table every re-init shares).
+    let conditions: Vec<String> = env.calc_override.as_ref().and_then(|o| o.conditions.clone()).unwrap_or_default();
+    for flag in &conditions {
+        set_cond(&env.mod_db, flag, true);
+    }
+    // :711-776 skipped (`accelerate.nodeAlloc`): the counts are `env.spec`'s, unchanged by `addNodes` / `removeNodes`.
+    alloc_multipliers(env, &AllocCounts::of(&env.spec));
     // :800-1382 skipped (`accelerate.requirementsItems`) -- with it the item code's own modDB writes (Widowhail, :1231).
     // :1385 `mergeDB(env.modDB, env.itemModDB)` -- the kept itemModDB.
     merge_db(&env.mod_db, &env.item_mod_db);

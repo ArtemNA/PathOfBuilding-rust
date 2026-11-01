@@ -50,6 +50,7 @@ pub struct ClusterJewel {
 pub type JewelLookup<'a> = &'a dyn Fn(f64) -> Option<Rc<ClusterJewel>>;
 
 /// `self.subGraphs[id]` -- the parts `BuildClusterJewelGraphs` reads back (nodes, parentSocket, entranceNode).
+#[derive(Clone)]
 pub(crate) struct SubGraph {
     /// Indices into `PassiveSpec::nodes`, `subGraph.nodes` order.
     nodes: Vec<usize>,
@@ -149,6 +150,7 @@ impl PassiveSpec {
             {
                 self.nodes[li].alloc = false;
                 self.alloc_nodes.shift_remove(&legacy);
+                self.alloc_nil(legacy);
                 let current = f64::from(current);
                 if !seen.contains(&current) {
                     seen.push(current);
@@ -209,6 +211,7 @@ impl PassiveSpec {
                 if self.alloc_nodes.contains_key(&id) {
                     // Reserve the allocation in case the node is regenerated
                     self.alloc_nodes.shift_remove(&id);
+                    self.alloc_nil(id);
                     if !self.ignore_allocating_subgraph {
                         self.alloc_subgraph_nodes.push(f64::from(id));
                     }
@@ -254,6 +257,7 @@ impl PassiveSpec {
             self.nodes[i].alloc = true;
             if !self.alloc_nodes.contains_key(&nid) {
                 self.alloc_nodes.insert(nid, i);
+                self.alloc_table.set(f64::from(nid));
                 if !self.alloc_extended_nodes.contains(&nid) {
                     self.alloc_extended_nodes.push(nid);
                 }

@@ -223,7 +223,7 @@ const LEGACY_SKILLS_PER_ORBIT: [f64; 5] = [1.0, 6.0, 12.0, 12.0, 40.0];
 const LEGACY_ORBIT_RADII: [f64; 5] = [0.0, 82.0, 162.0, 335.0, 493.0];
 
 /// An integral, non-negative Lua number that fits a node id.
-pub(crate) fn as_id(n: f64) -> Option<u32> {
+pub fn as_id(n: f64) -> Option<u32> {
     (n >= 0.0 && n.fract() == 0.0 && n <= f64::from(u32::MAX)).then_some(n as u32)
 }
 

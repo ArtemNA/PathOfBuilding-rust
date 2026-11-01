@@ -15,7 +15,38 @@ use indexmap::IndexMap;
 use pob_build::{BuildModel, ConfigState, InputValue};
 use pob_items::{DataTable, Item};
 use pob_mods::{ActorRef, StoreRef};
-use pob_tree::PassiveSpec;
+use pob_tree::{PassiveSpec, SpecNode};
+
+/// One key of `override.addNodes`: a node of `env.spec` (an index into `spec.nodes`), or a node that is not one -- a mastery-effect node
+/// `PowerBuilder` makes (CalcsTab.lua:516-529) or a cluster notable of `tree.clusterNodeMap` (:714-736).
+#[derive(Clone)]
+pub enum OverrideNode {
+    Spec(usize),
+    Other(Rc<SpecNode>),
+}
+
+/// `override` of `calcs.initEnv(build, mode, override, specEnv)` (Calcs.lua:72-83 `CalcOverride`, CalcSetup.lua:485-1437): what the
+/// calculator of `calcs.getMiscCalculator` (node power, item/gem comparisons) changes against the build. `None` = the field is nil.
+#[derive(Clone, Default)]
+pub struct CalcOverride {
+    /// `override.addNodes` -- a set upstream (`{ [node] = true }`); here in the caller's order.
+    pub add_nodes: Option<Vec<OverrideNode>>,
+    /// `override.removeNodes` -- spec node indices (a set of node objects upstream: `removeNodes[node.id]` at :1393/:1408 is always nil).
+    pub remove_nodes: Option<Vec<usize>>,
+    /// `override.conditions` (:696-700): `modDB.conditions[flag] = true`.
+    pub conditions: Option<Vec<String>>,
+    /// `override.repSlotName` / `override.repItem` (:815-820): the item in that slot is replaced.
+    pub rep_slot_name: Option<String>,
+    pub rep_item: Option<Rc<Item>>,
+    /// `override.toggleFlask` (:1368-1374): the flask is switched off if active, on if not.
+    pub toggle_flask: Option<Rc<Item>>,
+    /// `override.toggleTincture` (:1375-1381).
+    pub toggle_tincture: Option<Rc<Item>>,
+    /// `override.spec` (:501, :821): another passive spec instead of `build.spec`.
+    pub spec: Option<Rc<PassiveSpec>>,
+    /// `override.extraJewelFuncs` (:875, :905, :1425-1437) -- a ModList of `ExtraJewelFunc` mods.
+    pub extra_jewel_funcs: Option<StoreRef>,
+}
 
 /// `env.player` / `env.enemy` (CALC-ARCH §7 `CalcActor`).
 pub struct CalcActor {
@@ -211,6 +242,9 @@ pub struct Env {
     /// `env.minion = env.player.mainSkill.minion` (CalcPerform.lua:1316, R7.10): the main skill's minion actor while perform runs (the same
     /// `Rc` as that skill's [`crate::minion::Minion::actor`]); `None` = nil.
     pub minion: Option<Rc<RefCell<CalcActor>>>,
+    /// `env.override` (CalcSetup.lua:502): what this env was built with (`None` = `{}`); the accelerated re-init of `calcFullDPS` reads
+    /// its `conditions` again (:696).
+    pub calc_override: Option<Rc<CalcOverride>>,
 }
 
 impl Env {

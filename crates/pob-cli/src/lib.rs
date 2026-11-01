@@ -154,3 +154,31 @@ pub fn bench(path: &Path, runs: usize, mode: ParseMode) -> Result<BenchRow, Stri
     }
     Ok(row)
 }
+
+/// One timed node-power build (R8.7): `CalcsTab:PowerBuilder` over the whole tree on `threads` threads (session set-up included).
+pub struct PowerRow {
+    pub ms: f64,
+    pub calc_calls: usize,
+    pub units: usize,
+}
+
+/// `pob-cli power`: the power build of `path` for `stat` (`None` = the default Offence/Defence), timed, on `threads` threads.
+pub fn power(path: &Path, stat: Option<&str>, threads: usize) -> Result<PowerRow, String> {
+    let text = pob_build::read_build_file(path).map_err(|e| format!("cannot read '{}': {e}", path.display()))?;
+    let model = pob_build::load_build_xml(&text).map_err(|e| format!("build XML: {e}"))?;
+    let stat = match stat {
+        Some(s) => Some(pob_calc::power::find_power_stat(s).ok_or_else(|| format!("no power stat '{s}' in data.powerStatList"))?),
+        None => None,
+    };
+    let t0 = Instant::now();
+    let res = catch_unwind(AssertUnwindSafe(|| {
+        pob_calc::power::build_power_threads(&model, CalculateOptions::default(), stat.as_ref(), None, threads, None)
+    }))
+    .map_err(|_| "power: panic".to_owned())??
+    .ok_or("power: cancelled")?;
+    Ok(PowerRow {
+        ms: t0.elapsed().as_secs_f64() * 1000.0,
+        calc_calls: res.calc_calls,
+        units: res.total,
+    })
+}

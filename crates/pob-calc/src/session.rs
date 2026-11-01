@@ -30,8 +30,9 @@ use pob_data::gems::gems;
 use pob_items::Item;
 
 use crate::calculate::{CalcError, CalculateOptions};
+use crate::env::CalcOverride;
 use crate::env::Env;
-use crate::init_env::{BuildShared, SpecDbs, init_env_shared_spec, parse_items, reinit_accelerated};
+use crate::init_env::{BuildShared, SpecDbs, init_env_shared_override, parse_items, reinit_accelerated};
 use crate::output::{FullDpsSkill, OutTable};
 use crate::perform::{ActorState, Checkpoint, PerformState, finish_output_spec, perform_skip_ehp};
 
@@ -255,6 +256,8 @@ pub struct SessionCore {
     /// The run [`CalcSession::perform_in_place`] performs now and the frame depth it was called at (R7.2b mine, R7.9): its env is mutably
     /// borrowed for the whole perform, and a reader of `cachedData[..].ActiveSkill` inside that perform gets the skill of the env in hand.
     in_place: RefCell<Option<(std::rc::Weak<RefCell<CalcRun>>, usize)>>,
+    /// The `override` of the [`MiscCalculator::calc`] running now (R8.7, see [`CalcSession::init_env`]).
+    ambient_override: RefCell<Option<Rc<CalcOverride>>>,
 }
 
 /// A checkpoint hook owned by the session (R7.3: the offence checkpoints of nested runs, e.g. Dual Savior's first nested env).
@@ -399,6 +402,7 @@ impl CalcSession {
                 main_init_done: Cell::new(false),
                 hook: RefCell::new(None),
                 in_place: RefCell::new(None),
+                ambient_override: RefCell::new(None),
             }),
         }
     }
@@ -450,13 +454,26 @@ impl CalcSession {
     /// run in the session (else the merge would be one upstream does not do). CALCS (`misc_buffMode`, `*Calcs` gem fields,
     /// CalcActiveSkill.lua:250/623/649/694/736/924) is not ported.
     pub fn init_env(&self, mode: CalcMode) -> Result<Env, SessionError> {
-        self.init_env_spec(mode, None).map(|(env, _)| env)
+        // R8.7: inside [`MiscCalculator::calc`] every env descends from the calculator's env, whose nested initEnvs pass `env.override`
+        // on (CalcActiveSkill.lua:182 `copyActiveSkill`, reached from `crate::mirages`) -- the calculator's override is the ambient one.
+        let ambient = self.core.ambient_override.borrow().clone();
+        self.init_env_override(mode, None, ambient.as_ref()).map(|(env, _)| env)
     }
 
     /// [`CalcSession::init_env`] with upstream's `specEnv` (R7.2b): `calcs.initEnv(build, mode, override, { cachedPlayerDB = ..,
     /// cachedEnemyDB = .., cachedMinionDB = .., env = nil })` (CalcSetup.lua:475-482) -- the base and config mods are read through the
     /// cached DBs as `parent`s (:688-693). Returns the env and the DBs initEnv returns (:1974): `spec`'s, or `specCopy` of the new env.
     pub fn init_env_spec(&self, mode: CalcMode, spec: Option<&SpecDbs>) -> Result<(Env, SpecDbs), SessionError> {
+        self.init_env_override(mode, spec, None)
+    }
+
+    /// [`CalcSession::init_env_spec`] with an `override` (R8.7): `calcs.initEnv(build, mode, override, specEnv)`.
+    pub fn init_env_override(
+        &self,
+        mode: CalcMode,
+        spec: Option<&SpecDbs>,
+        ov: Option<&Rc<CalcOverride>>,
+    ) -> Result<(Env, SpecDbs), SessionError> {
         match mode {
             CalcMode::Main => {}
             CalcMode::Calculator if self.core.main_init_done.get() => {}
@@ -477,8 +494,9 @@ impl CalcSession {
         let t0 = std::time::Instant::now();
         let shared = self.shared().map_err(|e| SessionError::Calc(CalcError(format!("initEnv: {e}"))))?;
         let carry = self.core.carry.borrow().clone();
-        let (mut env, cached) = init_env_shared_spec(self.core.build.clone(), &shared, self.core.opts.parse_mode, Some(&carry), spec)
-            .map_err(|e| SessionError::Calc(CalcError(format!("initEnv: {e}"))))?;
+        let (mut env, cached) =
+            init_env_shared_override(self.core.build.clone(), &shared, self.core.opts.parse_mode, Some(&carry), spec, ov)
+                .map_err(|e| SessionError::Calc(CalcError(format!("initEnv: {e}"))))?;
         if let Some(st) = &env.skills {
             let mut c = self.core.carry.borrow_mut();
             c.from_item_marks.extend(st.from_item_marks.iter().cloned());
@@ -686,8 +704,8 @@ impl CalcSession {
             limited: limited.to_vec(),
         });
         let t0 = std::time::Instant::now();
-        // :358 `calcs.initEnv(env.build, mode, env.override)` -- `override` is never set on these goldens' paths (no override port).
-        let mut full_env = match self.init_env(mode) {
+        // :358 `calcs.initEnv(env.build, mode, env.override)`
+        let mut full_env = match self.init_env_override(mode, None, env.calc_override.as_ref()).map(|(e, _)| e) {
             Ok(e) => e,
             Err(SessionError::Calc(e)) => return Err(e),
             Err(SessionError::Unimplemented(what)) => {
@@ -745,9 +763,19 @@ impl CalcSession {
     /// (Calcs.lua:392 / :93 / :107), `None` = `specEnv` nil. The first initEnv reads the base / config mods through them (:143); after each
     /// skill the SAME env is re-initialised in place with every accelerator on (:337-344, [`reinit_accelerated`]) and performed again --
     /// so every cache entry this makes holds that one env, as upstream's `cacheData` (`Env = env`).
-    #[allow(clippy::too_many_lines)]
     pub fn calc_full_dps_spec(&self, mode: CalcMode, spec: Option<SpecDbs>) -> Result<FullDpsOutcome, CalcError> {
-        let (full_env, cached) = match self.init_env_spec(mode, spec.as_ref()) {
+        self.calc_full_dps_override(mode, spec, None)
+    }
+
+    /// [`CalcSession::calc_full_dps_spec`] with an `override` (Calcs.lua:107 `calcs.calcFullDPS(build, "CALCULATOR", override, specEnv)`).
+    #[allow(clippy::too_many_lines)]
+    pub fn calc_full_dps_override(
+        &self,
+        mode: CalcMode,
+        spec: Option<SpecDbs>,
+        ov: Option<&Rc<CalcOverride>>,
+    ) -> Result<FullDpsOutcome, CalcError> {
+        let (full_env, cached) = match self.init_env_override(mode, spec.as_ref(), ov) {
             Ok(e) => e,
             Err(SessionError::Calc(e)) => return Err(e),
             Err(SessionError::Unimplemented(what)) => {
@@ -1143,8 +1171,7 @@ impl CalcSession {
 
     /// `calcs.getMiscCalculator(build)` (Calcs.lua:89-115), its base pass (:91-98): `initEnv(build, "CALCULATOR")`, perform, then
     /// `calcFullDPS(build, "CALCULATOR", {}, specEnv)` with the DBs that initEnv returned (:93), whose result goes into the output when
-    /// it has skills (`usedFullDPS`, :94-98). The calculator closure it returns (:99-114) needs `override` (nodes / items / gems) and
-    /// `build.viewMode`, neither ported: not here.
+    /// it has skills (`usedFullDPS`, :94-98). The calculator it returns: [`CalcSession::get_misc_calculator`].
     pub fn misc_calculator_base(&self) -> Result<BuildOutput, CalcError> {
         let (env, cached) = match self.init_env_spec(CalcMode::Calculator, None) {
             Ok(e) => e,
@@ -1170,6 +1197,21 @@ impl CalcSession {
             }
         }
         Ok(BuildOutput { run, full_dps })
+    }
+
+    /// `calcs.getMiscCalculator(build)` (Calcs.lua:89-115): the base pass ([`CalcSession::misc_calculator_base`]) and the calculator
+    /// closure over it ([`MiscCalculator::calc`]). Needs a MAIN initEnv first (CalcsTab:BuildOutput runs `buildOutput(MAIN)` before it).
+    pub fn get_misc_calculator(&self) -> Result<MiscCalculator, CalcError> {
+        let base = self.misc_calculator_base()?;
+        let used_full_dps = match &base.full_dps {
+            FullDpsOutcome::Done(fd) => Ok(!fd.skills.is_empty()),
+            FullDpsOutcome::Unimplemented { note, .. } => Err(note.clone()),
+        };
+        Ok(MiscCalculator {
+            session: self.clone(),
+            base: base.run,
+            used_full_dps,
+        })
     }
 
     /// `calcs.buildOutput(build, mode)` (Calcs.lua:384-470) up to the display tables. Only MAIN is ported (the caller's mode).
@@ -1377,4 +1419,68 @@ pub fn is_limited(env: &Env, skill: usize) -> bool {
     env.limited_skills
         .as_ref()
         .is_some_and(|l| l.contains(&cache_skill_uuid(env, skill)))
+}
+
+/// What `calcs.getMiscCalculator(build)` returns (Calcs.lua:89-115): the closure `function(override, useFullDPS)` and the base output.
+pub struct MiscCalculator {
+    session: CalcSession,
+    /// The base pass (:91-98) -- `env.player.output` of it is the second return value.
+    pub base: RunRef,
+    /// `usedFullDPS` (:94): the base `calcFullDPS` rolled up a skill; `Err` = its roll-up stopped at a boundary of the port.
+    pub used_full_dps: Result<bool, String>,
+}
+
+impl MiscCalculator {
+    /// The session the calculator runs in.
+    pub fn session(&self) -> &CalcSession {
+        &self.session
+    }
+
+    /// The closure (Calcs.lua:99-114): `initEnv(build, "CALCULATOR", override)` (no `specEnv`), perform, then -- when
+    /// `(useFullDPS ~= false or build.viewMode == "TREE") and usedFullDPS` -- `calcFullDPS(build, "CALCULATOR", override, specEnv)` with the
+    /// DBs that initEnv returned, its result written into the output. `use_full_dps`: `None` = nil. Returns the run (`env.player.output`).
+    pub fn calc(&self, ov: &Rc<CalcOverride>, use_full_dps: Option<bool>, view_mode_tree: bool) -> Result<RunRef, CalcError> {
+        // Every initEnv nested in this call sees `env.override` (Calcs.lua:358, CalcActiveSkill.lua:182): the ambient override.
+        let prev = self.session.core.ambient_override.replace(Some(ov.clone()));
+        let r = self.calc_inner(ov, use_full_dps, view_mode_tree);
+        *self.session.core.ambient_override.borrow_mut() = prev;
+        r
+    }
+
+    fn calc_inner(&self, ov: &Rc<CalcOverride>, use_full_dps: Option<bool>, view_mode_tree: bool) -> Result<RunRef, CalcError> {
+        let s = &self.session;
+        let (env, cached) = match s.init_env_override(CalcMode::Calculator, None, Some(ov)) {
+            Ok(e) => e,
+            Err(SessionError::Calc(e)) => return Err(e),
+            Err(SessionError::Unimplemented(what)) => return Err(CalcError(format!("Calcs.lua:100 {what}"))),
+        };
+        // :101 `calcs.perform(env)`
+        let run = s.perform_inner(env, false, true);
+        if use_full_dps != Some(false) || view_mode_tree {
+            match &self.used_full_dps {
+                Ok(false) => {}
+                Ok(true) => {
+                    // :106-110
+                    match s.calc_full_dps_override(CalcMode::Calculator, Some(cached), Some(ov))? {
+                        FullDpsOutcome::Done(fd) => {
+                            let mut r = run.borrow_mut();
+                            let o = &mut r.state.player.output;
+                            o.set_table("SkillDPS", OutTable::SkillDps(fd.skills.clone()));
+                            o.set_num("FullDPS", fd.combined_dps);
+                            o.set_num("FullDotDPS", fd.total_dot_dps);
+                        }
+                        FullDpsOutcome::Unimplemented { processed, note } => {
+                            let what = format!("Calcs.lua:107-110 calcFullDPS ({processed} skills performed): {note}");
+                            run.borrow_mut().env.unimplemented.push(what);
+                        }
+                    }
+                }
+                Err(note) => {
+                    let what = format!("Calcs.lua:102 usedFullDPS unknown -- the base calcFullDPS stopped: {note}");
+                    run.borrow_mut().env.unimplemented.push(what);
+                }
+            }
+        }
+        Ok(run)
+    }
 }

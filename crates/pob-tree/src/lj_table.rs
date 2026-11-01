@@ -19,7 +19,7 @@ struct Node {
 }
 
 /// A LuaJIT table with number keys (integral or not).
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct LjTable {
     /// Array slots `0..asize`: present?
     array: Vec<bool>,
@@ -174,6 +174,33 @@ impl LjTable {
                 nodes[free] = nodes[n];
                 nodes[n].next = None;
                 nodes[n].val = false;
+                // "Rechain pseudo-resurrected keys with colliding hashes": a live key of main position `n` further down the
+                // moved chain (one that took over a dead node of another chain, R8.7) goes back into `n`'s chain.
+                let mut fr = free;
+                while let Some(nn) = nodes[fr].next {
+                    let live_here = nodes[nn].val && nodes[nn].key.is_some_and(|k| (hashnum(k) as usize) & hmask == n);
+                    if live_here {
+                        nodes[fr].next = nodes[nn].next;
+                        nodes[nn].next = nodes[n].next;
+                        nodes[n].next = Some(nn);
+                        while let Some(nn) = nodes[fr].next {
+                            if nodes[nn].val {
+                                let mn = (hashnum(nodes[nn].key.expect("live")) as usize) & hmask;
+                                if mn != fr && mn != nn {
+                                    nodes[fr].next = nodes[nn].next;
+                                    nodes[nn].next = nodes[mn].next;
+                                    nodes[mn].next = Some(nn);
+                                } else {
+                                    fr = nn;
+                                }
+                            } else {
+                                fr = nn;
+                            }
+                        }
+                        break;
+                    }
+                    fr = nn;
+                }
             } else {
                 // Otherwise use the free node.
                 nodes[free].next = nodes[n].next;
@@ -259,6 +286,33 @@ impl LjTable {
         }
     }
 
+    /// `t[k] = nil` (R8.7). A present key keeps its slot with a nil value (a dead key: not walked by `pairs`, not counted by a rehash,
+    /// reused by a later `t[k] = v`, and -- in its main position -- by any new key). An absent key: `lj_meta_tset` creates it anyway
+    /// (`lj_tab_newkey`, then the nil store) when `create_absent`, else nothing happens.
+    pub fn remove(&mut self, k: f64, create_absent: bool) {
+        let ki = k as i32;
+        if f64::from(ki) == k && (ki as u32 as usize) < self.array.len() {
+            self.array[ki as u32 as usize] = false;
+            return;
+        }
+        let k = if k == 0.0 { 0.0 } else { k };
+        if let Some(nodes) = &mut self.nodes {
+            let mut n = Some((hashnum(k) as usize) & (nodes.len() - 1));
+            while let Some(i) = n {
+                if nodes[i].key == Some(k) {
+                    nodes[i].val = false;
+                    return;
+                }
+                n = nodes[i].next;
+            }
+        }
+        if create_absent {
+            self.newkey(k);
+            // the new slot holds nil
+            self.remove(k, false);
+        }
+    }
+
     /// `pairs(t)` -- `lj_tab_next`: array slots 0.. first, then the hash nodes in index order.
     pub fn pairs_keys(&self) -> Vec<f64> {
         let mut out: Vec<f64> = (0..self.array.len()).filter(|&i| self.array[i]).map(|i| i as f64).collect();
@@ -277,3 +331,7 @@ pub fn pairs_order(keys: &[f64]) -> Vec<f64> {
     }
     t.pairs_keys()
 }
+
+/// `t[k] = nil` on an absent key creates a dead key (`lj_meta_tset` -> `lj_tab_newkey`, R8.7). Measured: on the 6 goldens the `pairs` order of
+/// `spec.allocNodes` = LuaJIT with and without it (the dead keys of `ResetNodes` are gone by the next rehash).
+pub const NIL_STORE_CREATES_KEY: bool = true;
