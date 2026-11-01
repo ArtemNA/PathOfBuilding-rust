@@ -11,3 +11,5 @@
 /.claude/worktrees/
 # personal PoB builds copied from Documents (local only)
 /builds/pc/
+# LuaJIT truth for builds/pc (tools/lua-corpus/export-real.ts; carries the personal build data)
+/builds/pc-fixtures/

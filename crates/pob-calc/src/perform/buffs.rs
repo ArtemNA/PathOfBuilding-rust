@@ -5,7 +5,7 @@
 //! What the phase knows it does not do (each recorded in `env.unimplemented` when a build reaches it):
 //! * `env.minion` (R7.10): every `if env.minion` half, the minions' own skills (`activeSkill.minion.activeSkillList`, :2777-2993) and the
 //!   spectres (:2210-2272) are ported; `minionBuffs` / `minionCurses` go to [`Combined`].
-//! * `getCachedOutputValue` (:2281-2305, Blight / Penance Brand / Earthquake stages) needs another skill's offence -- R7.
+//! * `getCachedOutputValue` (:2281-2301, Blight / Penance Brand / Earthquake stages): a cached run that stopped at a boundary of the port is recorded, its stages skipped.
 //! * PartyTab (P5): `env.partyMembers` is the empty stand-in actor, so `allyBuffs` (:2207) has no `Aura`/`AuraDebuff`/`otherEffects`/
 //!   `extraAura`, `partyMembers.Warcry/Link` are empty (:2997-3115 never run), and `partyTabEnableExportBuffs` is false
 //!   (`enableExportBuffs` is never loaded from a build, PartyTab.lua:26): `buffExports` is write-only here and not kept, the Link branch
@@ -667,6 +667,11 @@ fn minion_skill_buffs(
     }
 }
 
+/// A Lua arithmetic error on a nil local (`m_floor(rate * duration)` with a missing cached output).
+fn nil_arith(line: u32, what: &str) -> ! {
+    panic!("Modules/CalcPerform.lua:{line}: attempt to perform arithmetic on local '{what}' (a nil value)")
+}
+
 /// :2193-2995 -- see the module doc.
 #[allow(clippy::too_many_lines)]
 pub(super) fn combine(env: &mut Env) -> Combined {
@@ -708,8 +713,8 @@ pub(super) fn combine(env: &mut Env) -> Combined {
 
     // :2277-2306 maximum sustainable stages
     for (i, sk) in st.active_skill_list.iter().enumerate() {
-        // `env.limitedSkills` is only set by `calcs.buildActiveSkill` (R7): nil here.
-        if sk.flag("disable") {
+        // :2279 `not (env.limitedSkills and env.limitedSkills[cacheSkillUUID(activeSkill, env)])`
+        if sk.flag("disable") || crate::session::is_limited(env, i) {
             continue;
         }
         let name = skills.effects[sk.active_effect.borrow().granted_effect].name.clone();
@@ -717,11 +722,76 @@ pub(super) fn combine(env: &mut Env) -> Combined {
         if !part2 {
             continue;
         }
+        // :31-42 `getCachedOutputValue` -- a cached run that stopped at a boundary of the port is recorded, the stages skipped
+        let cached = |keys: &[&str], notes: &mut Vec<String>| match crate::session::get_cached_output_value(env, i, keys) {
+            Ok(v) => Some(v),
+            Err(e) => {
+                notes.push(format!("CalcPerform.lua:2281-2301 stages of {name}: {e}"));
+                None
+            }
+        };
         match name.as_str() {
-            "Blight" | "Blight of Contagion" | "Blight of Atrophy" | "Penance Brand of Dissipation" | "Earthquake of Amplification" => {
-                notes.push(format!(
-                    "CalcPerform.lua:2281-2305 getCachedOutputValue for {name} (skillPart 2): needs that skill's offence (R7)"
-                ));
+            "Blight" | "Blight of Contagion" | "Blight of Atrophy" => {
+                // :2281-2285
+                let Some(v) = cached(&["Speed", "Duration"], &mut notes) else {
+                    continue;
+                };
+                let rate = v[0].unwrap_or_else(|| nil_arith(2283, "rate"));
+                let duration = v[1].unwrap_or_else(|| nil_arith(2283, "duration"));
+                let list = skill_list_of(env, i);
+                let base_max = ok(list.borrow().sum(ModType::Base, Some(&main.cfg), &["BlightBaseMaxStages"]));
+                let maximum = min2((rate * duration).floor() - 1.0, base_max - 1.0);
+                let key = strip_space(&name);
+                for suffix in ["MaxStages", "StageAfterFirst"] {
+                    nm(
+                        &list,
+                        &format!("Multiplier:{key}{suffix}"),
+                        ModType::Base,
+                        maximum,
+                        "Base",
+                        0,
+                        0,
+                        vec![],
+                    );
+                }
+            }
+            "Penance Brand of Dissipation" => {
+                // :2288-2291 (`HitSpeed` is the brand activation frequency)
+                let Some(v) = cached(&["HitSpeed", "Duration"], &mut notes) else {
+                    continue;
+                };
+                let freq = v[0].unwrap_or(0.0);
+                let duration = v[1].unwrap_or_else(|| nil_arith(2289, "duration"));
+                let ticks = max2(min2((freq * duration).floor() - 1.0, 19.0), 0.0);
+                let list = skill_list_of(env, i);
+                for suffix in ["MaxStages", "StageAfterFirst"] {
+                    nm(
+                        &list,
+                        &format!("Multiplier:PenanceBrandofDissipation{suffix}"),
+                        ModType::Base,
+                        ticks,
+                        "Base",
+                        0,
+                        0,
+                        vec![],
+                    );
+                }
+            }
+            "Earthquake of Amplification" => {
+                // :2299-2301
+                let Some(v) = cached(&["Duration"], &mut notes) else { continue };
+                let duration = v[0].unwrap_or_else(|| nil_arith(2300, "duration"));
+                let list = skill_list_of(env, i);
+                nm(
+                    &list,
+                    "Multiplier:100msEarthquakeDuration",
+                    ModType::Base,
+                    (duration * 10.0).floor(),
+                    "Skill:EarthquakeAltX",
+                    0,
+                    0,
+                    vec![],
+                );
             }
             "Scorching Ray" | "Scorching Ray of Immolation" => {
                 let list = skill_list_of(env, i);
