@@ -1,0 +1,13 @@
+{
+  "script": "measure.lua",
+  "args": "desktop",
+  "exit": 0,
+  "ms": 22397,
+  "sandbox_changes": [
+    "CHG  <rt>\\imgui.ini",
+    "CHG  <rt>\\SimpleGraphic\\SimpleGraphic.cfg"
+  ],
+  "outside_watched_changes": [],
+  "recent_writes_elsewhere": 7,
+  "pob_like_recent": []
+}

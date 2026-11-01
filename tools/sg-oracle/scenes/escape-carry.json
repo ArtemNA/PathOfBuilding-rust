@@ -1,0 +1,22 @@
+{"note": "escape colour carries to later draws; alpha with escapes; non-ASCII; multi-line", "size": [420, 200], "dpi": 100, "calls": [
+["SetDrawColor", 1, 1, 1],
+["DrawString", 10, 10, "LEFT", 16, "VAR", "^1red then rect:"],
+["DrawImage", null, 130, 12, 20, 12],
+["@log", "GetDrawColor"],
+["SetDrawColor", 1, 1, 1, 0.5],
+["DrawString", 10, 30, "LEFT", 16, "VAR", "half ^2green then rect:"],
+["@log", "GetDrawColor"],
+["DrawImage", null, 180, 32, 20, 12],
+["SetDrawColor", 1, 1, 1],
+["DrawString", 10, 50, "LEFT", 16, "VAR", "Café é Привіт 日本 €"],
+["DrawString", 10, 70, "LEFT", 16, "VAR", "line1\n^3line2\nline3"],
+["@log", "GetDrawColor"],
+["SetDrawColor", 1, 1, 1],
+["DrawString", 10, 130, "LEFT", 16, "VAR", "tab\there ^xGGGGGG bad ^ trail^"],
+["DrawString", 10, 150, "LEFT", 16, "VAR", "^x12345 short ^xff8000orange^7 ^^1x"],
+["@log", "GetDrawColor"],
+["SetDrawColor", "^4"],
+["@log", "GetDrawColor"],
+["DrawString", 10, 170, "LEFT", 16, "VAR", "tint ^4 yellow, ^7white"],
+["@log", "GetDrawColor"]
+]}

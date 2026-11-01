@@ -11,3 +11,5 @@
 /.claude/worktrees/
 # personal PoB builds copied from Documents (local only)
 /builds/pc/
+# SG-oracle sandbox: copy of the original PoB runtime (tools/sg-oracle/setup.ps1)
+/tools/sg-oracle/runtime/

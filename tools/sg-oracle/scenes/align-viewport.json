@@ -1,0 +1,20 @@
+{"note": "CENTER/RIGHT inside viewports on the fixed 1280x800 window: is the reference width the viewport or the screen?", "size": [1280, 140], "dpi": 100, "calls": [
+["SetDrawColor", 1, 1, 1],
+["DrawString", 0, 0, "CENTER", 16, "VAR", "C full"],
+["DrawString", -100, 20, "RIGHT", 16, "VAR", "R full -100"],
+["SetViewport", 100, 40, 1100, 20],
+["DrawString", 0, 0, "CENTER", 16, "VAR", "C vp100w1100"],
+["SetViewport", 0, 60, 1000, 20],
+["DrawString", -300, 0, "RIGHT", 16, "VAR", "R vp0w1000 -300"],
+["SetViewport", 200, 80, 600, 20],
+["DrawString", -400, 0, "CENTER", 16, "VAR", "C vp200w600 -400"],
+["SetViewport", 200, 100, 600, 40],
+["SetDrawColor", 0.2, 0.2, 0.4],
+["DrawImage", null, 0, 0, 600, 40],
+["SetDrawColor", 1, 1, 1],
+["DrawString", 0, 0, "CENTER", 16, "VAR", "C vp200w600"],
+["DrawString", 0, 20, "RIGHT", 16, "VAR", "R vp200w600"],
+["SetViewport"],
+["DrawString", 100, 120, "RIGHT", 16, "VAR", "R full +100"],
+["DrawString", 0, 120, "LEFT", 16, "VAR", "L0"]
+]}

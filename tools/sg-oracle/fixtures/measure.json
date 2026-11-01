@@ -1,0 +1,1840 @@
+{
+  "generated_by": "tools/sg-oracle/summarize-measure.ps1",
+  "exe": "Path{space}of{space}Building.exe 2.67.2, SimpleGraphic v2.5-3b1a346 (sandbox copy)",
+  "modes": {
+    "desktop": {
+      "screen": [
+        3440,
+        1421
+      ],
+      "scale": 1,
+      "paths": {
+        "package_path": "./?.lua;<rt>/lua/?.lua;<rt>/lua/?/init.lua;;lua/?.lua",
+        "runtime": "<rt>",
+        "script": "<rt>/sg",
+        "work": "<rt>/sg"
+      },
+      "injector": "hwnd=5506922 pid=20844 layout=04090409 dblclick=500 foreground=True",
+      "cadence": {
+        "idle_static": {
+          "intervals": 56,
+          "median_ms": 30,
+          "min_ms": 30,
+          "max_ms": 31,
+          "mean_ms": 30.29
+        },
+        "animated": {
+          "intervals": 68,
+          "median_ms": 30,
+          "min_ms": 30,
+          "max_ms": 31,
+          "mean_ms": 30.29
+        },
+        "during_input": {
+          "intervals": 362,
+          "median_ms": 30,
+          "min_ms": 29,
+          "max_ms": 37,
+          "mean_ms": 30.47
+        },
+        "minimized": {
+          "frames": 0
+        },
+        "minimized_gap_ms": 2263.0,
+        "after_restore": {
+          "intervals": 64,
+          "median_ms": 30,
+          "min_ms": 30,
+          "max_ms": 32,
+          "mean_ms": 30.47
+        }
+      },
+      "frame_start_state": [
+        {
+          "layer_sub_r_g_b_a": "0,False,1,0,0,0,5",
+          "frames": 640
+        },
+        {
+          "layer_sub_r_g_b_a": "0,False,1,1,1,1",
+          "frames": 1
+        }
+      ],
+      "input_steps": [
+        {
+          "step": 1,
+          "what": "anim on (idle 2 s before)",
+          "events": []
+        },
+        {
+          "step": 2,
+          "what": "anim off",
+          "events": []
+        },
+        {
+          "step": 3,
+          "what": "wheel +120 -120 +240 +60 +60",
+          "events": [
+            [
+              153,
+              "OnKeyDown",
+              "WHEELUP",
+              false,
+              {
+                "ctrl": false,
+                "lb": false,
+                "shift": false
+              }
+            ],
+            [
+              153,
+              "OnKeyUp",
+              "WHEELUP",
+              {
+                "ctrl": false,
+                "lb": false,
+                "shift": false
+              }
+            ],
+            [
+              366,
+              "OnKeyDown",
+              "WHEELDOWN",
+              false,
+              {
+                "ctrl": false,
+                "lb": false,
+                "shift": false
+              }
+            ],
+            [
+              366,
+              "OnKeyUp",
+              "WHEELDOWN",
+              {
+                "ctrl": false,
+                "lb": false,
+                "shift": false
+              }
+            ],
+            [
+              579,
+              "OnKeyDown",
+              "WHEELUP",
+              false,
+              {
+                "ctrl": false,
+                "lb": false,
+                "shift": false
+              }
+            ],
+            [
+              579,
+              "OnKeyUp",
+              "WHEELUP",
+              {
+                "ctrl": false,
+                "lb": false,
+                "shift": false
+              }
+            ],
+            [
+              763,
+              "OnKeyDown",
+              "WHEELUP",
+              false,
+              {
+                "ctrl": false,
+                "lb": false,
+                "shift": false
+              }
+            ],
+            [
+              763,
+              "OnKeyUp",
+              "WHEELUP",
+              {
+                "ctrl": false,
+                "lb": false,
+                "shift": false
+              }
+            ],
+            [
+              977,
+              "OnKeyDown",
+              "WHEELUP",
+              false,
+              {
+                "ctrl": false,
+                "lb": false,
+                "shift": false
+              }
+            ],
+            [
+              983,
+              "OnKeyUp",
+              "WHEELUP",
+              {
+                "ctrl": false,
+                "lb": false,
+                "shift": false
+              }
+            ]
+          ]
+        },
+        {
+          "step": 4,
+          "what": "key A (vk 41 sc 1E)",
+          "events": [
+            [
+              152,
+              "OnKeyDown",
+              "a",
+              false,
+              {
+                "ctrl": false,
+                "lb": false,
+                "shift": false
+              }
+            ],
+            [
+              152,
+              "OnChar",
+              "a",
+              [
+                97
+              ],
+              {
+                "ctrl": false,
+                "lb": false,
+                "shift": false
+              }
+            ],
+            [
+              243,
+              "OnKeyUp",
+              "a",
+              {
+                "ctrl": false,
+                "lb": false,
+                "shift": false
+              }
+            ]
+          ]
+        },
+        {
+          "step": 5,
+          "what": "ctrl down, key Z, ctrl up",
+          "events": [
+            [
+              150,
+              "OnKeyDown",
+              "CTRL",
+              false,
+              {
+                "ctrl": true,
+                "lb": false,
+                "shift": false
+              }
+            ],
+            [
+              210,
+              "OnKeyDown",
+              "z",
+              false,
+              {
+                "ctrl": true,
+                "lb": false,
+                "shift": false
+              }
+            ],
+            [
+              210,
+              "OnChar",
+              "z",
+              [
+                122
+              ],
+              {
+                "ctrl": true,
+                "lb": false,
+                "shift": false
+              }
+            ],
+            [
+              271,
+              "OnKeyUp",
+              "z",
+              {
+                "ctrl": true,
+                "lb": false,
+                "shift": false
+              }
+            ],
+            [
+              392,
+              "OnKeyUp",
+              "CTRL",
+              {
+                "ctrl": false,
+                "lb": false,
+                "shift": false
+              }
+            ]
+          ]
+        },
+        {
+          "step": 6,
+          "what": "BACK",
+          "events": [
+            [
+              152,
+              "OnKeyDown",
+              "BACK",
+              false,
+              {
+                "ctrl": false,
+                "lb": false,
+                "shift": false
+              }
+            ],
+            [
+              152,
+              "OnChar",
+              "\b",
+              [
+                8
+              ],
+              {
+                "ctrl": false,
+                "lb": false,
+                "shift": false
+              }
+            ],
+            [
+              213,
+              "OnKeyUp",
+              "BACK",
+              {
+                "ctrl": false,
+                "lb": false,
+                "shift": false
+              }
+            ]
+          ]
+        },
+        {
+          "step": 7,
+          "what": "RETURN",
+          "events": [
+            [
+              153,
+              "OnKeyDown",
+              "RETURN",
+              false,
+              {
+                "ctrl": false,
+                "lb": false,
+                "shift": false
+              }
+            ],
+            [
+              153,
+              "OnChar",
+              "\r",
+              [
+                13
+              ],
+              {
+                "ctrl": false,
+                "lb": false,
+                "shift": false
+              }
+            ],
+            [
+              213,
+              "OnKeyUp",
+              "RETURN",
+              {
+                "ctrl": false,
+                "lb": false,
+                "shift": false
+              }
+            ]
+          ]
+        },
+        {
+          "step": 8,
+          "what": "TAB",
+          "events": [
+            [
+              151,
+              "OnKeyDown",
+              "TAB",
+              false,
+              {
+                "ctrl": false,
+                "lb": false,
+                "shift": false
+              }
+            ],
+            [
+              151,
+              "OnChar",
+              "\t",
+              [
+                9
+              ],
+              {
+                "ctrl": false,
+                "lb": false,
+                "shift": false
+              }
+            ],
+            [
+              212,
+              "OnKeyUp",
+              "TAB",
+              {
+                "ctrl": false,
+                "lb": false,
+                "shift": false
+              }
+            ]
+          ]
+        },
+        {
+          "step": 9,
+          "what": "ESCAPE",
+          "events": [
+            [
+              153,
+              "OnKeyDown",
+              "ESCAPE",
+              false,
+              {
+                "ctrl": false,
+                "lb": false,
+                "shift": false
+              }
+            ],
+            [
+              153,
+              "OnChar",
+              "\u001b",
+              [
+                27
+              ],
+              {
+                "ctrl": false,
+                "lb": false,
+                "shift": false
+              }
+            ],
+            [
+              214,
+              "OnKeyUp",
+              "ESCAPE",
+              {
+                "ctrl": false,
+                "lb": false,
+                "shift": false
+              }
+            ]
+          ]
+        },
+        {
+          "step": 10,
+          "what": "F1, DELETE(ext), LEFT(ext)",
+          "events": [
+            [
+              152,
+              "OnKeyDown",
+              "F1",
+              false,
+              {
+                "ctrl": false,
+                "lb": false,
+                "shift": false
+              }
+            ],
+            [
+              212,
+              "OnKeyUp",
+              "F1",
+              {
+                "ctrl": false,
+                "lb": false,
+                "shift": false
+              }
+            ],
+            [
+              333,
+              "OnKeyDown",
+              "DELETE",
+              false,
+              {
+                "ctrl": false,
+                "lb": false,
+                "shift": false
+              }
+            ],
+            [
+              393,
+              "OnKeyUp",
+              "DELETE",
+              {
+                "ctrl": false,
+                "lb": false,
+                "shift": false
+              }
+            ],
+            [
+              514,
+              "OnKeyDown",
+              "LEFT",
+              false,
+              {
+                "ctrl": false,
+                "lb": false,
+                "shift": false
+              }
+            ],
+            [
+              575,
+              "OnKeyUp",
+              "LEFT",
+              {
+                "ctrl": false,
+                "lb": false,
+                "shift": false
+              }
+            ]
+          ]
+        },
+        {
+          "step": 11,
+          "what": "WM_CHAR U+044F U+00E9 U+20AC 0x1A 0x08 0x7F 0x0D",
+          "events": [
+            [
+              183,
+              "OnChar",
+              "?",
+              [
+                63
+              ],
+              {
+                "ctrl": false,
+                "lb": false,
+                "shift": false
+              }
+            ],
+            [
+              274,
+              "OnChar",
+              "?",
+              [
+                63
+              ],
+              {
+                "ctrl": false,
+                "lb": false,
+                "shift": false
+              }
+            ],
+            [
+              366,
+              "OnChar",
+              "?",
+              [
+                63
+              ],
+              {
+                "ctrl": false,
+                "lb": false,
+                "shift": false
+              }
+            ]
+          ]
+        },
+        {
+          "step": 12,
+          "what": "LMB x2, 80 ms apart",
+          "events": [
+            [
+              183,
+              "OnKeyDown",
+              "LEFTBUTTON",
+              false,
+              {
+                "ctrl": false,
+                "lb": true,
+                "shift": false
+              }
+            ],
+            [
+              214,
+              "OnKeyUp",
+              "LEFTBUTTON",
+              {
+                "ctrl": false,
+                "lb": false,
+                "shift": false
+              }
+            ],
+            [
+              306,
+              "OnKeyDown",
+              "LEFTBUTTON",
+              true,
+              {
+                "ctrl": false,
+                "lb": true,
+                "shift": false
+              }
+            ],
+            [
+              337,
+              "OnKeyUp",
+              "LEFTBUTTON",
+              {
+                "ctrl": false,
+                "lb": false,
+                "shift": false
+              }
+            ]
+          ]
+        },
+        {
+          "step": 13,
+          "what": "LMB x2, 300 ms apart",
+          "events": [
+            [
+              150,
+              "OnKeyDown",
+              "LEFTBUTTON",
+              false,
+              {
+                "ctrl": false,
+                "lb": true,
+                "shift": false
+              }
+            ],
+            [
+              180,
+              "OnKeyUp",
+              "LEFTBUTTON",
+              {
+                "ctrl": false,
+                "lb": false,
+                "shift": false
+              }
+            ],
+            [
+              511,
+              "OnKeyDown",
+              "LEFTBUTTON",
+              true,
+              {
+                "ctrl": false,
+                "lb": true,
+                "shift": false
+              }
+            ],
+            [
+              541,
+              "OnKeyUp",
+              "LEFTBUTTON",
+              {
+                "ctrl": false,
+                "lb": false,
+                "shift": false
+              }
+            ]
+          ]
+        },
+        {
+          "step": 14,
+          "what": "LMB x2, 650 ms apart",
+          "events": [
+            [
+              151,
+              "OnKeyDown",
+              "LEFTBUTTON",
+              false,
+              {
+                "ctrl": false,
+                "lb": true,
+                "shift": false
+              }
+            ],
+            [
+              181,
+              "OnKeyUp",
+              "LEFTBUTTON",
+              {
+                "ctrl": false,
+                "lb": false,
+                "shift": false
+              }
+            ],
+            [
+              850,
+              "OnKeyDown",
+              "LEFTBUTTON",
+              false,
+              {
+                "ctrl": false,
+                "lb": true,
+                "shift": false
+              }
+            ],
+            [
+              881,
+              "OnKeyUp",
+              "LEFTBUTTON",
+              {
+                "ctrl": false,
+                "lb": false,
+                "shift": false
+              }
+            ]
+          ]
+        },
+        {
+          "step": 15,
+          "what": "LMB x3, 80 ms apart",
+          "events": [
+            [
+              153,
+              "OnKeyDown",
+              "LEFTBUTTON",
+              false,
+              {
+                "ctrl": false,
+                "lb": true,
+                "shift": false
+              }
+            ],
+            [
+              214,
+              "OnKeyUp",
+              "LEFTBUTTON",
+              {
+                "ctrl": false,
+                "lb": false,
+                "shift": false
+              }
+            ],
+            [
+              306,
+              "OnKeyDown",
+              "LEFTBUTTON",
+              true,
+              {
+                "ctrl": false,
+                "lb": true,
+                "shift": false
+              }
+            ],
+            [
+              367,
+              "OnKeyUp",
+              "LEFTBUTTON",
+              {
+                "ctrl": false,
+                "lb": false,
+                "shift": false
+              }
+            ],
+            [
+              461,
+              "OnKeyDown",
+              "LEFTBUTTON",
+              false,
+              {
+                "ctrl": false,
+                "lb": true,
+                "shift": false
+              }
+            ],
+            [
+              522,
+              "OnKeyUp",
+              "LEFTBUTTON",
+              {
+                "ctrl": false,
+                "lb": false,
+                "shift": false
+              }
+            ]
+          ]
+        },
+        {
+          "step": 16,
+          "what": "RMB x2, 80 ms; MMB x1",
+          "events": [
+            [
+              155,
+              "OnKeyDown",
+              "RIGHTBUTTON",
+              false,
+              {
+                "ctrl": false,
+                "lb": false,
+                "shift": false
+              }
+            ],
+            [
+              185,
+              "OnKeyUp",
+              "RIGHTBUTTON",
+              {
+                "ctrl": false,
+                "lb": false,
+                "shift": false
+              }
+            ],
+            [
+              276,
+              "OnKeyDown",
+              "RIGHTBUTTON",
+              true,
+              {
+                "ctrl": false,
+                "lb": false,
+                "shift": false
+              }
+            ],
+            [
+              338,
+              "OnKeyUp",
+              "RIGHTBUTTON",
+              {
+                "ctrl": false,
+                "lb": false,
+                "shift": false
+              }
+            ],
+            [
+              552,
+              "OnKeyDown",
+              "MIDDLEBUTTON",
+              false,
+              {
+                "ctrl": false,
+                "lb": false,
+                "shift": false
+              }
+            ],
+            [
+              582,
+              "OnKeyUp",
+              "MIDDLEBUTTON",
+              {
+                "ctrl": false,
+                "lb": false,
+                "shift": false
+              }
+            ]
+          ]
+        },
+        {
+          "step": 17,
+          "what": "LMB down,up,WM_LBUTTONDBLCLK,up (real double-click sequence with CS_DBLCLKS)",
+          "events": [
+            [
+              152,
+              "OnKeyDown",
+              "LEFTBUTTON",
+              false,
+              {
+                "ctrl": false,
+                "lb": true,
+                "shift": false
+              }
+            ],
+            [
+              152,
+              "OnKeyUp",
+              "LEFTBUTTON",
+              {
+                "ctrl": false,
+                "lb": false,
+                "shift": false
+              }
+            ],
+            [
+              244,
+              "OnKeyUp",
+              "LEFTBUTTON",
+              {
+                "ctrl": false,
+                "lb": false,
+                "shift": false
+              }
+            ]
+          ]
+        },
+        {
+          "step": 18,
+          "what": "minimize 2 s",
+          "events": []
+        },
+        {
+          "step": 19,
+          "what": "restore",
+          "events": []
+        },
+        {
+          "step": 26,
+          "what": null,
+          "events": []
+        }
+      ]
+    },
+    "window": {
+      "screen": [
+        1280,
+        800
+      ],
+      "scale": 1,
+      "paths": {
+        "package_path": "./?.lua;<rt>/lua/?.lua;<rt>/lua/?/init.lua;;lua/?.lua",
+        "runtime": "<rt>",
+        "script": "<rt>/sg",
+        "work": "<rt>/sg"
+      },
+      "injector": "hwnd=2949534 pid=20824 layout=04090409 dblclick=500 foreground=True",
+      "cadence": {
+        "idle_static": {
+          "intervals": 56,
+          "median_ms": 31,
+          "min_ms": 30,
+          "max_ms": 31,
+          "mean_ms": 30.59
+        },
+        "animated": {
+          "intervals": 66,
+          "median_ms": 31,
+          "min_ms": 30,
+          "max_ms": 32,
+          "mean_ms": 30.67
+        },
+        "during_input": {
+          "intervals": 368,
+          "median_ms": 30,
+          "min_ms": 29,
+          "max_ms": 32,
+          "mean_ms": 30.42
+        },
+        "minimized": {
+          "frames": 0
+        },
+        "minimized_gap_ms": 2270.0,
+        "after_restore": {
+          "intervals": 64,
+          "median_ms": 30,
+          "min_ms": 30,
+          "max_ms": 31,
+          "mean_ms": 30.27
+        }
+      },
+      "frame_start_state": [
+        {
+          "layer_sub_r_g_b_a": "0,False,1,0,0,0,5",
+          "frames": 645
+        },
+        {
+          "layer_sub_r_g_b_a": "0,False,1,1,1,1",
+          "frames": 1
+        }
+      ],
+      "input_steps": [
+        {
+          "step": 1,
+          "what": "anim on (idle 2 s before)",
+          "events": []
+        },
+        {
+          "step": 2,
+          "what": "anim off",
+          "events": []
+        },
+        {
+          "step": 3,
+          "what": "wheel +120 -120 +240 +60 +60",
+          "events": [
+            [
+              183,
+              "OnKeyDown",
+              "WHEELUP",
+              false,
+              {
+                "ctrl": false,
+                "lb": false,
+                "shift": false
+              }
+            ],
+            [
+              183,
+              "OnKeyUp",
+              "WHEELUP",
+              {
+                "ctrl": false,
+                "lb": false,
+                "shift": false
+              }
+            ],
+            [
+              367,
+              "OnKeyDown",
+              "WHEELDOWN",
+              false,
+              {
+                "ctrl": false,
+                "lb": false,
+                "shift": false
+              }
+            ],
+            [
+              367,
+              "OnKeyUp",
+              "WHEELDOWN",
+              {
+                "ctrl": false,
+                "lb": false,
+                "shift": false
+              }
+            ],
+            [
+              581,
+              "OnKeyDown",
+              "WHEELUP",
+              false,
+              {
+                "ctrl": false,
+                "lb": false,
+                "shift": false
+              }
+            ],
+            [
+              582,
+              "OnKeyUp",
+              "WHEELUP",
+              {
+                "ctrl": false,
+                "lb": false,
+                "shift": false
+              }
+            ],
+            [
+              796,
+              "OnKeyDown",
+              "WHEELUP",
+              false,
+              {
+                "ctrl": false,
+                "lb": false,
+                "shift": false
+              }
+            ],
+            [
+              796,
+              "OnKeyUp",
+              "WHEELUP",
+              {
+                "ctrl": false,
+                "lb": false,
+                "shift": false
+              }
+            ],
+            [
+              1010,
+              "OnKeyDown",
+              "WHEELUP",
+              false,
+              {
+                "ctrl": false,
+                "lb": false,
+                "shift": false
+              }
+            ],
+            [
+              1011,
+              "OnKeyUp",
+              "WHEELUP",
+              {
+                "ctrl": false,
+                "lb": false,
+                "shift": false
+              }
+            ]
+          ]
+        },
+        {
+          "step": 4,
+          "what": "key A (vk 41 sc 1E)",
+          "events": [
+            [
+              184,
+              "OnKeyDown",
+              "a",
+              false,
+              {
+                "ctrl": false,
+                "lb": false,
+                "shift": false
+              }
+            ],
+            [
+              185,
+              "OnChar",
+              "a",
+              [
+                97
+              ],
+              {
+                "ctrl": false,
+                "lb": false,
+                "shift": false
+              }
+            ],
+            [
+              246,
+              "OnKeyUp",
+              "a",
+              {
+                "ctrl": false,
+                "lb": false,
+                "shift": false
+              }
+            ]
+          ]
+        },
+        {
+          "step": 5,
+          "what": "ctrl down, key Z, ctrl up",
+          "events": [
+            [
+              183,
+              "OnKeyDown",
+              "CTRL",
+              false,
+              {
+                "ctrl": true,
+                "lb": false,
+                "shift": false
+              }
+            ],
+            [
+              244,
+              "OnKeyDown",
+              "z",
+              false,
+              {
+                "ctrl": true,
+                "lb": false,
+                "shift": false
+              }
+            ],
+            [
+              245,
+              "OnChar",
+              "z",
+              [
+                122
+              ],
+              {
+                "ctrl": true,
+                "lb": false,
+                "shift": false
+              }
+            ],
+            [
+              335,
+              "OnKeyUp",
+              "z",
+              {
+                "ctrl": true,
+                "lb": false,
+                "shift": false
+              }
+            ],
+            [
+              459,
+              "OnKeyUp",
+              "CTRL",
+              {
+                "ctrl": false,
+                "lb": false,
+                "shift": false
+              }
+            ]
+          ]
+        },
+        {
+          "step": 6,
+          "what": "BACK",
+          "events": [
+            [
+              182,
+              "OnKeyDown",
+              "BACK",
+              false,
+              {
+                "ctrl": false,
+                "lb": false,
+                "shift": false
+              }
+            ],
+            [
+              182,
+              "OnChar",
+              "\b",
+              [
+                8
+              ],
+              {
+                "ctrl": false,
+                "lb": false,
+                "shift": false
+              }
+            ],
+            [
+              244,
+              "OnKeyUp",
+              "BACK",
+              {
+                "ctrl": false,
+                "lb": false,
+                "shift": false
+              }
+            ]
+          ]
+        },
+        {
+          "step": 7,
+          "what": "RETURN",
+          "events": [
+            [
+              182,
+              "OnKeyDown",
+              "RETURN",
+              false,
+              {
+                "ctrl": false,
+                "lb": false,
+                "shift": false
+              }
+            ],
+            [
+              182,
+              "OnChar",
+              "\r",
+              [
+                13
+              ],
+              {
+                "ctrl": false,
+                "lb": false,
+                "shift": false
+              }
+            ],
+            [
+              244,
+              "OnKeyUp",
+              "RETURN",
+              {
+                "ctrl": false,
+                "lb": false,
+                "shift": false
+              }
+            ]
+          ]
+        },
+        {
+          "step": 8,
+          "what": "TAB",
+          "events": [
+            [
+              153,
+              "OnKeyDown",
+              "TAB",
+              false,
+              {
+                "ctrl": false,
+                "lb": false,
+                "shift": false
+              }
+            ],
+            [
+              154,
+              "OnChar",
+              "\t",
+              [
+                9
+              ],
+              {
+                "ctrl": false,
+                "lb": false,
+                "shift": false
+              }
+            ],
+            [
+              215,
+              "OnKeyUp",
+              "TAB",
+              {
+                "ctrl": false,
+                "lb": false,
+                "shift": false
+              }
+            ]
+          ]
+        },
+        {
+          "step": 9,
+          "what": "ESCAPE",
+          "events": [
+            [
+              151,
+              "OnKeyDown",
+              "ESCAPE",
+              false,
+              {
+                "ctrl": false,
+                "lb": false,
+                "shift": false
+              }
+            ],
+            [
+              151,
+              "OnChar",
+              "\u001b",
+              [
+                27
+              ],
+              {
+                "ctrl": false,
+                "lb": false,
+                "shift": false
+              }
+            ],
+            [
+              242,
+              "OnKeyUp",
+              "ESCAPE",
+              {
+                "ctrl": false,
+                "lb": false,
+                "shift": false
+              }
+            ]
+          ]
+        },
+        {
+          "step": 10,
+          "what": "F1, DELETE(ext), LEFT(ext)",
+          "events": [
+            [
+              153,
+              "OnKeyDown",
+              "F1",
+              false,
+              {
+                "ctrl": false,
+                "lb": false,
+                "shift": false
+              }
+            ],
+            [
+              246,
+              "OnKeyUp",
+              "F1",
+              {
+                "ctrl": false,
+                "lb": false,
+                "shift": false
+              }
+            ],
+            [
+              367,
+              "OnKeyDown",
+              "DELETE",
+              false,
+              {
+                "ctrl": false,
+                "lb": false,
+                "shift": false
+              }
+            ],
+            [
+              459,
+              "OnKeyUp",
+              "DELETE",
+              {
+                "ctrl": false,
+                "lb": false,
+                "shift": false
+              }
+            ],
+            [
+              580,
+              "OnKeyDown",
+              "LEFT",
+              false,
+              {
+                "ctrl": false,
+                "lb": false,
+                "shift": false
+              }
+            ],
+            [
+              641,
+              "OnKeyUp",
+              "LEFT",
+              {
+                "ctrl": false,
+                "lb": false,
+                "shift": false
+              }
+            ]
+          ]
+        },
+        {
+          "step": 11,
+          "what": "WM_CHAR U+044F U+00E9 U+20AC 0x1A 0x08 0x7F 0x0D",
+          "events": [
+            [
+              151,
+              "OnChar",
+              "?",
+              [
+                63
+              ],
+              {
+                "ctrl": false,
+                "lb": false,
+                "shift": false
+              }
+            ],
+            [
+              242,
+              "OnChar",
+              "?",
+              [
+                63
+              ],
+              {
+                "ctrl": false,
+                "lb": false,
+                "shift": false
+              }
+            ],
+            [
+              333,
+              "OnChar",
+              "?",
+              [
+                63
+              ],
+              {
+                "ctrl": false,
+                "lb": false,
+                "shift": false
+              }
+            ]
+          ]
+        },
+        {
+          "step": 12,
+          "what": "LMB x2, 80 ms apart",
+          "events": [
+            [
+              151,
+              "OnKeyDown",
+              "LEFTBUTTON",
+              false,
+              {
+                "ctrl": false,
+                "lb": true,
+                "shift": false
+              }
+            ],
+            [
+              211,
+              "OnKeyUp",
+              "LEFTBUTTON",
+              {
+                "ctrl": false,
+                "lb": false,
+                "shift": false
+              }
+            ],
+            [
+              303,
+              "OnKeyDown",
+              "LEFTBUTTON",
+              false,
+              {
+                "ctrl": false,
+                "lb": true,
+                "shift": false
+              }
+            ],
+            [
+              333,
+              "OnKeyUp",
+              "LEFTBUTTON",
+              {
+                "ctrl": false,
+                "lb": false,
+                "shift": false
+              }
+            ]
+          ]
+        },
+        {
+          "step": 13,
+          "what": "LMB x2, 300 ms apart",
+          "events": [
+            [
+              151,
+              "OnKeyDown",
+              "LEFTBUTTON",
+              false,
+              {
+                "ctrl": false,
+                "lb": true,
+                "shift": false
+              }
+            ],
+            [
+              182,
+              "OnKeyUp",
+              "LEFTBUTTON",
+              {
+                "ctrl": false,
+                "lb": false,
+                "shift": false
+              }
+            ],
+            [
+              514,
+              "OnKeyDown",
+              "LEFTBUTTON",
+              false,
+              {
+                "ctrl": false,
+                "lb": true,
+                "shift": false
+              }
+            ],
+            [
+              544,
+              "OnKeyUp",
+              "LEFTBUTTON",
+              {
+                "ctrl": false,
+                "lb": false,
+                "shift": false
+              }
+            ]
+          ]
+        },
+        {
+          "step": 14,
+          "what": "LMB x2, 650 ms apart",
+          "events": [
+            [
+              151,
+              "OnKeyDown",
+              "LEFTBUTTON",
+              false,
+              {
+                "ctrl": false,
+                "lb": true,
+                "shift": false
+              }
+            ],
+            [
+              182,
+              "OnKeyUp",
+              "LEFTBUTTON",
+              {
+                "ctrl": false,
+                "lb": false,
+                "shift": false
+              }
+            ],
+            [
+              849,
+              "OnKeyDown",
+              "LEFTBUTTON",
+              false,
+              {
+                "ctrl": false,
+                "lb": true,
+                "shift": false
+              }
+            ],
+            [
+              879,
+              "OnKeyUp",
+              "LEFTBUTTON",
+              {
+                "ctrl": false,
+                "lb": false,
+                "shift": false
+              }
+            ]
+          ]
+        },
+        {
+          "step": 15,
+          "what": "LMB x3, 80 ms apart",
+          "events": [
+            [
+              151,
+              "OnKeyDown",
+              "LEFTBUTTON",
+              false,
+              {
+                "ctrl": false,
+                "lb": true,
+                "shift": false
+              }
+            ],
+            [
+              181,
+              "OnKeyUp",
+              "LEFTBUTTON",
+              {
+                "ctrl": false,
+                "lb": false,
+                "shift": false
+              }
+            ],
+            [
+              302,
+              "OnKeyDown",
+              "LEFTBUTTON",
+              false,
+              {
+                "ctrl": false,
+                "lb": true,
+                "shift": false
+              }
+            ],
+            [
+              333,
+              "OnKeyUp",
+              "LEFTBUTTON",
+              {
+                "ctrl": false,
+                "lb": false,
+                "shift": false
+              }
+            ],
+            [
+              423,
+              "OnKeyDown",
+              "LEFTBUTTON",
+              false,
+              {
+                "ctrl": false,
+                "lb": true,
+                "shift": false
+              }
+            ],
+            [
+              454,
+              "OnKeyUp",
+              "LEFTBUTTON",
+              {
+                "ctrl": false,
+                "lb": false,
+                "shift": false
+              }
+            ]
+          ]
+        },
+        {
+          "step": 16,
+          "what": "RMB x2, 80 ms; MMB x1",
+          "events": [
+            [
+              151,
+              "OnKeyDown",
+              "RIGHTBUTTON",
+              false,
+              {
+                "ctrl": false,
+                "lb": false,
+                "shift": false
+              }
+            ],
+            [
+              181,
+              "OnKeyUp",
+              "RIGHTBUTTON",
+              {
+                "ctrl": false,
+                "lb": false,
+                "shift": false
+              }
+            ],
+            [
+              273,
+              "OnKeyDown",
+              "RIGHTBUTTON",
+              false,
+              {
+                "ctrl": false,
+                "lb": false,
+                "shift": false
+              }
+            ],
+            [
+              303,
+              "OnKeyUp",
+              "RIGHTBUTTON",
+              {
+                "ctrl": false,
+                "lb": false,
+                "shift": false
+              }
+            ],
+            [
+              516,
+              "OnKeyDown",
+              "MIDDLEBUTTON",
+              false,
+              {
+                "ctrl": false,
+                "lb": false,
+                "shift": false
+              }
+            ],
+            [
+              546,
+              "OnKeyUp",
+              "MIDDLEBUTTON",
+              {
+                "ctrl": false,
+                "lb": false,
+                "shift": false
+              }
+            ]
+          ]
+        },
+        {
+          "step": 17,
+          "what": "LMB down,up,WM_LBUTTONDBLCLK,up (real double-click sequence with CS_DBLCLKS)",
+          "events": [
+            [
+              150,
+              "OnKeyDown",
+              "LEFTBUTTON",
+              false,
+              {
+                "ctrl": false,
+                "lb": true,
+                "shift": false
+              }
+            ],
+            [
+              151,
+              "OnKeyUp",
+              "LEFTBUTTON",
+              {
+                "ctrl": false,
+                "lb": false,
+                "shift": false
+              }
+            ],
+            [
+              242,
+              "OnKeyUp",
+              "LEFTBUTTON",
+              {
+                "ctrl": false,
+                "lb": false,
+                "shift": false
+              }
+            ]
+          ]
+        },
+        {
+          "step": 18,
+          "what": "minimize 2 s",
+          "events": []
+        },
+        {
+          "step": 19,
+          "what": "restore",
+          "events": []
+        },
+        {
+          "step": 26,
+          "what": null,
+          "events": []
+        }
+      ]
+    }
+  },
+  "audits": {
+    "measure-desktop": {
+      "script": "measure.lua",
+      "args": "desktop",
+      "exit": 0,
+      "ms": 22397,
+      "sandbox_changes": [
+        "CHG  <rt>\\imgui.ini",
+        "CHG  <rt>\\SimpleGraphic\\SimpleGraphic.cfg"
+      ],
+      "outside_watched_changes": [],
+      "recent_writes_elsewhere": 7,
+      "pob_like_recent": []
+    },
+    "measure-window": {
+      "script": "measure.lua",
+      "args": "window",
+      "exit": 0,
+      "ms": 22935,
+      "sandbox_changes": [
+        "CHG  <rt>\\imgui.ini",
+        "CHG  <rt>\\SimpleGraphic\\SimpleGraphic.cfg"
+      ],
+      "outside_watched_changes": [],
+      "recent_writes_elsewhere": 9,
+      "pob_like_recent": []
+    },
+    "scene-runner": {
+      "script": "scene-runner.lua",
+      "args": "",
+      "exit": 0,
+      "ms": 12253,
+      "sandbox_changes": [
+        "CHG  <rt>\\imgui.ini",
+        "CHG  <rt>\\SimpleGraphic\\SimpleGraphic.cfg"
+      ],
+      "outside_watched_changes": [],
+      "recent_writes_elsewhere": 3,
+      "pob_like_recent": []
+    },
+    "text-corpus": {
+      "script": "text-corpus.lua",
+      "args": "",
+      "exit": 0,
+      "ms": 1023,
+      "sandbox_changes": [
+        "CHG  <rt>\\imgui.ini",
+        "CHG  <rt>\\SimpleGraphic\\SimpleGraphic.cfg"
+      ],
+      "outside_watched_changes": [],
+      "recent_writes_elsewhere": 7,
+      "pob_like_recent": []
+    }
+  }
+}

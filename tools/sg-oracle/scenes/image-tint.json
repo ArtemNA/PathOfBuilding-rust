@@ -1,0 +1,17 @@
+{"note": "8x8 RGBA test image: tint, alpha, 1:1, tc>1 repeat, CLAMP, sub-rect, textured quads", "size": [420, 260], "dpi": 100, "images": {"img": ["scenes/img/test8.png"], "imgc": ["scenes/img/test8.png", "CLAMP"]}, "calls": [
+["SetDrawColor", 1, 1, 1],
+["DrawImage", "img", 10, 10, 64, 64],
+["SetDrawColor", 1, 0, 0],
+["DrawImage", "img", 84, 10, 64, 64],
+["SetDrawColor", 1, 1, 1, 0.5],
+["DrawImage", "img", 158, 10, 64, 64],
+["SetDrawColor", 1, 1, 1],
+["DrawImage", "img", 232, 10, 8, 8],
+["DrawImage", "img", 10, 84, 96, 96, 0, 0, 3, 3],
+["DrawImage", "imgc", 116, 84, 96, 96, -1, -1, 2, 2],
+["DrawImage", "img", 222, 84, 64, 64, 0, 0, 0.5, 0.5],
+["DrawImageQuad", "img", 340, 10, 400, 40, 370, 100, 310, 70],
+["DrawImageQuad", "img", 310, 110, 400, 110, 400, 170, 310, 170, 0, 0, 2, 0, 2, 2, 0, 2],
+["SetDrawColor", 0, 1, 0],
+["DrawImageQuad", null, 250, 200, 300, 190, 320, 240, 240, 250]
+]}

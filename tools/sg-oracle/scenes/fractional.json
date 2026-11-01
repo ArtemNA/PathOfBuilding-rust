@@ -1,0 +1,15 @@
+{"note": "fractional rects/quads/text positions (rasterization rules)", "size": [240, 130], "dpi": 100, "calls": [
+["SetDrawColor", 1, 1, 1],
+["DrawImage", null, 10, 10, 20.5, 10.5],
+["DrawImage", null, 10.25, 24, 20.5, 10.5],
+["DrawImage", null, 10.5, 38, 20.5, 10.5],
+["DrawImage", null, 10.75, 52, 20.5, 10.5],
+["DrawString", 40, 70, "LEFT", 16, "VAR", "frac x"],
+["DrawString", 40.5, 90, "LEFT", 16, "VAR", "frac x"],
+["DrawString", 120, 10.5, "LEFT", 16, "VAR", "frac y .5"],
+["DrawString", 120, 30.25, "LEFT", 16, "VAR", "frac y .25"],
+["DrawImageQuad", null, 130.5, 60.5, 180.25, 50.75, 190.5, 100.5, 140.25, 110.25],
+["SetDrawColor", 1, 0, 0],
+["DrawImage", null, 200.5, 60, 0.5, 40],
+["DrawImage", null, 210, 60, 1, 40]
+]}

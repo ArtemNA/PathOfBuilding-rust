@@ -1,0 +1,15 @@
+{"note": "SetDPIScaleOverridePercent(150): crop is size*1.5 physical px", "size": [320, 160], "dpi": 150, "images": {"img": ["scenes/img/test8.png"]}, "calls": [
+["SetDrawColor", 1, 0, 0],
+["DrawImage", null, 10, 10, 100, 20],
+["SetDrawColor", 1, 1, 1],
+["DrawString", 10, 40, "LEFT", 12, "VAR", "DPI 150 text 12 ^1red"],
+["DrawString", 10, 60, "LEFT", 16, "VAR", "DPI 150 text 16 VAR"],
+["DrawString", 10, 80, "LEFT", 16, "FONTIN SC", "Fontin SC 16 at 150%"],
+["SetViewport", 200, 100, 100, 40],
+["SetDrawColor", 0.2, 0.2, 0.4],
+["DrawImage", null, 0, 0, 100, 40],
+["SetDrawColor", 1, 1, 1],
+["DrawString", 0, 10, "RIGHT", 14, "VAR", "right"],
+["SetViewport"],
+["DrawImage", "img", 10, 110, 32, 32]
+]}
