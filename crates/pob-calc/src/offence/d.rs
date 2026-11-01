@@ -86,6 +86,28 @@ fn dot_cfg(off: &Off<'_>, pi: usize, kind: &str, dot: &str) -> ModCfg {
     }
 }
 
+/// `activeSkill[pass.label ~= "Off Hand" and "<kind>Cfg" or "OH<kind>Cfg"] = { ... }` (:4414/:4687/:4992) -- kept for the Calcs tab (R8.6) with
+/// its own `skillCond = { CriticalStrike = true }` and the live `__index` ([`crate::active_skill::OffenceCfg`]). `dc` = [`dot_cfg`] of the pass
+/// (`checkWeapon1HFlags` writes into the same table, :4427).
+fn keep_ailment_cfg(off: &mut Off<'_>, pi: usize, kind: &str, dc: &ModCfg) {
+    let name = if off.passes[pi].label != "Off Hand" {
+        format!("{kind}Cfg")
+    } else {
+        format!("OH{kind}Cfg")
+    };
+    let mut own = indexmap::IndexMap::new();
+    own.insert(Str::from("CriticalStrike"), true);
+    let cfg = ModCfg {
+        skill_cond: Some(own),
+        ..dc.clone()
+    };
+    let pass = match off.passes[pi].out {
+        super::PassOut::Global => None,
+        super::PassOut::Hand(h) => Some(h),
+    };
+    off.keep_cfg(name, cfg, Some(pass));
+}
+
 /// `dotCfg.skillCond["CriticalStrike"] = v`.
 fn set_crit(c: &mut ModCfg, v: bool) {
     c.skill_cond.get_or_insert_default().insert(Str::from("CriticalStrike"), v);
@@ -583,6 +605,7 @@ fn dps_multiplier(off: &Off<'_>, line: u32) -> f64 {
 fn bleed(off: &mut Off<'_>, q: &Q, pi: usize) {
     let edb = off.enemy_db.clone();
     let mut dc = dot_cfg(off, pi, "Bleed", "PhysicalDot");
+    keep_ailment_cfg(off, pi, "bleed", &dc);
     let c = off.pcfg(pi).clone();
     // :4428-4430
     off.pbd_put(pi, "BleedPhysical", BTable::new().with("damageTypes", BTable::new()));
@@ -985,6 +1008,7 @@ fn rewrite_dot_multi(off: &mut Off<'_>, pi: usize, a: &str, crit_weight: f64, li
 fn poison(off: &mut Off<'_>, q: &Q, pi: usize, quantity_multiplier: f64) {
     let edb = off.enemy_db.clone();
     let mut dc = dot_cfg(off, pi, "Poison", "ChaosDot");
+    keep_ailment_cfg(off, pi, "poison", &dc);
     let c = off.pcfg(pi).clone();
     // :4701-4707
     if off.breakdown {
@@ -1353,6 +1377,7 @@ fn dot_eff_mult_breakdown(off: &Off<'_>, c: &ModCfg, dt: &str, extra: Option<&st
 fn ignite(off: &mut Off<'_>, q: &Q, pi: usize) {
     let edb = off.enemy_db.clone();
     let mut dc = dot_cfg(off, pi, "Ignite", "FireDot");
+    keep_ailment_cfg(off, pi, "ignite", &dc);
     let c = off.pcfg(pi).clone();
     // :5006-5012
     if off.breakdown {

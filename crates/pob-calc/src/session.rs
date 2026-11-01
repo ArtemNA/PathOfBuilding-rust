@@ -32,7 +32,7 @@ use pob_items::Item;
 use crate::calculate::{CalcError, CalculateOptions};
 use crate::env::CalcOverride;
 use crate::env::Env;
-use crate::init_env::{BuildShared, SpecDbs, init_env_shared_override, parse_items, reinit_accelerated};
+use crate::init_env::{BuildShared, SpecDbs, init_env_shared_mode, parse_items, reinit_accelerated};
 use crate::output::{FullDpsSkill, OutTable};
 use crate::perform::{ActorState, Checkpoint, PerformState, finish_output_spec, perform_skip_ehp};
 
@@ -258,6 +258,8 @@ pub struct SessionCore {
     in_place: RefCell<Option<(std::rc::Weak<RefCell<CalcRun>>, usize)>>,
     /// The `override` of the [`MiscCalculator::calc`] running now (R8.7, see [`CalcSession::init_env`]).
     ambient_override: RefCell<Option<Rc<CalcOverride>>>,
+    /// `build.calcsTab.mainEnv.multipliersUsed` (Calcs.lua:457-584) of the last `build_output(MAIN)` -- what the CALCS tail reads (R8.6).
+    main_multipliers_used: RefCell<Option<std::collections::HashSet<String>>>,
 }
 
 /// A checkpoint hook owned by the session (R7.3: the offence checkpoints of nested runs, e.g. Dual Savior's first nested env).
@@ -403,6 +405,7 @@ impl CalcSession {
                 hook: RefCell::new(None),
                 in_place: RefCell::new(None),
                 ambient_override: RefCell::new(None),
+                main_multipliers_used: RefCell::new(None),
             }),
         }
     }
@@ -451,8 +454,9 @@ impl CalcSession {
     /// skill write-back :1887, `displayLabel`/`displaySkillList` :1895-1913) -- plus :1452, the granted-skill merge into
     /// `build.skillsTab`, MAIN only: the shared tab a CALCULATOR initEnv reads holds what the last MAIN merge left, which is what
     /// rebuilding the tab and merging again gives. So CALCULATOR = the MAIN path with `buildBreakdown = false`, once a MAIN initEnv has
-    /// run in the session (else the merge would be one upstream does not do). CALCS (`misc_buffMode`, `*Calcs` gem fields,
-    /// CalcActiveSkill.lua:250/623/649/694/736/924) is not ported.
+    /// run in the session (else the merge would be one upstream does not do). CALCS (R8.6) is the same path with its own branches --
+    /// `misc_buffMode` (CalcSetup.lua:565-583), `skill_number` (:1585), `mainActiveSkillCalcs` (:1882), the `*Calcs` gem fields
+    /// (CalcActiveSkill.lua:250/623/649/694/736/924) -- and `buildBreakdown = true`; `displaySkillListCalcs` (:1912) is display state.
     pub fn init_env(&self, mode: CalcMode) -> Result<Env, SessionError> {
         // R8.7: inside [`MiscCalculator::calc`] every env descends from the calculator's env, whose nested initEnvs pass `env.override`
         // on (CalcActiveSkill.lua:182 `copyActiveSkill`, reached from `crate::mirages`) -- the calculator's override is the ambient one.
@@ -483,9 +487,10 @@ impl CalcSession {
                         .into(),
                 ));
             }
+            CalcMode::Calcs if self.core.main_init_done.get() => {}
             CalcMode::Calcs => {
                 return Err(SessionError::Unimplemented(
-                    "CalcSetup.lua:566-567/1585/1882-1884 initEnv(\"CALCS\") (misc_buffMode, mainActiveSkillCalcs, *Calcs gem fields)"
+                    "CalcSetup.lua:1452 initEnv(\"CALCS\") before any MAIN initEnv: the shared build.skillsTab without the granted-skill merge"
                         .into(),
                 ));
             }
@@ -494,9 +499,16 @@ impl CalcSession {
         let t0 = std::time::Instant::now();
         let shared = self.shared().map_err(|e| SessionError::Calc(CalcError(format!("initEnv: {e}"))))?;
         let carry = self.core.carry.borrow().clone();
-        let (mut env, cached) =
-            init_env_shared_override(self.core.build.clone(), &shared, self.core.opts.parse_mode, Some(&carry), spec, ov)
-                .map_err(|e| SessionError::Calc(CalcError(format!("initEnv: {e}"))))?;
+        let (mut env, cached) = init_env_shared_mode(
+            self.core.build.clone(),
+            &shared,
+            self.core.opts.parse_mode,
+            Some(&carry),
+            spec,
+            ov,
+            mode.as_str(),
+        )
+        .map_err(|e| SessionError::Calc(CalcError(format!("initEnv: {e}"))))?;
         if let Some(st) = &env.skills {
             let mut c = self.core.carry.borrow_mut();
             c.from_item_marks.extend(st.from_item_marks.iter().cloned());
@@ -1214,7 +1226,9 @@ impl CalcSession {
         })
     }
 
-    /// `calcs.buildOutput(build, mode)` (Calcs.lua:384-470) up to the display tables. Only MAIN is ported (the caller's mode).
+    /// `calcs.buildOutput(build, mode)` (Calcs.lua:384-829): MAIN (the cost warnings, :439-449, and `multipliersUsed` of :457-584) and
+    /// CALCS (R8.6, the tail :601-829: `BuffList` / `CombatList` / `CurseList`, `SkillBuffs` / `SkillDebuffs`; it reads the
+    /// `multipliersUsed` of the last MAIN `build_output` -- `build.calcsTab.mainEnv`, CalcsTab.lua:458-461 runs MAIN first).
     #[allow(clippy::too_many_lines)]
     pub fn build_output(&self, mode: CalcMode) -> Result<BuildOutput, CalcError> {
         // :386-387
@@ -1353,6 +1367,19 @@ impl CalcSession {
             finish_output_spec(env, state);
             env.unimplemented
                 .push("Calcs.lua:450-464 env.skillsUsed / display stats (P5)".into());
+            // :457-584 -- the part of the `*Used` tables the CALCS tail reads (`mainEnv.multipliersUsed`, R8.6)
+            *self.core.main_multipliers_used.borrow_mut() = Some(crate::calcs_tail::multipliers_used(env));
+        } else if mode == CalcMode::Calcs {
+            // :601-829
+            let mult = self
+                .core
+                .main_multipliers_used
+                .borrow()
+                .clone()
+                .unwrap_or_else(|| panic!("Modules/Calcs.lua:637: attempt to index field 'mainEnv' (a nil value)"));
+            let mut r = run.borrow_mut();
+            let CalcRun { env, state, .. } = &mut *r;
+            crate::calcs_tail::calcs_tail(env, state, &mult);
         }
         Ok(BuildOutput { run, full_dps })
     }

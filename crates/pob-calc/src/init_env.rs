@@ -707,7 +707,7 @@ pub fn init_env_seeded(
     let parse_mode = opts.parse_mode;
     let (spec, parsed_items) = load_spec(&build, opts)?;
     prof.mark("spec: load + PostLoad");
-    init_env_core(build, spec, parsed_items, parse_mode, None, skills, carry, None, None).map(|(env, _)| env)
+    init_env_core(build, spec, parsed_items, parse_mode, None, skills, carry, None, None, "MAIN").map(|(env, _)| env)
 }
 
 /// The build state upstream keeps on `build` and every initEnv reads unchanged (R7-perf): `build.spec` after `PostLoad`,
@@ -791,6 +791,21 @@ pub fn init_env_shared_override(
     spec: Option<&SpecDbs>,
     ov: Option<&Rc<CalcOverride>>,
 ) -> Result<(Env, SpecDbs), InitEnvError> {
+    init_env_shared_mode(build, shared, parse_mode, carry, spec, ov, "MAIN")
+}
+
+/// [`init_env_shared_override`] for a mode (R8.6): `calcs.initEnv(build, mode, override, specEnv)` -- `"CALCS"` takes the branches of
+/// CalcSetup.lua:565-583 (`misc_buffMode`), :1585-1587 (`skill_number`), :1882-1884 (`mainActiveSkillCalcs`) and the `*Calcs` gem fields of
+/// CalcActiveSkill.lua:250/:623/:649/:694/:736/:924; every other mode the MAIN path (see `CalcSession::init_env`).
+pub fn init_env_shared_mode(
+    build: Rc<BuildModel>,
+    shared: &BuildShared,
+    parse_mode: pob_parser::ParseMode,
+    carry: Option<&crate::session::SkillsCarry>,
+    spec: Option<&SpecDbs>,
+    ov: Option<&Rc<CalcOverride>>,
+    mode: &'static str,
+) -> Result<(Env, SpecDbs), InitEnvError> {
     init_env_core(
         build,
         shared.spec.clone(),
@@ -801,6 +816,7 @@ pub fn init_env_shared_override(
         carry,
         spec,
         ov,
+        mode,
     )
 }
 
@@ -852,6 +868,7 @@ fn init_env_core(
     carry: Option<&crate::session::SkillsCarry>,
     spec_in: Option<&SpecDbs>,
     ov: Option<&Rc<CalcOverride>>,
+    mode: &'static str,
 ) -> Result<(Env, SpecDbs), InitEnvError> {
     let mut prof = profile::Marker::new();
     // :501 `env.spec = override.spec or build.spec`. The `override.addNodes` that are no spec nodes (mastery-effect nodes, cluster
@@ -919,9 +936,26 @@ fn init_env_core(
     player.borrow_mut().player = Rc::downgrade(&player);
 
     let calcs_input = build.calcs_input.clone();
+    // --- (2) buff mode (:565-587): `env.calcsInput.misc_buffMode` in CALCS, else "EFFECTIVE"; an unknown value (or nil) = all off
+    let buff_mode: Option<&str> = if mode == "CALCS" {
+        match calcs_input.get("misc_buffMode") {
+            Some(pob_build::InputValue::Str(s)) => Some(s.as_str()),
+            None => None,
+            // a number / boolean compares unequal to every string
+            Some(_) => Some(""),
+        }
+    } else {
+        Some("EFFECTIVE")
+    };
+    let (mode_buffs, mode_combat, mode_effective) = match buff_mode {
+        Some("EFFECTIVE") => (true, true, true),
+        Some("COMBAT") => (true, true, false),
+        Some("BUFFED") => (true, false, false),
+        _ => (false, false, false),
+    };
     let mut env = Env {
         build: build.clone(),
-        mode: "MAIN",
+        mode,
         build_breakdown: true,
         class_id,
         config,
@@ -932,10 +966,9 @@ fn init_env_core(
         enemy_level,
         player: player.clone(),
         enemy: enemy.clone(),
-        // --- (2) buff mode (:571-595): MAIN is always "EFFECTIVE" ------------------------------------------------------
-        mode_buffs: true,
-        mode_combat: true,
-        mode_effective: true,
+        mode_buffs,
+        mode_combat,
+        mode_effective,
         alloc_nodes: IndexMap::new(),
         initial_node_mod_db: ModStore::new_list(None),
         keystones_added: IndexMap::new(),
@@ -2125,7 +2158,25 @@ fn init_env_core(
 
     // (18b) the main socket group (:1587-1590). Without the skill phase `#socketGroupList` is the XML's own group count (the
     // granted-skill groups are not appended).
-    if let Some(st) = env.skills.as_mut() {
+    if mode == "CALCS" {
+        // :1585-1587 `env.calcsInput.skill_number = m_min(m_max(#socketGroupList, 1), env.calcsInput.skill_number or 1)`
+        let n = env
+            .skills
+            .as_ref()
+            .map_or_else(|| active_skill_groups(&build).len(), |st| st.tab.socket_group_list().len()) as f64;
+        let cur = match env.calcs_input.get("skill_number") {
+            None => 1.0,
+            Some(pob_build::InputValue::Num(x)) => *x,
+            Some(v) => {
+                return Err(InitEnvError(format!(
+                    "Modules/CalcSetup.lua:1586: bad argument #2 to 'min' (number expected, got {v:?})"
+                )));
+            }
+        };
+        let k = min2(max2(n, 1.0), cur);
+        env.calcs_input.insert("skill_number".into(), pob_build::InputValue::Num(k));
+        env.main_socket_group = k;
+    } else if let Some(st) = env.skills.as_mut() {
         env.main_socket_group = crate::skills::main_socket_group(st);
     } else {
         let groups = active_skill_groups(&build).len() as f64;
@@ -2157,6 +2208,7 @@ fn init_env_core(
                     counts_as_all_1h: a2,
                 },
                 main_socket_group: env.main_socket_group,
+                calcs: mode == "CALCS",
                 affected_by_energy_blade,
             };
             crate::skills::setup_skills(&mut st, &inp).map_err(InitEnvError)?
@@ -2204,6 +2256,7 @@ fn init_env_core(
                 items: &env.items,
                 item_sets: &build.item_sets,
                 the_iron_mass: env.the_iron_mass.is_some(),
+                calcs: env.mode == "CALCS",
             };
             crate::skill_modlist::build_all(&mut st, &inp).map_err(InitEnvError)?
         };
@@ -2590,6 +2643,7 @@ pub(crate) fn with_mod_list_inputs<R>(env: &Env, f: impl FnOnce(&crate::skill_mo
         items: &env.items,
         item_sets: &env.build.item_sets,
         the_iron_mass: env.the_iron_mass.is_some(),
+        calcs: env.mode == "CALCS",
     };
     f(&inp)
 }

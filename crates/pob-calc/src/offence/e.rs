@@ -110,6 +110,8 @@ fn skill_dot(off: &mut Off<'_>, q: &Q, quantity_multiplier: f64) {
     if off.sd_truthy("dotIsSpell") {
         dot_taken_cfg.flags = Some(f64::from(flags & !mod_flag("Spell")));
     }
+    // :5803 `activeSkill.dotCfg = dotCfg` (kept for the Calcs tab, R8.6)
+    off.keep_cfg("dotCfg".into(), dot_cfg.clone(), None);
     // :5804
     off.gset("TotalDotInstance", 0.0);
     // :5806
@@ -122,6 +124,8 @@ fn skill_dot(off: &mut Off<'_>, q: &Q, quantity_multiplier: f64) {
             keyword_flags: Some(f64::from(kw | keyword_flag(&format!("{dt}Dot")))),
             ..dot_cfg.clone()
         };
+        // :5812 `activeSkill["dot"..damageType.."Cfg"] = dotTypeCfg`
+        off.keep_cfg(format!("dot{dt}Cfg"), dot_type_cfg.clone(), None);
         let dot_key = format!("{dt}Dot");
         let base_val = if off.can_deal.get(dt).copied().unwrap_or(false) {
             off.sd_num(&dot_key, 5815).unwrap_or(0.0)

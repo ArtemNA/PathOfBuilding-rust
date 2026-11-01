@@ -613,6 +613,8 @@ pub(super) fn after_ailments(off: &mut Off<'_>) {
             slot_name: sc.slot_name.clone(),
             ..ModCfg::default()
         };
+        // :5701 `activeSkill.decayCfg = { ... }` (kept for the Calcs tab, R8.6)
+        off.keep_cfg("decayCfg".into(), dc.clone(), None);
         let mut eff_mult = 1.0;
         if off.env.mode_effective {
             let resist = resist_for_type(off, "Chaos", Some(&dc));

@@ -677,6 +677,7 @@ pub(crate) fn build_minion(env: &mut Env, i: usize, skill_list: &StoreRef, unimp
         items: &env.items,
         item_sets: &env.build.item_sets,
         the_iron_mass: env.the_iron_mass.is_some(),
+        calcs: env.mode == "CALCS",
     };
     let view_of =
         |d: &DataTable| -> (Option<String>, bool) { (d.get("type").as_str().map(str::to_owned), d.get("countsAsAll1H").truthy()) };
@@ -742,6 +743,7 @@ pub(crate) fn build_minion(env: &mut Env, i: usize, skill_list: &StoreRef, unimp
             weapon_data2: &minion.weapon_data2,
             minion: Some((&minion.data, minion.level)),
             summon_name: Some(parent_name.clone()),
+            calcs_main: false,
         };
         // the minion skill's auxiliary-list entry (:871-874) only feeds the UI's `env.auxSkillList` (Calcs.lua:63)
         let _aux = crate::skill_modlist::build_skill(&sk, tab, &mut ms, &inp, &actor_view, unimplemented).unwrap_or_else(|e| panic!("{e}"));

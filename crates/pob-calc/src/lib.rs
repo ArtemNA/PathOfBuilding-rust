@@ -16,6 +16,7 @@ pub mod allowlist;
 pub mod breakdown;
 pub mod calc_lib;
 pub mod calc_tools;
+pub mod calcs_tail;
 pub mod calculate;
 pub mod defence;
 pub mod env;
@@ -50,6 +51,8 @@ pub use session::{
 
 pub use env::{CalcActor, Env, GrantedSkill, MainSkillStub, RadiusFunc, RadiusJewel, ReqEntry, Slot};
 pub use init_env::{InitEnvError, InitEnvOptions, init_env, init_env_seeded, init_env_with, item_options, parse_items};
+/// The build model crate (R8.6: `pob-engine` loads a build and writes its Calcs inputs through it).
+pub use pob_build;
 pub use pob_parser::ParseMode;
 pub use skills_tab::{
     GemInstance, SkillSet, SkillsTab, SocketGroup, find_skill_gem, load_skills_tab, process_gem_level, process_socket_group,

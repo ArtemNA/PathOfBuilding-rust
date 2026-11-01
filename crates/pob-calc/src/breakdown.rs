@@ -25,6 +25,18 @@ pub enum BVal {
     /// A nested breakdown module table: `breakdown.MainHand` / `breakdown.OffHand` = `require(calcs.breakdownModule)(skillModList,
     /// output.MainHand)` (CalcOffence.lua:2006/:2023) -- the pass breakdown of an attack, filled like `actor.breakdown`.
     Module(Box<Breakdown>),
+    /// A mod object (`{ mod = mod, value = value }` rows of `SkillBuffs` / `SkillDebuffs`, Calcs.lua:766-803, R8.6) -- the same object.
+    Mod(ModRef),
+}
+
+/// A shared mod in a breakdown value; equality is identity (a Lua table compares by reference).
+#[derive(Clone, Debug)]
+pub struct ModRef(pub std::rc::Rc<pob_mods::Mod>);
+
+impl PartialEq for ModRef {
+    fn eq(&self, other: &ModRef) -> bool {
+        std::rc::Rc::ptr_eq(&self.0, &other.0)
+    }
 }
 
 impl From<String> for BVal {

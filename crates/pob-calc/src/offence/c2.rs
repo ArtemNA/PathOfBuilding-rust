@@ -1200,10 +1200,17 @@ pub(super) fn after_passes(off: &mut Off<'_>, quantity_multiplier: f64) {
             }
         }
     }
+    // :4044-4050 (CALCS) `formatNumSep(s_format("%.1f", ...))` with the headless `main.*` defaults (Main.lua:108-112)
     if off.env.mode == "CALCS" {
-        off.note(format!(
-            "{LUA}:4044-4050 output.DisplayDamage (formatNumSep: main.showThousandsSeparators / decimalSeparator, CALCS mode; R8)"
-        ));
+        let nf = crate::power::NumberFormat::default();
+        let text = if off.sd_truthy("showAverage") {
+            let v = num_at(off.gval("AverageDamage"), "AverageDamage", 4046);
+            format!("{} average damage", crate::power::format_num_sep(&sf!("%.1f", v), &nf))
+        } else {
+            let v = num_at(off.gval("TotalDPS"), "TotalDPS", 4048);
+            format!("{} DPS", crate::power::format_num_sep(&sf!("%.1f", v), &nf))
+        };
+        off.out().set_str("DisplayDamage", &text);
     }
     // :4051-4094
     if off.breakdown {

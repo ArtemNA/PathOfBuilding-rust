@@ -177,6 +177,54 @@ pub struct ActiveSkill {
     /// `activeSkill.mirage` -- written by `calcs.mirages` (CalcMirages.lua:76-100 Mirage Archer, :302-326 Sacred Wisps, R7.9); read by
     /// the combined DPS (CalcOffence.lua:6213-6248) and `calcFullDPS` (Calcs.lua:214-251).
     pub mirage: Option<Mirage>,
+    /// The cfg tables offence leaves on the skill (R8.6; read by the Calcs tab's `{p:mod:...}` cells, CalcFormat.lua:46), by field name:
+    /// `dotCfg` / `dot<Type>Cfg` (CalcOffence.lua:5803/:5812), `decayCfg` (:5701), `bleedCfg` / `poisonCfg` / `igniteCfg` and their `OH`
+    /// twins (:4414/:4687/:4992).
+    pub offence_cfgs: IndexMap<String, OffenceCfg>,
+}
+
+/// One cfg table offence leaves on an active skill ([`ActiveSkill::offence_cfgs`]).
+#[derive(Clone)]
+pub struct OffenceCfg {
+    /// The table's own fields (an ailment cfg: its own `skillCond` -- `{ CriticalStrike = true }`).
+    pub cfg: ModCfg,
+    /// An ailment cfg: `skillCond`'s `__index` reads `skillCfg.skillCond[k] or cfg.skillCond[k]` live, `cfg` = the pass cfg -- `None` the
+    /// skill cfg (a non-attack pass), `Some(h)` `weapon<h+1>Cfg`.
+    pub ailment_pass: Option<Option<usize>>,
+}
+
+impl ActiveSkill {
+    /// `activeSkill[name]` for an offence cfg, as a ModStore cfg now (an ailment cfg's `skillCond` read through to the current
+    /// `skillCfg.skillCond` / pass cfg, the own keys first). `None` = nil.
+    pub fn offence_cfg(&self, skills: &Skills, name: &str) -> Option<ModCfg> {
+        let oc = self.offence_cfgs.get(name)?;
+        let Some(pass) = oc.ailment_pass else { return Some(oc.cfg.clone()) };
+        let skill = self.skill_cfg.as_ref().map(|c| c.mod_cfg(skills, &self.skill_types, None));
+        let pass_cfg = match pass {
+            None => skill.clone(),
+            Some(h) => [&self.weapon1_cfg, &self.weapon2_cfg][h]
+                .as_ref()
+                .map(|c| c.mod_cfg(skills, &self.skill_types, self.skill_cfg.as_ref().map(|b| &b.skill_cond))),
+        };
+        let mut cond: IndexMap<Str, bool> = IndexMap::new();
+        for src in [skill.as_ref(), pass_cfg.as_ref()]
+            .into_iter()
+            .flatten()
+            .filter_map(|c| c.skill_cond.as_ref())
+        {
+            for (k, v) in src {
+                let e = cond.entry(k.clone()).or_insert(false);
+                *e = *e || *v;
+            }
+        }
+        for (k, v) in oc.cfg.skill_cond.iter().flatten() {
+            cond.insert(k.clone(), *v);
+        }
+        Some(ModCfg {
+            skill_cond: Some(cond),
+            ..oc.cfg.clone()
+        })
+    }
 }
 
 /// `activeSkill.mirage` (CalcMirages.lua:76-100 / :302-326): `name`, `count`, `skillPart` / `skillPartName` / `infoMessage2` (a multi-part
@@ -520,5 +568,6 @@ pub fn create_active_skill_summoned(
         info_message2: None,
         info_trigger: None,
         mirage: None,
+        offence_cfgs: IndexMap::new(),
     })
 }

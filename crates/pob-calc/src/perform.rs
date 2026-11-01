@@ -134,6 +134,20 @@ pub struct PerformState {
     pub offence_ran: bool,
     /// :3807-3808 ran with no boundary of the port: `calcs.offence(env, env.minion, env.minion.mainSkill)` ran (R7.10b).
     pub minion_offence_ran: bool,
+    /// `env.buffs` / `env.minionBuffs` / `env.debuffs` (:2195-2200) and `env.curseSlots` (:3221) as perform leaves them -- read only by the
+    /// CALCS tail of `calcs.buildOutput` (Calcs.lua:755-806, R8.6). Empty without the skill phase (the tables stay `{ }`).
+    pub buff_tables: BuffTables,
+}
+
+/// The name-keyed buff tables perform leaves on `env` (insertion order -- LuaJIT's `pairs` order is per process, R13; every reader sorts the
+/// names or only sums) and the curse slots.
+#[derive(Clone, Default)]
+pub struct BuffTables {
+    pub buffs: Vec<(String, Vec<Rc<pob_mods::Mod>>)>,
+    pub minion_buffs: Vec<(String, Vec<Rc<pob_mods::Mod>>)>,
+    pub debuffs: Vec<(String, Vec<Rc<pob_mods::Mod>>)>,
+    /// `curseSlots[i]`: `name` and `modList` (nil when the curse has none).
+    pub curse_slots: Vec<(String, Option<Vec<Rc<pob_mods::Mod>>>)>,
 }
 
 impl PerformState {
@@ -2831,6 +2845,7 @@ pub fn perform_skip_ehp(
     // --- :2193-3376 buffs / debuffs / curses / guards -------------------------------------------------------------------
     // `buffs` / `minionBuffs` as :3713-3718 reads them again (the ally Life pools of other skills' minions)
     let mut ally_buffs: Option<(buffs::Buffs, buffs::Buffs)> = None;
+    let mut buff_tables = BuffTables::default();
     match flask_state.as_mut() {
         Some((fx, _)) => {
             // :2193-2995 combine buffs/debuffs/curses/guards ([`buffs`]).
@@ -2856,6 +2871,13 @@ pub fn perform_skip_ehp(
             // :3317-3376 guards, then apply everything ([`guards`]).
             guards::guard_slots(env, &combined.guards, &mut combined.buffs, &mut player.output);
             guards::apply(env, &combined.buffs, &combined.minion_buffs, &combined.debuffs, &slots);
+            let tab = |b: &buffs::Buffs| b.iter().map(|(k, v)| (k.clone(), v.mods.clone())).collect::<Vec<_>>();
+            buff_tables = BuffTables {
+                buffs: tab(&combined.buffs),
+                minion_buffs: tab(&combined.minion_buffs),
+                debuffs: tab(&combined.debuffs),
+                curse_slots: slots.iter().map(|c| (c.name.clone(), c.mod_list.clone())).collect(),
+            };
             ally_buffs = Some((combined.buffs, combined.minion_buffs));
         }
         None => {
@@ -3087,6 +3109,7 @@ pub fn perform_skip_ehp(
         minion: minion_state,
         offence_ran: false,
         minion_offence_ran: false,
+        buff_tables,
     };
 
     // --- :3792 defence, then the offence tail ---------------------------------------------------------------------------

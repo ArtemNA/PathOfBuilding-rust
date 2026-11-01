@@ -384,6 +384,8 @@ pub struct SetupInputs<'a> {
     pub weapon1: WeaponView<'a>,
     pub weapon2: WeaponView<'a>,
     pub main_socket_group: f64,
+    /// `env.mode == "CALCS"` (:1882-1884 `mainActiveSkillCalcs`, R8.6).
+    pub calcs: bool,
     /// `env.modDB.conditions["AffectedByEnergyBlade"]` (:1918).
     pub affected_by_energy_blade: bool,
 }
@@ -1002,8 +1004,17 @@ pub fn setup_skills(st: &mut SkillsState, inp: &SetupInputs<'_>) -> Result<Setup
             }
             if is_main(index) && !skill_list.is_empty() {
                 let sg = &mut st.tab.socket_group_list_mut()[index];
-                let active_skill_index = min2(skill_list.len() as f64, sg.main_active_skill.unwrap_or(1.0));
-                sg.main_active_skill = Some(active_skill_index);
+                // :1882-1890 CALCS: `group.mainActiveSkillCalcs = m_min(#list, group.mainActiveSkillCalcs or 1)`; else `group.mainActiveSkill`
+                // (written back in MAIN; CALCULATOR's write would be the same value, see `CalcSession::init_env`)
+                let active_skill_index = if inp.calcs {
+                    let k = min2(skill_list.len() as f64, sg.main_active_skill_calcs.unwrap_or(1.0));
+                    sg.main_active_skill_calcs = Some(k);
+                    k
+                } else {
+                    let k = min2(skill_list.len() as f64, sg.main_active_skill.unwrap_or(1.0));
+                    sg.main_active_skill = Some(k);
+                    k
+                };
                 // `socketGroupSkillList[activeSkillIndex]` -- a fractional index is nil
                 st.main_skill =
                     (active_skill_index.fract() == 0.0 && active_skill_index >= 1.0).then(|| skill_list[active_skill_index as usize - 1]);

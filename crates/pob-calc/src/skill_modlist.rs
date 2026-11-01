@@ -60,6 +60,8 @@ pub struct ModListInputs<'a> {
     pub item_sets: &'a [pob_build::ItemSetModel],
     /// `env.theIronMass ~= nil`.
     pub the_iron_mass: bool,
+    /// `env.mode == "CALCS"` (R8.6): the `*Calcs` gem fields (CalcActiveSkill.lua:250/:623/:649/:694/:736).
+    pub calcs: bool,
 }
 
 /// `activeSkill.actor` as `buildActiveSkillModList` reads it: the player (`env.player`) or a minion (`createMinionSkills`, R7.10).
@@ -73,6 +75,8 @@ pub(crate) struct SkillActor<'a> {
     pub minion: Option<(&'a Value, f64)>,
     /// `activeSkill.summonSkill.activeEffect.grantedEffect.name`.
     pub summon_name: Option<String>,
+    /// `env.mode == "CALCS" and activeSkill == env.player.mainSkill` (CalcActiveSkill.lua:250/:694/:736, R8.6).
+    pub calcs_main: bool,
 }
 
 fn skill_type(name: &str) -> u32 {
@@ -422,6 +426,7 @@ pub fn build_active_skill_mod_list(
     unimplemented: &mut Vec<String>,
 ) -> Result<(), LuaError> {
     let sk = st.skills.clone();
+    let is_main = st.main_skill == Some(idx);
     let SkillsState {
         tab,
         active_skill_list,
@@ -436,6 +441,7 @@ pub fn build_active_skill_mod_list(
         weapon_data2: inp.weapon_data2,
         minion: None,
         summon_name: None,
+        calcs_main: inp.calcs && is_main,
     };
     // :871-874 auxiliary skill list
     if build_skill(&sk, tab, skill, inp, &actor, unimplemented)? {
@@ -477,13 +483,20 @@ pub(crate) fn build_skill(
         skill.skill_flags.insert("effective".into(), true);
     }
 
-    // :247-270 multipart skills (MAIN: `env.mode == "CALCS"` is false)
+    // :247-270 multipart skills (`env.mode == "CALCS" and activeSkill == env.player.mainSkill`: the `skillPartCalcs` field)
     match act.parts.as_ref() {
         Some(parts) if parts.len() > 1 => {
-            let s = src.ok_or_else(|| src_nil(254))?;
+            let s = src.ok_or_else(|| src_nil(if actor.calcs_main { 251 } else { 254 }))?;
             let gi = gem_mut(tab, s);
-            let part_no = min2(parts.len() as f64, gi.skill_part.unwrap_or(1.0));
-            gi.skill_part = Some(part_no);
+            let part_no = if actor.calcs_main {
+                let k = min2(parts.len() as f64, gi.skill_part_calcs.unwrap_or(1.0));
+                gi.skill_part_calcs = Some(k);
+                k
+            } else {
+                let k = min2(parts.len() as f64, gi.skill_part.unwrap_or(1.0));
+                gi.skill_part = Some(k);
+                k
+            };
             skill.skill_part = Some(part_no);
             let part = (part_no >= 1.0 && part_no.fract() == 0.0)
                 .then(|| parts.get(part_no as usize - 1))
@@ -1010,10 +1023,16 @@ pub(crate) fn build_skill(
         set_data(&mut skill.skill_data, "totemLevel", num(level.level_requirement));
     }
 
-    // :621-631 active mine count (MAIN: `srcInstance.skillMineCount`)
+    // :621-631 active mine count: `(env.mode == "CALCS" and srcInstance.skillMineCountCalcs) or (env.mode ~= "CALCS" and
+    // srcInstance.skillMineCount)` -- a false-y first half falls to the second, which is `false` in CALCS (no count)
     if skill.flag("mine") {
         let s = src.ok_or_else(|| src_nil(623))?;
-        let count = tab.socket_group_list()[s.0].gem_list[s.1].skill_mine_count;
+        let gi = &tab.socket_group_list()[s.0].gem_list[s.1];
+        let count = if inp.calcs {
+            gi.skill_mine_count_calcs
+        } else {
+            gi.skill_mine_count
+        };
         skill.active_mine_count = count;
         if let Some(c) = count
             && c > 0.0
@@ -1048,10 +1067,14 @@ pub(crate) fn build_skill(
         let min_name = format!("Multiplier:{base}MinimumStage");
         guard(&malformed, &[&min_name])?;
         let min_stage = lua(ml.borrow().sum(ModType::Base, Some(&cfg), &[&min_name]))?;
-        let first = tab.socket_group_list()[s.0].gem_list[s.1]
-            .skill_stage_count
-            .or_else(|| skill.skill_data.get("stagesMax").and_then(Value::as_num))
-            .unwrap_or(1.0);
+        let gi = &tab.socket_group_list()[s.0].gem_list[s.1];
+        let first = if inp.calcs {
+            gi.skill_stage_count_calcs
+        } else {
+            gi.skill_stage_count
+        }
+        .or_else(|| skill.skill_data.get("stagesMax").and_then(Value::as_num))
+        .unwrap_or(1.0);
         let count = max2(first, 1.0 + min_stage);
         skill.active_stage_count = Some(count);
         if count > 0.0 {
@@ -1132,15 +1155,20 @@ pub(crate) fn build_skill(
     }
     if !minion_list.is_empty() && actor.minion.is_none() {
         // `not activeSkill.actor.minionData` -- the player
-        let s = src.ok_or_else(|| src_nil(699))?;
+        let s = src.ok_or_else(|| src_nil(if actor.calcs_main { 695 } else { 699 }))?;
         let gi = gem_mut(tab, s);
-        let index = gi
-            .skill_minion
-            .as_ref()
-            .and_then(|m| minion_list.iter().position(|x| x == m))
-            .unwrap_or(0);
+        let cur = if actor.calcs_main {
+            &gi.skill_minion_calcs
+        } else {
+            &gi.skill_minion
+        };
+        let index = cur.as_ref().and_then(|m| minion_list.iter().position(|x| x == m)).unwrap_or(0);
         let minion_type = minion_list[index].clone();
-        gi.skill_minion = Some(minion_type.clone());
+        if actor.calcs_main {
+            gi.skill_minion_calcs = Some(minion_type.clone());
+        } else {
+            gi.skill_minion = Some(minion_type.clone());
+        }
         skill.skill_flags.insert("haveMinion".into(), true);
         let data = minion_data(&minion_type);
         // `minion.minionData and minion.minionData.hostile or false`
@@ -1202,14 +1230,22 @@ pub(crate) fn build_skill(
         let mut item_set: Option<usize> = None;
         if act.minion_has_item_set {
             let gi = gem_mut(tab, s);
-            let found = gi
-                .skill_minion_item_set
-                .and_then(|id| inp.item_sets.iter().position(|x| x.id == id));
+            let cur = if actor.calcs_main {
+                gi.skill_minion_item_set_calcs
+            } else {
+                gi.skill_minion_item_set
+            };
+            let found = cur.and_then(|id| inp.item_sets.iter().position(|x| x.id == id));
             item_set = match found {
                 Some(k) => Some(k),
                 None => {
-                    // `srcInstance.skillMinionItemSet = itemSetOrderList[1]`; `itemSets[nil]` is nil
-                    gi.skill_minion_item_set = inp.item_sets.first().map(|x| x.id);
+                    // `srcInstance.skillMinionItemSet[Calcs] = itemSetOrderList[1]`; `itemSets[nil]` is nil
+                    let first = inp.item_sets.first().map(|x| x.id);
+                    if actor.calcs_main {
+                        gi.skill_minion_item_set_calcs = first;
+                    } else {
+                        gi.skill_minion_item_set = first;
+                    }
                     if inp.item_sets.is_empty() { None } else { Some(0) }
                 }
             };

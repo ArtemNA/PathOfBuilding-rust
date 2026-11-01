@@ -168,6 +168,13 @@ impl Off<'_> {
         self.env.skills.as_mut().expect("skills on").skill_mut(self.i)
     }
 
+    /// `activeSkill[name] = cfg` (R8.6: kept for the Calcs tab, [`ActiveSkill::offence_cfgs`]).
+    pub(crate) fn keep_cfg(&mut self, name: String, cfg: ModCfg, ailment_pass: Option<Option<usize>>) {
+        self.sk_mut()
+            .offence_cfgs
+            .insert(name, crate::active_skill::OffenceCfg { cfg, ailment_pass });
+    }
+
     pub fn out(&mut self) -> &mut Output {
         &mut self.st.player.output
     }

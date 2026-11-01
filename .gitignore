@@ -6,3 +6,6 @@
 /tools/.scratch/
 *.log
 /tools/luajit-win/target/
+
+# agent worktrees
+/.claude/worktrees/

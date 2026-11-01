@@ -272,6 +272,7 @@ fn copy_active_skill(env: &Env, src: &Src) -> Result<Env, String> {
             weapon_data2: &a.weapon_data2,
             minion: None,
             summon_name: None,
+            calcs_main: false,
         };
         crate::init_env::with_mod_list_inputs(&new_env, |inp| {
             crate::skill_modlist::build_skill(&sk, &mut nst.tab, &mut skill, inp, &sa, &mut notes)

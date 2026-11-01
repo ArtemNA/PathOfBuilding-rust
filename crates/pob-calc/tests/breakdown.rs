@@ -58,6 +58,8 @@ pub fn ser(v: &BVal) -> Json {
         // probe that is its proxy: `pairs` sees no keys and `v[n + 1]` reads the (empty) array part through `__index`, so LuaJIT's
         // serialization is `{}` whatever the module holds (export-breakdown.ts `S`); the contents are not observable through the probe.
         BVal::Module(_) => json!({}),
+        // R8.6: only the CALCS tail (`SkillBuffs` / `SkillDebuffs` rows, class `Calcs` here) holds mods -- never compared by this gate
+        BVal::Mod(m) => json!({ "$mod": m.0.name.as_ref() }),
     }
 }
 
