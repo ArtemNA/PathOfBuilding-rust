@@ -8,10 +8,14 @@
 #![forbid(unsafe_code)]
 
 pub mod apply_range;
+pub mod build_raw;
 pub mod item;
 pub mod lua;
 pub mod mod_tools;
 
 pub use apply_range::{apply_range, apply_value_scalar, format_value, is_zero_value_line};
-pub use item::{DataTable, GrantedSkill, INFLUENCE_INFO, Item, ItemOptions, LINE_FLAGS, ModLine, NumKey, Requirements, SlotMod, Socket};
+pub use item::{
+    Affix, AffixRange, BaseLine, DataTable, GrantedSkill, INFLUENCE_INFO, Item, ItemOptions, LINE_FLAGS, ModLine, NumKey, Requirements,
+    SlotMod, Socket,
+};
 pub use mod_tools::{format_mod, format_source_mod, set_source};

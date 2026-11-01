@@ -156,6 +156,9 @@ pub struct ModLine {
     pub mod_id: Option<String>,
     pub new_mod_id: Option<String>,
     pub show_slider: Option<bool>,
+    /// `modLine.order` (Item.lua:1374): the ItemExclusive stat order of a unique's explicit line, read by
+    /// `sortCraftedModLines` (:72).
+    pub order: Option<f64>,
     /// `lineFlags`, indexed like `LINE_FLAGS`.
     pub flags: [bool; 17],
 }
@@ -368,6 +371,42 @@ pub struct Item {
     pub check_section: bool,
     /// Every upstream branch this port knowingly skips on THIS item (CALC-ARCH §11).
     pub unimplemented: Vec<String>,
+
+    /// `self.baseLines` (Item.lua:1005): base name -> the variant lists of its line. Upstream it is a hash walked with
+    /// `pairs` by BuildRaw (R13: the order of 2+ written base lines is LuaJIT's hash order); here insertion order.
+    pub base_lines: IndexMap<String, BaseLine>,
+    /// `self.prefixes` / `self.suffixes` (Item.lua:512-513, 799-819, 1497-1519) -- the affix slots of a crafted item.
+    pub prefixes: Vec<Affix>,
+    pub suffixes: Vec<Affix>,
+    /// `self.affixLimit` (Item.lua:1474).
+    pub affix_limit: f64,
+    /// `self.affixes` (Item.lua:1031-1038): the affix table of the first matched base -- NOT reset by ParseRaw.
+    pub affixes: Option<&'static crate::build_raw::ItemAffixes>,
+    /// `self.rareLikeUnique` (Item.lua:1036, reset by ParseRaw :520).
+    pub rare_like_unique: Option<&'static crate::build_raw::RareLikeUnique>,
+}
+
+/// One `self.baseLines[baseName]` entry (Item.lua:1005-1010); `line` is the key.
+#[derive(Clone, Debug, Default)]
+pub struct BaseLine {
+    pub variant_list: Option<NumSet>,
+    pub version_list: Option<NumSet>,
+    pub variant_group_list: Option<NumSet>,
+}
+
+/// `affix.range` (Item.lua:803-815): a number, or a list from `{range:a,b}`.
+#[derive(Clone, Debug, PartialEq)]
+pub enum AffixRange {
+    Num(f64),
+    List(Vec<f64>),
+}
+
+/// One `self.prefixes[i]` / `self.suffixes[i]` entry: `{ modId, range, fractured }`.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Affix {
+    pub mod_id: String,
+    pub range: Option<AffixRange>,
+    pub fractured: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -446,13 +485,78 @@ fn normalise_mod_line(line: &str) -> String {
     )
 }
 
-/// `data.rareLikeUniques` keys (Item.lua:1036) -- whether a crafted unique keeps `crafted` (Item.lua:1462-1484).
-fn rare_like_unique_titles() -> &'static BTreeSet<String> {
-    static S: OnceLock<BTreeSet<String>> = OnceLock::new();
+/// Item.lua:1361-1371 `uniqueModStatOrder` (`exact`, `normalised`): the smallest ItemExclusive `statOrder` per mod line.
+fn unique_mod_stat_order() -> &'static (std::collections::HashMap<String, f64>, std::collections::HashMap<String, f64>) {
+    static S: OnceLock<(std::collections::HashMap<String, f64>, std::collections::HashMap<String, f64>)> = OnceLock::new();
     S.get_or_init(|| {
-        let j: serde_json::Value = pob_data::read_json("rare-like-uniques.json").unwrap_or_else(|e| panic!("{e}"));
-        j.as_object().map(|o| o.keys().cloned().collect()).unwrap_or_default()
+        let (mut exact, mut normalised) = (std::collections::HashMap::new(), std::collections::HashMap::new());
+        let file = crate::build_raw::mod_file("item-mods/ItemExclusive.json");
+        for (id, m) in file.iter() {
+            let lines = m
+                .get("lines")
+                .and_then(serde_json::Value::as_array)
+                .map(Vec::as_slice)
+                .unwrap_or_default();
+            let order = m
+                .get("statOrder")
+                .and_then(serde_json::Value::as_array)
+                .map(Vec::as_slice)
+                .unwrap_or_default();
+            for (index, line) in lines.iter().enumerate() {
+                let line = line.as_str().unwrap_or_else(|| panic!("ItemExclusive {id}: line"));
+                // `m_min(x, nil)` is a Lua error upstream.
+                let o = order
+                    .get(index)
+                    .and_then(serde_json::Value::as_f64)
+                    .unwrap_or_else(|| panic!("{ITEM}:1367: ItemExclusive {id}: statOrder[{}] is nil", index + 1));
+                let exact_line = gsub(
+                    &lower(line),
+                    "
+",
+                    " ",
+                    None,
+                );
+                let e = exact.entry(exact_line).or_insert(f64::INFINITY);
+                *e = pob_lua::number::min2(*e, o);
+                let n = normalised.entry(normalise_mod_line(line)).or_insert(f64::INFINITY);
+                *n = pob_lua::number::min2(*n, o);
+            }
+        }
+        (exact, normalised)
     })
+}
+
+/// Item.lua:72-87 `sortCraftedModLines`: fractured, then the rest by `order` (nil last), then crafted/custom, each
+/// group in source order (the comparator is total, so `table.sort` is deterministic here).
+fn sort_crafted_mod_lines(mod_lines: &mut Vec<ModLine>) {
+    let group = |m: &ModLine| -> u8 {
+        if m.flag("crafted") || m.flag("custom") {
+            3
+        } else if m.flag("fractured") {
+            1
+        } else {
+            2
+        }
+    };
+    let mut indexed: Vec<(usize, ModLine)> = std::mem::take(mod_lines).into_iter().enumerate().collect();
+    indexed.sort_by(|(ia, a), (ib, b)| {
+        let (ga, gb) = (group(a), group(b));
+        if ga != gb {
+            return ga.cmp(&gb);
+        }
+        if ga < 3 && a.order != b.order {
+            let (oa, ob) = (a.order.unwrap_or(f64::INFINITY), b.order.unwrap_or(f64::INFINITY));
+            // `(a.order or math.huge) < (b.order or math.huge)`; equal (nil vs huge) falls to the source order.
+            if oa < ob {
+                return Ordering::Less;
+            }
+            if ob < oa {
+                return Ordering::Greater;
+            }
+        }
+        ia.cmp(ib)
+    });
+    *mod_lines = indexed.into_iter().map(|(_, m)| m).collect();
 }
 
 /// `item_bases().names_sorted()`, computed once (the partial-match walk of Item.lua:972 runs per mod line of a MAGIC item).
@@ -858,6 +962,10 @@ impl Item {
         self.uses_variant_groups = false;
         self.prefixes_limit = None;
         self.suffixes_limit = None;
+        self.prefixes = Vec::new();
+        self.suffixes = Vec::new();
+        self.base_lines = IndexMap::new();
+        self.rare_like_unique = None;
         self.requirements = Requirements {
             str: Some(0.0),
             dex: Some(0.0),
@@ -1106,7 +1214,15 @@ impl Item {
                         base_name = "Two-Toned Boots (Armour/Energy Shield)".into();
                     }
                     if let Some(base) = item_bases().base(&base_name) {
-                        // `self.baseLines[baseName]` -- UI only (variant base switching), not kept.
+                        // Items with variants can have multiple bases (`self.baseLines[baseName]`, read by BuildRaw).
+                        self.base_lines.insert(
+                            base_name.clone(),
+                            BaseLine {
+                                variant_list: ml.variant_list.clone(),
+                                version_list: ml.version_list.clone(),
+                                variant_group_list: ml.variant_group_list.clone(),
+                            },
+                        );
                         if self.uses_variant_groups && self.version_list.is_some() && self.selected_version.is_none() {
                             self.selected_version = Some(self.version_list.as_ref().map_or(0, Vec::len) as f64);
                         }
@@ -1126,9 +1242,16 @@ impl Item {
                             {
                                 mutated_lines = foulborn_map().get(&gsub(title, "^[Ff]oulborn ", "", None));
                             }
-                            // Item.lua:1029-1046 `affixes` / `rareLikeUnique` / `enchantments` feed the crafting UI only.
                             self.ty = Some(base.ty.clone());
                             self.base = Some(base);
+                            // Item.lua:1031-1038 (`enchantments` :1040-1046 feed the crafting UI only).
+                            self.affixes = Some(crate::build_raw::item_affixes_for_base(base));
+                            if let Some(title) = &self.title {
+                                self.rare_like_unique = crate::build_raw::rare_like_unique(&lower(title));
+                                if let Some(rlu) = self.rare_like_unique {
+                                    self.affixes = Some(&rlu.affixes);
+                                }
+                            }
                             self.corruptible = base.ty != "Flask";
                             self.can_be_influenced = base.influence_tags.is_some();
                             self.cluster_jewel = pob_data::cluster_jewels::cluster_jewels().jewel(&base_name);
@@ -1261,9 +1384,21 @@ impl Item {
         }
 
         if self.advanced_copy && (self.rarity == "UNIQUE" || self.rarity == "RELIC") {
-            // Item.lua:1352-1369 `modLine.order` from data.itemMods.ItemExclusive statOrder -- only `sortCraftedModLines` reads it.
-            self.unimplemented
-                .push(format!("{ITEM}:1352 uniqueModStatOrder (feeds sortCraftedModLines)"));
+            // Item.lua:1360-1377 `modLine.order` from data.itemMods.ItemExclusive statOrder.
+            let (exact, normalised) = unique_mod_stat_order();
+            for ml in &mut self.explicit_mod_lines {
+                let exact_line = gsub(
+                    &lower(&ml.line),
+                    "
+",
+                    " ",
+                    None,
+                );
+                ml.order = exact
+                    .get(&exact_line)
+                    .or_else(|| normalised.get(&normalise_mod_line(&ml.line)))
+                    .copied();
+            }
         }
         if let Some(base) = self.base
             && !self.sockets.is_empty()
@@ -1295,21 +1430,73 @@ impl Item {
             self.apply_mod_magnitude();
         }
         if self.advanced_copy && self.explicit_mod_lines.len() > 1 {
-            // Item.lua:1396 `sortCraftedModLines` needs `modLine.order` (data.itemMods.ItemExclusive). On the 128 golden
-            // items the oracle's explicitModLines order equals the parse order (pob-ts P4.3a), i.e. the sort is a no-op.
-            self.unimplemented
-                .push(format!("{ITEM}:1396 sortCraftedModLines (no-op on the goldens)"));
+            sort_crafted_mod_lines(&mut self.explicit_mod_lines);
         }
-        // Item.lua:1397-1450 `affixLimit`: the prefix/suffix slots are crafting UI; only the `crafted` flag it may clear is kept.
+        // Item.lua:1474-1520 `affixLimit` and the prefix/suffix slots (written back by BuildRaw).
+        self.affix_limit = 0.0;
         if self.crafted {
-            let rare_like_unique = self.title.as_deref().is_some_and(|t| rare_like_unique_titles().contains(&lower(t)));
-            if self.base.is_none() {
-                // `not self.affixes` -- affixes are set together with the base (Item.lua:1029).
-                self.crafted = false;
-            } else if self.rarity == "MAGIC" || self.rarity == "RARE" || rare_like_unique {
-                self.unimplemented
-                    .push(format!("{ITEM}:1404 affixLimit / prefix-suffix slots (crafting UI)"));
+            if let Some(affixes) = self.affixes {
+                let (max, min) = (pob_lua::number::max2, pob_lua::number::min2);
+                if self.rarity == "MAGIC" {
+                    if self.prefixes_limit.is_some() || self.suffixes_limit.is_some() {
+                        let p = max(min(self.prefixes_limit.unwrap_or(0.0) + 1.0, 2.0), 0.0);
+                        let s = max(min(self.suffixes_limit.unwrap_or(0.0) + 1.0, 2.0), 0.0);
+                        (self.prefixes_limit, self.suffixes_limit) = (Some(p), Some(s));
+                        self.affix_limit = p + s;
+                    } else {
+                        self.affix_limit = 2.0;
+                    }
+                } else if self.rarity == "RARE" {
+                    let ty = self.ty.as_deref();
+                    let jewel = ty == Some("Jewel") && {
+                        let base = self
+                            .base
+                            .unwrap_or_else(|| panic!("{ITEM}:1487: attempt to index field 'base' (a nil value)"));
+                        !(base.sub_type.as_deref() == Some("Abyss") && self.corrupted)
+                    };
+                    self.affix_limit = if jewel || ty == Some("Graft") { 4.0 } else { 6.0 };
+                    if self.prefixes_limit.is_some() || self.suffixes_limit.is_some() {
+                        let lim = self.affix_limit;
+                        let p = max(min(self.prefixes_limit.unwrap_or(0.0) + lim / 2.0, lim), 0.0);
+                        let s = max(min(self.suffixes_limit.unwrap_or(0.0) + lim / 2.0, lim), 0.0);
+                        (self.prefixes_limit, self.suffixes_limit) = (Some(p), Some(s));
+                        self.affix_limit = p + s;
+                    }
+                } else if let Some(rlu) = self.rare_like_unique {
+                    (self.prefixes_limit, self.suffixes_limit) = (Some(rlu.prefix_limit), Some(rlu.suffix_limit));
+                    self.affix_limit = rlu.prefix_limit + rlu.suffix_limit;
+                } else {
+                    self.crafted = false;
+                }
+                if self.crafted {
+                    for (is_prefix, limit) in [(true, self.prefixes_limit), (false, self.suffixes_limit)] {
+                        let n = limit.unwrap_or(self.affix_limit / 2.0);
+                        let mut list = std::mem::take(if is_prefix { &mut self.prefixes } else { &mut self.suffixes });
+                        let mut i = 1.0;
+                        while i <= n {
+                            let idx = i as usize - 1;
+                            if idx >= list.len() {
+                                // `list[i] = { modId = "None" }` -- `i` runs 1.., so the hole is always the next slot.
+                                list.push(Affix {
+                                    mod_id: "None".into(),
+                                    range: None,
+                                    fractured: false,
+                                });
+                            } else if list[idx].mod_id != "None" && !affixes.contains(&list[idx].mod_id) {
+                                if let Some(id) = affixes.by_affix_name(&list[idx].mod_id, &mut self.unimplemented) {
+                                    list[idx].mod_id = id;
+                                }
+                                if !affixes.contains(&list[idx].mod_id) {
+                                    list[idx].mod_id = "None".into();
+                                }
+                            }
+                            i += 1.0;
+                        }
+                        *(if is_prefix { &mut self.prefixes } else { &mut self.suffixes }) = list;
+                    }
+                }
             } else {
+                // `not self.affixes` -- set together with the first matched base (Item.lua:1031), never reset by ParseRaw.
                 self.crafted = false;
             }
         }
@@ -1550,8 +1737,30 @@ impl Item {
             "Crucible" => self.crucible = true,
             "Implicit" => self.implicit = true,
             "Prefix" | "Suffix" => {
-                // Item.lua:774-794 keeps the affix for the crafting UI only.
-                self.unimplemented.push(format!("{ITEM}:774 {spec_name} affix entry (crafting UI)"));
+                // Item.lua:799-819.
+                let fractured = matches(spec_val, "^{fractured}");
+                let spec_val = gsub(spec_val, "^{fractured}", "", None);
+                let (range, affix) = match match_(&spec_val, "{range:([^}]+)}(.+)", ITEM) {
+                    Some(c) => (Some(c[0].clone()), Some(c[1].clone())),
+                    None => (None, None),
+                };
+                let mut range = match &range {
+                    Some(r) if find_plain(r, ",").is_some() => Some(AffixRange::List(
+                        gmatch(r, "[^,]+").iter().filter_map(|v| tonumber(&v[0])).collect(),
+                    )),
+                    Some(r) => tonumber(r).map(AffixRange::Num),
+                    None => None,
+                };
+                let mod_id = affix.unwrap_or(spec_val);
+                if range.is_none() && mod_id != "None" {
+                    range = Some(AffixRange::Num(DEFAULT_ITEM_AFFIX_QUALITY));
+                }
+                let affixes = if spec_name == "Prefix" {
+                    &mut self.prefixes
+                } else {
+                    &mut self.suffixes
+                };
+                affixes.push(Affix { mod_id, range, fractured });
             }
             "Implicits" => {
                 *implicit_lines = num().unwrap_or(0.0);
