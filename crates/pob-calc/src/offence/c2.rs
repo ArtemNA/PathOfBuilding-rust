@@ -1165,6 +1165,11 @@ pub(super) fn after_passes(off: &mut Off<'_>, quantity_multiplier: f64) {
                 match bd.get_mut(k) {
                     Some(BVal::Table(t)) => {
                         t.fields.insert("breakdownSource".into(), source.into());
+                        // R8.5b: without both weapons, :4010-4011 made `breakdown[k]` the hand module's own table (one Lua object), so
+                        // the :4015/:4018 write is seen through `breakdown.MainHand[k]` / `.OffHand[k]` too
+                        if !both && let Some(BVal::Table(h)) = bd.module_mut(if w1 { "MainHand" } else { "OffHand" }).get_mut(k) {
+                            h.fields.insert("breakdownSource".into(), source.into());
+                        }
                     }
                     None | Some(BVal::Bool(false)) => {}
                     Some(other) => panic!("{LUA}:4015: attempt to index field '{k}' ({other:?})"),

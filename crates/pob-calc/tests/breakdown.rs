@@ -9,8 +9,9 @@
 //! Rule (R8.5): Rust's breakdown after `calculate_with` (raw XML, as the docker probe read it) is the state after `BuildOutput`: every key
 //! of class `ported` or `R8.5` equals LuaJIT's `final` (strings byte for byte, numbers `%.17g`, structure; absent iff `final` is absent),
 //! and Rust has no other key. `Calcs` keys are written by Calcs.lua after `calcs.perform` (not part of `calculate_with`): counted apart,
-//! Rust must not have them. Nothing is tolerated. The nested hand modules (`breakdown.MainHand`/`.OffHand`) serialize as the probe sees
-//! them (see [`ser`]).
+//! Rust must not have them. Nothing is tolerated. The nested hand modules (`breakdown.MainHand`/`.OffHand`) serialize as `{"$bd": ...}`
+//! (R8.5b, see [`ser`]) and are also counted key by key; `skill`-class keys (a Data/Skills writer, R8.5b: the `fn-synth` scenarios of
+//! every skill function that writes `breakdown`) are counted per writer line.
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -39,10 +40,22 @@ fn xml_of(fx: &Json) -> String {
         "golden" => pob_golden::registry::find_golden(name).expect("golden").xml_path(),
         "defence-synth" => fixtures().join(format!("defence-synth/{name}.xml")),
         "defence-synth2" => fixtures().join(format!("defence-synth2/{name}.xml")),
-        "r81-synth" => fixtures().join(format!("offence-synth/{name}.xml")),
+        "r81-synth" | "fn-synth" => fixtures().join(format!("offence-synth/{name}.xml")),
         k => panic!("unknown kind {k}"),
     };
-    std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("{}: {e}", path.display()))
+    let xml = std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
+    // R8.5b: a skill-part variant -- `skillPart="<n>"` on the scenario's single <Gem> (export-breakdown.ts `withPart`)
+    match fx.get("skillPart").and_then(|p| p.as_u64()) {
+        Some(n) => {
+            assert_eq!(
+                xml.matches("<Gem ").count(),
+                1,
+                "{name}: a skill-part variant needs exactly one <Gem>"
+            );
+            xml.replacen("<Gem ", &format!("<Gem skillPart=\"{n}\" "), 1)
+        }
+        None => xml,
+    }
 }
 
 /// The probe's serialization of a Lua value (export-breakdown.ts `S`).
@@ -54,10 +67,12 @@ pub fn ser(v: &BVal) -> Json {
         BVal::Item(name) => json!({ "$item": name }),
         BVal::Fn => json!({ "$fn": 1 }),
         BVal::Table(t) => ser_table(t),
-        // `breakdown.MainHand` / `.OffHand` (CalcOffence.lua:2006/:2023) is a module made by `require(calcs.breakdownModule)` -- in the
-        // probe that is its proxy: `pairs` sees no keys and `v[n + 1]` reads the (empty) array part through `__index`, so LuaJIT's
-        // serialization is `{}` whatever the module holds (export-breakdown.ts `S`); the contents are not observable through the probe.
-        BVal::Module(_) => json!({}),
+        // `breakdown.MainHand` / `.OffHand` (CalcOffence.lua:2006/:2023) is a module made by `require(calcs.breakdownModule)`: the probe
+        // serializes the real table behind its proxy (R8.5b) as `{"$bd": {key: value}}`.
+        BVal::Module(b) => {
+            let e: Map<String, Json> = b.entries().map(|(k, v)| (k.clone(), ser(v))).collect();
+            json!({ "$bd": e })
+        }
     }
 }
 
@@ -140,6 +155,10 @@ struct Tally {
     by_class: BTreeMap<String, (usize, usize)>,
     r85: usize,
     calcs: usize,
+    /// R8.5b: the keys inside the hand modules (`breakdown.MainHand` / `.OffHand`): (keys, equal)
+    hand: (usize, usize),
+    /// R8.5b: the Data/Skills writer lines (`<file>:<line>`) of `skill`-class keys -> (keys, equal)
+    skill_writers: BTreeMap<String, (usize, usize)>,
     bad: Vec<String>,
 }
 
@@ -188,22 +207,54 @@ fn check_actor(slug: &str, actor: &str, fx: &Json, rust: Option<Breakdown>, t: &
             }
             _ => {}
         }
+        // R8.5b: the hand module's keys, one by one (a missing / extra key on either side counts as a divergent key)
+        if let Some(lh) = e.get("final").and_then(|f| f.get("$bd")).and_then(Json::as_object) {
+            let rh = rust_map.get(k.as_str()).and_then(|r| r.get("$bd")).and_then(Json::as_object);
+            let mut names: Vec<&String> = lh.keys().collect();
+            if let Some(rh) = rh {
+                names.extend(rh.keys().filter(|x| !lh.contains_key(*x)));
+            }
+            for n in names {
+                t.hand.0 += 1;
+                let (r, l) = (rh.and_then(|rh| rh.get(n)), lh.get(n));
+                if r == l {
+                    t.hand.1 += 1;
+                } else if rh.is_some() {
+                    let s = |x: Option<&Json>| x.map_or("nil".to_owned(), Json::to_string);
+                    t.bad
+                        .push(format!("{slug} | {actor}.{k}.{n} |\n    rust   {}\n    luajit {}", s(r), s(l)));
+                }
+            }
+        }
+        let equal = match (rust_map.get(k.as_str()), e.get("final")) {
+            (Some(r), Some(f)) => r == f,
+            (None, None) => true,
+            _ => false,
+        };
+        if e["class"] == "skill" {
+            for w in e["writers"].as_array().expect("writers").iter().filter_map(Json::as_str) {
+                if !w.starts_with("Calc") {
+                    let s = t.skill_writers.entry(w.to_owned()).or_default();
+                    s.0 += 1;
+                    s.1 += usize::from(equal);
+                }
+            }
+        }
         let m = t.by_module.entry(module_of(e["writers"].as_array().expect("writers"))).or_default();
         m.0 += 1;
         let cl = t.by_class.entry(e["class"].as_str().expect("class").to_owned()).or_default();
         cl.0 += 1;
         match (rust_map.get(k.as_str()), e.get("final")) {
-            (Some(r), Some(f)) if r == f => {
+            _ if equal => {
                 m.1 += 1;
                 cl.1 += 1;
             }
-            (None, None) => {
-                m.1 += 1;
-                cl.1 += 1;
-            }
+            // both hand modules: the divergent inner keys are reported above, one by one
+            (Some(r), Some(f)) if r.get("$bd").is_some() && f.get("$bd").is_some() => {}
             (Some(r), Some(f)) => t.bad.push(format!("{slug} | {actor}.{k} |\n    rust   {r}\n    luajit {f}")),
             (None, Some(f)) => t.bad.push(format!("{slug} | {actor}.{k} | rust nil, luajit {f}")),
             (Some(r), None) => t.bad.push(format!("{slug} | {actor}.{k} | rust {r}, luajit nil")),
+            (None, None) => unreachable!("nil = nil is equal"),
         }
     }
     for k in rust_map.keys() {
@@ -219,7 +270,7 @@ fn check_actor(slug: &str, actor: &str, fx: &Json, rust: Option<Breakdown>, t: &
 #[test]
 fn breakdown_matches_luajit() {
     let list = scenarios();
-    assert!(list.len() >= 136, "breakdown fixtures: {} scenarios", list.len());
+    assert!(list.len() >= 173, "breakdown fixtures: {} scenarios", list.len());
     let mut total = Tally::default();
     let filter = std::env::var("BD_FILTER").ok();
     println!("scenario -> gate keys / equal / R8.5 / Calcs / divergences");
@@ -248,8 +299,19 @@ fn breakdown_matches_luajit() {
         }
         total.r85 += t.r85;
         total.calcs += t.calcs;
+        total.hand.0 += t.hand.0;
+        total.hand.1 += t.hand.1;
+        for (w, v) in t.skill_writers {
+            let e = total.skill_writers.entry(w).or_default();
+            e.0 += v.0;
+            e.1 += v.1;
+        }
         total.bad.extend(t.bad);
     }
+    for (w, (n, eq)) in &total.skill_writers {
+        println!("skill writer {w:<24} keys {n:>4}, equal {eq:>4}");
+    }
+    println!("hand module keys {}, equal {}", total.hand.0, total.hand.1);
     for (m, (g, eq)) in &total.by_module {
         println!("module {m:<12} gate keys {g:>6}, equal {eq:>6}");
     }
