@@ -496,6 +496,8 @@ fn replace_main(env: &mut Env, pst: &mut PerformState, run: &RunRef) {
     let d = st(&r.env).detached_main.clone().expect("newSkill");
     let actor = env.player.borrow().actor.clone();
     pst.player.output = r.state.player.output.copy_for(&actor);
+    // `env.player.output = newEnv.player.output` hands over the whole table, `output.MainHand/OffHand` included (R8.3)
+    pst.player.hands = r.state.player.hands.clone();
     let s = st_mut(env);
     s.detached_main = Some(d);
     s.main_skill = Some(DETACHED);

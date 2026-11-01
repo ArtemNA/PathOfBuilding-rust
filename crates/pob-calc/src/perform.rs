@@ -100,6 +100,12 @@ impl ActorState {
             hands: None,
         }
     }
+
+    /// `actor.output.MainHand` (`hand` 0) / `actor.output.OffHand` (`hand` 1) as a table of scalars; `None` = nil. Read-only view for the
+    /// display layer (R8.3: `BuildDisplayStats.lua` `childStat` rows, `output.MainHand.Accuracy`).
+    pub fn hand_output(&self, hand: usize) -> Option<&IndexMap<pob_mods::Str, crate::output::OutValue>> {
+        self.hands.as_ref().map(|h| &h[hand].map)
+    }
 }
 
 /// `env.build.partyTab.actor` (:1310): PartyTab is P5; with no party member perform only asks it for an empty ModDB and

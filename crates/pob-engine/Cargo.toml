@@ -8,3 +8,12 @@ license.workspace = true
 publish.workspace = true
 
 [dependencies]
+pob-calc = { path = "../pob-calc" }
+pob-lua = { path = "../pob-lua" }
+pob-mods = { path = "../pob-mods" }
+pob-data.workspace = true
+indexmap.workspace = true
+
+[dev-dependencies]
+pob-golden.workspace = true
+serde_json.workspace = true
