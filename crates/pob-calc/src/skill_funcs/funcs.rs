@@ -1,12 +1,14 @@
 //! Hand ports of the skill functions of `Data/Skills/*.lua` (`initialFunc`, `preSkillTypeFunc`, `preDamageFunc`) -- one Rust function
-//! per distinct body (several skills share a body: the registry maps each `<src>:<from>` to one of these). Breakdown tables (R8) are not
-//! built; an output write under `if breakdown` is (MINEFIELD-RUST R8).
+//! per distinct body (several skills share a body: the registry maps each `<src>:<from>` to one of these). The `breakdown` rows are built
+//! as upstream (R8.5b, gate `tests/breakdown.rs` on the fn-synth scenarios).
 
 use pob_lua::number::{max2, min2};
 use pob_mods::{ModType, Table, Value};
 
+use crate::breakdown::BTable;
 use crate::offence::Off;
 use crate::setup::{misc, mod_flag, tag};
+use crate::sf;
 
 /// `activeSkill.skillPart == n`.
 fn part(off: &Off<'_>, n: f64) -> bool {
@@ -130,9 +132,33 @@ pub(super) fn ball_lightning(off: &mut Off<'_>) {
         let first = max2(1.0, ((cast_dist - strike_radius) / per_strike).ceil());
         let last = (min2(misc("ProjectileDistanceCap"), cast_dist + strike_radius) / per_strike).floor();
         let num = max2(0.0, min2(max_strikes, last + 1.0 - first));
+        let last = first + num - 1.0;
         dps = num;
+        // :1145-1156
         if off.breakdown {
+            let hits = BTable::lines([
+                sf!("^8Balls travel at^7 %.2f^8 units/sec.", ball_dist_per_sec),
+                sf!(
+                    "^8Lightning bolts strike all nearby enemies every^7 %.2f^8 seconds (^7%.2f^8 strikes/sec).",
+                    secs,
+                    1.0 / secs
+                ),
+                sf!("^8Balls travel^7 %.2f^8 units between each bolt strike.", per_strike),
+                sf!("^8Assumes balls are cast^7 %d^8 units from the enemy.", cast_dist),
+                sf!("^8Balls can strike enemies up to^7 %d^8 units away from themselves.", strike_radius),
+                sf!(
+                    "^8The first strike is at^7 %.2f^8 seconds after it is cast, when the ball is^7 %d^8 units from the cast point.",
+                    first * secs,
+                    first * per_strike
+                ),
+                sf!(
+                    "^8The last strike is at^7 %.2f^8 seconds after it is cast, when the ball is^7 %d^8 units from the cast point.",
+                    last * secs,
+                    last * per_strike
+                ),
+            ]);
             off.out().set_num("NormalHitsPerCast", num);
+            off.bd_put("NormalHitsPerCast", hits);
         }
     }
     if dps != 1.0 {
@@ -140,24 +166,47 @@ pub(super) fn ball_lightning(off: &mut Off<'_>) {
     }
 }
 
+/// The `NormalHitsPerCast` breakdown of act_int.lua:1267-1272 / :1387-1392.
+fn ball_strikes_breakdown(off: &mut Off<'_>, secs: f64, duration: f64, n: f64) {
+    if off.breakdown {
+        off.bd_put(
+            "NormalHitsPerCast",
+            BTable::lines([
+                sf!(
+                    "^8Lightning bolts strike all nearby enemies every^7 %.2f^8 seconds (^7%.2f^8 strikes/sec).",
+                    secs,
+                    1.0 / secs
+                ),
+                sf!("^8Balls lasts for ^7%d^8 seconds for a total of ^7%d^8 strikes.", duration, n),
+            ]),
+        );
+    }
+}
+
 /// act_int.lua:1252 BallLightningAltX.
 pub(super) fn ball_lightning_alt_x(off: &mut Off<'_>) {
     if part(off, 2.0) || part(off, 3.0) {
-        let n = (sdn(off, "duration", "act_int.lua:1259") / sdn(off, "strikeInterval", "act_int.lua:1258")).floor();
+        let secs = sdn(off, "strikeInterval", "act_int.lua:1258");
+        let duration = sdn(off, "duration", "act_int.lua:1259");
+        let n = (duration / secs).floor();
         if n != 1.0 {
             mul_dps_out(off, n);
         }
         off.out().set_num("NormalHitsPerCast", n);
+        ball_strikes_breakdown(off, secs, duration, n);
     }
 }
 
 /// act_int.lua:1375 BallLightningAltY.
 pub(super) fn ball_lightning_alt_y(off: &mut Off<'_>) {
-    let n = (sdn(off, "duration", "act_int.lua:1380") / sdn(off, "strikeInterval", "act_int.lua:1379")).floor();
+    let secs = sdn(off, "strikeInterval", "act_int.lua:1379");
+    let duration = sdn(off, "duration", "act_int.lua:1380");
+    let n = (duration / secs).floor();
     mul_dps(off, n);
     off.out().set_num("NormalHitsPerCast", n);
     let o = off.st.player.output.opt_num("SkillDPSMultiplier").unwrap_or(1.0) * n;
     off.out().set_num("SkillDPSMultiplier", o);
+    ball_strikes_breakdown(off, secs, duration, n);
 }
 
 /// act_int.lua:1470 Bane / BaneAltX (preSkillTypeFunc).
@@ -449,27 +498,45 @@ pub(super) fn flameblast_alt_y(off: &mut Off<'_>) {
 }
 
 /// `output.Duration / output.TrapCooldown` -> `output.AverageActiveTraps`.
-fn average_active_traps(off: &mut Off<'_>) -> f64 {
-    let v = on(off, "Duration") / on(off, "TrapCooldown");
+fn average_active_traps(off: &mut Off<'_>) -> (f64, f64, f64) {
+    let (duration, cooldown) = (on(off, "Duration"), on(off, "TrapCooldown"));
+    let v = duration / cooldown;
     off.out().set_num("AverageActiveTraps", v);
-    v
+    (v, duration, cooldown)
+}
+
+/// act_dex.lua:7710-7716 / :7820-7826 `breakdown.AverageActiveTraps`.
+fn flamethrower_traps_breakdown(off: &mut Off<'_>, avg: f64, duration: f64, cooldown: f64) {
+    if off.breakdown {
+        off.bd_put(
+            "AverageActiveTraps",
+            BTable::lines([
+                "Average active traps, not considering stored cooldown uses:".to_owned(),
+                sf!("%.2f^8 (skill duration)", duration),
+                sf!("/ %.2f^8 (cooldown)", cooldown),
+                sf!("= %.2f traps", avg),
+            ]),
+        );
+    }
 }
 
 /// act_dex.lua:7691 FlamethrowerTrap.
 pub(super) fn flamethrower_trap(off: &mut Off<'_>) {
-    let avg = average_active_traps(off);
+    let (avg, duration, cooldown) = average_active_traps(off);
     let t = if part(off, 2.0) || part(off, 4.0) { 0.3 } else { 0.1 };
     set(off, "hitTimeOverride", t);
     if part(off, 3.0) || part(off, 4.0) {
         mul_dps(off, avg);
     }
+    flamethrower_traps_breakdown(off, avg, duration, cooldown);
 }
 
 /// act_dex.lua:7809 FlamethrowerTrapAltX.
 pub(super) fn flamethrower_trap_alt_x(off: &mut Off<'_>) {
-    let avg = average_active_traps(off);
+    let (avg, duration, cooldown) = average_active_traps(off);
     set(off, "hitTimeOverride", 0.1);
     mul_dps(off, avg);
+    flamethrower_traps_breakdown(off, avg, duration, cooldown);
 }
 
 /// act_int.lua:7686 FreezingPulse.
@@ -608,6 +675,27 @@ fn kinetic_fusillade_with(off: &mut Off<'_>, src: &str) {
             let avg = per * (pc - 1.0) / 2.0;
             off.q.nm("Damage", ModType::More, avg, src, 0, 0, vec![]);
             off.out().set_num("KineticFusilladeAvgMoreMult", avg);
+            // act_int.lua:11029-11040 (:11247-11258 AltX)
+            if off.breakdown {
+                let mut t = BTable::new();
+                t.push(sf!("^8Each projectile deals^7 %d%%^8 more damage per previous projectile", per));
+                t.push(sf!("^8With^7 %d^8 projectiles, damage progression is:^7", pc));
+                let mut i = 1.0;
+                while i <= pc {
+                    t.push(sf!("  ^8Projectile %d:^7 %d%%^8 more damage", i, per * (i - 1.0)));
+                    i += 1.0;
+                }
+                t.push(sf!("^8Average more multiplier:^7 %.1f%%", avg));
+                off.bd_put("KineticFusilladeSequentialBreakdown", t);
+                let max = off
+                    .q
+                    .override_num(Some(&off.cfg), &["ProjectileCountMaximum"], "act_int.lua:11039")
+                    .unwrap_or_else(|| panic!("act_int.lua:11039: bad argument #2 to 'format' (number expected, got nil)"));
+                let line = sf!("^8Maximum number of Kinetic Fusilade projectiles:^7 %d", max);
+                if let Some(b) = off.bd() {
+                    b.table_or("ProjectileCount", BTable::new).push(line);
+                }
+            }
         }
     }
 }
@@ -701,7 +789,43 @@ fn molten_overlap(off: &mut Off<'_>) -> Option<f64> {
     let outer = on(off, "AreaOfEffectRadiusTertiary");
     let overlap = min2(1.0, (enemy_radius + ball - inner) / (outer - inner));
     off.out().set_num("OverlapChance", overlap * 100.0);
+    // :7856-7864 (:8035-8043 AltX)
+    if off.breakdown {
+        let pct = on(off, "OverlapChance");
+        off.bd_put(
+            "OverlapChance",
+            BTable::lines([
+                "Chance for individual balls to land on the enemy:".to_owned(),
+                "^8= (area where a ball can land on enemy) / (total area)".to_owned(),
+                "^8= (enemy radius + ball radius - min travel) / (max travel - min travel)".to_owned(),
+                sf!(
+                    "^8= (^7%d^8 + ^7%d^8 - ^7%d) / (^7%d^8 - ^7%d)",
+                    enemy_radius,
+                    ball,
+                    inner,
+                    outer,
+                    inner
+                ),
+                sf!("^8=^7 %.2f^8%%", pct),
+            ]),
+        );
+    }
     Some(overlap)
+}
+
+/// The `SkillDPSMultiplier` breakdown `number of projectiles * overlap chance` (act_str.lua:7870-7875, :8053-8058).
+fn molten_dps_breakdown(off: &mut Off<'_>, n: f64, overlap: f64, dps: f64) {
+    if off.breakdown {
+        off.bd_put(
+            "SkillDPSMultiplier",
+            BTable::lines([
+                "DPS multiplier".to_owned(),
+                "^8= number of projectiles * overlap chance".to_owned(),
+                sf!("^8=^7 %d^8 *^7 %.3f^8", n, overlap),
+                sf!("^8=^7 %.3f", dps),
+            ]),
+        );
+    }
 }
 
 /// act_str.lua:7832 MoltenStrike.
@@ -709,6 +833,9 @@ pub(super) fn molten_strike(off: &mut Off<'_>) {
     let Some(overlap) = molten_overlap(off) else { return };
     let n = on(off, "ProjectileCount");
     let dps = if part(off, 3.0) { overlap * n } else { 1.0 };
+    if part(off, 3.0) {
+        molten_dps_breakdown(off, n, overlap, dps);
+    }
     if dps != 1.0 {
         mul_dps_out(off, dps);
     }
@@ -721,10 +848,39 @@ pub(super) fn molten_strike_alt_x(off: &mut Off<'_>) {
     let mut dps = 1.0;
     if part(off, 3.0) || part(off, 5.0) || part(off, 6.0) {
         dps = overlap * n;
-        if part(off, 6.0) {
-            let fifth = 1.0 + sdn(off, "FifthStrikeDamage", "act_str.lua:8068") / 100.0;
-            let fifth_overall = fifth * overlap * (n + sdn(off, "FifthStrikeProjectiles", "act_str.lua:8069"));
+        if !part(off, 6.0) {
+            molten_dps_breakdown(off, n, overlap, dps);
+        } else {
+            let fifth = 1.0 + sdn(off, "FifthStrikeDamage", "act_str.lua:8060") / 100.0;
+            let fifth_projectiles = sdn(off, "FifthStrikeProjectiles", "act_str.lua:8061");
+            let fifth_overall = fifth * overlap * (n + fifth_projectiles);
             dps = 0.8 * dps + 0.2 * fifth_overall;
+            // :8066-8076
+            if off.breakdown {
+                off.bd_put(
+                    "SkillDPSMultiplier",
+                    BTable::lines([
+                        "Weighted average DPS multiplier for balls".to_owned(),
+                        "^8= (0.8 * balls dps) + (0.2 * 5th attack balls dps)".to_owned(),
+                        sf!(
+                            "^8= (0.8 * normal ball hit * overlap chance * number of projectiles) + (0.2 * ball hit * 5th attack multiplier * overlap chance * (number of projectiles + %d))",
+                            fifth_projectiles
+                        ),
+                        sf!(
+                            "^8= ball hit * overlap chance * (0.8 * number of projectiles + 0.2 * 5th attack multiplier * (number of projectiles + %d))",
+                            fifth_projectiles
+                        ),
+                        sf!(
+                            "^8= ball hit * ^7%.3f ^8* (0.8 * ^7%d ^8+ 0.2 * ^7%.1f ^8* ^7%d^8)",
+                            overlap,
+                            n,
+                            fifth,
+                            n + fifth_projectiles
+                        ),
+                        sf!("^8= ball hit * ^7 %.3f", dps),
+                    ]),
+                );
+            }
         }
     }
     if dps != 1.0 {
@@ -1245,8 +1401,7 @@ pub(super) fn explosive_arrow(off: &mut Off<'_>) {
     off.out().set_num("HitSpeed", 1.0 / hit_time);
 }
 
-/// act_int.lua:11046-11123 KineticFusillade(AltX).postCritFunc (`output` = the top-level output; breakdown rows are R8, the query of
-/// their `currentAPS` branch is made).
+/// act_int.lua:11046-11123 KineticFusillade(AltX).postCritFunc (`output` = the top-level output).
 pub(super) fn kinetic_fusillade_post_crit(off: &mut Off<'_>) {
     const SRC: &str = "act_int.lua:11053";
     let base_delay = off.sd_num("delayPerProjectile", 0);
@@ -1262,8 +1417,57 @@ pub(super) fn kinetic_fusillade_post_crit(off: &mut Off<'_>) {
     let max_aps = 1.0 / rounded;
     let current = off.st.player.output.opt_num("Speed");
     off.out().set_num("KineticFusilladeMaxEffectiveAPS", max_aps);
-    if off.breakdown && current.is_some() {
-        let _ = sum(off, ModType::Inc, &["Speed"]);
+    // :11076-11113
+    if off.breakdown {
+        let base_delay = base_delay.unwrap_or(0.0); // nil already raised above
+        let max_pred = 1.0 / effective_delay;
+        let mut t = BTable::new();
+        t.push(sf!("^8Base hover delay:^7 %.1fs", hover_delay));
+        t.push(sf!("^8Base delay between projectiles:^7 %.2fs", base_delay));
+        t.push(sf!(
+            "^8Base time for^7 %d added ^8projectiles:^7 %.2fs x %d = %.1fs",
+            projectile_count - 1.0,
+            base_delay,
+            projectile_count - 1.0,
+            base_time
+        ));
+        t.push(sf!("^8Duration modifier:^7 %.4f", duration_mod));
+        t.push("");
+        t.push(sf!("^6Lockstep"));
+        let eff_line = sf!(
+            "^8Effective delay:^7 (%.1f + %.2f) x %.4f = %.4fs",
+            hover_delay,
+            base_time,
+            duration_mod,
+            effective_delay
+        );
+        t.push(eff_line.clone());
+        t.push(sf!("^8Rounded up to nearest server tick^7 = %.4fs", rounded));
+        t.push(sf!("^8Max effective attack rate:^7 1 / %.4f = %.2f", rounded, max_aps));
+        if let Some(cur) = current {
+            let current_inc = sum(off, ModType::Inc, &["Speed"]);
+            let needed = ((max_aps / cur) * (1.0 + current_inc / 100.0) - 1.0) * 100.0;
+            let additional = needed - current_inc;
+            let needed_pred = ((max_pred / cur) * (1.0 + current_inc / 100.0) - 1.0) * 100.0;
+            let additional_pred = needed_pred - current_inc;
+            let verdict = |t: &mut BTable, max: f64, add: f64| {
+                if cur > max {
+                    t.push(sf!("^1Current attack rate (%.2f) exceeds max effective rate!", cur));
+                    t.push(sf!("^1Reduce attack speed by at least^7 %d%% ^1", (-add).ceil()));
+                    t.push(sf!("^1DPS is reduced by %.1f%%", (1.0 - max / cur) * 100.0));
+                } else {
+                    t.push(sf!("^2Current attack rate (%.2f) is within effective limits", cur));
+                    t.push(sf!("^2You can add up to^7 %d%% ^2increased attack speed", add.floor()));
+                }
+            };
+            verdict(&mut t, max_aps, additional);
+            t.push("");
+            t.push(sf!("^6Predictive"));
+            t.push(eff_line);
+            t.push(sf!("^8Max effective attack rate:^7 1 / %.4f = %.2f", effective_delay, max_pred));
+            verdict(&mut t, max_pred, additional_pred);
+        }
+        off.bd_put("KineticFusilladeMaxEffectiveAPS", t);
     }
     if part(off, 1.0)
         && let Some(cur) = current
@@ -1307,7 +1511,8 @@ enum Waves {
     Seismic,
 }
 
-/// `hitChance(enemyRadius, areaDamageRadius, areaSpreadRadius)` of the wave traps; `output.OverlapChance`.
+/// `hitChance(enemyRadius, areaDamageRadius, areaSpreadRadius)` of the wave traps; `output.OverlapChance` and its breakdown
+/// (act_int.lua:11713-11719 and the copies in the other wave traps).
 fn overlap_chance(off: &mut Off<'_>, src: &str) -> f64 {
     let enemy_radius = off
         .q
@@ -1318,19 +1523,68 @@ fn overlap_chance(off: &mut Off<'_>, src: &str) -> f64 {
     let damaging = wave_radius + enemy_radius - 1.0;
     let overlap = min2(damaging * damaging / (full_radius * full_radius), 1.0);
     off.out().set_num("OverlapChance", overlap * 100.0);
+    if off.breakdown {
+        off.bd_put(
+            "OverlapChance",
+            BTable::lines([
+                "Chance for individual wave to land within range to damage enemy:".to_owned(),
+                "^8= (area where wave can spawn to damage enemy) / (total area)".to_owned(),
+                "^8= (^7secondary radius^8 + ^7enemy radius^8 - 1) ^ 2 / ^7radius^8 ^ 2".to_owned(),
+                sf!("^8= (^7%d^8 +^7 %d^8 - 1) ^ 2 /^7 %d^8 ^ 2", wave_radius, enemy_radius, full_radius),
+                sf!("^8=^7 %.3f^8%%", overlap * 100.0),
+            ]),
+        );
+    }
     overlap
 }
 
-/// The wave traps' body (breakdown rows excluded, R8): pulse rate -> `skillData.hitTimeOverride`, pulses per trap, average active traps,
-/// the overlap chance and the skill part's DPS multiplier.
+/// The `SkillDPSMultiplier` breakdown of the wave traps' skill parts 2-6 (act_int.lua:11742-11782 and copies; other parts: none).
+fn trap_waves_dps_breakdown(off: &mut Off<'_>, avg_traps: f64, max_waves: f64, overlap: f64, dps: f64) {
+    if !off.breakdown {
+        return;
+    }
+    let mut t = BTable::lines(["DPS multiplier".to_owned()]);
+    if part(off, 2.0) {
+        t.push("^8= ^7maximum waves^8 * ^7overlap chance^8");
+        t.push(sf!("^8=^7 %d^8 *^7 %.2f^8", max_waves, overlap));
+        t.push(sf!("^8=^7 %.3f", dps));
+    } else if part(off, 3.0) {
+        t.push(sf!("^8=^7 %d (maximum waves)", dps));
+    } else if part(off, 4.0) {
+        t.push(sf!("^8=^7 %.2f (average active traps)", dps));
+    } else if part(off, 5.0) {
+        t.push("^8= ^7average active traps^8 * ^7maximum waves^8 * ^7overlap chance^8");
+        t.push(sf!("^8=^7 %.2f^8 *^7 %d^8 *^7 %.2f", avg_traps, max_waves, overlap));
+        t.push(sf!("^8=^7 %.3f", dps));
+    } else if part(off, 6.0) {
+        t.push("^8= ^7average active traps^8 * ^7maximum waves");
+        t.push(sf!("^8=^7 %.2f^8 *^7 %d", avg_traps, max_waves));
+        t.push(sf!("^8=^7 %.3f", dps));
+    } else {
+        return;
+    }
+    off.bd_put("SkillDPSMultiplier", t);
+}
+
+/// The wave traps' body: pulse rate -> `skillData.hitTimeOverride`, pulses per trap, average active traps, the overlap chance and the
+/// skill part's DPS multiplier, with their breakdown rows.
 fn trap_waves(off: &mut Off<'_>, v: Waves, src: &str) {
     // :11676 (not Seismic) `output.AreaOfEffectRadius = skillData.radius`
     if v != Waves::Seismic {
         let r = off.sd("radius");
         off.set_out("AreaOfEffectRadius", r);
+        // :11677-11679
+        if off.breakdown {
+            off.bd_put(
+                "AreaOfEffectRadius",
+                BTable::lines(["Targeting area of this skill is not affected by Area of Effect modifiers.".to_owned()]),
+            );
+        }
     }
     let nil = |k: &str| -> ! { panic!("{src}: attempt to perform arithmetic on local '{k}' (a nil value)") };
     let base_interval = off.sd_num("repeatInterval", 0);
+    // `(incFrequency, moreFrequency)` of the variants with a frequency (Spire, Seismic)
+    let mut frequency = None;
     let wave_pulse_rate = match v {
         Waves::Spire | Waves::Seismic => {
             let names: &[&str] = if v == Waves::Seismic {
@@ -1340,6 +1594,7 @@ fn trap_waves(off: &mut Off<'_>, v: Waves, src: &str) {
             };
             let inc = 1.0 + sum(off, ModType::Inc, names) / 100.0;
             let more_ = more(off, names);
+            frequency = Some((inc, more_));
             inc * more_ / base_interval.unwrap_or_else(|| nil("baseInterval"))
         }
         Waves::SpireAltX | Waves::SpireAltY => 1.0 / base_interval.unwrap_or_else(|| nil("baseInterval")),
@@ -1350,21 +1605,89 @@ fn trap_waves(off: &mut Off<'_>, v: Waves, src: &str) {
     }
     let inc_duration = 1.0 + sum(off, ModType::Inc, &["Duration"]) / 100.0;
     let more_duration = more(off, &["Duration"]);
-    let duration = sdn(off, "duration", src) * inc_duration * more_duration;
+    let base_duration = sdn(off, "duration", src);
+    let duration = base_duration * inc_duration * more_duration;
     let pulses = (duration * wave_pulse_rate).floor();
     off.out().set_num("PulsesPerTrap", pulses);
     let effective_duration = pulses / wave_pulse_rate;
-    let average_active_traps = if v == Waves::SpireAltX {
+    // the divisor: the throw time (AltX) or `output.TrapCooldown`
+    let (average_active_traps, divisor) = if v == Waves::SpireAltX {
         let action_speed_mod = 1.0 + sum(off, ModType::Inc, &["ActionSpeed"]) / 100.0;
         let base_speed = 1.0 / sum(off, ModType::Base, &["TrapThrowingTime"]);
         let throw_speed = base_speed * off.q.calc_mod(Some(&off.cfg), &["TrapThrowingSpeed"]) * action_speed_mod;
         let throw_speed = min2(throw_speed, misc("ServerTickRate"));
-        effective_duration / (1.0 / throw_speed)
+        let throw_time = 1.0 / throw_speed;
+        (effective_duration / throw_time, throw_time)
     } else {
-        effective_duration / on(off, "TrapCooldown")
+        let cooldown = on(off, "TrapCooldown");
+        (effective_duration / cooldown, cooldown)
     };
     off.out().set_num("AverageActiveTraps", average_active_traps);
     let overlap = overlap_chance(off, src);
+    // :11720-11740 (AltX/AltY: no pulse rate table, duration-only breakpoints, AltX: the throw time)
+    if off.breakdown {
+        let base_interval = base_interval.unwrap_or_else(|| nil("baseInterval"));
+        if let Some((inc_frequency, more_frequency)) = frequency {
+            off.bd_put(
+                "WavePulseRate",
+                BTable::lines([
+                    "Pulse rate:".to_owned(),
+                    sf!("%.2f ^8(base pulse rate)", 1.0 / base_interval),
+                    sf!("* %.2f ^8(increased/reduced pulse frequency)", inc_frequency),
+                    sf!("* %.2f ^8(more/less pulse frequency)", more_frequency),
+                    sf!("= %.2f^8/s", wave_pulse_rate),
+                ]),
+            );
+        }
+        let next_duration = (100.0 * ((pulses + 1.0) / (wave_pulse_rate * base_duration * more_duration) - inc_duration)).ceil();
+        // `-math.ceil(100 * (...) - 1)`
+        let prev_duration = -(100.0 * (pulses / (wave_pulse_rate * base_duration * more_duration) - inc_duration) - 1.0).ceil();
+        let mut t = BTable::lines([
+            "Pulses per trap:".to_owned(),
+            sf!("%.3f ^8(unrounded skill duration)", duration),
+            sf!("* %.2f ^8(pulse rate)", wave_pulse_rate),
+            sf!("= %.2f ^8pulses", duration * wave_pulse_rate),
+            "^8rounded down".to_owned(),
+            sf!("= %d ^8pulses", pulses),
+        ]);
+        if let Some((inc_frequency, more_frequency)) = frequency {
+            t.push(sf!(
+                "^8Next breakpoint: %d%% increased Trap Throwing Speed / %d%% increased Duration",
+                (100.0 * ((pulses + 1.0) * base_interval / (duration * more_frequency) - inc_frequency)).ceil(),
+                next_duration
+            ));
+            t.push(sf!(
+                "^8Previous breakpoint: %d%% reduced Trap Throwing Speed / %d%% reduced Duration",
+                -(100.0 * (pulses * base_interval / (duration * more_frequency) - inc_frequency) - 1.0).ceil(),
+                prev_duration
+            ));
+        } else {
+            t.push(sf!("^8Next breakpoint: %d%% increased Duration", next_duration));
+            t.push(sf!("^8Previous breakpoint: %d%% reduced Duration", prev_duration));
+        }
+        off.bd_put("PulsesPerTrap", t);
+        let (head, tail) = if v == Waves::SpireAltX {
+            ("Average active traps:", sf!("/ %.2f ^8(throw time)", divisor))
+        } else {
+            (
+                "Average active traps, not considering stored cooldown uses:",
+                sf!("/ %.2f ^8(cooldown)", divisor),
+            )
+        };
+        off.bd_put(
+            "AverageActiveTraps",
+            BTable::lines([
+                head.to_owned(),
+                sf!(
+                    "%.2f^8 /^7 %.2f^8 (pulses / pulse rate = effective skill duration)",
+                    pulses,
+                    wave_pulse_rate
+                ),
+                tail,
+                sf!("= %.2f traps", average_active_traps),
+            ]),
+        );
+    }
     let max_waves = sum(off, ModType::Base, &["MaximumWaves"]);
     let mut dps_multiplier = 1.0;
     if part(off, 2.0) {
@@ -1378,6 +1701,7 @@ fn trap_waves(off: &mut Off<'_>, v: Waves, src: &str) {
     } else if part(off, 6.0) {
         dps_multiplier = average_active_traps * max_waves;
     }
+    trap_waves_dps_breakdown(off, average_active_traps, max_waves, overlap, dps_multiplier);
     if dps_multiplier != 1.0 {
         mul_dps_out(off, dps_multiplier);
     }
@@ -1413,6 +1737,10 @@ pub(super) fn seismic_trap_alt_x(off: &mut Off<'_>) {
     } else if part(off, 3.0) {
         dps_multiplier = max_waves;
     }
+    // :13649-13662 (parts 2 / 3 only)
+    if part(off, 2.0) || part(off, 3.0) {
+        trap_waves_dps_breakdown(off, 0.0, max_waves, overlap, dps_multiplier);
+    }
     if dps_multiplier != 1.0 {
         mul_dps_out(off, dps_multiplier);
     }
@@ -1441,7 +1769,7 @@ pub(super) fn summon_speed_hit_time(off: &mut Off<'_>) {
 }
 
 /// act_int.lua:7390 ForbiddenRite / :7549 ForbiddenRiteAltX (preDamageFunc, R7.10b): the chaos damage added from life / energy shield and
-/// `output.FRDamageTaken` (the self damage per cast); `with_life` = the base gem (the AltX has no life part). Breakdown rows: R8.
+/// `output.FRDamageTaken` (the self damage per cast) and its breakdown; `with_life` = the base gem (the AltX has no life part).
 fn forbidden_rite_with(off: &mut Off<'_>, with_life: bool, src: &str) {
     use pob_lua::number::{floor, round};
     let names = ["DamageTaken", "ChaosDamageTaken", "DamageTakenWhenHit", "ChaosDamageTakenWhenHit"];
@@ -1498,6 +1826,44 @@ fn forbidden_rite_with(off: &mut Off<'_>, with_life: bool, src: &str) {
         self_es + chaos_flat
     };
     off.out().set_num("FRDamageTaken", taken);
+    // :7416-7432 / :7572-7587
+    if off.breakdown {
+        let sd_life = if with_life { sdn(off, "SelfDamageTakenLife", src) } else { 0.0 };
+        let sd_es = sdn(off, "SelfDamageTakenES", src);
+        let mut t = BTable::new();
+        t.push(sf!("Damage Taken per cast from Forbidden Rite: %d", taken));
+        if with_life {
+            t.push(sf!(
+                "^8=^7 %d^8 (Life) *^7 %d%%^8 (of Life taken as Chaos Damage)",
+                life,
+                sd_life * 100.0
+            ));
+        }
+        if energy_shield != 0.0 {
+            t.push(sf!(
+                "^8+^7 %d^8 (ES) *^7 %d%%^8 (of ES taken as Chaos Damage)",
+                energy_shield,
+                sd_es * 100.0
+            ));
+        }
+        let chaos = if with_life {
+            life * sd_life + energy_shield * sd_es
+        } else {
+            energy_shield * sd_es
+        };
+        t.push(sf!(
+            "^8=^7 %d^8 (Chaos Damage) *^7 %d%%^8 (Chaos Resistance)",
+            chaos,
+            chaos_resistance
+        ));
+        if chaos_flat != 0.0 {
+            t.push(sf!("^8 -^7 %d^8 (Flat Damage reduction)", -base_taken_flat));
+        }
+        if chaos_damage_taken != 1.0 {
+            t.push(sf!("^8 *^7 %.2f^8 (Damage taken Multiplier)", chaos_damage_taken));
+        }
+        off.bd_put("FRDamageTaken", t);
+    }
 }
 
 /// act_int.lua:7390 ForbiddenRite.
@@ -1638,7 +2004,8 @@ pub(super) fn frozen_sweep_alt_x(off: &mut Off<'_>) {
 
 /// act_dex.lua:7156 ExplosiveTrap (and its statMap's `_grantedEffect`, the same body; R7.10b): the overlap chance of the small explosions --
 /// a float sum over `pairs(output.AreaOfEffectRadiusTertiaryOccurrences)`, walked in the LuaJIT `pairs` order the offence state keeps
-/// ([`crate::offence::Off::radius_tertiary_occurrences`], MINEFIELD-RUST R11). The breakdown rows (R8) are not built.
+/// ([`crate::offence::Off::radius_tertiary_occurrences`], MINEFIELD-RUST R11). Breakdown rows: R8.5b (no LuaJIT scenario -- the skill is
+/// not reachable in the R7-synth corpus, export-offence-synth.ts `FN_SKIP`).
 pub(super) fn explosive_trap(off: &mut Off<'_>) {
     const SRC: &str = "Data/Skills/act_dex.lua:7156-7221";
     let enemy_radius = match off.q.override_(Some(&off.cfg), &["EnemyRadius"]).filter(Value::truthy) {
@@ -1657,7 +2024,7 @@ pub(super) fn explosive_trap(off: &mut Off<'_>) {
         .clone()
         .unwrap_or_else(|| panic!("{SRC}: bad argument #1 to 'pairs' (table expected, got nil)"));
     let mut overlap_chance = 0.0;
-    for (small_radius, occurrence_count) in occ {
+    for (&small_radius, &occurrence_count) in &occ {
         let spread =
             full_radius.unwrap_or_else(|| panic!("{SRC}: attempt to perform arithmetic on local 'areaSpreadRadius' (a nil value)"));
         // `hitChance(enemyRadius, areaDamageRadius, areaSpreadRadius)`
@@ -1668,6 +2035,32 @@ pub(super) fn explosive_trap(off: &mut Off<'_>) {
     off.out().set_num("OverlapChance", overlap_chance * 100.0);
     let small = sum(off, ModType::Base, &["SmallExplosions"]);
     off.out().set_num("SmallExplosionsPerTrap", small);
+    // :7179-7198 -- the radii in `table.sort` order (numbers ascending), so the rows do not depend on the `pairs` order
+    if off.breakdown {
+        let mut t = BTable::lines([
+            "Chance for individual small explosion to land within range to damage enemy:".to_owned(),
+            "^8= (area where a small explosion can spawn to damage enemy) / (total area)".to_owned(),
+            "^8= (^7tertiary radius^8 + ^7enemy radius^8 - 1) ^ 2 / ^7secondary radius^8 ^ 2".to_owned(),
+            "^8Result is the weighted sum of overlap chances for each possible tertiary radius".to_owned(),
+        ]);
+        let mut radii: Vec<(i64, f64)> = occ.iter().map(|(r, c)| (*r, *c)).collect();
+        radii.sort_by_key(|x| x.0);
+        let n = radii.len();
+        for (i, &(small_radius, count)) in radii.iter().enumerate() {
+            let spread = full_radius.unwrap_or_else(|| panic!("{SRC}: bad argument #4 to 'format' (number expected, got nil)"));
+            t.push(sf!(
+                "^8(^7%d^8 +^7 %d^8 - 1) ^ 2 /^7 %d^8 ^ 2 *^7 %d/%d%s",
+                small_radius as f64,
+                enemy_radius,
+                spread,
+                count,
+                margin_width,
+                if i + 1 == n { "" } else { " ^8+" }
+            ));
+        }
+        t.push(sf!("^8=^7 %.3f^8%%", overlap_chance * 100.0));
+        off.bd_put("OverlapChance", t);
+    }
     let dps_multiplier = if part(off, 2.0) {
         1.0 + small * overlap_chance
     } else if part(off, 3.0) {
@@ -1675,6 +2068,18 @@ pub(super) fn explosive_trap(off: &mut Off<'_>) {
     } else {
         1.0
     };
+    // :7203-7215
+    if off.breakdown && (part(off, 2.0) || part(off, 3.0)) {
+        let mut t = BTable::lines(["DPS multiplier".to_owned()]);
+        if part(off, 2.0) {
+            t.push("^8= 1 + ^7small explosions^8 * ^7overlap chance^8");
+            t.push(sf!("^8= 1 +^7 %d^8 *^7 %.2f^8", small, overlap_chance));
+            t.push(sf!("^8=^7 %.3f", dps_multiplier));
+        } else {
+            t.push(sf!("^8= 1 +^7 %d (small explosions)", dps_multiplier));
+        }
+        off.bd_put("SkillDPSMultiplier", t);
+    }
     if dps_multiplier != 1.0 {
         mul_dps_out(off, dps_multiplier);
     }

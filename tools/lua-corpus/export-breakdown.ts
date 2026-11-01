@@ -10,6 +10,8 @@
 // `class`: "ported"   = every writer in CalcPerform/CalcDefence/CalcSetup and (no snap or snap == final): R8.4 writes it, R8.5 does not touch it;
 //          "R8.5"     = some writer in CalcOffence/CalcTriggers/CalcMirages or the value changed after the snapshot (offence appended);
 //          "Calcs"    = written by Calcs.lua buildOutput (SkillBuffs/SkillDebuffs, after perform);
+//          "skill"    = some writer in Data/Skills/*.lua (a skill function, runSkillFunc CalcOffence.lua:509-514; R8.5b);
+//   a nested breakdown module (breakdown.MainHand / .OffHand) serializes as {"$bd": {key: value}} with `nestedWriters` {key: [writers]} (R8.5b);
 //   `gate` = the value the ported modules leave (snap if present, else final for "ported" keys written after triggers, e.g. GemLevel :3948).
 // `replaced`: the final table is not the one perform made (CalcMirages.lua:158/:276 hand over the mirage env's table).
 // Serialization: string -> itself; number -> {"$n":"%.17g"}; boolean -> itself; table -> object: "[]" = the 1..n run (ipairs), other keys by
@@ -40,6 +42,23 @@ const byteOrder = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0)
 // the 20 R7-synth scenarios of the R8.1 display fixtures (export-r8.ts SYNTH_SET): the display underline gate needs their breakdown classes
 const R81_SYNTH = ['fd-gen-melee', 'fd-occ-spells', 'fd-occ-dot', 'fd-occ-trap-mine-totem', 'fd-occ-minions', 'fd-mir-mirage', 'fd-mir-bow-ballista', 'fd-cos-coc', 'fd-occ-poison-ignite', 'fd-all-ds',
   't-trap', 't-mine', 't-coc', 't-cwc', 't-cospri', 'mi-sacred-wisps', 'mn-raise-zombie', 'mn-spectre-hydra-mid', 'mn-golem-flame', 'fn-Spark']
+// R8.5b: the R7-synth scenarios (offence-synth/fn-<id>.xml) of every Data/Skills closure that writes `breakdown` (grep -n breakdown over the
+// closure ranges of data/closures.json). Not reachable: ExplosiveTrap (export-offence-synth.ts FN_SKIP: the statMap shared with AltX is
+// pairs-order dependent, R13), FrozenSweep / FrozenSweepAltX (FN_SKIP: never reached with a plain weapon).
+const FN_SYNTH = ['fn-BallLightning', 'fn-BallLightningAltX', 'fn-BallLightningAltY', 'fn-FlamethrowerTrap', 'fn-FlamethrowerTrapAltX', 'fn-ForbiddenRite',
+  'fn-ForbiddenRiteAltX', 'fn-KineticFusillade', 'fn-KineticFusilladeAltX', 'fn-LightningSpireTrap', 'fn-LightningSpireTrapAltX', 'fn-LightningSpireTrapAltY',
+  'fn-LightningTendrilsAltX', 'fn-MoltenStrike', 'fn-MoltenStrikeAltX', 'fn-SeismicTrap', 'fn-SeismicTrapAltX']
+// ... and the skill parts whose breakdown branches part 1 does not reach: the scenario XML with `skillPart="<n>"` on its single <Gem>
+// (SkillsTab.lua:502; tests/breakdown.rs applies the same edit -- `withPart`)
+const FN_PARTS: [string, number][] = [['fn-BallLightning', 2], ['fn-BallLightningAltX', 2], ['fn-FlamethrowerTrap', 3], ['fn-ForbiddenRite', 2], ['fn-KineticFusillade', 2],
+  ['fn-KineticFusilladeAltX', 2], ['fn-LightningSpireTrap', 2], ['fn-LightningSpireTrap', 3], ['fn-LightningSpireTrap', 4], ['fn-LightningSpireTrap', 5],
+  ['fn-LightningSpireTrap', 6], ['fn-LightningSpireTrapAltX', 5], ['fn-LightningSpireTrapAltY', 6], ['fn-MoltenStrike', 2], ['fn-MoltenStrike', 3],
+  ['fn-MoltenStrikeAltX', 5], ['fn-MoltenStrikeAltX', 6], ['fn-SeismicTrap', 5], ['fn-SeismicTrapAltX', 2], ['fn-SeismicTrapAltX', 3]]
+function withPart(xml: Buffer, part: number): Buffer {
+  const s = xml.toString('latin1')
+  if (s.split('<Gem ').length !== 2) throw new Error('withPart: the scenario must have exactly one <Gem> -- STOP')
+  return Buffer.from(s.replace('<Gem ', `<Gem skillPart="${part}" `), 'latin1')
+}
 
 async function prepareLuts(): Promise<string> {
   const dir = resolve(SCRATCH, 'luts')
@@ -104,6 +123,7 @@ local function SMod(m, depth)
   if #tags > 0 then o.tags = tags end
   local w = obj() w["$mod"] = o return w
 end
+local realOf = setmetatable({}, { __mode = "k" })
 S = function(v, depth)
   local tv = type(v)
   if tv == "string" then return v end
@@ -112,6 +132,13 @@ S = function(v, depth)
   if tv == "function" then local o = obj() o["$fn"] = 1 return o end
   if tv ~= "table" then local o = obj() o["$type"] = tv return o end
   if depth > 10 then local o = obj() o["$deep"] = 1 return o end
+  -- R8.5b: a nested breakdown module (breakdown.MainHand / .OffHand, CalcOffence.lua:2006/:2023) is a probe proxy -> its real table's
+  -- entries (the constructor's functions are not entries), as {"$bd": {key: value}}
+  if realOf[v] then
+    local e = obj()
+    for k, x in pairs(realOf[v]) do if type(x) ~= "function" then e[tostring(k)] = S(x, depth + 1) end end
+    local o = obj() o["$bd"] = e return o
+  end
   if type(v.name) == "string" and MODTYPES[v.type] and v.source ~= nil and v.value ~= nil then return SMod(v, depth) end
   if v.baseName ~= nil and v.rarity ~= nil then local o = obj() o["$item"] = tostring(v.name) return o end
   local o = obj()
@@ -130,7 +157,6 @@ local calcs = require("Modules.CalcBase")
 local origModName = calcs.breakdownModule
 local origCtor = require(origModName)
 local writes = setmetatable({}, { __mode = "k" })
-local realOf = setmetatable({}, { __mode = "k" })
 package.loaded["ProbeBreakdown"] = function(modDB, output, actor)
   local real = origCtor(modDB, output, actor)
   local w = {}
@@ -187,6 +213,17 @@ local function dumpActor(actor)
     for src in pairs(writes[b][k] or {}) do wl[#wl + 1] = src end
     table.sort(wl)
     e.writers = wl
+    -- R8.5b: the writers of a nested module's keys (sorted sets), per key
+    if fin[k] ~= nil and realOf[fin[k]] then
+      local nw = obj()
+      for nk, set in pairs(writes[fin[k]]) do
+        local l = {}
+        for src in pairs(set) do l[#l + 1] = src end
+        table.sort(l)
+        nw[tostring(nk)] = l
+      end
+      e.nestedWriters = nw
+    end
     if fin[k] ~= nil then e.final = S(fin[k], 0) end
     if snap and snap.ser[k] ~= nil then e.snap = snap.ser[k] end
     keys[k] = e
@@ -247,6 +284,8 @@ function normValue(key: string, v: unknown, amb: Rec, used: Set<string>): unknow
 }
 const PORTED_FILES = new Set(['CalcPerform.lua', 'CalcDefence.lua', 'CalcSetup.lua'])
 const R85_FILES = new Set(['CalcOffence.lua', 'CalcTriggers.lua', 'CalcMirages.lua'])
+// R8.5b: the skill functions of Data/Skills/*.lua (runSkillFunc CalcOffence.lua:509-514 passes the actor's breakdown)
+const SKILL_FILES = /^(act_dex|act_int|act_str|glove|minion|other|spectre|sup_dex|sup_int|sup_str)\.lua$/
 function classify(a: Rec | null, amb: Rec, used: Set<string>): Rec | null {
   if (!a || a.absent || a.uninstrumented) return a
   const keys: Rec = {}
@@ -255,8 +294,12 @@ function classify(a: Rec | null, amb: Rec, used: Set<string>): Rec | null {
     e.snap = normValue(k, e.snap, amb, used)
     e.final = normValue(k, e.final, amb, used)
     const files = (e.writers as string[]).map((w) => w.replace(/:\d+$/, ''))
+    for (const [nk, nw] of Object.entries((e.nestedWriters ?? {}) as Rec)) {
+      for (const w of nw as string[]) { const f = w.replace(/:\d+$/, ''); if (!R85_FILES.has(f) && !SKILL_FILES.test(f)) throw new Error(`unknown nested writer file for ${k}.${nk}: ${w} -- STOP`) }
+    }
     let cls: string
     if (files.includes('Calcs.lua')) cls = 'Calcs'
+    else if (files.some((f) => SKILL_FILES.test(f))) cls = 'skill'
     else if (a.replaced) cls = 'R8.5'
     else if (files.some((f) => R85_FILES.has(f))) cls = 'R8.5'
     else if (files.every((f) => PORTED_FILES.has(f)) && (e.snap === undefined || e.final === undefined || ser(e.snap) === ser(e.final))) cls = 'ported'
@@ -264,12 +307,12 @@ function classify(a: Rec | null, amb: Rec, used: Set<string>): Rec | null {
     else throw new Error(`unknown writer file for ${k}: ${files.join(',')} -- STOP`)
     // the value the ported modules leave: the snapshot, else (written after triggers by a ported writer, e.g. GemLevel) the final value
     const gate = e.snap !== undefined ? e.snap : files.every((f) => PORTED_FILES.has(f)) ? e.final : undefined
-    keys[k] = { class: cls, writers: e.writers, snap: e.snap, final: e.final, gate }
+    keys[k] = { class: cls, writers: e.writers, nestedWriters: e.nestedWriters, snap: e.snap, final: e.final, gate }
   }
   return { hasSnap: a.hasSnap, replaced: a.replaced, keys }
 }
 
-type Scenario = { slug: string; name: string; xml: Buffer; kind: 'golden' | 'defence-synth' | 'defence-synth2' | 'r81-synth' }
+type Scenario = { slug: string; name: string; xml: Buffer; kind: 'golden' | 'defence-synth' | 'defence-synth2' | 'r81-synth' | 'fn-synth'; part?: number }
 function scenarios(filter?: string): Scenario[] {
   const s: Scenario[] = GOLDEN_BUILDS.map((b: Rec) => ({ slug: b.name.replace(/ /g, '-'), name: b.name, xml: readFileSync(b.xmlPath(roots)), kind: 'golden' as const }))
   for (const [dir, kind] of [['defence-synth', 'defence-synth'], ['defence-synth2', 'defence-synth2']] as const) {
@@ -279,6 +322,8 @@ function scenarios(filter?: string): Scenario[] {
     }
   }
   for (const n of R81_SYNTH) s.push({ slug: `r81--${n}`, name: n, xml: readFileSync(resolve(FIX, 'offence-synth', `${n}.xml`)), kind: 'r81-synth' })
+  for (const n of FN_SYNTH) s.push({ slug: `fn--${n}`, name: n, xml: readFileSync(resolve(FIX, 'offence-synth', `${n}.xml`)), kind: 'fn-synth' })
+  for (const [n, part] of FN_PARTS) s.push({ slug: `fn--${n}--p${part}`, name: n, xml: withPart(readFileSync(resolve(FIX, 'offence-synth', `${n}.xml`)), part), kind: 'fn-synth', part })
   return filter ? s.filter((x) => x.slug.includes(filter)) : s
 }
 async function pool<T, R>(xs: T[], f: (x: T) => Promise<R>): Promise<R[]> {
@@ -297,14 +342,15 @@ async function pass(list: Scenario[]): Promise<{ files: Map<string, string>; row
     const used = new Set<string>()
     const amb = (r.r13GemNames ?? {}) as Rec
     const player = classify(r.player, amb, used), minion = classify(r.minion ?? null, amb, used)
-    const fx = { format: 1, producer, build: s.name, kind: s.kind, xmlSha256: sha(s.xml), hasMinion: r.hasMinion, enemy: r.enemy ? norm(r.enemy) : null, player, minion,
+    const fx = { format: 1, producer, build: s.name, kind: s.kind, skillPart: s.part, xmlSha256: sha(s.xml), hasMinion: r.hasMinion, enemy: r.enemy ? norm(r.enemy) : null, player, minion,
       r13: { rowsSorted: ROW_SORTED.source, gemSets: [...used].sort(byteOrder) } }
     const t = ser(fx) + '\n'
     if (Buffer.byteLength(t) > MAX_BYTES) throw new Error(`${s.slug}: ${Buffer.byteLength(t)} bytes > ${MAX_BYTES} -- STOP`)
     files.set(`${s.slug}.json`, t)
     const count = (a: Rec | null, c: string): number => (a && a.keys ? Object.values(a.keys as Rec).filter((e: Rec) => e.class === c).length : 0)
-    rows.push({ slug: s.slug, bytes: Buffer.byteLength(t), player: { ported: count(player, 'ported'), r85: count(player, 'R8.5'), calcs: count(player, 'Calcs'), replaced: player?.replaced },
-      minion: minion ? { ported: count(minion, 'ported'), r85: count(minion, 'R8.5'), calcs: count(minion, 'Calcs') } : null })
+    const handKeys = (a: Rec | null): number => (a && a.keys ? Object.values(a.keys as Rec).reduce((n: number, e: Rec) => n + (e.final && e.final.$bd ? Object.keys(e.final.$bd).length : 0), 0) : 0)
+    rows.push({ slug: s.slug, bytes: Buffer.byteLength(t), player: { ported: count(player, 'ported'), r85: count(player, 'R8.5'), skill: count(player, 'skill'), calcs: count(player, 'Calcs'), hand: handKeys(player), replaced: player?.replaced },
+      minion: minion ? { ported: count(minion, 'ported'), r85: count(minion, 'R8.5'), skill: count(minion, 'skill'), calcs: count(minion, 'Calcs'), hand: handKeys(minion) } : null })
   })
   return { files, rows }
 }
@@ -325,7 +371,10 @@ async function main(filter?: string): Promise<void> {
   mkdirSync(OUT, { recursive: true })
   const shas: Rec = {}
   for (const [n, t] of a.files) { writeFileSync(resolve(OUT, n), t, 'utf8'); shas[n] = sha(t) }
-  const tot = a.rows.reduce((acc, r) => { acc.ported += r.player.ported + (r.minion?.ported ?? 0); acc.r85 += r.player.r85 + (r.minion?.r85 ?? 0); acc.calcs += r.player.calcs + (r.minion?.calcs ?? 0); acc.maxBytes = Math.max(acc.maxBytes, r.bytes); return acc }, { ported: 0, r85: 0, calcs: 0, maxBytes: 0 })
+  const tot = a.rows.reduce((acc, r) => {
+    for (const k of ['ported', 'r85', 'skill', 'calcs', 'hand'] as const) acc[k] += r.player[k] + (r.minion?.[k] ?? 0)
+    acc.maxBytes = Math.max(acc.maxBytes, r.bytes); return acc
+  }, { ported: 0, r85: 0, skill: 0, calcs: 0, hand: 0, maxBytes: 0 } as Rec)
   console.log(JSON.stringify({ scenarios: list.length, files: a.files.size, passesIdentical: true, combinedSha256: sha(Object.keys(shas).sort(byteOrder).map((k) => `${k}:${shas[k]}`).join('\n')), totals: tot, rows: a.rows }, null, 1))
 }
 await main(process.argv[2])
