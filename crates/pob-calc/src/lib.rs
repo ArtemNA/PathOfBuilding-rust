@@ -13,6 +13,7 @@
 
 pub mod active_skill;
 pub mod allowlist;
+pub mod breakdown;
 pub mod calc_lib;
 pub mod calc_tools;
 pub mod calculate;

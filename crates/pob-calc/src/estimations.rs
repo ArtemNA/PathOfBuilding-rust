@@ -1,5 +1,5 @@
-//! `calcs.buildDefenceEstimations(env, actor)` -- Modules/CalcDefence.lua:1674-3786 -- line for line, without the breakdown
-//! tables. Executable spec: pob-ts `src/calc/estimations.ts` (P4.4c1 + P4.4c2). Part 1 (:1674-2610): not-hit chance, enemy
+//! `calcs.buildDefenceEstimations(env, actor)` -- Modules/CalcDefence.lua:1674-3870 -- line for line, with the breakdown
+//! tables (R8.4, `actor.breakdown`). Executable spec: pob-ts `src/calc/estimations.ts` (P4.4c1 + P4.4c2). Part 1 (:1674-2610): not-hit chance, enemy
 //! damage (config / placeholder / enemyDB), the "taken as" shift tables, taken multipliers, the per-type hit, stun, life
 //! recoverable / loss prevention, ES bypass, Mind over Matter, guard, aegis, allies, Vaal Arctic Armour, total pools. Part 2
 //! (:2612-3786): `numberOfHitsToDie`, number of hits / EHP / survival time, recoup, petrified blood, net recovery, PvP,
@@ -11,7 +11,9 @@
 //! :2240, :2291, :2372, :2403, :2430, :2448, :2492, :2544, :2598, :2885, :2905, :2953, :2967, :3014, :3071, :3101, :3132,
 //! :3310, :3374, :3394, :3445, :3493, :3513, :3561, :3630, :3686, :3735, :3755 and the closing :3789-3870 (which also runs
 //! `reducePoolsByDamage(nil, takenHit, actor)` and `incomingDamageBreakdown` into locals) -- each writes only `breakdown.*`
-//! tables or locals; none writes `output`, a condition, a multiplier or a mod, so none is ported.
+//! tables or locals; none writes `output`, a condition, a multiplier or a mod. R8.4 ports them all (`bd`, gated by
+//! `tests/breakdown.rs` against LuaJIT); rows built in a `pairs` order (:3326, :3389, :3556, :3618/:3625 -- R13) follow
+//! `dmgTypeList` order here and are compared as sets.
 //!
 //! Upstream quirks kept verbatim (MINEFIELD D21): `:1695` AverageEvadeChance over 4; `:1755` the `enemy<T>enemyOverwhelm`
 //! placeholder typo; `:1807` the enemy's physical overwhelm added to every type; `:1958` `AnyTakenReflect` false in both
@@ -35,6 +37,7 @@ use pob_build::ConfigValue;
 use pob_lua::number::{max2, min, min2, round};
 use pob_mods::{ModCfg, ModType, StoreRef, Value};
 
+use crate::breakdown::{BTable, Breakdown, Chain, multi_chain, row, row_table, step, step_s};
 use crate::calc_lib;
 use crate::defence::{action_speed_mod, armour_reduction};
 use crate::env::Env;
@@ -45,6 +48,8 @@ use crate::pools::{
     calc_life_hit_pool_with_loss_prevention, reduce_pools_by_damage, taken_hit_from_damage,
 };
 use crate::setup::{misc, ok};
+use crate::sf;
+use pob_lua::tostring_num;
 
 use ModType::{Base, Inc, More};
 
@@ -54,6 +59,15 @@ const DMG: [&str; 5] = ["Physical", "Lightning", "Cold", "Fire", "Chaos"];
 const HIT_SOURCES: [&str; 2] = ["Attack", "Spell"];
 /// `:2989` `recoupTypeList`.
 const RECOUP_TYPES: [&str; 3] = ["Life", "Mana", "EnergyShield"];
+
+/// `colorCodes[name]` (Data/Global.lua).
+fn color_code(name: &str) -> &'static str {
+    pob_data::globals::globals()
+        .color_codes
+        .get(name)
+        .map(String::as_str)
+        .unwrap_or_else(|| panic!("colorCodes.{name} is nil"))
+}
 
 const PHYSICAL: usize = 0;
 const FIRE: usize = 3;
@@ -241,6 +255,12 @@ fn concat_key(dcc: &ConfigValue, line: u32) -> String {
             site(line)
         ),
     }
+}
+
+/// `(dcc == "Average" and "n " or (dcc == "Untyped" and "n " or " ")) .. dcc` (:2898, :2942).
+fn a_hit(dcc: &ConfigValue, line: u32) -> String {
+    let art = if is(dcc, "Average") || is(dcc, "Untyped") { "n " } else { " " };
+    format!("{art}{}", concat_key(dcc, line))
 }
 
 // --- the actor as the pool helpers see it ---------------------------------------------------------------------------
@@ -596,8 +616,8 @@ fn split_degen(out: &Output, db: &StoreRef, degen: f64, t: usize) -> (f64, f64, 
     (life_degen, mana_degen, es_degen)
 }
 
-/// `:2351-2363` local `calcMoMEBPool` -- only its first value is ever used outside the breakdown.
-fn calc_mom_eb_pool(out: &Output, db: &StoreRef, life_pool: f64, mom_effect: f64, es_bypass: f64) -> f64 {
+/// `:2351-2363` local `calcMoMEBPool` -- `(pool, maxManaUsable, manaUsed, maxESUsable)`; the last three feed the breakdown.
+fn calc_mom_eb_pool(out: &Output, db: &StoreRef, life_pool: f64, mom_effect: f64, es_bypass: f64) -> (f64, f64, f64, f64) {
     let mana = max2(or0(out, "ManaUnreserved", 2352), 0.0);
     // :2353 `MoMEffect < 1 and <number> or m_huge`
     let max_mom_pool = if mom_effect < 1.0 {
@@ -620,7 +640,43 @@ fn calc_mom_eb_pool(out: &Output, db: &StoreRef, life_pool: f64, mom_effect: f64
         0.0
     };
     let mana_used = min2(max_mom_pool - max_es_usable, max_mana_usable).floor();
-    life_pool + mana_used + max_es_usable
+    (life_pool + mana_used + max_es_usable, max_mana_usable, mana_used, max_es_usable)
+}
+
+/// `:2429-2438` / `:2447-2456` the guard breakdown (`lifeProtected` = limit / rate * (1 - rate)).
+fn guard_breakdown(out: &Output, limit_key: &str, rate_key: &str) -> BTable {
+    let (limit, rate) = (on(out, limit_key), on(out, rate_key));
+    let life_protected = limit / (rate / 100.0) * (1.0 - rate / 100.0);
+    BTable::lines([
+        sf!("Total life protected:"),
+        sf!("%d ^8(guard limit)", limit),
+        sf!("/ %.2f ^8(portion taken from guard)", rate / 100.0),
+        sf!("x %.2f ^8(portion taken from life and energy shield)", 1.0 - rate / 100.0),
+        sf!("= %d", life_protected),
+    ])
+}
+
+/// `:2372-2385` / `:2403-2416` the Mind over Matter breakdown of one pool.
+fn mom_breakdown(out: &Output, db: &StoreRef, mom: f64, r: (f64, f64, f64, f64)) -> BTable {
+    let (pool, max_mana, mana, es) = r;
+    let life_protected = (mana + es) / mom - (mana + es);
+    let shadow = if mana == max_mana {
+        String::new()
+    } else {
+        sf!(" (%d mana shadowed by energy shield)", max_mana - mana)
+    };
+    let mut t = BTable::lines([
+        sf!("Effective life from Mind over Matter:"),
+        sf!("%d life (%d life is protected)", on(out, "LifeRecoverable"), life_protected),
+        sf!("%d mana%s", mana, shadow),
+    ]);
+    let protects = flag(db, &["EnergyShieldProtectsMana"]);
+    if protects {
+        t.push(sf!("%d energy shield", es));
+    }
+    let es_part = if protects { sf!("+ %d ", es) } else { String::new() };
+    t.push(sf!("%d + %d %s= %d", on(out, "LifeRecoverable"), mana, es_part, pool));
+    t
 }
 
 // --- CalcDefence.lua:1674-3786 `calcs.buildDefenceEstimations` --------------------------------------------------------
@@ -634,20 +690,41 @@ pub fn estimations(env: &mut Env, state: &mut PerformState, who: Who) {
     let minion_rc = (who == Who::Minion).then(|| state.minion.clone().expect("env.minion.output"));
     let hostile = who == Who::Minion && crate::perform::env_minion(env).hostile;
     let mut minion_guard = minion_rc.as_ref().map(|rc| rc.borrow_mut());
-    let (out, parent): (&mut Output, Option<&Output>) = match minion_guard.as_mut() {
-        Some(g) => (
-            &mut g.output,
-            Some(if hostile { &state.enemy.output } else { &state.player.output }),
-        ),
+    type Parts<'a> = (
+        &'a mut Output,
+        Option<&'a Output>,
+        Option<&'a mut Breakdown>,
+        Option<&'a crate::perform::ally::AllyLifeList>,
+    );
+    let (out, parent, mut bd, ally_life_list): Parts<'_> = match minion_guard.as_mut() {
+        Some(g) => {
+            let g = &mut **g;
+            (
+                &mut g.output,
+                Some(if hostile { &state.enemy.output } else { &state.player.output }),
+                g.breakdown.as_mut(),
+                g.ally_life_list.as_ref(),
+            )
+        }
         None => match who {
-            Who::Player => (&mut state.player.output, None),
-            _ => (&mut state.enemy.output, None),
+            Who::Player => (
+                &mut state.player.output,
+                None,
+                state.player.breakdown.as_mut(),
+                state.player.ally_life_list.as_ref(),
+            ),
+            _ => (
+                &mut state.enemy.output,
+                None,
+                state.enemy.breakdown.as_mut(),
+                state.enemy.ally_life_list.as_ref(),
+            ),
         },
     };
     let fl = |names: &[&str]| flag(&db, names);
     let input = &env.config.input;
     let placeholder = &env.config.placeholder;
-    // :1680 `breakdown`, :1682 `condList` -- breakdown tables only / never read.
+    // :1680 `breakdown` (R8.4: `bd`), :1682 `condList` -- never read.
 
     // :1684
     let dcc: ConfigValue = match input.get("enemyDamageType") {
@@ -744,6 +821,24 @@ pub fn estimations(env: &mut Env, state: &mut PerformState, who: Who) {
             out.set_num(&format!("{name}EnemyDamage"), 0.0);
         }
     } else {
+        // :1720-1734
+        if let Some(bd) = bd.as_deref_mut() {
+            bd.put(
+                "totalEnemyDamage",
+                row_table(
+                    Some("Total damage from the enemy"),
+                    &[
+                        ("Type", "type"),
+                        ("Value", "value"),
+                        ("Mult", "mult"),
+                        ("Crit", "crit"),
+                        ("Conversion", "convMult"),
+                        ("Final", "final"),
+                        ("From", "from"),
+                    ],
+                ),
+            );
+        }
         // :1735 -- `Override(...)` is not the last vararg here: a miss is an ordinary nil in the `or` chain (L26).
         let enemy_crit_chance = if flag(&enemy_db, &["NeverCrit"]) {
             0.0
@@ -784,6 +879,8 @@ pub fn estimations(env: &mut Env, state: &mut PerformState, who: Who) {
             let mut enemy_damage = tonumber(input.get(&format!("enemy{name}Damage")));
             let mut enemy_pen = tonumber(input.get(&format!("enemy{name}Pen")));
             let mut enemy_overwhelm = tonumber(input.get(&format!("enemy{name}Overwhelm")));
+            // :1748
+            let source_str = if enemy_damage.is_none() { "Default" } else { "Config" };
             if enemy_damage.is_none() {
                 enemy_damage = Some(tonumber(placeholder.get(&format!("enemy{name}Damage"))).unwrap_or(0.0));
             }
@@ -871,6 +968,8 @@ pub fn estimations(env: &mut Env, state: &mut PerformState, who: Who) {
             let ed_key = format!("{name}EnemyDamage");
             let v = enemy_damage * (1.0 - conversion_total / 100.0) * enemy_damage_mult * on(out, "EnemyCritEffect");
             out.set_num(&ed_key, v);
+            // :1815
+            let mut conversion_extra = -enemy_damage * enemy_damage_mult * on(out, "EnemyCritEffect") + on(out, &ed_key);
             if let Some(from_damage) = enemy_damage_conversion[t] {
                 // :1816 the one source is Physical; :1817 both elemental names can be present (summed twice, upstream).
                 let mut names = vec!["Damage".to_owned(), format!("{name}Damage"), "PhysicalDamage".to_owned()];
@@ -881,9 +980,46 @@ pub fn estimations(env: &mut Env, state: &mut PerformState, who: Who) {
                 let from_mult = cmod(&enemy_db, &names);
                 let v = on(out, &ed_key) + from_damage * from_mult * on(out, "EnemyCritEffect");
                 out.set_num(&ed_key, v);
+                conversion_extra += from_damage * from_mult * on(out, "EnemyCritEffect");
             }
             let v = on(out, "totalEnemyDamage") + on(out, &ed_key);
             out.set_num("totalEnemyDamage", v);
+            // :1823-1842
+            if let Some(bd) = bd.as_deref_mut() {
+                let mut l = BTable::lines([
+                    sf!("from %s: %d", source_str, enemy_damage),
+                    sf!("* %.2f (modifiers to enemy damage)", enemy_damage_mult),
+                    sf!("* %.3f (enemy crit effect)", on(out, "EnemyCritEffect")),
+                ]);
+                let abs_extra = if conversion_extra >= 0.0 {
+                    conversion_extra
+                } else {
+                    -conversion_extra
+                };
+                if conversion_extra != 0.0 {
+                    let sign = if conversion_extra > 0.0 { "+" } else { "-" };
+                    l.push(sf!("%s %d (enemy damage conversion)", sign, abs_extra));
+                }
+                l.push(sf!("= %d", on(out, &ed_key)));
+                bd.put(ed_key.clone(), l);
+                let sign = if conversion_extra > 0.0 {
+                    "+"
+                } else if conversion_extra < 0.0 {
+                    "-"
+                } else {
+                    ""
+                };
+                let r = row(&[
+                    ("type", sf!("%s", *name)),
+                    ("value", sf!("%d", enemy_damage)),
+                    ("mult", sf!("%.2f", enemy_damage_mult)),
+                    ("crit", sf!("%.2f", on(out, "EnemyCritEffect"))),
+                    ("convMult", sf!("%s%d", sign, abs_extra)),
+                    ("final", sf!("%d", on(out, &ed_key))),
+                    ("from", sf!("%s", source_str)),
+                ]);
+                bd.table_mut("totalEnemyDamage").field_mut("rowList").push(r);
+            }
         }
     }
 
@@ -914,6 +1050,13 @@ pub fn estimations(env: &mut Env, state: &mut PerformState, who: Who) {
         // :1870 `* shift / 100`, in THIS order.
         let v = on(out, &format!("{name}EnemyDamage")) * shift[t][t].expect("set") / 100.0;
         out.set_num(&format!("{name}TakenDamage"), v);
+        // :1871-1884
+        if let Some(bd) = bd.as_deref_mut() {
+            let mut tb = row_table(Some("Taken"), &[("Type", "type"), ("Value", "value")]);
+            tb.field_mut("rowList")
+                .push(row(&[("type", sf!("%s", *name)), ("value", sf!("%d", v))]));
+            bd.put(format!("{name}TakenDamage"), tb);
+        }
     }
     // :1887-1900
     for (t, name) in DMG.iter().enumerate() {
@@ -923,14 +1066,38 @@ pub fn estimations(env: &mut Env, state: &mut PerformState, who: Who) {
                 let key = format!("{c_name}TakenDamage");
                 let v = on(out, &key) + damage;
                 out.set_num(&key, v);
+                // :1892-1897
+                if let Some(bd) = bd.as_deref_mut()
+                    && damage > 0.0
+                {
+                    let r = row(&[("type", sf!("%s", *name)), ("value", sf!("%d", damage))]);
+                    bd.table_mut(&key).field_mut("rowList").push(r);
+                }
             }
         }
     }
     // :1902-1921
     out.set_num("totalTakenDamage", 0.0);
+    if let Some(bd) = bd.as_deref_mut() {
+        bd.put(
+            "totalTakenDamage",
+            row_table(
+                Some("Total damage taken from the enemy after taken as"),
+                &[("Type", "type"), ("Value", "value")],
+            ),
+        );
+    }
     for name in DMG {
         let v = on(out, "totalTakenDamage") + on(out, &format!("{name}TakenDamage"));
         out.set_num("totalTakenDamage", v);
+        // :1915-1920
+        if let Some(bd) = bd.as_deref_mut() {
+            let r = row(&[
+                ("type", sf!("%s", name)),
+                ("value", sf!("%d", on(out, &format!("{name}TakenDamage")))),
+            ]);
+            bd.table_mut("totalTakenDamage").field_mut("rowList").push(r);
+        }
     }
 
     // --- :1924-1984 damage taken multipliers ---------------------------------------------------------------------
@@ -1003,11 +1170,40 @@ pub fn estimations(env: &mut Env, state: &mut PerformState, who: Who) {
                 0.0,
             );
             out.set_num(&format!("{name}TakenDotMult"), v);
+            // :1972-1982
+            if let Some(bd) = bd.as_deref_mut() {
+                let mut tb = BTable::new();
+                multi_chain(
+                    &mut tb,
+                    &Chain {
+                        label: Some("DoT Multiplier:".into()),
+                        steps: vec![
+                            step("%.2f ^8(resistance)", 1.0 - resist / 100.0),
+                            step_s("%.2f ^8(%s damage reduction)", 1.0 - reduction / 100.0, &name.to_lowercase()),
+                            step("%.2f ^8(increased/reduced damage taken)", 1.0 + taken_inc / 100.0),
+                            step("%.2f ^8(more/less damage taken)", taken_more),
+                        ],
+                        total: Some(sf!("= %.2f", v)),
+                        ..Chain::default()
+                    },
+                );
+                bd.put(format!("{name}TakenDotMult"), tb);
+            }
         }
     }
 
     // --- :1986-2151 incoming hit damage multipliers --------------------------------------------------------------
     out.set_num("totalTakenHit", 0.0);
+    // :1988-1999
+    if let Some(bd) = bd.as_deref_mut() {
+        bd.put(
+            "totalTakenHit",
+            row_table(
+                Some("Total damage taken after mitigation"),
+                &[("Type", "type"), ("Incoming", "incoming"), ("Mult", "mult"), ("Value", "value")],
+            ),
+        );
+    }
     // :2000 `(Sum or 0)` -- dead `or 0`; `ImpaleAvoidChance` (a percentage) used as a fraction -- upstream.
     let is_attack_category = is(&dcc, "Melee") || is(&dcc, "Projectile") || is(&dcc, "Average");
     let impale_cfg = ModCfg {
@@ -1132,6 +1328,38 @@ pub fn estimations(env: &mut Env, state: &mut PerformState, who: Who) {
         let total_reduct = min2(dr_max, armour_reduct + reduction);
         let reduct_mult = 1.0 - max2(min2(dr_max, total_reduct - enemy_overwhelm), 0.0) / 100.0;
         out.set_num(&format!("{name}DamageReduction"), 100.0 - reduct_mult * 100.0);
+        // :2043-2065
+        if let Some(bd) = bd.as_deref_mut() {
+            let mut tb = BTable::new();
+            if armour_reduct != 0.0 {
+                if res_mult != 1.0 {
+                    tb.push(sf!(
+                        "Enemy Hit Damage After Resistance: %d ^8(total incoming damage)",
+                        damage * res_mult
+                    ));
+                } else {
+                    tb.push(sf!("Enemy Hit Damage: %d ^8(total incoming damage)", damage));
+                }
+                if percent_of_armour_applies != 100.0 && !physical_reduction_based_on_ward {
+                    tb.push(sf!("%d%% percent of armour applies", percent_of_armour_applies));
+                }
+                tb.push(sf!("Reduction from Armour: %d%%", armour_reduct));
+            }
+            if reduction != 0.0 {
+                tb.push(sf!("Base %s Damage Reduction: %d%%", *name, reduction));
+            }
+            if enemy_overwhelm != 0.0 {
+                tb.push(sf!("Enemy Overwhelm %s Damage: %d%%", *name, enemy_overwhelm));
+            }
+            let parts = [armour_reduct != 0.0, reduction != 0.0, enemy_overwhelm != 0.0]
+                .iter()
+                .filter(|x| **x)
+                .count();
+            if parts >= 2 {
+                tb.push(sf!("Total %s Damage Reduction: %d%%", *name, 100.0 - reduct_mult * 100.0));
+            }
+            bd.put(format!("{name}DamageReduction"), tb);
+        }
         if impale_damage > 0.0 {
             impale_damage = impale_damage
                 * res_mult
@@ -1182,23 +1410,93 @@ pub fn estimations(env: &mut Env, state: &mut PerformState, who: Who) {
         if truthy(out, "AnyTakenReflect") {
             out.set_num(&format!("{name}TakenReflectMult"), final_reflect);
         }
+        // :2091-2150
+        if let Some(bd) = bd.as_deref_mut() {
+            let mut tb = BTable::new();
+            if resist != 0.0 {
+                tb.push(sf!("Resistance: %.2f", 1.0 - resist / 100.0));
+            }
+            if enemy_pen != 0.0 {
+                tb.push(sf!("+ Enemy Pen: %.2f", enemy_pen / 100.0));
+            }
+            if resist != 0.0 && enemy_pen != 0.0 {
+                tb.push(sf!("= %.2f", res_mult));
+            }
+            if reduction != 0.0 {
+                tb.push(sf!("Base %s Damage Taken: %.2f", *name, 1.0 - reduction / 100.0));
+            }
+            if armour_reduct != 0.0 {
+                if res_mult != 1.0 {
+                    tb.push(sf!(
+                        "Enemy Hit Damage After Resistance: %d ^8(total incoming damage)",
+                        damage * res_mult
+                    ));
+                } else {
+                    tb.push(sf!("Enemy Hit Damage: %d ^8(total incoming damage)", damage));
+                }
+                if percent_of_armour_applies != 100.0 && !physical_reduction_based_on_ward {
+                    tb.push(sf!("%d%% percent of armour applies", percent_of_armour_applies));
+                }
+                tb.push(sf!("Reduction from Armour: %.2f", 1.0 - armour_reduct / 100.0));
+            }
+            if enemy_overwhelm != 0.0 {
+                tb.push(sf!("+ Enemy Overwhelm %s Damage: %.2f", *name, enemy_overwhelm / 100.0));
+            }
+            if reduction != 0.0 || armour_reduct != 0.0 || enemy_overwhelm != 0.0 {
+                tb.push(sf!("= %.2f", reduct_mult));
+            }
+            if res_mult != 1.0 && reduct_mult != 1.0 {
+                tb.push(sf!("%.2f x %.2f = %.3f", res_mult, reduct_mult, base_mult));
+            }
+            if taken_flat != 0.0 {
+                tb.push(sf!("+ Flat: %d", taken_flat));
+            }
+            if taken_mult != 1.0 {
+                tb.push(sf!("x Taken: %.3f", taken_mult));
+            }
+            if spell_suppress_mult != 1.0 {
+                tb.push(sf!("x Spell Suppression: %.3f", spell_suppress_mult));
+            }
+            if impale_damage != 0.0 {
+                tb.push(sf!("+ Impale: %.1f", impale_damage));
+            }
+            if taken_mult != 1.0 || taken_flat != 0.0 || spell_suppress_mult != 1.0 || impale_damage != 0.0 {
+                tb.push(sf!("= %.3f", on(out, &format!("{name}TakenHitMult"))));
+            }
+            bd.put(format!("{name}TakenHitMult"), tb);
+            if truthy(out, "AnyTakenReflect") {
+                let mut r = BTable::lines([sf!("Resistance: %.3f", 1.0 - resist / 100.0)]);
+                if enemy_pen > 0.0 {
+                    r.push(sf!("Enemy Pen: %.2f", enemy_pen));
+                }
+                r.push(sf!("Taken: %.3f", taken_mult_reflect));
+                r.push(sf!("= %.3f", final_reflect));
+                bd.put(format!("{name}TakenReflectMult"), r);
+            }
+        }
     }
 
     // --- :2153-2256 stun -------------------------------------------------------------------------------------------
     {
-        // `stunThresholdSource` only feeds the breakdown.
-        let mut stun_threshold_base = if fl(&["StunThresholdBasedOnEnergyShieldInsteadOfLife"]) {
-            on(out, "EnergyShield") * base(&db, &["StunThresholdEnergyShieldPercent"]) / 100.0
+        // `stunThresholdSource` (:2156) feeds the breakdown.
+        let (mut stun_threshold_base, mut stun_threshold_source) = if fl(&["StunThresholdBasedOnEnergyShieldInsteadOfLife"]) {
+            let m = base(&db, &["StunThresholdEnergyShieldPercent"]);
+            (
+                on(out, "EnergyShield") * m / 100.0,
+                format!("{}% of Energy Shield", tostring_num(m)),
+            )
         } else if fl(&["StunThresholdBasedOnManaInsteadOfLife"]) {
-            on(out, "Mana") * base(&db, &["StunThresholdManaPercent"]) / 100.0
+            let m = base(&db, &["StunThresholdManaPercent"]);
+            (on(out, "Mana") * m / 100.0, format!("{}% of Mana", tostring_num(m)))
         } else if fl(&["ChaosInoculation"]) {
-            base(&db, &["Life"])
+            (base(&db, &["Life"]), "Life before Chaos Inoculation".to_owned())
         } else {
-            on(out, "Life")
+            (on(out, "Life"), "Life".to_owned())
         };
         if fl(&["AddESToStunThreshold"]) {
             let es_mult = base(&db, &["ESToStunThresholdPercent"]);
             stun_threshold_base += on(out, "EnergyShield") * es_mult / 100.0;
+            stun_threshold_source = format!("{stun_threshold_source} and {}% of Energy Shield", tostring_num(es_mult));
         }
         let stun_threshold_mod = 1.0 + inc(&db, &["StunThreshold"]) / 100.0;
         out.set_num("StunThreshold", stun_threshold_base * stun_threshold_mod);
@@ -1213,9 +1511,31 @@ pub fn estimations(env: &mut Env, state: &mut PerformState, who: Who) {
             not_avoid_chance *= 0.5;
         }
         out.set_num("StunAvoidChance", 100.0 - not_avoid_chance);
+        // :2186-2196
+        if let Some(bd) = bd.as_deref_mut() {
+            let mut tb = BTable::lines([sf!("%d ^8(base from %s)", stun_threshold_base, stun_threshold_source)]);
+            if stun_threshold_mod != 1.0 {
+                tb.push(sf!("* %.2f ^8(increased threshold)", stun_threshold_mod));
+                tb.push(sf!("= %d", on(out, "StunThreshold")));
+            }
+            bd.put("StunThreshold", tb);
+            let custom = color_code("CUSTOM");
+            bd.put(
+                "StunAvoidChance",
+                BTable::lines([
+                    format!("{custom}NOTE: Having any energy shield when the hit occurs grants 50% chance to avoid stun."),
+                    format!("{custom}POB only applies this modifier when ES > Total incoming damage."),
+                ]),
+            );
+        }
         if on(out, "StunAvoidChance") >= 100.0 {
             out.set_num("StunDuration", 0.0);
             out.set_num("BlockDuration", 0.0);
+            // :2200-2203
+            if let Some(bd) = bd.as_deref_mut() {
+                bd.put("StunDuration", BTable::lines(["Cannot be Stunned".to_owned()]));
+                bd.put("BlockDuration", BTable::lines(["Cannot be Stunned".to_owned()]));
+            }
         } else {
             let stun_duration = 1.0 + inc(&db, &["StunDuration"]) / 100.0;
             let base_stun_duration = misc("StunBaseDuration");
@@ -1230,6 +1550,27 @@ pub fn estimations(env: &mut Env, state: &mut PerformState, who: Who) {
                 "BlockDuration",
                 (base_stun_duration * stun_duration / stun_and_block_recovery * tick).ceil() / tick,
             );
+            // :2211-2229
+            if let Some(bd) = bd.as_deref_mut() {
+                let mut s = BTable::lines([sf!("%.2fs ^8(base)", base_stun_duration)]);
+                let mut b = BTable::lines([sf!("%.2fs ^8(base)", base_stun_duration)]);
+                if stun_duration != 1.0 {
+                    s.push(sf!("* %.2f ^8(increased duration)", stun_duration));
+                    b.push(sf!("* %.2f ^8(increased duration)", stun_duration));
+                }
+                if stun_recovery != 1.0 {
+                    s.push(sf!("/ %.2f ^8(increased/reduced recovery)", stun_recovery));
+                }
+                if stun_and_block_recovery != 1.0 {
+                    b.push(sf!("/ %.2f ^8(increased/reduced block recovery)", stun_and_block_recovery));
+                }
+                s.push(sf!("rounded up to nearest server tick"));
+                s.push(sf!("= %.2fs", on(out, "StunDuration")));
+                b.push(sf!("rounded up to nearest server tick"));
+                b.push(sf!("= %.2fs", on(out, "BlockDuration")));
+                bd.put("StunDuration", s);
+                bd.put("BlockDuration", b);
+            }
         }
         out.set_num("InterruptStunAvoidChance", min2(base(&db, &["AvoidInterruptStun"]), 100.0));
         let mut effective_enemy_damage = on(out, "totalTakenHit") + on(out, "PhysicalTakenHit") * 0.25;
@@ -1247,6 +1588,24 @@ pub fn estimations(env: &mut Env, state: &mut PerformState, who: Who) {
         }) * not_avoid_chance
             / 100.0;
         out.set_num("SelfStunChance", v);
+        // :2240-2255
+        if let Some(bd) = bd.as_deref_mut() {
+            let mut tb = BTable::lines([
+                sf!("%d%% ^8(stun multiplier)", misc("StunBaseMult")),
+                sf!("* %.1f ^8(effective enemy stun damage)", effective_enemy_damage),
+                sf!("/ %d ^8(stun threshold)", on(out, "StunThreshold")),
+            ]);
+            if base_stun_chance < misc("MinStunChanceNeeded") {
+                tb.push(sf!("= %.2f%%", base_stun_chance));
+                tb.push(sf!("Stun Chance has to be more than %d%% to stun.", misc("MinStunChanceNeeded")));
+            } else {
+                if not_avoid_chance != 100.0 {
+                    tb.push(sf!("* %.2f ^8(1 - chance to avoid stun)", not_avoid_chance / 100.0));
+                }
+                tb.push(sf!("= %.2f%%", on(out, "SelfStunChance")));
+            }
+            bd.put("SelfStunChance", tb);
+        }
     }
 
     // --- :2258-2272 life recoverable -----------------------------------------------------------------------------
@@ -1279,9 +1638,10 @@ pub fn estimations(env: &mut Env, state: &mut PerformState, who: Who) {
         let initial_below_half = base(&db, &["LifeLossBelowHalfPrevented"]);
         let v = (1.0 - on(out, "preventedLifeLoss") / 100.0) * initial_below_half;
         out.set_num("preventedLifeLossBelowHalf", v);
+        let mut portion_life = 1.0;
         if !cfg_truthy(input.get("conditionLowLife")) {
             // :2284
-            let portion_life = min2(on(out, "Life") * 0.5 / recoverable, 1.0);
+            portion_life = min2(on(out, "Life") * 0.5 / recoverable, 1.0);
             let v = on(out, "preventedLifeLoss") + on(out, "preventedLifeLossBelowHalf") * portion_life;
             out.set_num("preventedLifeLossTotal", v);
         } else {
@@ -1290,6 +1650,51 @@ pub fn estimations(env: &mut Env, state: &mut PerformState, who: Who) {
         }
         let v = calc_life_hit_pool_with_loss_prevention(recoverable, on(out, "Life"), prevented_life_loss, initial_below_half);
         out.set_num("LifeHitPool", v);
+        // :2291-2319
+        if let Some(bd) = bd.as_deref_mut() {
+            let pll = on(out, "preventedLifeLoss");
+            let pbh = on(out, "preventedLifeLossBelowHalf");
+            let mut t = BTable::lines([sf!("Total life protected:")]);
+            if pll != 0.0 {
+                t.push(sf!("%.2f ^8(portion taken over 4 seconds instead)", pll / 100.0));
+            }
+            if pbh != 0.0 {
+                let plus = if pll != 0.0 { "+ " } else { "" };
+                if portion_life != 1.0 {
+                    if pll != 0.0 {
+                        t.push(sf!(""));
+                    }
+                    t.push(sf!(
+                        "%s%.2f ^8(initial portion taken by petrified blood)",
+                        plus,
+                        initial_below_half / 100.0
+                    ));
+                    if pll != 0.0 {
+                        t.push(sf!("* %.2f ^8(portion not already taken over time)", 1.0 - pll / 100.0));
+                    }
+                    t.push(sf!("* %.2f ^8(portion of life on low life)", portion_life));
+                    t.push(sf!("= %.2f ^8(final portion taken by petrified blood)", pbh * portion_life / 100.0));
+                    t.push(sf!(""));
+                } else {
+                    let what = if pll != 0.0 { "initial portion" } else { "portion" };
+                    t.push(sf!(
+                        "%s%.2f ^8(%s taken by petrified blood)",
+                        plus,
+                        initial_below_half / 100.0,
+                        what
+                    ));
+                    if pll != 0.0 {
+                        t.push(sf!("* %.2f ^8(portion not already taken over time)", 1.0 - pll / 100.0));
+                        t.push(sf!("= %.2f ^8(final portion taken by petrified blood)", pbh / 100.0));
+                    }
+                }
+            }
+            t.push(sf!(
+                "%.2f ^8(portion taken from life)",
+                1.0 - on(out, "preventedLifeLossTotal") / 100.0
+            ));
+            bd.put("preventedLifeLossTotal", t);
+        }
     }
 
     // --- :2322-2344 energy shield bypass -------------------------------------------------------------------------
@@ -1329,11 +1734,15 @@ pub fn estimations(env: &mut Env, state: &mut PerformState, who: Who) {
     if on(out, "sharedMindOverMatter") > 0.0 {
         let mom = on(out, "sharedMindOverMatter") / 100.0;
         let es_bypass = on(out, "MinimumBypass") / 100.0;
-        let v = calc_mom_eb_pool(out, &db, on(out, "LifeRecoverable"), mom, es_bypass);
-        out.set_num("sharedManaEffectiveLife", v);
+        let r = calc_mom_eb_pool(out, &db, on(out, "LifeRecoverable"), mom, es_bypass);
+        out.set_num("sharedManaEffectiveLife", r.0);
         // :2370 a call in an assignment keeps its first value only.
-        let v = calc_mom_eb_pool(out, &db, on(out, "LifeHitPool"), mom, es_bypass);
+        let v = calc_mom_eb_pool(out, &db, on(out, "LifeHitPool"), mom, es_bypass).0;
         out.set_num("sharedMoMHitPool", v);
+        // :2372-2385 (`output.sharedMindOverMatter` is a number: truthy)
+        if let Some(bd) = bd.as_deref_mut() {
+            bd.put("sharedMindOverMatter", mom_breakdown(out, &db, mom, r));
+        }
     } else {
         copy(out, "sharedManaEffectiveLife", "LifeRecoverable");
         copy(out, "sharedMoMHitPool", "LifeHitPool");
@@ -1353,10 +1762,14 @@ pub fn estimations(env: &mut Env, state: &mut PerformState, who: Who) {
             out.set_bool("OnlySharedMindOverMatter", false);
             let mom = (on(out, &mom_key) + on(out, "sharedMindOverMatter")) / 100.0;
             let es_bypass = on(out, &bypass_key) / 100.0;
-            let v = calc_mom_eb_pool(out, &db, on(out, "LifeRecoverable"), mom, es_bypass);
-            out.set_num(&format!("{name}ManaEffectiveLife"), v);
-            let v = calc_mom_eb_pool(out, &db, on(out, "LifeHitPool"), mom, es_bypass);
+            let r = calc_mom_eb_pool(out, &db, on(out, "LifeRecoverable"), mom, es_bypass);
+            out.set_num(&format!("{name}ManaEffectiveLife"), r.0);
+            let v = calc_mom_eb_pool(out, &db, on(out, "LifeHitPool"), mom, es_bypass).0;
             out.set_num(&format!("{name}MoMHitPool"), v);
+            // :2403-2416 (`output[T.."MindOverMatter"]` is a number: truthy)
+            if let Some(bd) = bd.as_deref_mut() {
+                bd.put(mom_key.clone(), mom_breakdown(out, &db, mom, r));
+            }
         } else {
             copy(out, &format!("{name}ManaEffectiveLife"), "sharedManaEffectiveLife");
             copy(out, &format!("{name}MoMHitPool"), "sharedMoMHitPool");
@@ -1369,6 +1782,13 @@ pub fn estimations(env: &mut Env, state: &mut PerformState, who: Who) {
     if on(out, "sharedGuardAbsorbRate") > 0.0 {
         out.set_bool("OnlySharedGuard", true);
         out.set_num("sharedGuardAbsorb", cval(&db, "GuardAbsorbLimit"));
+        // :2429-2438
+        if let Some(bd) = bd.as_deref_mut() {
+            bd.put(
+                "sharedGuardAbsorb",
+                guard_breakdown(out, "sharedGuardAbsorb", "sharedGuardAbsorbRate"),
+            );
+        }
     }
     for name in DMG {
         let rate_key = format!("{name}GuardAbsorbRate");
@@ -1378,6 +1798,13 @@ pub fn estimations(env: &mut Env, state: &mut PerformState, who: Who) {
             out.set_bool("AnyGuard", true);
             out.set_bool("OnlySharedGuard", false);
             out.set_num(&format!("{name}GuardAbsorb"), cval(&db, &format!("{name}GuardAbsorbLimit")));
+            // :2447-2456
+            if let Some(bd) = bd.as_deref_mut() {
+                bd.put(
+                    format!("{name}GuardAbsorb"),
+                    guard_breakdown(out, &format!("{name}GuardAbsorb"), &rate_key),
+                );
+            }
         }
     }
 
@@ -1413,6 +1840,21 @@ pub fn estimations(env: &mut Env, state: &mut PerformState, who: Who) {
         // :2488-2489 Frost Shield (the `lifeProtected` at :2491 is breakdown-only).
         out.set_num("FrostShieldLife", base(&db, &["FrostGlobeHealth"]));
         out.set_num("FrostShieldDamageMitigation", base(&db, &["FrostGlobeDamageMitigation"]));
+        // :2491-2500
+        if let Some(bd) = bd.as_deref_mut() {
+            let (life, mitigation) = (on(out, "FrostShieldLife"), on(out, "FrostShieldDamageMitigation"));
+            let life_protected = life / (mitigation / 100.0) * (1.0 - mitigation / 100.0);
+            bd.put(
+                "FrostShieldLife",
+                BTable::lines([
+                    sf!("Total life protected:"),
+                    sf!("%d ^8(frost shield limit)", life),
+                    sf!("/ %.2f ^8(portion taken from frost shield)", mitigation / 100.0),
+                    sf!("x %.2f ^8(portion taken from life and energy shield)", 1.0 - mitigation / 100.0),
+                    sf!("= %d", life_protected),
+                ]),
+            );
+        }
 
         // :2502-2517
         for ally in ALLY_LIFE_POOL_LIST.iter() {
@@ -1441,6 +1883,7 @@ pub fn estimations(env: &mut Env, state: &mut PerformState, who: Who) {
         }
 
         // :2519-2534 Companionship (`sharedMinionLifeOverride` is read by the breakdown only).
+        let mut shared_minion_life_override = false;
         for ally in ALLY_LIFE_POOL_LIST.iter() {
             if fl(&[&format!("MinionLifeShares{}", ally.life)]) {
                 let specific_override = override_(&db, ally.life);
@@ -1449,6 +1892,7 @@ pub fn estimations(env: &mut Env, state: &mut PerformState, who: Who) {
                     && let Some(so) = specific_override
                 {
                     put(out, "TotalMinionLife", Some(OutValue::Num(num_val(&so, 2526))));
+                    shared_minion_life_override = true;
                 } else if !truthy(out, "TotalMinionLife") || out.opt_num("TotalMinionLife") == Some(0.0) {
                     copy(out, "TotalMinionLife", ally.life);
                 }
@@ -1476,6 +1920,30 @@ pub fn estimations(env: &mut Env, state: &mut PerformState, who: Who) {
             out.remove("TotalTotemLife");
         }
 
+        // :2544-2559
+        if let Some(bd) = bd.as_deref_mut() {
+            for ally in ALLY_LIFE_POOL_LIST.iter() {
+                let life_list = ally_life_list.and_then(|l| l.get(ally.life));
+                let ov = override_(&db, ally.life).filter(Value::truthy);
+                let override_truthy =
+                    ov.is_some() || (ally.life == "TotalMinionLife" && shared_minion_life_override && truthy(out, "TotalMinionLife"));
+                if truthy(out, ally.life) && (life_list.is_some() || override_truthy) {
+                    let mut t = BTable::new();
+                    if override_truthy {
+                        t.push(sf!("%d ^8(from config)", on(out, ally.life)));
+                    } else {
+                        for entry in life_list.expect("lifeList") {
+                            let count = match entry.count {
+                                Some(c) if c > 1.0 => format!("{}x ", tostring_num(c)),
+                                _ => String::new(),
+                            };
+                            t.push(sf!("%d ^8(%s%s)", entry.life, count, entry.name.as_str()));
+                        }
+                    }
+                    bd.put(ally.life, t);
+                }
+            }
+        }
         // :2561-2570 allied energy shield. The player has no parent; its party stub's output is empty (P5).
         out.set_num("SoulLinkMitigation", base(&db, &["TakenFromParentESBeforeYou"]));
         if on(out, "SoulLinkMitigation") != 0.0 {
@@ -1510,9 +1978,11 @@ pub fn estimations(env: &mut Env, state: &mut PerformState, who: Who) {
         copy(out, &pool_key, &format!("{name}ManaEffectiveLife"));
         copy(out, &hit_key, &format!("{name}MoMHitPool"));
         let bypass = on(out, &format!("{name}EnergyShieldBypass"));
+        let mut manatext = "Mana";
         if bypass < 100.0 {
             if fl(&["EnergyShieldProtectsMana"]) {
-                // :2586 only `manatext` (breakdown).
+                // :2586
+                manatext = "Mana and non-bypassed Energy Shield";
             } else if bypass > 0.0 {
                 let pool_protected = on(out, "EnergyShieldRecoveryCap") / (1.0 - bypass / 100.0) * (bypass / 100.0);
                 let p = on(out, &pool_key);
@@ -1528,6 +1998,19 @@ pub fn estimations(env: &mut Env, state: &mut PerformState, who: Who) {
                 let v = on(out, &hit_key) + on(out, "EnergyShieldRecoveryCap");
                 out.set_num(&hit_key, v);
             }
+        }
+        // :2598-2609
+        if let Some(bd) = bd.as_deref_mut() {
+            let mel = on(out, &format!("{name}ManaEffectiveLife"));
+            let mut t = BTable::lines([sf!("Life: %d", on(out, "LifeRecoverable"))]);
+            if mel != on(out, "LifeRecoverable") {
+                t.push(sf!("%s through MoM: %d", manatext, mel - on(out, "LifeRecoverable")));
+            }
+            if !fl(&["EnergyShieldProtectsMana"]) && on(out, &format!("{name}EnergyShieldBypass")) < 100.0 {
+                t.push(sf!("Non-bypassed Energy Shield: %d", on(out, &pool_key) - mel));
+            }
+            t.push(sf!("TotalPool: %d", on(out, &pool_key)));
+            bd.put(pool_key.clone(), t);
         }
     }
 
@@ -1667,14 +2150,120 @@ pub fn estimations(env: &mut Env, state: &mut PerformState, who: Who) {
             } else {
                 copy(out, "NumberOfMitigatedDamagingHits", "NumberOfDamagingHits");
             }
+            // :2885-2899
+            if let Some(bd) = bd.as_deref_mut() {
+                let mut t = BTable::lines([sf!("%.2f ^8(chance for block to fail)", 1.0 - block_chance)]);
+                if truthy(out, "ShowBlockEffect") {
+                    t.push(sf!("x %.2f ^8(block effect)", on(out, "BlockEffect") / 100.0));
+                }
+                if suppression_effect != 1.0 {
+                    t.push(sf!("x %.3f ^8(suppression effect)", suppression_effect));
+                }
+                if average_avoid_chance > 0.0 {
+                    t.push(sf!("x %.2f ^8(chance for avoidance to fail)", 1.0 - average_avoid_chance / 100.0));
+                }
+                t.push(sf!(
+                    "= %.1f%% ^8(of damage taken from a%s hit)",
+                    on(out, "ConfiguredDamageChance"),
+                    a_hit(&dcc, 2898)
+                ));
+                bd.put("ConfiguredDamageChance", t);
+            }
         }
 
         // :2902-2949
         let v = on(out, "NumberOfMitigatedDamagingHits") / (1.0 - on(out, "ConfiguredNotHitChance") / 100.0);
         out.set_num("TotalNumberOfHits", v);
+        if let Some(bd) = bd.as_deref_mut() {
+            let mut t = BTable::new();
+            if is(&dcc, "Melee") || is(&dcc, "Projectile") {
+                let k = concat_key(&dcc, 2908);
+                if on(out, &format!("{k}EvadeChance")) > 0.0 {
+                    t.push(sf!(
+                        "%.2f ^8(chance for evasion to fail)",
+                        1.0 - on(out, &format!("{k}EvadeChance")) / 100.0
+                    ));
+                }
+                if on(out, "AttackDodgeChance") > 0.0 {
+                    t.push(sf!(
+                        "x %.2f ^8(chance for dodge to fail)",
+                        1.0 - on(out, "AttackDodgeChance") / 100.0
+                    ));
+                }
+                if is(&dcc, "Projectile") && !truthy(out, "specificTypeAvoidance") && on(out, "AvoidProjectilesChance") > 0.0 {
+                    t.push(sf!(
+                        "x %.2f ^8(chance for avoidance to fail)",
+                        1.0 - on(out, "AvoidProjectilesChance") / 100.0
+                    ));
+                }
+            } else if is(&dcc, "Spell") || is(&dcc, "SpellProjectile") {
+                if on(out, "SpellDodgeChance") > 0.0 {
+                    t.push(sf!("%.2f ^8(chance for dodge to fail)", 1.0 - on(out, "SpellDodgeChance") / 100.0));
+                }
+                if is(&dcc, "SpellProjectile") && !truthy(out, "specificTypeAvoidance") && on(out, "AvoidProjectilesChance") > 0.0 {
+                    t.push(sf!(
+                        "x %.2f ^8(chance for avoidance to fail)",
+                        1.0 - on(out, "AvoidProjectilesChance") / 100.0
+                    ));
+                }
+            } else if is(&dcc, "Average") {
+                if on(out, "MeleeEvadeChance") > 0.0 || on(out, "ProjectileEvadeChance") > 0.0 {
+                    t.push(sf!(
+                        "%.2f ^8(chance for evasion to fail, only applies to the attack portion)",
+                        1.0 - (on(out, "MeleeEvadeChance") + on(out, "ProjectileEvadeChance")) / 2.0 / 100.0
+                    ));
+                }
+                if on(out, "AttackDodgeChance") > 0.0 || on(out, "SpellDodgeChance") > 0.0 {
+                    t.push(sf!(
+                        "x%.2f ^8(chance for dodge to fail)",
+                        1.0 - (on(out, "AttackDodgeChance") + on(out, "SpellDodgeChance")) / 2.0 / 100.0
+                    ));
+                }
+                if !truthy(out, "specificTypeAvoidance") && on(out, "AvoidProjectilesChance") > 0.0 {
+                    t.push(sf!(
+                        "x %.2f ^8(chance for avoidance to fail)",
+                        1.0 - on(out, "AvoidProjectilesChance") / 2.0 / 100.0
+                    ));
+                }
+            }
+            if on(out, "AvoidAllDamageFromHitsChance") > 0.0 {
+                t.push(sf!(
+                    "x %.2f ^8(chance for damage avoidance to fail)",
+                    1.0 - on(out, "AvoidAllDamageFromHitsChance") / 100.0
+                ));
+            }
+            let wo = worst_of(2939);
+            if wo > 1.0 {
+                t.push(sf!("unlucky worst of %d", wo));
+            }
+            t.push(sf!(
+                "= %d%% ^8(chance to be hit by a%s hit)",
+                100.0 - on(out, "ConfiguredNotHitChance"),
+                a_hit(&dcc, 2942)
+            ));
+            bd.put("ConfiguredNotHitChance", t);
+            bd.put(
+                "TotalNumberOfHits",
+                BTable::lines([
+                    sf!("%.2f ^8(Number of mitigated hits)", on(out, "NumberOfMitigatedDamagingHits")),
+                    sf!("/ %.2f ^8(Chance to even be hit)", 1.0 - on(out, "ConfiguredNotHitChance") / 100.0),
+                    sf!("= %.2f ^8(total average number of hits you can take)", on(out, "TotalNumberOfHits")),
+                ]),
+            );
+        }
         // :2951-2959
         let v = on(out, "TotalNumberOfHits") * on(out, "totalEnemyDamageIn");
         out.set_num("TotalEHP", v);
+        if let Some(bd) = bd.as_deref_mut() {
+            bd.put(
+                "TotalEHP",
+                BTable::lines([
+                    sf!("%.2f ^8(total average number of hits you can take)", on(out, "TotalNumberOfHits")),
+                    sf!("x %d ^8(total incoming damage)", on(out, "totalEnemyDamageIn")),
+                    sf!("= %d ^8(total damage you can take)", on(out, "TotalEHP")),
+                ]),
+            );
+        }
         // :2961-2974
         {
             let speed = cfg_or(&[input.get("enemySpeed"), placeholder.get("enemySpeed")], 700.0, 2963);
@@ -1684,6 +2273,17 @@ pub fn estimations(env: &mut Env, state: &mut PerformState, who: Who) {
             out.set_num("enemySkillTime", v);
             let v = on(out, "TotalNumberOfHits") * on(out, "enemySkillTime");
             out.set_num("EHPSurvivalTime", v);
+            // :2967-2973
+            if let Some(bd) = bd.as_deref_mut() {
+                bd.put(
+                    "EHPSurvivalTime",
+                    BTable::lines([
+                        sf!("%.2f ^8(total average number of hits you can take)", on(out, "TotalNumberOfHits")),
+                        sf!("x %.2f ^8enemy attack/cast time", on(out, "enemySkillTime")),
+                        sf!("= %.2f seconds ^8(total time it would take to die)", on(out, "EHPSurvivalTime")),
+                    ]),
+                );
+            }
         }
     }
 
@@ -1762,6 +2362,80 @@ pub fn estimations(env: &mut Env, state: &mut PerformState, who: Who) {
                 + on(out, &pseudo_key) / (st + pseudo_recoup_duration)
                 + extra.map_or(0.0, |(a, b)| a / (st + b));
             out.set_num(&format!("{recoup_type}RecoupRecoveryAvg"), v);
+            // :3014-3062
+            if let Some(bd) = bd.as_deref_mut() {
+                let mut multiple_types = 0;
+                let mut mx = BTable::new();
+                let plus = |n: i32| if n > 0 { "+" } else { "" };
+                if or0(out, &format!("{recoup_type}Recoup"), 3017) > 0.0 {
+                    mx.push(sf!("%d ^8(total damage taken during ehp calcs)", total_damage));
+                    mx.push(sf!(
+                        "* %.2f ^8(percent of damage recouped)",
+                        on(out, &format!("{recoup_type}Recoup")) / 100.0
+                    ));
+                    multiple_types += 1;
+                }
+                if or0(out, &el_key, 3022) > 0.0 && total_elemental_damage > 0.0 {
+                    if multiple_types > 0 {
+                        mx.push(sf!(""));
+                    }
+                    mx.push(sf!(
+                        "%s%d ^8(total elemental damage taken during ehp calcs)",
+                        plus(multiple_types),
+                        total_damage
+                    ));
+                    mx.push(sf!("* %.2f ^8(percent of damage recouped)", on(out, &el_key) / 100.0));
+                    multiple_types += 1;
+                }
+                for name in DMG {
+                    let rk = format!("{name}{recoup_type}Recoup");
+                    if or0(out, &rk, 3031) > 0.0 && on(out, &format!("{name}RecoupableDamageTaken")) > 0.0 {
+                        if multiple_types > 0 {
+                            mx.push(sf!(""));
+                        }
+                        mx.push(sf!(
+                            "%s%d ^8(total %s damage taken during ehp calcs)",
+                            plus(multiple_types),
+                            total_damage,
+                            name
+                        ));
+                        mx.push(sf!("* %.2f ^8(percent of damage recouped)", on(out, &rk) / 100.0));
+                        multiple_types += 1;
+                    }
+                }
+                mx.push(sf!("= %d ^8(total damage recoup amount)", on(out, &total_key)));
+                let mut avg = mx.clone();
+                mx.push(sf!("/ %.2f ^8(over %d seconds)", recoup_time, recoup_time));
+                if on(out, &pseudo_key) > 0.0 {
+                    mx.push(sf!("+ %.2f ^8(total damage mitigated pseudo recoup amount)", on(out, &pseudo_key)));
+                    mx.push(sf!("/ %.2f ^8(over %d seconds)", pseudo_recoup_duration, pseudo_recoup_duration));
+                }
+                if let Some((a, b)) = extra {
+                    mx.push(sf!("+ %.2f ^8(total damage mitigated pseudo recoup amount)", a));
+                    mx.push(sf!("/ %.2f ^8(over %d seconds)", b, b));
+                }
+                mx.push(sf!("= %.2f per second ^8", on(out, &format!("{recoup_type}RecoupRecoveryMax"))));
+                avg.push(sf!(
+                    "/ %.2f ^8(total time of the recoup (survival time + %d seconds))",
+                    st + recoup_time,
+                    recoup_time
+                ));
+                if on(out, &pseudo_key) > 0.0 {
+                    avg.push(sf!("+ %.2f ^8(total damage mitigated pseudo recoup amount)", on(out, &pseudo_key)));
+                    avg.push(sf!(
+                        "/ %.2f ^8(total time of the recoup (survival time + %d seconds)",
+                        st + pseudo_recoup_duration,
+                        pseudo_recoup_duration
+                    ));
+                }
+                if let Some((a, b)) = extra {
+                    avg.push(sf!("+ %.2f ^8(total damage mitigated pseudo recoup amount)", a));
+                    avg.push(sf!("/ %.2f ^8(total time of the recoup (survival time + %d seconds)", st + b, b));
+                }
+                avg.push(sf!("= %.2f per second ^8", on(out, &format!("{recoup_type}RecoupRecoveryAvg"))));
+                bd.put(format!("{recoup_type}RecoupRecoveryMax"), mx);
+                bd.put(format!("{recoup_type}RecoupRecoveryAvg"), avg);
+            }
         }
     }
 
@@ -1772,6 +2446,33 @@ pub fn estimations(env: &mut Env, state: &mut PerformState, who: Who) {
         out.set_num("LifeLossLostMax", v);
         let v = (on(out, "LifeLossLostOverTime") + on(out, "LifeBelowHalfLossLostOverTime") * lost) / (on(out, "EHPSurvivalTime") + 4.0);
         out.set_num("LifeLossLostAvg", v);
+        // :3071-3092
+        if let Some(bd) = bd.as_deref_mut() {
+            let (over, below) = (on(out, "LifeLossLostOverTime"), on(out, "LifeBelowHalfLossLostOverTime"));
+            let lines = |t: &mut BTable| {
+                if over != 0.0 {
+                    t.push(sf!("( %d ^8(total damage prevented by Progenesis)", over));
+                }
+                if below != 0.0 {
+                    let open = if over != 0.0 { "+" } else { "(" };
+                    t.push(sf!("%s %d ^8(total damage prevented by petrified blood)", open, below));
+                    t.push(sf!("* %.2f ^8(percent of damage taken from petrified blood)", lost));
+                }
+            };
+            let mut mx = BTable::new();
+            lines(&mut mx);
+            mx.push(sf!(") / %.2f ^8(over 4 seconds)", 4.0));
+            mx.push(sf!("= %.2f per second", on(out, "LifeLossLostMax")));
+            let mut avg = BTable::new();
+            lines(&mut avg);
+            avg.push(sf!(
+                ") / %.2f ^8(total time of the degen (survival time + 4 seconds))",
+                on(out, "EHPSurvivalTime") + 4.0
+            ));
+            avg.push(sf!("= %.2f per second", on(out, "LifeLossLostAvg")));
+            bd.put("LifeLossLostMax", mx);
+            bd.put("LifeLossLostAvg", avg);
+        }
     }
 
     // --- :3095-3114 net recovery over time from enemy hits -------------------------------------------------------
@@ -1782,6 +2483,25 @@ pub fn estimations(env: &mut Env, state: &mut PerformState, who: Who) {
         out.set_num("netLifeRecoupAndLossLostOverTimeAvg", v);
         if or0(out, "LifeRecoupRecoveryAvg", 3099) > 0.0 && on(out, "preventedLifeLossTotal") > 0.0 {
             out.set_bool("showNetRecoup", true);
+            // :3101-3112
+            if let Some(bd) = bd.as_deref_mut() {
+                bd.put(
+                    "netLifeRecoupAndLossLostOverTimeMax",
+                    BTable::lines([
+                        sf!("%.2f ^8(total life recouped per second)", on(out, "LifeRecoupRecoveryMax")),
+                        sf!("- %.2f ^8(total life taken over time per second)", on(out, "LifeLossLostMax")),
+                        sf!("= %.2f per second", on(out, "netLifeRecoupAndLossLostOverTimeMax")),
+                    ]),
+                );
+                bd.put(
+                    "netLifeRecoupAndLossLostOverTimeAvg",
+                    BTable::lines([
+                        sf!("%.2f ^8(total life recouped per second)", on(out, "LifeRecoupRecoveryAvg")),
+                        sf!("- %.2f ^8(total life taken over time per second)", on(out, "LifeLossLostAvg")),
+                        sf!("= %.2f per second", on(out, "netLifeRecoupAndLossLostOverTimeAvg")),
+                    ]),
+                );
+            }
         }
     }
 
@@ -1804,6 +2524,104 @@ pub fn estimations(env: &mut Env, state: &mut PerformState, who: Who) {
         let portion_non_elemental = (total / pvp_t_value / ne2).powf(ne1) * pvp_t_value * ne2 * percentage_non_elemental;
         let portion_elemental = (total / pvp_t_value / e2).powf(e1) * pvp_t_value * e2 * percentage_elemental;
         out.set_num("PvPTotalTakenHit", (portion_non_elemental + portion_elemental) * pvp_multiplier);
+        // :3132-3161
+        if let Some(bd) = bd.as_deref_mut() {
+            let mut t = BTable::new();
+            let percent_both = percentage_non_elemental > 0.0 && percentage_elemental > 0.0;
+            t.push(sf!(
+                "Pvp Formula is (D/(T*M))^E*T*%s, where D is the damage, T is the time taken,",
+                if percent_both { "M*P" } else { "M" }
+            ));
+            t.push(sf!(
+                " M is the multiplier%s",
+                if percent_both {
+                    ", E is the exponent and P is the percentage of that type (ele or non ele)"
+                } else {
+                    " and E is the exponent"
+                }
+            ));
+            let tt = on(out, "totalTakenHit");
+            if percent_both {
+                t.push(sf!(
+                    "(M= %.1f for ele and %.1f for non-ele)(E= %.2f for ele and %.2f for non-ele)",
+                    e2,
+                    ne2,
+                    e1,
+                    ne1
+                ));
+                t.push(sf!(
+                    "(%.1f / (%.2f * %.1f)) ^ %.2f * %.2f * %.1f * %.2f = %.1f",
+                    tt,
+                    pvp_t_value,
+                    ne2,
+                    ne1,
+                    pvp_t_value,
+                    ne2,
+                    percentage_non_elemental,
+                    portion_non_elemental
+                ));
+                t.push(sf!(
+                    "(%.1f / (%.2f * %.1f)) ^ %.2f * %.2f * %.1f * %.2f = %.1f",
+                    tt,
+                    pvp_t_value,
+                    e2,
+                    e1,
+                    pvp_t_value,
+                    e2,
+                    percentage_elemental,
+                    portion_elemental
+                ));
+                t.push(sf!(
+                    "(portionNonElemental + portionElemental)%s",
+                    if pvp_multiplier != 1.0 { " * PvP multiplier" } else { " " }
+                ));
+                if pvp_multiplier != 1.0 {
+                    t.push(sf!("(%.1f + %.1f) * %g", portion_non_elemental, portion_elemental, pvp_multiplier));
+                } else {
+                    t.push(sf!("%.1f + %.1f", portion_non_elemental, portion_elemental));
+                }
+            } else if percentage_elemental <= 0.0 {
+                t.push(sf!("(M= %.1f for non-ele)(E= %.2f for non-ele)", ne2, ne1));
+                t.push(sf!(
+                    "(%.1f / (%.2f * %.1f)) ^ %.2f * %.2f * %.1f = %.1f",
+                    tt,
+                    pvp_t_value,
+                    ne2,
+                    ne1,
+                    pvp_t_value,
+                    ne2,
+                    portion_non_elemental
+                ));
+                if pvp_multiplier != 1.0 {
+                    t.push(sf!(
+                        "%.1f * %g ^8(portionNonElemental * PvP multiplier)",
+                        portion_non_elemental,
+                        pvp_multiplier
+                    ));
+                }
+            } else if percentage_non_elemental <= 0.0 {
+                t.push(sf!("(M= %.1f for ele)(E= %.2f for ele)", e2, e1));
+                t.push(sf!(
+                    "(%.1f / (%.2f * %.1f)) ^ %.2f * %.2f * %.1f = %.1f",
+                    tt,
+                    pvp_t_value,
+                    e2,
+                    e1,
+                    pvp_t_value,
+                    e2,
+                    portion_elemental
+                ));
+                if pvp_multiplier != 1.0 {
+                    t.push(sf!(
+                        "%.1f * %g ^8(portionElemental * PvP multiplier)",
+                        portion_elemental,
+                        pvp_multiplier
+                    ));
+                }
+            }
+            t.push(sf!("= %.1f", on(out, "PvPTotalTakenHit")));
+            bd.put("PvPTotalTakenHit", t);
+        }
     }
 
     // --- :3164-3369 maximum hit taken ----------------------------------------------------------------------------
@@ -2023,6 +2841,55 @@ pub fn estimations(env: &mut Env, state: &mut PerformState, who: Who) {
                 round(part_min / enemy_damage_mult, None)
             };
             out.set_num(&format!("{name}MaximumHitTaken"), final_max_hit);
+            // :3310-3354
+            if let Some(bd) = bd.as_deref_mut() {
+                let key = format!("{name}MaximumHitTaken");
+                let mut tb = row_table(
+                    Some("Maximum hit damage breakdown"),
+                    &[
+                        ("Type", "type"),
+                        ("Pool", "pool"),
+                        ("Incoming", "incoming"),
+                        ("Multi", "multi"),
+                        ("Taken", "taken"),
+                    ],
+                );
+                let actor = view(out, &db, &shift);
+                let (full_taken, mut taken_damages) =
+                    taken_hit_from_damage(final_max_hit * enemy_damage_mult, dmg_type(t), &actor).unwrap_or_else(|e| panic!("{e}"));
+                let full_taken = if full_taken.is_nan() { 0.0 } else { full_taken };
+                // :3326 `pairs(takenDamages)` -- a string-keyed hash order (R13): dmgTypeList order here, the gate sorts the rows.
+                for (c, c_name) in DMG.iter().enumerate() {
+                    let Some(taken_amt) = taken_damages[c] else { continue };
+                    let conversion = need(shift[t][c], 3327, "damageShiftTable");
+                    let incoming = final_max_hit * enemy_damage_mult * conversion / 100.0;
+                    let nan_to_zero = if taken_amt.is_nan() { 0.0 } else { taken_amt };
+                    taken_damages[c] = Some(nan_to_zero);
+                    tb.field_mut("rowList").push(row(&[
+                        ("type", sf!("%d%% as %s", conversion, *c_name)),
+                        ("pool", sf!("%d", on(out, &format!("{c_name}TotalHitPool")))),
+                        ("incoming", sf!("%.0f", incoming)),
+                        ("multi", sf!("x%.3f", nan_to_zero / incoming)),
+                        ("taken", sf!("%.0f", nan_to_zero)),
+                    ]));
+                }
+                let full_multi = full_taken / final_max_hit / enemy_damage_mult;
+                tb.push("^8Maximum hit is calculated in reverse -");
+                tb.push("^8from health pools, via damage reductions, to the max hit:");
+                tb.push(sf!("%d ^8(used pool)", full_taken));
+                if round(full_multi, Some(2.0)) != 1.0 {
+                    tb.push(sf!("/ %.2f ^8(modifiers to damage taken)", full_multi));
+                }
+                if enemy_damage_mult != 1.0 {
+                    tb.push(sf!("/ %.2f ^8(modifiers to enemy damage)", enemy_damage_mult));
+                }
+                let approx = if use_conversion_smoothing { " (approximate)" } else { "" };
+                tb.push(sf!("= %.0f ^8maximum survivable enemy damage%s", final_max_hit, approx));
+                tb.push("^8Such a hit would drain the following resources:");
+                let pools = reduce_pools_by_damage(None, &mut taken_damages, &actor).unwrap_or_else(|e| panic!("{e}"));
+                incoming_damage_breakdown(&mut tb, &pools, out);
+                bd.put(key, tb);
+            }
         }
 
         // :3357-3368
@@ -2044,6 +2911,17 @@ pub fn estimations(env: &mut Env, state: &mut PerformState, who: Who) {
     for name in DMG {
         let v = on(out, &format!("{name}TotalPool")) / on(out, &format!("{name}TakenDotMult"));
         out.set_num(&format!("{name}DotEHP"), v);
+        // :3374-3380
+        if let Some(bd) = bd.as_deref_mut() {
+            bd.put(
+                format!("{name}DotEHP"),
+                BTable::lines([
+                    sf!("Total Pool: %d", on(out, &format!("{name}TotalPool"))),
+                    sf!("Dot Damage Taken modifier: %.2f", on(out, &format!("{name}TakenDotMult"))),
+                    sf!("Total Effective Dot Pool: %d", v),
+                ]),
+            );
+        }
     }
 
     // --- :3383-3786 degens ---------------------------------------------------------------------------------------
@@ -2061,6 +2939,54 @@ pub fn estimations(env: &mut Env, state: &mut PerformState, who: Who) {
                     out.set_num(&key, v);
                     let v = on(out, "TotalBuildDegen") + total;
                     out.set_num("TotalBuildDegen", v);
+                    // :3394-3431
+                    if let Some(bd) = bd.as_deref_mut() {
+                        let mult = sf!("x %.2f", on(out, &format!("{c_name}TakenDotMult")));
+                        bd.table_or("TotalBuildDegen", || {
+                            let mut t = row_table(
+                                None,
+                                &[
+                                    ("Base Type", "type"),
+                                    ("Final Type", "type2"),
+                                    ("Base", "base"),
+                                    ("Taken As Percent", "conv"),
+                                    ("Multiplier", "mult"),
+                                    ("Total", "total"),
+                                ],
+                            );
+                            t.fields.shift_remove("label");
+                            t
+                        })
+                        .field_mut("rowList")
+                        .push(row(&[
+                            ("type", (*name).to_owned()),
+                            ("type2", (*c_name).to_owned()),
+                            ("base", sf!("%.1f", base_val)),
+                            ("conv", sf!("x %.2f%%", convert_percent)),
+                            ("mult", mult.clone()),
+                            ("total", sf!("%.1f", total)),
+                        ]));
+                        bd.table_or(&key, || {
+                            row_table(
+                                None,
+                                &[
+                                    ("Base Type", "type"),
+                                    ("Base", "base"),
+                                    ("Taken As Percent", "conv"),
+                                    ("Multiplier", "mult"),
+                                    ("Total", "total"),
+                                ],
+                            )
+                        })
+                        .field_mut("rowList")
+                        .push(row(&[
+                            ("type", (*name).to_owned()),
+                            ("base", sf!("%.1f", base_val)),
+                            ("conv", sf!("x %.2f%%", convert_percent)),
+                            ("mult", mult),
+                            ("total", sf!("%.1f", total)),
+                        ]));
+                    }
                 }
             }
         }
@@ -2074,6 +3000,17 @@ pub fn estimations(env: &mut Env, state: &mut PerformState, who: Who) {
         copy(out, "NetManaRegen", "ManaRegenRecovery");
         copy(out, "NetEnergyShieldRegen", "EnergyShieldRegenRecovery");
         let (mut tl, mut tm, mut te) = (0.0, 0.0, 0.0);
+        // :3445-3470
+        let net_keys = [
+            ("NetLifeRegen", "Total Life Degen"),
+            ("NetManaRegen", "Total Mana Degen"),
+            ("NetEnergyShieldRegen", "Total Energy Shield Degen"),
+        ];
+        if let Some(bd) = bd.as_deref_mut() {
+            for (k, label) in net_keys {
+                bd.put(k, row_table(Some(label), &[("Type", "type"), ("Degen", "degen")]));
+            }
+        }
         for (t, name) in DMG.iter().enumerate() {
             let key = format!("{name}BuildDegen");
             if truthy(out, &key) {
@@ -2081,6 +3018,13 @@ pub fn estimations(env: &mut Env, state: &mut PerformState, who: Who) {
                 tl += l;
                 tm += m;
                 te += e;
+                // :3493-3506
+                if let Some(bd) = bd.as_deref_mut() {
+                    for ((k, _), d) in net_keys.iter().zip([l, m, e]) {
+                        let r = row(&[("type", sf!("%s", *name)), ("degen", sf!("%.2f", d))]);
+                        bd.table_mut(k).field_mut("rowList").push(r);
+                    }
+                }
             }
         }
         let v = on(out, "NetLifeRegen") - tl;
@@ -2091,6 +3035,29 @@ pub fn estimations(env: &mut Env, state: &mut PerformState, who: Who) {
         out.set_num("NetEnergyShieldRegen", v);
         let v = on(out, "NetLifeRegen") + on(out, "NetManaRegen") + on(out, "NetEnergyShieldRegen");
         out.set_num("TotalNetRegen", v);
+        // :3513-3528
+        if let Some(bd) = bd.as_deref_mut() {
+            let lines = [
+                ("NetLifeRegen", "LifeRegenRecovery", "life", tl),
+                ("NetManaRegen", "ManaRegenRecovery", "mana", tm),
+                ("NetEnergyShieldRegen", "EnergyShieldRegenRecovery", "energy shield", te),
+            ];
+            for (k, regen, what, total) in lines {
+                let t = bd.table_mut(k);
+                t.push(sf!("%.1f ^8(total %s regen)", on(out, regen), what));
+                t.push(sf!("- %.1f ^8(total %s degen)", total, what));
+                t.push(sf!("= %.1f", on(out, k)));
+            }
+            bd.put(
+                "TotalNetRegen",
+                BTable::lines([
+                    sf!("Net Life Regen: %.1f", on(out, "NetLifeRegen")),
+                    sf!("+ Net Mana Regen: %.1f", on(out, "NetManaRegen")),
+                    sf!("+ Net Energy Shield Regen: %.1f", on(out, "NetEnergyShieldRegen")),
+                    sf!("= Total Net Regen: %.1f", on(out, "TotalNetRegen")),
+                ]),
+            );
+        }
     }
     // :3531-3544 the enemy's ailments on you
     let enemy_crit_ailment_effect =
@@ -2120,9 +3087,16 @@ pub fn estimations(env: &mut Env, state: &mut PerformState, who: Who) {
     }
     if dot || (enemy_ignite_chance + enemy_poison_chance + enemy_bleed_chance) > 0.0 {
         out.set_num("TotalDegen", or0(out, "TotalBuildDegen", 3546));
-        let add_degen = |out: &mut Output, row: &[Option<f64>; 5], base_val: f64, line: u32| {
+        // `bd` / `source` / `ty` feed the rows of :3561-3602 / :3630-3671.
+        let add_degen = |out: &mut Output,
+                         mut bd: Option<&mut Breakdown>,
+                         shift_row: &[Option<f64>; 5],
+                         base_val: f64,
+                         line: u32,
+                         source: &str,
+                         ty: &str| {
             for (c, c_name) in DMG.iter().enumerate() {
-                let Some(convert_percent) = row[c] else { continue };
+                let Some(convert_percent) = shift_row[c] else { continue };
                 if convert_percent > 0.0 {
                     let total = base_val * (convert_percent / 100.0) * on(out, &format!("{c_name}TakenDotMult"));
                     let key = format!("{c_name}EnemyDegen");
@@ -2130,17 +3104,69 @@ pub fn estimations(env: &mut Env, state: &mut PerformState, who: Who) {
                     out.set_num(&key, v);
                     let v = on(out, "TotalDegen") + total;
                     out.set_num("TotalDegen", v);
+                    if let Some(bd) = bd.as_deref_mut() {
+                        let mult = sf!("x %.2f", on(out, &format!("{c_name}TakenDotMult")));
+                        bd.table_or("TotalDegen", || {
+                            let mut t = row_table(
+                                None,
+                                &[
+                                    ("Source", "source"),
+                                    ("Base Type", "type"),
+                                    ("Final Type", "type2"),
+                                    ("Base", "base"),
+                                    ("Taken As Percent", "conv"),
+                                    ("Multiplier", "mult"),
+                                    ("Total", "total"),
+                                ],
+                            );
+                            t.fields.shift_remove("label");
+                            t
+                        })
+                        .field_mut("rowList")
+                        .push(row(&[
+                            ("source", source.to_owned()),
+                            ("type", ty.to_owned()),
+                            ("type2", (*c_name).to_owned()),
+                            ("base", sf!("%.1f", base_val)),
+                            ("conv", sf!("x %.2f%%", convert_percent)),
+                            ("mult", mult.clone()),
+                            ("total", sf!("%.1f", total)),
+                        ]));
+                        bd.table_or(&key, || {
+                            row_table(
+                                None,
+                                &[
+                                    ("Source", "source"),
+                                    ("Base Type", "type"),
+                                    ("Base", "base"),
+                                    ("Taken As Percent", "conv"),
+                                    ("Multiplier", "mult"),
+                                    ("Total", "total"),
+                                ],
+                            )
+                        })
+                        .field_mut("rowList")
+                        .push(row(&[
+                            ("source", source.to_owned()),
+                            ("type", ty.to_owned()),
+                            ("base", sf!("%.1f", base_val)),
+                            ("conv", sf!("x %.2f%%", convert_percent)),
+                            ("mult", mult),
+                            ("total", sf!("%.1f", total)),
+                        ]));
+                    }
                 }
             }
         };
         if dot {
             // :3547-3606
             for (t, name) in DMG.iter().enumerate() {
-                let base_val = tonumber(input.get(&format!("enemy{name}Damage")))
-                    .unwrap_or_else(|| tonumber(placeholder.get(&format!("enemy{name}Damage"))).unwrap_or(0.0));
+                let cfg_val = tonumber(input.get(&format!("enemy{name}Damage")));
+                let source = if cfg_val.is_none() { "Default" } else { "Config" };
+                let base_val = cfg_val.unwrap_or_else(|| tonumber(placeholder.get(&format!("enemy{name}Damage"))).unwrap_or(0.0));
                 if base_val > 0.0 {
                     // :3556 hash-order sum (D13): dmgTypeList order.
-                    add_degen(out, &dot_shift[t], base_val, 3559);
+                    add_degen(out, bd.as_deref_mut(), &dot_shift[t], base_val, 3559, source, name);
                 }
             }
         } else if (enemy_ignite_chance + enemy_poison_chance + enemy_bleed_chance) > 0.0 {
@@ -2172,7 +3198,15 @@ pub fn estimations(env: &mut Env, state: &mut PerformState, who: Who) {
                     / 100.0;
                 if base_val > 0.0 {
                     // :3625 hash-order sum (D13): dmgTypeList order.
-                    add_degen(out, &dot_shift[damage_type], base_val, 3628);
+                    add_degen(
+                        out,
+                        bd.as_deref_mut(),
+                        &dot_shift[damage_type],
+                        base_val,
+                        3628,
+                        source,
+                        DMG[damage_type],
+                    );
                 }
             }
         }
@@ -2185,6 +3219,17 @@ pub fn estimations(env: &mut Env, state: &mut PerformState, who: Who) {
             copy(out, "ComprehensiveNetManaRegen", "ManaRegenRecovery");
             copy(out, "ComprehensiveNetEnergyShieldRegen", "EnergyShieldRegenRecovery");
             let (mut tl, mut tm, mut te) = (0.0, 0.0, 0.0);
+            // :3686-3711
+            let net_keys = [
+                ("ComprehensiveNetLifeRegen", "Total Life Degen"),
+                ("ComprehensiveNetManaRegen", "Total Mana Degen"),
+                ("ComprehensiveNetEnergyShieldRegen", "Total Energy Shield Degen"),
+            ];
+            if let Some(bd) = bd.as_deref_mut() {
+                for (k, label) in net_keys {
+                    bd.put(k, row_table(Some(label), &[("Type", "type"), ("Degen", "degen")]));
+                }
+            }
             for (t, name) in DMG.iter().enumerate() {
                 let type_degen = or0(out, &format!("{name}BuildDegen"), 3713) + or0(out, &format!("{name}EnemyDegen"), 3713);
                 if type_degen != 0.0 {
@@ -2192,6 +3237,13 @@ pub fn estimations(env: &mut Env, state: &mut PerformState, who: Who) {
                     tl += l;
                     tm += m;
                     te += e;
+                    // :3735-3748
+                    if let Some(bd) = bd.as_deref_mut() {
+                        for ((k, _), d) in net_keys.iter().zip([l, m, e]) {
+                            let r = row(&[("type", sf!("%s", *name)), ("degen", sf!("%.2f", d))]);
+                            bd.table_mut(k).field_mut("rowList").push(r);
+                        }
+                    }
                 }
             }
             let v = on(out, "ComprehensiveNetLifeRegen") + or0(out, "LifeRecoupRecoveryAvg", 3751) - tl - or0(out, "LifeLossLostAvg", 3751);
@@ -2203,8 +3255,213 @@ pub fn estimations(env: &mut Env, state: &mut PerformState, who: Who) {
             let v =
                 on(out, "ComprehensiveNetLifeRegen") + on(out, "ComprehensiveNetManaRegen") + on(out, "ComprehensiveNetEnergyShieldRegen");
             out.set_num("ComprehensiveTotalNetRegen", v);
+            // :3755-3782
+            if let Some(bd) = bd.as_deref_mut() {
+                let t = bd.table_mut("ComprehensiveNetLifeRegen");
+                t.push(sf!("%.1f ^8(total life regen)", on(out, "LifeRegenRecovery")));
+                if or0(out, "LifeRecoupRecoveryAvg", 3757) != 0.0 {
+                    t.push(sf!("+ %.1f ^8(average life recoup)", or0(out, "LifeRecoupRecoveryAvg", 3758)));
+                }
+                t.push(sf!("- %.1f ^8(total life degen)", tl));
+                if or0(out, "LifeLossLostAvg", 3761) != 0.0 {
+                    t.push(sf!("- %.1f ^8(average life lost over time)", or0(out, "LifeLossLostAvg", 3762)));
+                }
+                t.push(sf!("= %.1f", on(out, "ComprehensiveNetLifeRegen")));
+                let t = bd.table_mut("ComprehensiveNetManaRegen");
+                t.push(sf!("%.1f ^8(total mana regen)", on(out, "ManaRegenRecovery")));
+                if or0(out, "ManaRecoupRecoveryAvg", 3766) != 0.0 {
+                    t.push(sf!("+ %.1f ^8(average mana recoup)", or0(out, "ManaRecoupRecoveryAvg", 3767)));
+                }
+                t.push(sf!("- %.1f ^8(total mana degen)", tm));
+                t.push(sf!("= %.1f", on(out, "ComprehensiveNetManaRegen")));
+                let t = bd.table_mut("ComprehensiveNetEnergyShieldRegen");
+                t.push(sf!("%.1f ^8(total energy shield regen)", on(out, "EnergyShieldRegenRecovery")));
+                if or0(out, "EnergyShieldRecoupRecoveryAvg", 3772) != 0.0 {
+                    t.push(sf!(
+                        "+ %.1f ^8(average energy shield recoup)",
+                        or0(out, "EnergyShieldRecoupRecoveryAvg", 3773)
+                    ));
+                }
+                t.push(sf!("- %.1f ^8(total energy shield degen)", te));
+                t.push(sf!("= %.1f", on(out, "ComprehensiveNetEnergyShieldRegen")));
+                bd.put(
+                    "ComprehensiveTotalNetRegen",
+                    BTable::lines([
+                        sf!("Net Life Regen: %.1f", on(out, "ComprehensiveNetLifeRegen")),
+                        sf!("+ Net Mana Regen: %.1f", on(out, "ComprehensiveNetManaRegen")),
+                        sf!("+ Net Energy Shield Regen: %.1f", on(out, "ComprehensiveNetEnergyShieldRegen")),
+                        sf!("= Total Net Regen: %.1f", on(out, "ComprehensiveTotalNetRegen")),
+                    ]),
+                );
+            }
         }
     }
 
-    // :3788-3871 the breakdown of the incoming hit -- breakdown tables only (module doc).
+    // :3788-3870 the breakdown of the incoming hit
+    if let Some(bd) = bd {
+        let mut taken_hit: DamageTable = [None; 5];
+        for (t, name) in DMG.iter().enumerate() {
+            let th = on(out, &format!("{name}TakenHit"));
+            taken_hit[t] = if th > 0.0 { Some(th) } else { None };
+            let r = row(&[
+                ("type", sf!("%s", *name)),
+                ("incoming", sf!("%.1f incoming damage", on(out, &format!("{name}TakenDamage")))),
+                ("mult", sf!("x %.3f damage mult", on(out, &format!("{name}TakenHitMult")))),
+                ("value", sf!("%d", th.ceil())),
+            ]);
+            bd.table_mut("totalTakenHit").field_mut("rowList").push(r);
+        }
+        let actor = view(out, &db, &shift);
+        let pools = reduce_pools_by_damage(None, &mut taken_hit, &actor).unwrap_or_else(|e| panic!("{e}"));
+        let tt = bd.table_mut("totalTakenHit");
+        tt.push("Such a hit would drain the following resources:");
+        incoming_damage_breakdown(tt, &pools, out);
+        for (t, name) in DMG.iter().enumerate() {
+            let lost = &pools.resources_lost[t];
+            let mut sum = 0.0;
+            let mut tb = BTable::lines([
+                sf!("Final %s Damage taken:", *name),
+                sf!("%.1f incoming damage", on(out, &format!("{name}TakenDamage"))),
+                sf!("x %.3f damage mult", on(out, &format!("{name}TakenHitMult"))),
+                sf!("= %.1f", on(out, &format!("{name}TakenHit"))),
+            ]);
+            tb.push("This part of the hit drains the following resources:");
+            let gem = color_code("GEM");
+            for (k, ally) in ALLY_LIFE_POOL_LIST.iter().enumerate() {
+                if let Some(l) = lost.allies[k] {
+                    sum += l;
+                    tb.push(sf!(&format!("\t%d {gem}{}", ally.label), l));
+                }
+            }
+            let mut line = |v: Option<f64>, fmt: String, with_type: bool, sum: &mut f64| {
+                if let Some(v) = v {
+                    *sum += v;
+                    tb.push(if with_type { sf!(&fmt, v, *name) } else { sf!(&fmt, v) });
+                }
+            };
+            line(lost.aegis, format!("\t%d {gem}%s Aegis charge"), true, &mut sum);
+            line(
+                lost.shared_elemental_aegis,
+                format!("\t%d {gem}Elemental Aegis charge"),
+                false,
+                &mut sum,
+            );
+            line(lost.shared_aegis, format!("\t%d {gem}Shared Aegis charge"), false, &mut sum);
+            let scourge = color_code("SCOURGE");
+            line(lost.guard, format!("\n\t%d {scourge}%s Guard charge"), true, &mut sum);
+            line(lost.shared_guard, format!("\t%d {scourge}Shared Guard charge"), false, &mut sum);
+            line(lost.ward, format!("\t%d {}Ward", color_code("WARD")), false, &mut sum);
+            line(
+                lost.energy_shield,
+                format!("\t%d {}Energy Shield", color_code("ES")),
+                false,
+                &mut sum,
+            );
+            line(lost.mana, format!("\t%d {}Mana", color_code("MANA")), false, &mut sum);
+            let life = color_code("LIFE");
+            line(
+                lost.life_loss_prevented.filter(|v| *v > 0.0),
+                format!("\t%d {life}Life ^7Loss Prevented"),
+                false,
+                &mut sum,
+            );
+            line(lost.life.filter(|v| *v > 0.0), format!("\t%d {life}Life"), false, &mut sum);
+            line(
+                lost.overkill,
+                format!("\t%d {}Overkill damage", color_code("NEGATIVE")),
+                false,
+                &mut sum,
+            );
+            tb.push(sf!("\t^8(%d total)", sum));
+            bd.put(format!("{name}TakenHit"), tb);
+        }
+    }
+}
+
+/// CalcDefence.lua:431-477 `incomingDamageBreakdown(breakdownTable, poolsRemaining, output)`.
+fn incoming_damage_breakdown(t: &mut BTable, pools: &crate::pools::PoolsResult, out: &Output) {
+    let gem = color_code("GEM");
+    for (k, ally) in ALLY_LIFE_POOL_LIST.iter().enumerate() {
+        if let Some(pool) = &pools.allies_taken_before_you[k] {
+            let life = on(out, ally.life);
+            t.push(sf!(
+                &format!("\t%d {gem}{} ^7(%d remaining)", ally.label),
+                life - pool.remaining,
+                pool.remaining
+            ));
+        }
+    }
+    for (d, name) in DMG.iter().enumerate() {
+        if let Some(a) = pools.resources_lost[d].aegis {
+            let rem = need(pools.aegis.typed[d], 442, "Aegis[damageType]");
+            t.push(sf!(&format!("\t%d {gem}%s Aegis charge ^7(%d remaining)"), a, *name, rem));
+        }
+    }
+    if let Some(sea) = out.opt_num("sharedElementalAegis") {
+        let rem = pools.aegis.shared_elemental;
+        if Some(sea) != rem {
+            let rem = need(rem, 446, "Aegis.sharedElemental");
+            t.push(sf!(&format!("\t%d {gem}Elemental Aegis charge ^7(%d remaining)"), sea - rem, rem));
+        }
+    }
+    if let Some(sa) = out.opt_num("sharedAegis")
+        && sa > 0.0
+    {
+        let rem = need(pools.aegis.shared, 449, "Aegis.shared");
+        t.push(sf!(&format!("\t%d {gem}Shared Aegis charge ^7(%d remaining)"), sa - rem, rem));
+    }
+    let scourge = color_code("SCOURGE");
+    for (d, name) in DMG.iter().enumerate() {
+        if let Some(g) = pools.resources_lost[d].guard {
+            let rem = need(pools.guard.typed[d], 453, "Guard[damageType]");
+            t.push(sf!(&format!("\n\t%d {scourge}%s Guard charge ^7(%d remaining)"), g, *name, rem));
+        }
+    }
+    if let Some(sg) = out.opt_num("sharedGuardAbsorb")
+        && sg > 0.0
+    {
+        let rem = need(pools.guard.shared, 457, "Guard.shared");
+        t.push(sf!(&format!("\t%d {scourge}Shared Guard charge ^7(%d remaining)"), sg - rem, rem));
+    }
+    if let Some(w) = out.opt_num("Ward")
+        && w > 0.0
+    {
+        t.push(sf!(&format!("\t%d {}Ward", color_code("WARD")), w));
+    }
+    if let Some(es) = out.opt_num("EnergyShieldRecoveryCap")
+        && es != pools.energy_shield
+        && es > 0.0
+    {
+        t.push(sf!(
+            &format!("\t%d {}Energy Shield ^7(%d remaining)", color_code("ES")),
+            es - pools.energy_shield,
+            pools.energy_shield
+        ));
+    }
+    if let Some(m) = out.opt_num("ManaUnreserved")
+        && m != pools.mana
+        && m > 0.0
+    {
+        t.push(sf!(
+            &format!("\t%d {}Mana ^7(%d remaining)", color_code("MANA")),
+            m - pools.mana,
+            pools.mana
+        ));
+    }
+    let life = color_code("LIFE");
+    let prevented = pools.life_loss_lost_over_time + pools.life_below_half_loss_lost_over_time;
+    if prevented > 0.0 {
+        t.push(sf!(&format!("\t%d {life}Life ^7Loss Prevented"), prevented));
+    }
+    t.push(sf!(
+        &format!("\t%d {life}Life ^7(%d remaining)"),
+        on(out, "LifeRecoverable") - pools.life,
+        pools.life
+    ));
+    if pools.overkill_damage >= 1.0 {
+        t.push(sf!(
+            &format!("\t%d {}Overkill damage", color_code("NEGATIVE")),
+            pools.overkill_damage
+        ));
+    }
 }

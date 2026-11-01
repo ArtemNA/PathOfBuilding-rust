@@ -6,7 +6,7 @@
 //!   process. The two iterations are independent: each reads only its own `pool[name]` and writes only `name`-keyed state
 //!   (`env.player[name.."Efficiency"]`, `reserved_<name>Base/Percent`, `uncancellable_<name>Reservation`, `skillData[name..*]`,
 //!   `breakdown[name.."Reserved"]`), so the order cannot change a value; Rust walks Mana, Life (the constructor's order).
-//! * `breakdown` (R8): the two `if breakdown` blocks (:1975-1976, :2054-2065, :2072-2083) only fill breakdown tables -- not ported.
+//! * `breakdown` (R8.4): the `reservations` rows of :2050-2061 / :2067-2078 (the tables themselves are created in `perform.rs`, :1974-1977).
 //! * `activeSkill.skillData` is the same Lua table the mod core reads through `actor.activeSkillList` (`ModStore:GetStat`,
 //!   `ManaReservedPercent`/`LifeReservedPercent` read `skillData.<pool>ReservedBase`, `skillFlags.disable`): every write here is mirrored
 //!   into that snapshot right after the skill ([`sync_core`]), so a later skill's queries see it as LuaJIT does.
@@ -14,6 +14,7 @@
 use std::rc::Rc;
 
 use pob_lua::number::{floor, max2, modf, round};
+use pob_lua::tostring_num;
 use pob_mods::{ModCfg, ModType, StoreRef, Value};
 
 use super::{skill_cfg_of, skill_guard, skill_list_of, skill_type_u32};
@@ -117,7 +118,7 @@ fn sync_core(env: &Env, i: usize) {
 
 /// :1978-2090 the loop. `output` = `env.player.output` (reads `output[name]`, :2045).
 #[allow(clippy::too_many_lines)]
-pub(super) fn reservation_loop(env: &mut Env, output: &Output, acc: &mut Acc) {
+pub(super) fn reservation_loop(env: &mut Env, output: &Output, acc: &mut Acc, mut bd: Option<&mut crate::breakdown::Breakdown>) {
     let has_reservation = skill_type_u32("HasReservation");
     let reservation_becomes_cost = skill_type_u32("ReservationBecomesCost");
     let n_skills = env.skills.as_ref().map_or(0, |st| st.active_skill_list.len());
@@ -149,6 +150,7 @@ pub(super) fn reservation_loop(env: &mut Env, output: &Output, acc: &mut Acc) {
             (ae.granted_effect, ae.granted_effect_level)
         };
         let ge = &skills.effects[ge_idx];
+        let ge_name = ge.name.clone();
         let gel = gel_key
             .and_then(|k| ge.level(k))
             .unwrap_or_else(|| panic!("{CP}:1984: attempt to index field 'grantedEffectLevel' (a nil value)"));
@@ -269,9 +271,37 @@ pub(super) fn reservation_loop(env: &mut Env, output: &Output, acc: &mut Acc) {
                 (&mut acc.life_base, &mut acc.life_percent, &mut acc.uncancellable_life)
             };
             // :2049-2066
+            let more = resource_more * generic_more;
+            // :2051-2060 / :2068-2077 the `reservations` row (`x and ("x "..y)` is `false` when `x` fails)
+            let row = |base: crate::breakdown::BVal, total: crate::breakdown::BVal| {
+                use crate::breakdown::{BTable, BVal};
+                let or_false = |c: bool, s: String| if c { BVal::Str(s) } else { BVal::Bool(false) };
+                BTable::new()
+                    .with("skillName", ge_name.as_str())
+                    .with("base", base)
+                    .with("mult", or_false(mult != 1.0, format!("x {}", tostring_num(mult))))
+                    .with("more", or_false(more != 1.0, format!("x {}", tostring_num(more))))
+                    .with("inc", or_false(inc != 0.0, format!("x {}", tostring_num(1.0 + inc / 100.0))))
+                    .with(
+                        "efficiency",
+                        or_false(
+                            efficiency != 0.0,
+                            format!("x {}", tostring_num(round(100.0 / (100.0 + efficiency), Some(4.0)))),
+                        ),
+                    )
+                    .with(
+                        "efficiencyMore",
+                        or_false(efficiency_more != 1.0, format!("x {}", tostring_num(efficiency_more))),
+                    )
+                    .with("total", total)
+            };
             if reserved_flat != 0.0 {
                 sk.skill_data.insert(format!("{name}ReservedBase"), Value::Num(reserved_flat));
                 *acc_base += reserved_flat;
+                if let Some(bd) = bd.as_deref_mut() {
+                    let r = row(values.base_flat.into(), reserved_flat.into());
+                    bd.table_mut(&format!("{name}Reserved")).field_mut("reservations").push(r);
+                }
             }
             // :2067-2084
             if reserved_percent != 0.0 {
@@ -282,6 +312,13 @@ pub(super) fn reservation_loop(env: &mut Env, output: &Output, acc: &mut Acc) {
                     Value::Num(reserved_flat + (pool_max * reserved_percent / 100.0).ceil()),
                 );
                 *acc_percent += reserved_percent;
+                if let Some(bd) = bd.as_deref_mut() {
+                    let r = row(
+                        format!("{}%", tostring_num(values.base_percent)).into(),
+                        format!("{}%", tostring_num(reserved_percent)).into(),
+                    );
+                    bd.table_mut(&format!("{name}Reserved")).field_mut("reservations").push(r);
+                }
             }
             // :2085-2087
             if sml.flag(&["HasUncancellableReservation"]) {

@@ -12,7 +12,8 @@
 //! Breakdown (MINEFIELD-RUST R8): MAIN builds it (`env.buildBreakdown`, `env.player.breakdown` at CalcPerform.lua:1515-1518),
 //! so all 35 `if breakdown then` branches of :511-1671 run upstream. Each was checked (R4.3 report): every one writes only
 //! `breakdown.*` tables (directly, or via `breakdown.slot`/`multiChain`/`mod`, CalcBreakdown.lua:17-93, which read modDB and
-//! `t_insert` into breakdown tables) -- none writes `output`, a condition or a mod, so none is ported.
+//! `t_insert` into breakdown tables) -- none writes `output`, a condition or a mod. R8.4 ports them (`bd` = `actor.breakdown`,
+//! [`crate::breakdown`]), gated by `tests/breakdown.rs` against LuaJIT.
 //!
 //! Numbers: `round`/`floor(x, dec)` = Common.lua (`pob_lua::number`), `m_min/m_max` = LuaJIT `minsd/maxsd` folds (L7),
 //! `m_modf` = `pob_lua::number::modf`, `m_floor` = `f64::floor`, `^` = `f64::powf` (UCRT `pow`, = desktop LuaJIT, R2/O11).
@@ -28,11 +29,14 @@ use pob_data::rules::rules;
 use pob_lua::number::{floor, max2, min2, modf, round};
 use pob_mods::{Mod, ModCfg, ModType, StoreRef, Table, Tag, Value, create_mod};
 
+use crate::breakdown::{self, BTable, Breakdown, Chain, multi_chain, step};
 use crate::calc_lib;
 use crate::env::Env;
 use crate::output::{OutValue, Output};
 use crate::perform::{PerformState, Who};
 use crate::setup::{misc, n, ok, s, tag};
+use crate::sf;
+use pob_lua::tostring_num;
 
 pub use crate::pools::armour_reduction_f;
 
@@ -274,7 +278,7 @@ fn get_converted_mod_tags(m: &Mod, multiplier: f64) -> Vec<Tag> {
 
 // --- CalcDefence.lua:511-649 `calcs.resistances` ---------------------------------------------------------------------
 
-pub fn resistances(db: &StoreRef, out: &mut Output) {
+pub fn resistances(db: &StoreRef, out: &mut Output, mut bd: Option<&mut Breakdown>) {
     // :526
     out.set_num("PhysicalResist", 0.0);
 
@@ -464,7 +468,18 @@ pub fn resistances(db: &StoreRef, out: &mut Output) {
         out.set_num(&format!("Totem{elem}ResistTotal"), totem_total_t);
         out.set_num(&format!("Totem{elem}ResistOverCap"), max2(0.0, totem_total_t - totem_max));
         out.set_num(&format!("MissingTotem{elem}Resist"), max2(0.0, totem_max - totem_final));
-        // :635-648 breakdown only.
+        // :636-647
+        if let Some(bd) = bd.as_deref_mut() {
+            let t = |m: f64, tot: f64| {
+                BTable::lines([
+                    format!("Min: {}%", tostring_num(min)),
+                    format!("Max: {}%", tostring_num(m)),
+                    format!("Total: {}%", tostring_num(tot)),
+                ])
+            };
+            bd.put(resist.clone(), t(max, total_t));
+            bd.put(totem_resist.clone(), t(totem_max, totem_total_t));
+        }
     }
 }
 
@@ -494,7 +509,7 @@ pub fn defence(env: &mut Env, state: &mut PerformState, who: Who) {
 
     // --- :662-676 action speed, resistances, minion branches ------------------------------------------------------
     actor_state.output.set_num("ActionSpeedMod", action_speed_mod(&db));
-    resistances(&db, &mut actor_state.output);
+    resistances(&db, &mut actor_state.output, actor_state.breakdown.as_mut());
     // :666-671 `ResistanceAddedToMinions` -- the actor's final resistances into `env.minion.modDB`
     if let Some(m) = env.minion.clone() {
         let added = base(&db, &["ResistanceAddedToMinions"]);
@@ -516,10 +531,11 @@ pub fn defence(env: &mut Env, state: &mut PerformState, who: Who) {
     }
     // :673-676 Formless Inferno: `if actor == env.minion`
     if who == Who::Minion {
-        crate::perform::do_actor_life_mana(&db, &mut actor_state.output);
+        crate::perform::do_actor_life_mana(&db, &mut actor_state.output, actor_state.breakdown.as_mut());
         crate::perform::do_actor_life_mana_reservation(&db, actor_state, false);
     }
     let out = &mut actor_state.output;
+    let mut bd = actor_state.breakdown.as_mut();
 
     // --- :678-790 block -----------------------------------------------------------------------------------------------
     out.set_num("BlockChanceMax", min2(base(&db, &["BlockChanceMax"]), misc("BlockChanceCap")));
@@ -617,7 +633,27 @@ pub fn defence(env: &mut Env, state: &mut PerformState, who: Who) {
         );
         out.set_num("SpellProjectileBlockChance", v);
     }
-    // :736-746 breakdown only.
+    // :736-746
+    if let Some(bd) = bd.as_deref_mut() {
+        bd.put(
+            "BlockChance",
+            BTable::lines([
+                format!("Base: {}%", tostring_num(base_block_chance)),
+                format!("Max: {}%", tostring_num(out.num("BlockChanceMax"))),
+                format!("Total: {}%", tostring_num(out.num("BlockChance") + out.num("BlockChanceOverCap"))),
+            ]),
+        );
+        bd.put(
+            "SpellBlockChance",
+            BTable::lines([
+                format!("Max: {}%", tostring_num(out.num("SpellBlockChanceMax"))),
+                format!(
+                    "Total: {}%",
+                    tostring_num(out.num("SpellBlockChance") + out.num("SpellBlockChanceOverCap"))
+                ),
+            ]),
+        );
+    }
     if fl(&["CannotBlockAttacks"]) {
         out.set_num("BlockChance", 0.0);
         out.set_num("ProjectileBlockChance", 0.0);
@@ -719,7 +755,13 @@ pub fn defence(env: &mut Env, state: &mut PerformState, who: Who) {
         let mut energy_shield = 0.0;
         let mut armour = 0.0;
         let mut evasion = 0.0;
-        // :851-856 breakdown tables only.
+        // :851-856
+        if let Some(bd) = bd.as_deref_mut() {
+            for k in ["Ward", "EnergyShield", "Armour", "Evasion"] {
+                bd.put(k, BTable::new().with("slots", BTable::new()));
+            }
+        }
+        let item_name = |slot: &str| item_list.get(slot).map(|i| i.name.clone());
         let mut gear_ward = 0.0;
         let mut gear_energy_shield = 0.0;
         let mut gear_armour = 0.0;
@@ -762,9 +804,17 @@ pub fn defence(env: &mut Env, state: &mut PerformState, who: Who) {
                     let m = more_cfg(&db, cfg, &["Ward", "Defences"]);
                     ward += ward_base * (1.0 + i / 100.0) * m;
                     gear_ward += ward_base;
+                    if let Some(bd) = bd.as_deref_mut() {
+                        let total = sf!("%.2f", ward_base * (1.0 + i / 100.0) * m);
+                        let e = breakdown::slot_entry(ward_base, Some(i), m, total, slot, None, item_name(slot));
+                        bd.table_mut("Ward").field_mut("slots").push(e);
+                    }
                 } else {
                     ward += ward_base * cmod_cfg(&db, cfg, &["Ward", "Defences"]);
                     gear_ward += ward_base;
+                    if let Some(bd) = bd.as_deref_mut() {
+                        breakdown::slot(bd, &db, item_name(slot), slot, None, cfg, ward_base, None, &["Ward", "Defences"]);
+                    }
                 }
             }
             if energy_shield_base > 0.0 {
@@ -773,18 +823,35 @@ pub fn defence(env: &mut Env, state: &mut PerformState, who: Who) {
                     let m = more_cfg(&db, cfg, &["EnergyShield", "Defences"]);
                     energy_shield += energy_shield_base * m;
                     gear_energy_shield += energy_shield_base;
+                    if let Some(bd) = bd.as_deref_mut() {
+                        let total = sf!("%.2f", energy_shield_base * m);
+                        let e = breakdown::slot_entry(energy_shield_base, None, m, total, slot, None, item_name(slot));
+                        bd.table_mut("EnergyShield").field_mut("slots").push(e);
+                    }
                 } else if !fl(&["ConvertArmourESToLife"]) {
                     // D21: with ConvertArmourESToLife the slot's ES goes nowhere (not covered by goldens)
                     energy_shield += energy_shield_base * cmod_cfg(&db, cfg, &["EnergyShield", "Defences", &format!("{slot}ESAndArmour")]);
                     gear_energy_shield += energy_shield_base;
+                    if let Some(bd) = bd.as_deref_mut() {
+                        let names = ["EnergyShield", "Defences", &format!("{slot}ESAndArmour")];
+                        breakdown::slot(bd, &db, item_name(slot), slot, None, cfg, energy_shield_base, None, &names);
+                    }
                 }
             }
             if armour_base > 0.0 {
                 armour += armour_base * cmod_cfg(&db, cfg, &["Armour", "ArmourAndEvasion", "Defences", &format!("{slot}ESAndArmour")]);
                 gear_armour += armour_base;
+                if let Some(bd) = bd.as_deref_mut() {
+                    let names = ["Armour", "ArmourAndEvasion", "Defences", &format!("{slot}ESAndArmour")];
+                    breakdown::slot(bd, &db, item_name(slot), slot, None, cfg, armour_base, None, &names);
+                }
             }
             if evasion_base > 0.0 {
                 gear_evasion += evasion_base;
+                if let Some(bd) = bd.as_deref_mut() {
+                    let names = ["Evasion", "ArmourAndEvasion", "Defences"];
+                    breakdown::slot(bd, &db, item_name(slot), slot, None, cfg, evasion_base, None, &names);
+                }
                 if iron_reflexes {
                     // not covered by goldens
                     armour += evasion_base * cmod_cfg(&db, cfg, &["Armour", "Evasion", "ArmourAndEvasion", "Defences"]);
@@ -800,8 +867,26 @@ pub fn defence(env: &mut Env, state: &mut PerformState, who: Who) {
                 let i = inc(&db, &["Ward", "Defences", "EnergyShield"]);
                 let m = more(&db, &["Ward", "Defences"]);
                 ward += ward_base * (1.0 + i / 100.0) * m;
+                if let Some(bd) = bd.as_deref_mut() {
+                    let total = sf!("%.2f", ward_base * (1.0 + i / 100.0) * m);
+                    let e = breakdown::slot_entry(ward_base, Some(i), m, total, "Global", None, item_name("Global"));
+                    bd.table_mut("Ward").field_mut("slots").push(e);
+                }
             } else {
                 ward += ward_base * cmod(&db, &["Ward", "Defences"]);
+                if let Some(bd) = bd.as_deref_mut() {
+                    breakdown::slot(
+                        bd,
+                        &db,
+                        item_name("Global"),
+                        "Global",
+                        None,
+                        None,
+                        ward_base,
+                        None,
+                        &["Ward", "Defences"],
+                    );
+                }
             }
         }
         // :969-988 global energy shield
@@ -812,19 +897,50 @@ pub fn defence(env: &mut Env, state: &mut PerformState, who: Who) {
             } else {
                 energy_shield += energy_shield_base * cmod(&db, &["EnergyShield", "Defences"]);
             }
+            // :976-987
+            if let Some(bd) = bd.as_deref_mut() {
+                let i = inc(&db, &["Defences", "EnergyShield"]);
+                let m = more(&db, &["EnergyShield", "Defences"]);
+                let total = sf!("%.2f", energy_shield_base * (1.0 + i / 100.0) * m);
+                let e = breakdown::slot_entry(energy_shield_base, Some(i), m, total, "Global", None, item_name("Global"));
+                bd.table_mut("EnergyShield").field_mut("slots").push(e);
+            }
         }
         // :989-995 global armour
         let armour_base = base(&db, &["Armour", "ArmourAndEvasion"]);
         if armour_base > 0.0 {
             armour += armour_base * cmod(&db, &["Armour", "ArmourAndEvasion", "Defences"]);
+            if let Some(bd) = bd.as_deref_mut() {
+                let names = ["Armour", "ArmourAndEvasion", "Defences"];
+                breakdown::slot(bd, &db, item_name("Global"), "Global", None, None, armour_base, None, &names);
+            }
         }
         // :996-1009 global evasion
         let evasion_base = base(&db, &["Evasion", "ArmourAndEvasion"]);
         if evasion_base > 0.0 {
             if iron_reflexes {
                 armour += evasion_base * cmod(&db, &["Armour", "Evasion", "ArmourAndEvasion", "Defences"]);
+                if let Some(bd) = bd.as_deref_mut() {
+                    let names = ["Armour", "Evasion", "ArmourAndEvasion", "Defences"];
+                    let item = item_name("Conversion");
+                    breakdown::slot(
+                        bd,
+                        &db,
+                        item,
+                        "Conversion",
+                        Some("Evasion to Armour"),
+                        None,
+                        evasion_base,
+                        None,
+                        &names,
+                    );
+                }
             } else {
                 evasion += evasion_base * cmod(&db, &["Evasion", "ArmourAndEvasion", "Defences"]);
+                if let Some(bd) = bd.as_deref_mut() {
+                    let names = ["Evasion", "ArmourAndEvasion", "Defences"];
+                    breakdown::slot(bd, &db, item_name("Global"), "Global", None, None, evasion_base, None, &names);
+                }
             }
         }
         // :1010-1018 mana -> armour (the "2 *" is upstream's)
@@ -833,12 +949,42 @@ pub fn defence(env: &mut Env, state: &mut PerformState, who: Who) {
             let armour_base = 2.0 * base(&db, &["Mana"]) * conv_mana_to_armour / 100.0;
             let total = armour_base * cmod(&db, &["Mana", "Armour", "ArmourAndEvasion", "Defences"]);
             armour += total;
+            if let Some(bd) = bd.as_deref_mut() {
+                let names = ["Armour", "ArmourAndEvasion", "Defences", "Mana"];
+                let item = item_name("Conversion");
+                breakdown::slot(
+                    bd,
+                    &db,
+                    item,
+                    "Conversion",
+                    Some("Mana to Armour"),
+                    None,
+                    armour_base,
+                    Some(total),
+                    &names,
+                );
+            }
         }
         // :1019-1026 mana -> energy shield
         let conv_mana_to_es = base(&db, &["ManaGainAsEnergyShield"]);
         if conv_mana_to_es > 0.0 {
             let energy_shield_base = base(&db, &["Mana"]) * conv_mana_to_es / 100.0;
             energy_shield += energy_shield_base * cmod(&db, &["Mana", "EnergyShield", "Defences"]);
+            if let Some(bd) = bd.as_deref_mut() {
+                let names = ["EnergyShield", "Defences", "Mana"];
+                let item = item_name("Conversion");
+                breakdown::slot(
+                    bd,
+                    &db,
+                    item,
+                    "Conversion",
+                    Some("Mana to Energy Shield"),
+                    None,
+                    energy_shield_base,
+                    None,
+                    &names,
+                );
+            }
         }
         // :1027-1040 life -> armour (Chaos Inoculation pins it at 1; not covered by goldens)
         let conv_life_to_armour = base(&db, &["LifeGainAsArmour"]);
@@ -850,6 +996,21 @@ pub fn defence(env: &mut Env, state: &mut PerformState, who: Who) {
                 armour_base * cmod(&db, &["Life", "Armour", "ArmourAndEvasion", "Defences"])
             };
             armour += total;
+            if let Some(bd) = bd.as_deref_mut() {
+                let names = ["Armour", "ArmourAndEvasion", "Defences", "Life"];
+                let item = item_name("Conversion");
+                breakdown::slot(
+                    bd,
+                    &db,
+                    item,
+                    "Conversion",
+                    Some("Life to Armour"),
+                    None,
+                    armour_base,
+                    Some(total),
+                    &names,
+                );
+            }
         }
         // :1041-1054 life -> energy shield
         let conv_life_to_es = base(&db, &["LifeConvertToEnergyShield", "LifeGainAsEnergyShield"]);
@@ -861,6 +1022,21 @@ pub fn defence(env: &mut Env, state: &mut PerformState, who: Who) {
                 energy_shield_base * cmod(&db, &["Life", "EnergyShield", "Defences"])
             };
             energy_shield += total;
+            if let Some(bd) = bd.as_deref_mut() {
+                let names = ["EnergyShield", "Defences", "Life"];
+                let item = item_name("Conversion");
+                breakdown::slot(
+                    bd,
+                    &db,
+                    item,
+                    "Conversion",
+                    Some("Life to Energy Shield"),
+                    None,
+                    energy_shield_base,
+                    Some(total),
+                    &names,
+                );
+            }
         }
         // :1055-1063 evasion -> armour (gear evasion counts too)
         let conv_evasion_to_armour = base(&db, &["EvasionGainAsArmour"]);
@@ -868,6 +1044,21 @@ pub fn defence(env: &mut Env, state: &mut PerformState, who: Who) {
             let armour_base = (base(&db, &["Evasion", "ArmourAndEvasion"]) + gear_evasion) * conv_evasion_to_armour / 100.0;
             let total = armour_base * cmod(&db, &["Evasion", "Armour", "ArmourAndEvasion", "Defences"]);
             armour += total;
+            if let Some(bd) = bd.as_deref_mut() {
+                let names = ["Armour", "ArmourAndEvasion", "Defences", "Evasion"];
+                let item = item_name("Conversion");
+                breakdown::slot(
+                    bd,
+                    &db,
+                    item,
+                    "Conversion",
+                    Some("Evasion to Armour"),
+                    None,
+                    armour_base,
+                    Some(total),
+                    &names,
+                );
+            }
         }
         // :1064-1074
         let es = or_override(override_(&db, "EnergyShield"), max2(round(energy_shield, None), 0.0), 1064);
@@ -972,7 +1163,40 @@ pub fn defence(env: &mut Env, state: &mut PerformState, who: Who) {
                 out.set_num("EvadeChance", melee);
                 out.set_bool("noSplitEvade", true);
             }
-            // :1115-1133 breakdown only.
+            // :1115-1133
+            if let Some(bd) = bd.as_deref_mut() {
+                let lvl = || {
+                    let how = if env.config.input.get("enemyLevel").is_some() {
+                        "overridden from"
+                    } else {
+                        "can be overridden in"
+                    };
+                    sf!("Enemy level: %d ^8(%s the Configuration tab)", env.enemy_level, how)
+                };
+                let acc = || sf!("Average enemy accuracy: %d", enemy_accuracy);
+                bd.put(
+                    "EvadeChance",
+                    BTable::lines([lvl(), acc(), sf!("Approximate evade chance: %d%%", out.num("EvadeChance"))]),
+                );
+                bd.put(
+                    "MeleeEvadeChance",
+                    BTable::lines([
+                        lvl(),
+                        acc(),
+                        sf!("Effective Evasion: %d", melee_evade_stat),
+                        sf!("Approximate melee evade chance: %d%%", out.num("MeleeEvadeChance")),
+                    ]),
+                );
+                bd.put(
+                    "ProjectileEvadeChance",
+                    BTable::lines([
+                        lvl(),
+                        acc(),
+                        sf!("Effective Evasion: %d", projectile_evade_stat),
+                        sf!("Approximate projectile evade chance: %d%%", out.num("ProjectileEvadeChance")),
+                    ]),
+                );
+            }
         }
     }
 
@@ -1058,7 +1282,31 @@ pub fn defence(env: &mut Env, state: &mut PerformState, who: Who) {
         "SpellDodgeChanceOverCap",
         max2(0.0, total_spell_dodge_chance - spell_dodge_chance_max),
     );
-    // :1198-1209 breakdown only.
+    // :1198-1209
+    if let Some(bd) = bd.as_deref_mut() {
+        bd.put(
+            "AttackDodgeChance",
+            BTable::lines([
+                format!("Base: {}%", tostring_num(total_attack_dodge_chance)),
+                format!("Max: {}%", tostring_num(attack_dodge_chance_max)),
+                format!(
+                    "Total: {}%",
+                    tostring_num(out.num("AttackDodgeChance") + out.num("AttackDodgeChanceOverCap"))
+                ),
+            ]),
+        );
+        bd.put(
+            "SpellDodgeChance",
+            BTable::lines([
+                format!("Base: {}%", tostring_num(total_spell_dodge_chance)),
+                format!("Max: {}%", tostring_num(spell_dodge_chance_max)),
+                format!(
+                    "Total: {}%",
+                    tostring_num(out.num("SpellDodgeChance") + out.num("SpellDodgeChanceOverCap"))
+                ),
+            ]),
+        );
+    }
 
     // --- :1211-1217 recovery-rate modifiers ----------------------------------------------------------------------------
     out.set_num("LifeRecoveryRateMod", 1.0);
@@ -1079,18 +1327,54 @@ pub fn defence(env: &mut Env, state: &mut PerformState, who: Who) {
     }
     let v = out.num("Life") * out.num("MaxLifeLeechRatePercent") / 100.0;
     out.set_num("MaxLifeLeechRate", v);
-    // :1228-1234 breakdown only.
+    // :1228-1234
+    if let Some(bd) = bd.as_deref_mut() {
+        bd.put(
+            "MaxLifeLeechRate",
+            BTable::lines([
+                sf!("%d ^8(maximum life)", out.num("Life")),
+                sf!(
+                    "x %d%% ^8(percentage of life to maximum leech rate)",
+                    out.num("MaxLifeLeechRatePercent")
+                ),
+                sf!("= %.1f", out.num("MaxLifeLeechRate")),
+            ]),
+        );
+    }
     let es = out.num("EnergyShield");
     out.set_num(
         "MaxEnergyShieldLeechInstance",
         es * cval(&db, "MaxEnergyShieldLeechInstance") / 100.0,
     );
     out.set_num("MaxEnergyShieldLeechRate", es * cval(&db, "MaxEnergyShieldLeechRate") / 100.0);
-    // :1237-1243 breakdown only.
+    // :1237-1243
+    if let Some(bd) = bd.as_deref_mut() {
+        bd.put(
+            "MaxEnergyShieldLeechRate",
+            BTable::lines([
+                sf!("%d ^8(maximum energy shield)", out.num("EnergyShield")),
+                sf!(
+                    "x %d%% ^8(percentage of energy shield to maximum leech rate)",
+                    cval(&db, "MaxEnergyShieldLeechRate")
+                ),
+                sf!("= %.1f", out.num("MaxEnergyShieldLeechRate")),
+            ]),
+        );
+    }
     let mana = out.num("Mana");
     out.set_num("MaxManaLeechInstance", mana * cval(&db, "MaxManaLeechInstance") / 100.0);
     out.set_num("MaxManaLeechRate", mana * cval(&db, "MaxManaLeechRate") / 100.0);
-    // :1246-1252 breakdown only.
+    // :1246-1252
+    if let Some(bd) = bd.as_deref_mut() {
+        bd.put(
+            "MaxManaLeechRate",
+            BTable::lines([
+                sf!("%d ^8(maximum mana)", out.num("Mana")),
+                sf!("x %d%% ^8(percentage of mana to maximum leech rate)", cval(&db, "MaxManaLeechRate")),
+                sf!("= %.1f", out.num("MaxManaLeechRate")),
+            ]),
+        );
+    }
 
     // --- :1254-1340 regeneration, degeneration, recovery ----------------------------------------------------------------
     for (i, resource_name) in REGEN_RESOURCES.iter().enumerate() {
@@ -1103,6 +1387,8 @@ pub fn defence(env: &mut Env, state: &mut PerformState, who: Who) {
         let mut regen_rate = 0.0;
         // :1264 `output[resource.."RecoveryRateMod"] or 1` -- Rage has none
         let recovery_rate_mod = out_or(out, &format!("{r}RecoveryRateMod"), 1.0, 1264);
+        // :1259 `local baseRegen = 0`
+        let mut base_regen_v = 0.0;
         if fl(&[&format!("No{r}Regen")]) || fl(&[&format!("CannotGain{r}")]) {
             out.set_num(&format!("{r}Regen"), 0.0);
         } else if r == "Life" && fl(&["ZealotsOath"]) {
@@ -1154,6 +1440,7 @@ pub fn defence(env: &mut Env, state: &mut PerformState, who: Who) {
                 );
             }
             let base_regen = base(&db, &[&format!("{r}Regen")]) + pool * base(&db, &[&format!("{r}RegenPercent")]) / 100.0;
+            base_regen_v = base_regen;
             let regen = base_regen * (1.0 + i_ / 100.0) * m;
             // :1295-1301 Pious Path (not covered by goldens)
             if regen != 0.0 {
@@ -1207,7 +1494,37 @@ pub fn defence(env: &mut Env, state: &mut PerformState, who: Who) {
             0.0
         };
         out.set_num(&format!("{r}RegenPercent"), pct);
-        // :1318-1338 breakdown only.
+        // :1318-1339
+        if let Some(bd) = bd.as_deref_mut() {
+            let mut t = BTable::new();
+            multi_chain(
+                &mut t,
+                &Chain {
+                    label: Some(format!("{resource_name} Regeneration:")),
+                    base: Some(step("%.1f ^8(base)", base_regen_v)),
+                    steps: vec![
+                        step("%.2f ^8(increased/reduced)", 1.0 + i_ / 100.0),
+                        step("%.2f ^8(more/less)", m),
+                        step("%.2f ^8(recovery rate modifier)", recovery_rate_mod),
+                    ],
+                    total: Some(sf!("= %.1f ^8per second", regen_rate)),
+                    no_total: false,
+                },
+            );
+            let unaffected = fl(&[&format!("UnaffectedBy{r}Regen")]);
+            if unaffected {
+                t.push(format!("Unaffected by {resource_name} Regen"));
+            }
+            if degen_rate != 0.0 {
+                t.push(sf!("- %.1f ^8(degen)", degen_rate));
+                t.push(sf!("= %.1f ^8per second", (if unaffected { 0.0 } else { regen_rate }) - degen_rate));
+            }
+            if recovery_rate != 0.0 {
+                t.push(sf!("+ %.1f ^8(recovery)", recovery_rate));
+                t.push(sf!("= %.1f ^8per second", out.num(&format!("{r}RegenRecovery"))));
+            }
+            bd.put(format!("{r}RegenRecovery"), t);
+        }
     }
 
     // --- :1342-1401 energy shield recharge ------------------------------------------------------------------------------
@@ -1226,21 +1543,70 @@ pub fn defence(env: &mut Env, state: &mut PerformState, who: Who) {
         let i = inc(&db, &["EnergyShieldRecharge"]);
         let m = more(&db, &["EnergyShieldRecharge"]);
         let b = or_override(override_(&db, "EnergyShieldRecharge"), misc("EnergyShieldRechargeBase"), 1349);
+        // :1353-1368 / :1372-1387
+        let recharge_chain = |pool: &str, recharge: f64, rate_mod: &str, out: &Output| {
+            let mut t = BTable::new();
+            multi_chain(
+                &mut t,
+                &Chain {
+                    label: Some("Recharge rate:".into()),
+                    base: Some(breakdown::step_n("%.1f ^8(%d%% per second)", out.num(pool) * b, b * 100.0)),
+                    steps: vec![step("%.2f ^8(increased/reduced)", 1.0 + i / 100.0), step("%.2f ^8(more/less)", m)],
+                    total: Some(sf!("= %.1f ^8per second", recharge)),
+                    no_total: false,
+                },
+            );
+            multi_chain(
+                &mut t,
+                &Chain {
+                    label: Some("Effective Recharge rate:".into()),
+                    base: Some(step("%.1f", recharge)),
+                    steps: vec![step("%.2f ^8(recovery rate modifier)", out.num(rate_mod))],
+                    total: Some(sf!(
+                        "= %.1f ^8per second",
+                        out.num(if pool == "Life" { "LifeRecharge" } else { "EnergyShieldRecharge" })
+                    )),
+                    no_total: false,
+                },
+            );
+            t
+        };
         if applies_to_life {
             // not covered by goldens
             let recharge = out.num("Life") * b * (1.0 + i / 100.0) * m;
             let v = round(recharge * out.num("LifeRecoveryRateMod"), None);
             out.set_num("LifeRecharge", v);
+            if let Some(bd) = bd.as_deref_mut() {
+                bd.put("LifeRecharge", recharge_chain("Life", recharge, "LifeRecoveryRateMod", out));
+            }
         } else {
             let recharge = out.num("EnergyShield") * b * (1.0 + i / 100.0) * m;
             let v = round(recharge * out.num("EnergyShieldRecoveryRateMod"), None);
             out.set_num("EnergyShieldRecharge", v);
+            if let Some(bd) = bd.as_deref_mut() {
+                bd.put(
+                    "EnergyShieldRecharge",
+                    recharge_chain("EnergyShield", recharge, "EnergyShieldRecoveryRateMod", out),
+                );
+            }
         }
         out.set_num(
             "EnergyShieldRechargeDelay",
             misc("EnergyShieldRechargeDelay") / (1.0 + inc(&db, &["EnergyShieldRechargeFaster"]) / 100.0),
         );
-        // :1353-1398 breakdown only.
+        // :1390-1398
+        if let Some(bd) = bd.as_deref_mut()
+            && out.num("EnergyShieldRechargeDelay") != misc("EnergyShieldRechargeDelay")
+        {
+            bd.put(
+                "EnergyShieldRechargeDelay",
+                BTable::lines([
+                    sf!("%.2fs ^8(base)", misc("EnergyShieldRechargeDelay")),
+                    sf!("/ %.2f ^8(faster start)", 1.0 + inc(&db, &["EnergyShieldRechargeFaster"]) / 100.0),
+                    sf!("= %.2fs", out.num("EnergyShieldRechargeDelay")),
+                ]),
+            );
+        }
     } else {
         out.set_num("EnergyShieldRecharge", 0.0);
     }
@@ -1283,7 +1649,29 @@ pub fn defence(env: &mut Env, state: &mut PerformState, who: Who) {
                 out.set_num(&format!("{recoup_type}Recoup"), v);
                 let any = out.num("anyRecoup") + v;
                 out.set_num("anyRecoup", any);
-                // :1431-1446 breakdown only.
+                // :1431-1445
+                if let Some(bd) = bd.as_deref_mut() {
+                    let mut t = BTable::lines([sf!("%d%% ^8(base)", base_recoup)]);
+                    if recoup_inc != 1.0 {
+                        t.push(sf!("x %.2f (increased/reduced)", recoup_inc));
+                    }
+                    if recoup_more != 1.0 {
+                        t.push(sf!("x %.2f (more/less)", recoup_more));
+                    }
+                    let secs = if fl(&[&format!("3Second{recoup_type}Recoup")]) || fl(&["3SecondRecoup"]) {
+                        3.0
+                    } else {
+                        4.0
+                    };
+                    let rrm = out.num(&format!("{recoup_type}RecoveryRateMod"));
+                    if rrm != 1.0 {
+                        t.push(sf!("* %.2f ^8(recovery rate modifier)", rrm));
+                        t.push(sf!("= %.1f%% over %d seconds", v, secs));
+                    } else {
+                        t.push(sf!("%.1f%% over %d seconds", v, secs));
+                    }
+                    bd.put(format!("{recoup_type}Recoup"), t);
+                }
             }
         }
         // :1449-1454 Absorption Charges (not covered by goldens)
@@ -1322,7 +1710,27 @@ pub fn defence(env: &mut Env, state: &mut PerformState, who: Who) {
                     out.set_num(&recoup_name, v);
                     let any = out.num("anyRecoup") + v;
                     out.set_num("anyRecoup", any);
-                    // :1466-1477 breakdown only.
+                    // :1466-1477
+                    if let Some(bd) = bd.as_deref_mut() {
+                        let mut t = BTable::lines([sf!("%d%% ^8(base)", recoup)]);
+                        if recoup_inc != 1.0 {
+                            t.push(sf!("x %.2f (increased/reduced)", recoup_inc));
+                        }
+                        if recoup_more != 1.0 {
+                            t.push(sf!("x %.2f (more/less)", recoup_more));
+                        }
+                        let rrm = out.num(&format!("{recoup_type}RecoveryRateMod"));
+                        if rrm != 1.0 {
+                            t.push(sf!("* %.2f ^8(recovery rate modifier)", rrm));
+                        }
+                        let secs = if fl(&[&format!("3Second{recoup_type}Recoup")]) || fl(&["3SecondRecoup"]) {
+                            3.0
+                        } else {
+                            4.0
+                        };
+                        t.push(sf!("= %.1f%% over %d seconds", v, secs));
+                        bd.put(recoup_name.clone(), t);
+                    }
                 }
                 for recoup_type2 in RECOUP_TYPES {
                     if recoup_type != recoup_type2 {
@@ -1361,7 +1769,22 @@ pub fn defence(env: &mut Env, state: &mut PerformState, who: Who) {
                     out.set_num(&key, v);
                     let any = out.num("anyRecoup") + v;
                     out.set_num("anyRecoup", any);
-                    // :1504-1515 breakdown only.
+                    // :1504-1516
+                    if let Some(bd) = bd.as_deref_mut() {
+                        let mut t = BTable::new();
+                        let rrm = out.num(&format!("{resource}RecoveryRateMod"));
+                        if rrm != 1.0 || i != 0.0 || m != 1.0 {
+                            t.push(sf!("%d%% ^8(base)", pseudo));
+                            if i != 0.0 || m != 1.0 {
+                                t.push(sf!("* %.2f ^8(regeneration rate modifier)", (1.0 + i / 100.0) * m));
+                            }
+                            if rrm != 1.0 {
+                                t.push(sf!("* %.2f ^8(recovery rate modifier)", rrm));
+                            }
+                        }
+                        t.push(sf!("= %.1f%% over %d seconds", out.num(&key), out.num(&dur_key)));
+                        bd.put(key.clone(), t);
+                    }
                 }
             }
         }
@@ -1372,7 +1795,19 @@ pub fn defence(env: &mut Env, state: &mut PerformState, who: Who) {
         "WardRechargeDelay",
         misc("WardRechargeDelay") / (1.0 + inc(&db, &["WardRechargeFaster"]) / 100.0),
     );
-    // :1524-1531 breakdown only.
+    // :1524-1532
+    if let Some(bd) = bd.as_deref_mut()
+        && out.num("WardRechargeDelay") != misc("WardRechargeDelay")
+    {
+        bd.put(
+            "WardRechargeDelay",
+            BTable::lines([
+                sf!("%.2fs ^8(base)", misc("WardRechargeDelay")),
+                sf!("/ %.2f ^8(faster start)", 1.0 + inc(&db, &["WardRechargeFaster"]) / 100.0),
+                sf!("= %.2fs", out.num("WardRechargeDelay")),
+            ]),
+        );
+    }
 
     // --- :1534-1540 damage reduction ------------------------------------------------------------------------------------
     out.set_num(
@@ -1421,7 +1856,25 @@ pub fn defence(env: &mut Env, state: &mut PerformState, who: Who) {
     }
     let v = out.num("MovementSpeedMod") * out.num("ActionSpeedMod");
     out.set_num("EffectiveMovementSpeedMod", v);
-    // :1548-1555 breakdown only.
+    // :1548-1555
+    if let Some(bd) = bd.as_deref_mut() {
+        let mut t = BTable::new();
+        multi_chain(
+            &mut t,
+            &Chain {
+                steps: vec![
+                    step("%.2f ^8(movement speed modifier)", out.num("MovementSpeedMod")),
+                    step("%.2f ^8(action speed modifier)", out.num("ActionSpeedMod")),
+                ],
+                total: Some(sf!(
+                    "= %.2f ^8(effective movement speed modifier)",
+                    out.num("EffectiveMovementSpeedMod")
+                )),
+                ..Chain::default()
+            },
+        );
+        bd.put("EffectiveMovementSpeedMod", t);
+    }
     if efl(&["Blind"]) {
         out.set_num("BlindEffectMod", cmod(&enemy_db, &["BlindEffect", "BuffEffectOnSelf"]) * 100.0);
     }
@@ -1596,7 +2049,10 @@ pub fn defence(env: &mut Env, state: &mut PerformState, who: Who) {
     out.set_num("CritExtraDamageReduction", min2(base(&db, &["ReduceCritExtraDamage"]), 100.0));
     out.set_num("LightRadiusMod", cmod(&db, &["LightRadius"]));
     out.set_num("LightRadiusInc", max2(inc(&db, &["LightRadius"]), 0.0));
-    // :1632-1634 breakdown only.
+    // :1632-1634
+    if let Some(bd) = bd {
+        bd.set("LightRadiusMod", breakdown::mod_(&db, None, &["LightRadius"]).map(Into::into));
+    }
     out.set_num(
         "CurseEffectOnSelf",
         max2(more(&db, &["CurseEffectOnSelf"]) * (100.0 + inc(&db, &["CurseEffectOnSelf"])), 0.0),

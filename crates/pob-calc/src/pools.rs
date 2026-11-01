@@ -1,7 +1,7 @@
 //! The pool helpers of Modules/CalcDefence.lua (R4.4a): `allyLifePoolList` (:33-43), `buildAllyLifePools` (:45-55),
 //! `calcs.armourReductionF` (:67-72), `calcs.takenHitFromDamage` (:150-177), `calcLifeHitPoolWithLossPrevention` (:179-183)
 //! and `calcs.reducePoolsByDamage` (:190-424) -- line for line, Lua line numbers in the comments. Executable spec: pob-ts
-//! `src/calc/pools.ts`. `resourcesLostToTypeDamage` (:246, :276-395, :422) is breakdown-only and not built.
+//! `src/calc/pools.ts`. `resourcesLostToTypeDamage` (:246, :276-395, :422) is breakdown-only ([`ResourcesLost`], R8.4).
 //!
 //! The actor is abstracted by [`PoolActor`] (the handful of `output`/`modDB` reads these helpers do); `CalcActor` implements
 //! it in R4.4b, the LuaJIT test (`tests/pools_luajit.rs`) implements it from the fixture's `actorReads`.
@@ -277,9 +277,35 @@ pub struct PoolTable {
     pub damage_taken_that_can_be_recouped: Option<[Option<f64>; 5]>,
 }
 
-/// What `reducePoolsByDamage` returns (:408-423), without the breakdown-only `resourcesLostToTypeDamage`.
+/// `resourcesLostToTypeDamage[damageType]` (:247): what each pool lost to that type of the hit (`nil` below 1) -- read by the breakdown
+/// only (`incomingDamageBreakdown`, CalcDefence.lua:3805-3869; R8.4).
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct ResourcesLost {
+    /// `[ally.key]`, by `ALLY_LIFE_POOL_LIST` index.
+    pub allies: [Option<f64>; 9],
+    pub aegis: Option<f64>,
+    pub shared_elemental_aegis: Option<f64>,
+    pub shared_aegis: Option<f64>,
+    pub guard: Option<f64>,
+    pub shared_guard: Option<f64>,
+    pub ward: Option<f64>,
+    pub energy_shield: Option<f64>,
+    pub mana: Option<f64>,
+    pub life_loss_prevented: Option<f64>,
+    pub life: Option<f64>,
+    pub overkill: Option<f64>,
+}
+
+/// `x >= 1 and x or nil`
+fn ge1(x: f64) -> Option<f64> {
+    if x >= 1.0 { Some(x) } else { None }
+}
+
+/// What `reducePoolsByDamage` returns (:408-423).
 #[derive(Clone, Debug, PartialEq)]
 pub struct PoolsResult {
+    /// `resourcesLostToTypeDamage` (breakdown only), by `dmgTypeList` index.
+    pub resources_lost: [ResourcesLost; 5],
     pub allies_taken_before_you: AllyPools,
     pub aegis: Aegis,
     pub guard: Guard,
@@ -536,6 +562,8 @@ pub fn reduce_pools_by_damage<A: PoolActor + ?Sized>(
     mana = if mana >= 0.0 { mana } else { 0.0 };
     life = if life >= 0.0 { life } else { 0.0 };
 
+    // :247
+    let mut lost: [ResourcesLost; 5] = Default::default();
     // :245-264 the MoM (+ES protecting mana, +bypass) pools, per damage type in the hit, independently.
     let life_hit_pool_initial = life_hit_pool(actor, life, life_loss_below_half_prevented)?;
     let mut mom_pools_remaining = [0.0f64; 5];
@@ -579,11 +607,13 @@ pub fn reduce_pools_by_damage<A: PoolActor + ?Sized>(
         let Some(mut damage_remainder) = damage_table[t] else { continue };
         let damage_type = DmgType::ALL[t];
         // :269-279 allies take their share first
-        for ally in allies.iter_mut().flatten() {
+        for (k, ally) in allies.iter_mut().enumerate() {
+            let Some(ally) = ally else { continue };
             if ally.damage_type.is_none_or(|d| d == damage_type) && ally.remaining > 0.0 {
                 let temp_damage = min2(damage_remainder * ally.percent, ally.remaining);
                 ally.remaining = (ally.remaining - temp_damage).floor();
                 damage_remainder -= temp_damage;
+                lost[t].allies[k] = ge1(temp_damage);
             }
         }
         // :280-281 what allies took before you does not count as you taking damage
@@ -594,6 +624,7 @@ pub fn reduce_pools_by_damage<A: PoolActor + ?Sized>(
             let temp_damage = min2(damage_remainder, typed_aegis);
             aegis.typed[t] = Some(typed_aegis - temp_damage);
             damage_remainder -= temp_damage;
+            lost[t].aegis = ge1(temp_damage);
         }
         if damage_type.is_elemental() {
             let shared_elemental = need(aegis.shared_elemental, 288, "aegis.sharedElemental")?;
@@ -601,6 +632,7 @@ pub fn reduce_pools_by_damage<A: PoolActor + ?Sized>(
                 let temp_damage = min2(damage_remainder, shared_elemental);
                 aegis.shared_elemental = Some(shared_elemental - temp_damage);
                 damage_remainder -= temp_damage;
+                lost[t].shared_elemental_aegis = ge1(temp_damage);
             }
         }
         let shared_aegis = need(aegis.shared, 294, "aegis.shared")?;
@@ -608,6 +640,7 @@ pub fn reduce_pools_by_damage<A: PoolActor + ?Sized>(
             let temp_damage = min2(damage_remainder, shared_aegis);
             aegis.shared = Some(shared_aegis - temp_damage);
             damage_remainder -= temp_damage;
+            lost[t].shared_aegis = ge1(temp_damage);
         }
         // :300-311 guard: typed, then shared
         let typed_guard = need(guard.typed[t], 300, "guard[damageType]")?;
@@ -616,6 +649,7 @@ pub fn reduce_pools_by_damage<A: PoolActor + ?Sized>(
             let temp_damage = min2(damage_remainder * rate / 100.0, typed_guard);
             guard.typed[t] = Some((typed_guard - temp_damage).floor());
             damage_remainder -= temp_damage;
+            lost[t].guard = ge1(temp_damage);
         }
         let shared_guard = need(guard.shared, 306, "guard.shared")?;
         if shared_guard > 0.0 {
@@ -623,6 +657,7 @@ pub fn reduce_pools_by_damage<A: PoolActor + ?Sized>(
             let temp_damage = min2(damage_remainder * rate / 100.0, shared_guard);
             guard.shared = Some((shared_guard - temp_damage).floor());
             damage_remainder -= temp_damage;
+            lost[t].shared_guard = ge1(temp_damage);
         }
         // :312-318 ward (`(Sum or 0)` -- Sum is always a number, the `or 0` is dead)
         if ward > 0.0 && (ward_bypass_below == 0.0 || damage_total >= ward_before_hit * ward_bypass_below) {
@@ -630,6 +665,7 @@ pub fn reduce_pools_by_damage<A: PoolActor + ?Sized>(
             ward -= temp_damage;
             temp_damage *= ward_active_chance;
             damage_remainder -= temp_damage;
+            lost[t].ward = ge1(temp_damage);
         }
         // :319-321 -- `es_pool` is this type's pool as it stood BEFORE the energy shield takes its part below.
         let mom_effect = min2(
@@ -647,6 +683,7 @@ pub fn reduce_pools_by_damage<A: PoolActor + ?Sized>(
             }
             energy_shield -= temp_damage;
             damage_remainder -= temp_damage;
+            lost[t].energy_shield = ge1(temp_damage);
         }
         // :331-350 Mind over Matter (with energy shield protecting the mana first)
         if mom_effect > 0.0 {
@@ -659,6 +696,7 @@ pub fn reduce_pools_by_damage<A: PoolActor + ?Sized>(
                 energy_shield -= temp_damage;
                 damage_remainder -= temp_damage;
                 mom_damage -= temp_damage;
+                lost[t].energy_shield = ge1(temp_damage);
             }
             let temp_damage = min2(mom_damage, mom_pools_remaining[t]).ceil();
             for t2 in (0..5).filter(|&t2| present[t2]) {
@@ -666,6 +704,7 @@ pub fn reduce_pools_by_damage<A: PoolActor + ?Sized>(
             }
             mana -= temp_damage;
             damage_remainder -= temp_damage;
+            lost[t].mana = ge1(temp_damage);
         }
         // :351-387 prevented life loss (Progenesis, Petrified Blood)
         if need(actor.output("preventedLifeLossTotal"), 351, "preventedLifeLossTotal")? > 0.0 {
@@ -690,6 +729,8 @@ pub fn reduce_pools_by_damage<A: PoolActor + ?Sized>(
                 damage_remainder -= damage_to_split;
                 life_loss_lost_over_time += prevented_loss;
                 life -= lost_life;
+                lost[t].life = Some(lost_life);
+                let mut prevented = prevented_loss;
                 if life <= half_life {
                     let unspecifically_low_life_prevented_damage = damage_remainder * prevent_percent;
                     life_loss_lost_over_time += unspecifically_low_life_prevented_damage;
@@ -697,11 +738,14 @@ pub fn reduce_pools_by_damage<A: PoolActor + ?Sized>(
                     let specifically_low_life_prevented_damage = damage_remainder * prevent_below_half_percent;
                     life_below_half_loss_lost_over_time += specifically_low_life_prevented_damage;
                     damage_remainder -= specifically_low_life_prevented_damage;
+                    prevented = prevented + unspecifically_low_life_prevented_damage + specifically_low_life_prevented_damage;
                 }
+                lost[t].life_loss_prevented = ge1(prevented);
             } else {
                 let temp_damage = damage_remainder * need(actor.output("preventedLifeLoss"), 382, "preventedLifeLoss")? / 100.0;
                 life_loss_lost_over_time += temp_damage;
                 damage_remainder -= temp_damage;
+                lost[t].life_loss_prevented = ge1(temp_damage);
             }
         }
         // :388-393 life
@@ -709,9 +753,11 @@ pub fn reduce_pools_by_damage<A: PoolActor + ?Sized>(
             let temp_damage = min2(damage_remainder, life);
             life -= temp_damage;
             damage_remainder -= temp_damage;
+            lost[t].life = Some(lost[t].life.unwrap_or(0.0) + if temp_damage > 0.0 { temp_damage } else { 0.0 });
         }
-        // :394
+        // :394-395
         overkill_damage += damage_remainder;
+        lost[t].overkill = ge1(damage_remainder);
     }
 
     // :399-404 the smallest pool left over the types in the hit. `m_min` depends on the order only for NaN/±0 operands
@@ -742,6 +788,7 @@ pub fn reduce_pools_by_damage<A: PoolActor + ?Sized>(
 
     // :408-423
     Ok(PoolsResult {
+        resources_lost: lost,
         allies_taken_before_you: allies,
         aegis,
         guard,

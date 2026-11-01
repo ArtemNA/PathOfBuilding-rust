@@ -7,9 +7,11 @@
 //! Rust: `calculate_with(<the same XML bytes>)` (raw text, as the docker read it) -> `build_display`.
 //!
 //! Every field is compared exactly (strings byte for byte, numbers as `%.17g` strings), with one stated exception: the second
-//! `underline` flag of a stat row needs the contents of `env.<actor>.breakdown` (Build.lua:1881-1902), which the port does not build
-//! yet (R8.4/R8.5); where Rust cannot decide it ([`BreakdownKey::Unported`]) the flag is counted as UNVERIFIED and printed, every other
-//! field of that entry is still compared.
+//! `underline` flag of a stat row needs the contents of `env.<actor>.breakdown` (Build.lua:1881-1902), which `build_display` does not
+//! read ([`BreakdownKey::Unported`]). R8.4: the test decides it itself from Rust's breakdown (`GetStatBreakdownKey`, [`rust_underline`])
+//! when the key's breakdown entry is one perform / defence / estimations build (class `ported` in `pob-calc/tests/fixtures/breakdown`,
+//! or no module writes it) -- compared with LuaJIT like every field; the keys offence / triggers write (R8.5) stay UNVERIFIED (counted),
+//! every other field of that entry is still compared.
 
 use std::path::{Path, PathBuf};
 use std::time::Instant;
@@ -299,6 +301,76 @@ fn sections_json(s: &[DisplaySection]) -> Json {
     )
 }
 
+/// The breakdown fixture of a display scenario (R8.4, `pob-calc/tests/fixtures/breakdown`): the goldens by slug, the R7-synth as `r81--<slug>`.
+fn breakdown_fixture(slug: &str, kind: &str) -> Option<Json> {
+    let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../pob-calc/tests/fixtures/breakdown");
+    let name = if kind == "golden" {
+        format!("{slug}.json")
+    } else {
+        format!("r81--{slug}.json")
+    };
+    serde_json::from_str(&std::fs::read_to_string(dir.join(name)).ok()?).ok()
+}
+
+/// The stat rows of `list` that get a statBox entry with a breakdown key (Build.lua:1913-2005 `AddDisplayStatList`: flags match, the value
+/// passes `condFunc` / `~= 0`, not `SkillDPS`, not `hideStat`) -- in order, as `build_display` pushes them.
+fn rows_with_breakdown<'s>(list: &'s [DisplayStat], o: &ActorView<'_>, flags: &indexmap::IndexMap<String, bool>) -> Vec<&'s DisplayStat> {
+    list.iter()
+        .filter(|sd| {
+            let Some(stat) = sd.stat else { return false };
+            if !match_flags(sd.flag, sd.not_flag, flags) || stat == "SkillDPS" || sd.hide_stat {
+                return false;
+            }
+            let mut v = o.get(stat);
+            if v.truthy()
+                && let Some(c) = sd.child_stat
+            {
+                v = v.index(c).expect("childStat");
+            }
+            if !v.truthy() {
+                return false;
+            }
+            match sd.cond_func {
+                Some(c) => c(&v, o).is_ok_and(|r| r.truthy()),
+                None => !matches!(v, LuaV::Num(x) if x == 0.0),
+            }
+        })
+        .collect()
+}
+
+/// Build.lua:1871-1903 `GetStatBreakdownKey` over Rust's `env.<actor>.breakdown`: `not not key`.
+fn rust_underline(bd: &pob_calc::breakdown::Breakdown, sd: &DisplayStat) -> bool {
+    use pob_calc::breakdown::{BVal, Breakdown};
+    let truthy = |v: Option<&BVal>| !matches!(v, None | Some(BVal::Bool(false)));
+    let stat = sd.stat.expect("stat");
+    let key: Option<String> = if let Some(b) = sd.breakdown {
+        Some(b.to_owned())
+    } else if let Some(c) = sd.child_stat {
+        match bd.get(stat) {
+            Some(BVal::Table(t)) if truthy(t.fields.get(c)) => Some(format!("{stat}.{c}")),
+            _ => None,
+        }
+    } else if truthy(bd.get(stat)) {
+        Some(stat.to_owned())
+    } else {
+        None
+    };
+    let Some(key) = key else { return false };
+    if sd.mod_names.is_some() {
+        return true;
+    }
+    let data = match key.split_once('.') {
+        Some((ns, name)) if ns.bytes().all(|b| b.is_ascii_alphabetic()) && name.bytes().all(|b| b.is_ascii_alphabetic()) => {
+            match bd.get(ns) {
+                Some(BVal::Table(t)) if truthy(t.fields.get(name)) => t.fields.get(name),
+                _ => bd.get(&key),
+            }
+        }
+        _ => bd.get(&key),
+    };
+    data.is_some_and(Breakdown::is_populated)
+}
+
 #[derive(Default)]
 struct Tally {
     rows: usize,
@@ -306,6 +378,8 @@ struct Tally {
     stat_box: usize,
     warnings: usize,
     unverified_underline: usize,
+    /// underline flags decided by the R8.4 breakdown (equal to LuaJIT; a difference is a divergence in `bad`).
+    resolved_underline: usize,
     bad: Vec<String>,
 }
 
@@ -369,14 +443,67 @@ fn check(slug: &str, t: &mut Tally) {
     // (3) statBox.list
     let mut rust_box: Vec<Json> = disp.stat_list.stat_box.iter().map(stat_box_json).collect();
     let mut lua_box: Vec<Json> = fx["statBox"].as_array().expect("statBox").clone();
+    // R8.4: the stat rows behind the statBox entries with a breakdown key, per actor, and the breakdown classes of the scenario
+    let bfx = breakdown_fixture(slug, fx["kind"].as_str().unwrap_or("synth"));
+    let mut rows: std::collections::HashMap<&str, (Vec<&DisplayStat>, usize)> = std::collections::HashMap::new();
+    rows.insert(
+        "player",
+        (rows_with_breakdown(DISPLAY_STATS, &denv.player.view, denv.player.skill_flags), 0),
+    );
+    if let Some(m) = &denv.minion {
+        rows.insert("minion", (rows_with_breakdown(MINION_DISPLAY_STATS, &m.view, m.skill_flags), 0));
+    }
+    let rust_bd = |actor: &str| -> Option<pob_calc::breakdown::Breakdown> {
+        match actor {
+            "player" => res.perform.player.breakdown.clone(),
+            _ => res.perform.minion.as_ref().and_then(|m| m.borrow().breakdown.clone()),
+        }
+    };
     for (i, (r, e)) in rust_box.iter_mut().zip(disp.stat_list.stat_box.iter()).enumerate() {
+        // the stat row of this entry (entries with a breakdown key, in order per actor)
+        let sd = match (e.breakdown.as_ref(), e.actor_name.and_then(|a| rows.get_mut(a))) {
+            (Some(_), Some((list, at))) => {
+                *at += 1;
+                list.get(*at - 1).copied()
+            }
+            _ => None,
+        };
         if matches!(e.breakdown, Some(BreakdownKey::Unported))
             && let Some(l) = lua_box.get_mut(i)
             && l["underline"][1].is_boolean()
             && r["underline"][1].is_null()
         {
-            l["underline"][1] = Json::Null;
-            t.unverified_underline += 1;
+            // decided when the key's breakdown entry is one R8.4 builds (class `ported`) or no module writes it, the table is the one
+            // perform made (not handed over by CalcMirages) -- and the statBox label is this row's
+            let actor = e.actor_name.unwrap_or("player");
+            let decided = sd
+                .filter(|sd| {
+                    e.text
+                        .as_deref()
+                        .is_some_and(|tx| tx.ends_with(&format!("{}:", sd.label.unwrap_or("?"))))
+                })
+                .and_then(|sd| {
+                    let a = bfx.as_ref().map(|b| &b[actor]).filter(|a| a.is_object())?;
+                    if a["replaced"] == json!(true) {
+                        return None;
+                    }
+                    let top = sd.breakdown.map_or(sd.stat.expect("stat"), |b| b.split('.').next().unwrap_or(b));
+                    let class = a["keys"][top]["class"].as_str();
+                    if class.is_some_and(|c| c != "ported") {
+                        return None;
+                    }
+                    Some(rust_underline(&rust_bd(actor)?, sd))
+                });
+            match decided {
+                Some(b) => {
+                    r["underline"][1] = Json::Bool(b);
+                    t.resolved_underline += 1;
+                }
+                None => {
+                    l["underline"][1] = Json::Null;
+                    t.unverified_underline += 1;
+                }
+            }
         }
     }
     t.stat_box += lua_box.len();
@@ -446,15 +573,17 @@ fn display_matches_luajit() {
         total.stat_box += t.stat_box;
         total.warnings += t.warnings;
         total.unverified_underline += t.unverified_underline;
+        total.resolved_underline += t.resolved_underline;
         total.bad.extend(t.bad);
     }
     println!(
-        "TOTAL {} scenarios: section rows {}, raw entries {}, statBox entries {}, warnings {}, UNVERIFIED underline flags {} (breakdown tables: R8.4/R8.5), divergences {}",
+        "TOTAL {} scenarios: section rows {}, raw entries {}, statBox entries {}, warnings {}, underline flags decided by the R8.4 breakdown {}, UNVERIFIED underline flags {} (R8.5), divergences {}",
         list.len(),
         total.rows,
         total.raw,
         total.stat_box,
         total.warnings,
+        total.resolved_underline,
         total.unverified_underline,
         total.bad.len()
     );
@@ -473,7 +602,7 @@ fn display_matches_luajit() {
     );
     assert_eq!(
         total.unverified_underline, UNVERIFIED_UNDERLINE,
-        "underline flags Rust cannot decide without breakdown tables"
+        "underline flags Rust cannot decide without the R8.5 breakdown tables"
     );
 }
 
@@ -481,9 +610,10 @@ fn display_matches_luajit() {
 /// `mirages::replace_main` now copies `ActorState::hands` (orchestrator, R8.3 review) -- no divergence is pinned any more.
 const KNOWN_MIRAGE_HANDS: &[(&str, &str)] = &[];
 
-/// The second `underline` flags of stat rows that depend on the contents of `env.<actor>.breakdown` (Build.lua:1881-1902; R8.4/R8.5),
-/// on the 26 scenarios -- compared once the breakdown tables exist.
-const UNVERIFIED_UNDERLINE: usize = 994;
+/// The second `underline` flags of stat rows that depend on the contents of `env.<actor>.breakdown` (Build.lua:1881-1902), on the 26
+/// scenarios, that Rust cannot decide yet: R8.4 decides 838 of the former 994 (equal to LuaJIT); the 156 left are keys offence / triggers
+/// write (class `R8.5` in the breakdown fixtures: ManaCost, ManaPerSecondCost, TotalDPS, PreEffectiveCritChance, Speed, ...).
+const UNVERIFIED_UNDERLINE: usize = 156;
 
 /// R8.3 perf: `RefreshStatList` and the display structure on the 6 goldens (median over runs, µs) vs LuaJIT
 /// (`tools/.scratch/perf-r8.json`, export-r8.ts `perf`). Run: `cargo test -p pob-engine --release --test display -- --ignored --nocapture`.

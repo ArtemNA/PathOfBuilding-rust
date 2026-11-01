@@ -20,7 +20,7 @@
 //! The R6 checkpoints of the LuaJIT probe (`tools/lua-corpus/export-skills.ts`) are a hook ([`Checkpoint`], [`perform_with`]).
 
 mod ailments;
-mod ally;
+pub(crate) mod ally;
 mod buffs;
 mod curses;
 mod flasks;
@@ -80,6 +80,8 @@ pub struct ActorState {
     /// `actor.output.MainHand` / `OffHand` after the actor's offence (R7.10b: a minion's `actor.parent.output.MainHand`, CalcOffence.lua:3079);
     /// `None` = nil (not an attack, or no offence).
     pub(crate) hands: Option<[crate::offence::HandOut; 2]>,
+    /// `actor.breakdown` (:1514-1521, R8.4): the player's and `env.minion`'s when `env.buildBreakdown`; nil otherwise.
+    pub breakdown: Option<crate::breakdown::Breakdown>,
 }
 
 impl ActorState {
@@ -98,6 +100,7 @@ impl ActorState {
             weapon_range1: None,
             weapon_range2: None,
             hands: None,
+            breakdown: None,
         }
     }
 
@@ -555,7 +558,7 @@ fn info_flag(info: &pob_data::rules::WeaponTypeInfo, site: &str) -> String {
 
 // --- CalcPerform.lua:69-136 `doActorLifeMana` ---------------------------------------------------------------------------
 
-pub fn do_actor_life_mana(db: &StoreRef, output: &mut Output) {
+pub fn do_actor_life_mana(db: &StoreRef, output: &mut Output, mut bd: Option<&mut crate::breakdown::Breakdown>) {
     let low_life_perc = base(db, &["LowLifePercentage"]);
     output.set_num(
         "LowLifePercentage",
@@ -588,17 +591,55 @@ pub fn do_actor_life_mana(db: &StoreRef, output: &mut Output) {
         let m = more(db, None, &["Life"]);
         let ov = override_(db, &["Life"]);
         let conv = base(db, &["LifeConvertToEnergyShield"]);
+        let ov = ov.filter(Value::truthy);
         let life = or_override(
-            ov,
+            ov.clone(),
             max2(round(b * (1.0 + i / 100.0) * m * (1.0 - conv / 100.0), None), 1.0),
             "Modules/CalcPerform.lua:93",
         );
         output.set_num("Life", life);
+        // :94-109
+        if let Some(bd) = bd.as_deref_mut()
+            && (i != 0.0 || m != 1.0 || conv != 0.0 || ov.is_some())
+        {
+            let mut t = crate::breakdown::BTable::lines([crate::sf!("%g ^8(base)", b)]);
+            if i != 0.0 {
+                t.push(crate::sf!("x %.2f ^8(increased/reduced)", 1.0 + i / 100.0));
+            }
+            if m != 1.0 {
+                t.push(crate::sf!("x %.2f ^8(more/less)", m));
+            }
+            if let Some(o) = &ov {
+                t.push(crate::sf!("= %g ^8(life override)", num_val(o, "Modules/CalcPerform.lua:105")));
+            }
+            t.push(crate::sf!("= %g", life));
+            bd.put("Life", t);
+        }
     }
-    // :112-113; :114-116 read base/inc/more back for the breakdown only.
+    // :112-116
     let mana_conv = base(db, &["ManaConvertToArmour"]);
     let mana = round(ok(calc_lib::val(&db.borrow(), "Mana", None)) * (1.0 - mana_conv / 100.0), None);
     output.set_num("Mana", mana);
+    // :116-131
+    if let Some(bd) = bd {
+        let b = base(db, &["Mana"]);
+        let i = inc(db, &["Mana"]);
+        let m = more(db, None, &["Mana"]);
+        if i != 0.0 || m != 1.0 || mana_conv != 0.0 {
+            let mut t = crate::breakdown::BTable::lines([crate::sf!("%g ^8(base)", b)]);
+            if i != 0.0 {
+                t.push(crate::sf!("x %.2f ^8(increased/reduced)", 1.0 + i / 100.0));
+            }
+            if m != 1.0 {
+                t.push(crate::sf!("x %.2f ^8(more/less)", m));
+            }
+            if mana_conv != 0.0 {
+                t.push(crate::sf!("x %.2f ^8(converted to Armour)", 1.0 - mana_conv / 100.0));
+            }
+            t.push(crate::sf!("= %g", mana));
+            bd.put("Mana", t);
+        }
+    }
     let (life, mana) = (output.num("Life"), output.num("Mana"));
     output.set_num("LowestOfMaximumLifeAndMaximumMana", min2(life, mana));
 }
@@ -833,7 +874,7 @@ pub(super) fn do_actor_attribs_conditions(env: &mut Env, who: Who, st: &mut Acto
     // --- :393-505 attributes --------------------------------------------------------------------------------------------
     let output = &mut st.output;
     if flag(&db, &["Omniscience"]) {
-        calculate_omniscience(env, &db, output);
+        calculate_omniscience(env, &db, output, st.breakdown.as_mut());
     } else {
         // :395-427 -- twice, because of the circular dependency (X attribute higher than Y attribute). `pairs` over the
         // array `{"Str","Dex","Int"}` walks it in order.
@@ -841,6 +882,10 @@ pub(super) fn do_actor_attribs_conditions(env: &mut Env, who: Who, st: &mut Acto
             for stat in ATTRIBUTES {
                 let v = max2(round(ok(calc_lib::val(&db.borrow(), stat, None)), None), 0.0);
                 output.set_num(stat, v);
+                // :415-417
+                if let Some(bd) = st.breakdown.as_mut() {
+                    bd.set(stat, crate::breakdown::simple(&db, None, None, v, &[stat]).map(Into::into));
+                }
             }
             attribute_conditions(&db, output);
         }
@@ -927,7 +972,7 @@ pub(super) fn do_actor_attribs_conditions(env: &mut Env, who: Who, st: &mut Acto
     }
 
     // :547
-    do_actor_life_mana(&db, &mut st.output);
+    do_actor_life_mana(&db, &mut st.output, st.breakdown.as_mut());
 }
 
 /// :296-380 Shrine buffs -- before the life pool is calculated, for Massive Shrine.
@@ -1043,7 +1088,7 @@ fn shrines(db: &StoreRef) {
 }
 
 /// :429-490 `calculateOmniscience`.
-fn calculate_omniscience(env: &Env, db: &StoreRef, output: &mut Output) {
+fn calculate_omniscience(env: &Env, db: &StoreRef, output: &mut Output, mut bdown: Option<&mut crate::breakdown::Breakdown>) {
     // :430 `env.spec.tree.characterData and env.spec.tree.characterData[env.classId] or env.spec.tree.classes[env.classId]`
     let class_id = env.class_id;
     let cd = env
@@ -1077,7 +1122,12 @@ fn calculate_omniscience(env: &Env, db: &StoreRef, output: &mut Output) {
         if pass != 1 {
             for stat in ATTRIBUTES {
                 let b = base_of(stat);
-                output.set_num(stat, min2(round(ok(calc_lib::val(&db.borrow(), stat, None)), None), b));
+                let v = min2(round(ok(calc_lib::val(&db.borrow(), stat, None)), None), b);
+                output.set_num(stat, v);
+                // :448-450
+                if let Some(bd) = bdown.as_deref_mut() {
+                    bd.set(stat, crate::breakdown::simple(db, None, None, v, &[stat]).map(Into::into));
+                }
                 let v = base(db, &[stat]) - b;
                 nm(
                     db,
@@ -1112,6 +1162,10 @@ fn calculate_omniscience(env: &Env, db: &StoreRef, output: &mut Output) {
         }
         let omni = max2(round(ok(calc_lib::val(&db.borrow(), "Omni", None)), None), 0.0);
         output.set_num("Omni", omni);
+        // :480-482
+        if let Some(bd) = bdown.as_deref_mut() {
+            bd.set("Omni", crate::breakdown::simple(db, None, None, omni, &["Omni"]).map(Into::into));
+        }
         attribute_conditions(db, output);
     }
 }
@@ -2264,11 +2318,11 @@ fn choir_of_the_storm(mod_db: &StoreRef, player_actor: &ActorRef, player: &mut A
         t.actors.insert(Rc::from("player"), temp.clone());
     }
     temp_db.borrow_mut().set_actor(&temp);
-    crate::defence::resistances(&temp_db, &mut player.output);
+    crate::defence::resistances(&temp_db, &mut player.output, None);
     // `tempResistActor.player = tempResistActor` is a cycle: break it (Lua's GC would collect the table).
     temp.borrow_mut().actors.clear();
     // :3408-3409 the reservations again, with the mana from the overcapped lightning resistance.
-    do_actor_life_mana(mod_db, &mut player.output);
+    do_actor_life_mana(mod_db, &mut player.output, player.breakdown.as_mut());
     do_actor_life_mana_reservation(mod_db, player, true);
 }
 
@@ -2493,6 +2547,12 @@ pub fn perform_skip_ehp(
     // :1514-1522 the breakdown module: `breakdown` is built (MAIN, CalcSetup.lua:500); the flask/tincture breakdown below and :2157
     // read it.
     let breakdown = env.build_breakdown;
+    if breakdown {
+        player.breakdown = Some(crate::breakdown::Breakdown::new());
+        if let Some(ms) = &minion_state {
+            ms.borrow_mut().breakdown = Some(crate::breakdown::Breakdown::new());
+        }
+    }
     let mut flask_state = None;
     if skills_on {
         // :1524-1942 ConvertArmourESToLife, damage -> aura effect, minion life -> player, Mageblood, flasks, tinctures.
@@ -2544,7 +2604,7 @@ pub fn perform_skip_ehp(
     if let Some(h) = hook.as_mut() {
         h(Checkpoint::Cp1, env, &player, &enemy);
     }
-    do_actor_life_mana(&mod_db, &mut player.output);
+    do_actor_life_mana(&mod_db, &mut player.output, player.breakdown.as_mut());
     // :1946-1965 the minion: the player's enemy modifiers (hostile) or the skill's minion modifiers and keystones, then its attributes
     if let Some(ms) = &minion_state {
         minion_modifiers(env);
@@ -2558,6 +2618,15 @@ pub fn perform_skip_ehp(
     player.reserved_mana_percent = Some(0.0);
     player.uncancellable_life_reservation = Some(base(&mod_db, &["ExtraLifeReserved"]));
     player.uncancellable_mana_reservation = Some(base(&mod_db, &["ExtraManaReserved"]));
+    // :1974-1977
+    if let Some(bd) = player.breakdown.as_mut() {
+        for k in ["LifeReserved", "ManaReserved"] {
+            bd.put(
+                k,
+                crate::breakdown::BTable::new().with("reservations", crate::breakdown::BTable::new()),
+            );
+        }
+    }
     if skills_on {
         // :1978-2090 the per-skill loop ([`reservation`]).
         let mut acc = reservation::Acc {
@@ -2568,7 +2637,7 @@ pub fn perform_skip_ehp(
             uncancellable_life: player.uncancellable_life_reservation.unwrap_or(0.0),
             uncancellable_mana: player.uncancellable_mana_reservation.unwrap_or(0.0),
         };
-        reservation::reservation_loop(env, &player.output, &mut acc);
+        reservation::reservation_loop(env, &player.output, &mut acc, player.breakdown.as_mut());
         player.reserved_life_base = Some(acc.life_base);
         player.reserved_life_percent = Some(acc.life_percent);
         player.reserved_mana_base = Some(acc.mana_base);
@@ -2606,6 +2675,12 @@ pub fn perform_skip_ehp(
         };
         for attr in attr_table {
             let breakdown_attr = if omni_requirements.is_some() { "Omni" } else { attr };
+            // :2106-2116
+            if let Some(bd) = player.breakdown.as_mut() {
+                let mut t = crate::breakdown::row_table(None, &[(attr, "req"), ("Source", "source"), ("Source Name", "sourceName")]);
+                t.fields.insert("source".into(), "".into());
+                bd.put(format!("Req{attr}"), t);
+            }
             let mut val = 0.0;
             let mut source: Option<&crate::env::ReqEntry> = None;
             for req_source in &env.requirements_table {
@@ -2625,6 +2700,48 @@ pub fn perform_skip_ehp(
                     if req > val {
                         val = req;
                         source = Some(req_source);
+                    }
+                    // :2130-2146
+                    if let Some(bd) = player.breakdown.as_mut() {
+                        use crate::breakdown::{BTable, BVal};
+                        let have = player
+                            .output
+                            .opt_num(breakdown_attr)
+                            .unwrap_or_else(|| panic!("Modules/CalcPerform.lua:2132: attempt to compare nil with number"));
+                        let codes = &globals().color_codes;
+                        let req_v: BVal = if req > have {
+                            format!("{}{}", codes.get("NEGATIVE").expect("colorCodes.NEGATIVE"), tostring_num(req)).into()
+                        } else {
+                            req.into()
+                        };
+                        let mut row = BTable::new()
+                            .with("req", req_v)
+                            .with("reqNum", req)
+                            .with("source", req_source.source);
+                        if req_source.source == "Item" {
+                            let item = req_source.source_item.as_ref().expect("reqSource.sourceItem");
+                            let color = codes.get(item.rarity.as_str()).map(String::as_str).unwrap_or_else(|| {
+                                panic!(
+                                    "Modules/CalcPerform.lua:2138: attempt to concatenate a nil value (colorCodes.{})",
+                                    item.rarity
+                                )
+                            });
+                            row.fields.insert("sourceName".into(), format!("{color}{}", item.name).into());
+                            row.fields.insert("sourceNameTooltip".into(), BVal::Fn);
+                        } else if req_source.source == "Gem" {
+                            let (gi_group, gi_gem) = req_source.source_gem.expect("reqSource.sourceGem");
+                            let st = env.skills.as_ref().expect("skills on");
+                            let g = &st.tab.socket_group_list()[gi_group].gem_list[gi_gem];
+                            let s = crate::sf!(
+                                "%s%s ^7%d/%d",
+                                g.color.clone().unwrap_or_default(),
+                                g.name_spec.clone().unwrap_or_default(),
+                                g.level.unwrap_or(f64::NAN),
+                                g.quality.unwrap_or(f64::NAN)
+                            );
+                            row.fields.insert("sourceName".into(), s.into());
+                        }
+                        bd.table_mut(&format!("Req{breakdown_attr}")).field_mut("rowList").push(row);
                     }
                 }
             }
@@ -3066,15 +3183,43 @@ fn gem_level_quality(env: &Env, state: &mut PerformState) {
         sum(&ms.list, ModType::Base, Some(&ms.cfg), &[name])
     };
     let output = &mut state.player.output;
+    let bd = &mut state.player.breakdown;
     if level {
         let (base, item, support) = (s("GemLevel"), s("GemItemLevel"), s("GemSupportLevel"));
         output.set_bool("GemHasLevel", true);
         output.set_num("GemLevel", base + support + item);
+        // :3948-3958
+        if let Some(bd) = bd.as_mut() {
+            let mut t = crate::breakdown::BTable::lines([crate::sf!("%d ^8(level from gem)", base)]);
+            if support > 0.0 {
+                t.push(crate::sf!("+ %d ^8(level from support)", support));
+            }
+            if item > 0.0 {
+                t.push(crate::sf!("+ %d ^8(level from items)", item));
+            }
+            t.push(crate::sf!("= %d", base + support + item));
+            bd.put("GemLevel", t);
+        }
     }
     if quality {
         let (base, item, support, socket) = (s("GemQuality"), s("GemItemQuality"), s("GemSupportQuality"), s("GemSocketQuality"));
         output.set_bool("GemHasQuality", true);
         output.set_num("GemQuality", base + support + item + socket);
+        // :3971-3984
+        if let Some(bd) = bd.as_mut() {
+            let mut t = crate::breakdown::BTable::lines([crate::sf!("%d ^8(quality from gem)", base)]);
+            if support > 0.0 {
+                t.push(crate::sf!("+ %d ^8(quality from support)", support));
+            }
+            if item > 0.0 {
+                t.push(crate::sf!("+ %d ^8(quality from items)", item));
+            }
+            if socket > 0.0 {
+                t.push(crate::sf!("+ %d ^8(quality from socket)", socket));
+            }
+            t.push(crate::sf!("= %d", base + support + item + socket));
+            bd.put("GemQuality", t);
+        }
     }
 }
 

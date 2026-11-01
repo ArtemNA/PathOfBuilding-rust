@@ -90,9 +90,9 @@ const ALLY_LIFE_REDIRECTS: [&str; 7] = [
     VAAL_TOTEM_POOL.0,
 ];
 
-/// One `env.player.allyLifeList[pool][i]` entry (`{ name, life, count }`; totems have no `count`). Read by CalcDefence.lua:2546 (breakdown only).
+/// One `env.player.allyLifeList[pool][i]` entry (`{ name, life, count }`; totems have no `count`). Read by CalcDefence.lua:2546 (the
+/// breakdown, R8.4).
 #[derive(Clone, Debug)]
-#[allow(dead_code)] // the breakdown tables of CalcDefence.lua:2544-2557 are not ported (R8: they write no output)
 pub struct AllyLifeEntry {
     pub name: String,
     pub life: f64,
@@ -377,7 +377,8 @@ fn minion_life_of(
     if is_env_minion {
         let ms = env_minion_state.expect("env.minion has its output");
         let mut ms = ms.borrow_mut();
-        super::do_actor_life_mana(&mdb, &mut ms.output);
+        let ms = &mut *ms;
+        super::do_actor_life_mana(&mdb, &mut ms.output, ms.breakdown.as_mut());
         return ms.output.num("Life");
     }
     let saved = env.minion.replace(actor.clone());
