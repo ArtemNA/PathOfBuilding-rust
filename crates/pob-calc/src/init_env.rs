@@ -1694,12 +1694,21 @@ fn init_env_core(
         if let Some(it) = &item
             && it.ty.as_deref() == Some("Jewel")
             && it.base.and_then(|b| b.sub_type.as_deref()) == Some("Abyss")
-            && slot.parent_slot.is_some()
+            && let Some(parent_idx) = slot.parent_slot
         {
-            // :1052-1060 -- abyssal sockets are P5; nothing ever lands in one here.
-            env.unimplemented
-                .push("CalcSetup.lua:1052 abyss jewel in an abyssal socket (P5)".into());
-            item = None;
+            // :1052-1060 -- the parent item must have enough abyssal sockets; its `socketedJewelEffectModifier` scales the jewel.
+            let parent_item = player.borrow().item_list.get(&slots[parent_idx].slot_name).cloned();
+            let slot_num = slot
+                .slot_num
+                .expect("Modules/CalcSetup.lua:1055: attempt to compare number with nil (slot.slotNum)");
+            match parent_item {
+                Some(p) if p.abyssal_socket_count >= slot_num => {
+                    scale = p
+                        .socketed_jewel_effect_modifier
+                        .expect("Modules/CalcSetup.lua:1058: socketedJewelEffectModifier of a parsed item");
+                }
+                _ => item = None,
+            }
         }
         if slot.node_id.is_some()
             && let Some(it) = &item
@@ -1729,6 +1738,31 @@ fn init_env_core(
             dex: item.requirements.dex_mod,
             int: item.requirements.int_mod,
         });
+
+        // :1081-1099 abyss jewel conditions / multipliers (a tree socket or an abyssal socket)
+        if item.ty.as_deref() == Some("Jewel") && item.base.and_then(|b| b.sub_type.as_deref()) == Some("Abyss") {
+            let base_name = no_spaces(item.base_name.as_deref().expect("Modules/CalcSetup.lua:1083: item.baseName"));
+            let cond = format!("Have{base_name}");
+            let have = item_mod_db.borrow().conditions.get(cond.as_str()).copied().unwrap_or(false);
+            if !have {
+                set_cond(&item_mod_db, &cond, true);
+                bump_mult(&item_mod_db, "AbyssJewelType", 1.0);
+            }
+            if let Some(parent_idx) = slot.parent_slot {
+                let parent = &slots[parent_idx].slot_name;
+                set_cond(&item_mod_db, &format!("{cond}In{parent}"), true);
+                bump_mult(&item_mod_db, &format!("{base_name}In{parent}"), 1.0);
+            }
+            bump_mult(&item_mod_db, "AbyssJewel", 1.0);
+            match item.rarity.as_str() {
+                "NORMAL" => bump_mult(&item_mod_db, "NormalAbyssJewels", 1.0),
+                "MAGIC" => bump_mult(&item_mod_db, "MagicAbyssJewels", 1.0),
+                "RARE" => bump_mult(&item_mod_db, "RareAbyssJewels", 1.0),
+                "UNIQUE" | "RELIC" => bump_mult(&item_mod_db, "UniqueAbyssJewels", 1.0),
+                _ => {}
+            }
+            bump_mult(&item_mod_db, &base_name, 1.0);
+        }
 
         // --- :1100-1270 the special cases, in upstream order ---------------------------------------------------------
         let ty = item.ty.as_deref();

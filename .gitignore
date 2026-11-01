@@ -13,3 +13,5 @@
 /builds/pc/
 # SG-oracle sandbox: copy of the original PoB runtime (tools/sg-oracle/setup.ps1)
 /tools/sg-oracle/runtime/
+# LuaJIT truth for builds/pc (tools/lua-corpus/export-real.ts; carries the personal build data)
+/builds/pc-fixtures/
