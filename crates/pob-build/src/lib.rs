@@ -5,6 +5,7 @@
 
 #![forbid(unsafe_code)]
 
+pub mod code;
 pub mod config;
 pub mod file;
 pub mod load;
@@ -12,6 +13,7 @@ pub mod model;
 pub mod sanitise;
 pub mod xml;
 
+pub use code::{decode_build_code, encode_build_code};
 pub use config::{ConfigModLists, ConfigState, ConfigValue};
 pub use file::{desktop_text_mode, read_build_file};
 pub use load::{
@@ -19,4 +21,4 @@ pub use load::{
 };
 pub use model::*;
 pub use sanitise::sanitise_text;
-pub use xml::{RawXmlElement, RawXmlNode, XmlElement, XmlError, XmlNode, parse_xml_bytes, parse_xml_document};
+pub use xml::{RawXmlElement, RawXmlNode, XmlElement, XmlError, XmlNode, compose_xml, parse_xml_bytes, parse_xml_document};

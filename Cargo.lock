@@ -88,6 +88,7 @@ dependencies = [
 name = "pob-build"
 version = "0.1.0"
 dependencies = [
+ "flate2",
  "indexmap",
  "pob-data",
  "pob-golden",
@@ -138,6 +139,15 @@ dependencies = [
 [[package]]
 name = "pob-engine"
 version = "0.1.0"
+dependencies = [
+ "indexmap",
+ "pob-calc",
+ "pob-data",
+ "pob-golden",
+ "pob-lua",
+ "pob-mods",
+ "serde_json",
+]
 
 [[package]]
 name = "pob-golden"

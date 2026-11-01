@@ -276,3 +276,62 @@ fn to_utf8_node(n: RawXmlNode) -> XmlNode {
 pub fn parse_xml_document(text: &str) -> Result<Vec<XmlNode>, XmlError> {
     Ok(parse_xml_bytes(text.as_bytes())?.into_iter().map(to_utf8_node).collect())
 }
+
+/// xml.lua:17-23 `encodeContent`: `<>&'"` -> `&lt;` `&gt;` `&amp;` `&apos;` `&quot;`.
+pub fn encode_content(text: &str, out: &mut String) {
+    for c in text.chars() {
+        match c {
+            '<' => out.push_str("&lt;"),
+            '>' => out.push_str("&gt;"),
+            '&' => out.push_str("&amp;"),
+            '\'' => out.push_str("&apos;"),
+            '"' => out.push_str("&quot;"),
+            c => out.push(c),
+        }
+    }
+}
+
+fn push_tabs(out: &mut String, lvl: usize) {
+    out.extend(std::iter::repeat_n('\t', lvl));
+}
+
+/// xml.lua:112-158 `composeNode`. Attributes in `attrib` order (Lua: `pairs`, R13 -- the caller fixes the order); a nil/false
+/// attribute is simply absent from `attrib`. `node[1]` absent -> `/>` (the `empty` flag is not consulted, as in Lua).
+fn compose_node(out: &mut String, node: &XmlElement, lvl: usize) {
+    push_tabs(out, lvl);
+    out.push('<');
+    out.push_str(&node.name);
+    for (key, val) in &node.attrib {
+        out.push(' ');
+        out.push_str(key);
+        out.push_str("=\"");
+        encode_content(val, out);
+        out.push('"');
+    }
+    if node.children.is_empty() {
+        out.push_str("/>\n");
+        return;
+    }
+    out.push_str(">\n");
+    for child in &node.children {
+        match child {
+            XmlNode::Element(e) => compose_node(out, e, lvl + 1),
+            XmlNode::Text(t) => {
+                push_tabs(out, lvl + 1);
+                encode_content(t, out);
+                out.push('\n');
+            }
+        }
+    }
+    push_tabs(out, lvl);
+    out.push_str("</");
+    out.push_str(&node.name);
+    out.push_str(">\n");
+}
+
+/// xml.lua:160-171 `xml.ComposeXML(rootNode)`.
+pub fn compose_xml(root: &XmlElement) -> String {
+    let mut out = String::from("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
+    compose_node(&mut out, root, 0);
+    out
+}
