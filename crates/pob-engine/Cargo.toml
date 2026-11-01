@@ -1,0 +1,10 @@
+[package]
+name = "pob-engine"
+description = "Public engine API for the UI (contract: pob-engine-wasm boot.lua): build session, mutators, display stats, power, build codes (R8)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]

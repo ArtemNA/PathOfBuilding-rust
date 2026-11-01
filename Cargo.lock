@@ -136,6 +136,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "pob-engine"
+version = "0.1.0"
+
+[[package]]
 name = "pob-golden"
 version = "0.1.0"
 dependencies = [
