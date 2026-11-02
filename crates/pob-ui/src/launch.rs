@@ -13,8 +13,8 @@ use std::cell::{Cell, RefCell};
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::rc::Rc;
 
-/// `APP_NAME` (Launch.lua:9).
-pub const APP_NAME: &str = "Path of Building";
+/// `APP_NAME` (Launch.lua:9 "Path of Building"): "(Rust)" added by the user's decision, to tell the port's window from the original's.
+pub const APP_NAME: &str = "Path of Building (Rust)";
 
 /// Where things are (the original takes them from the working directory, `manifest.xml` and `GetUserPath`).
 #[derive(Clone, Debug)]
