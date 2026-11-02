@@ -1,0 +1,17 @@
+[package]
+name = "pob-gfx"
+description = "Own implementation of the SimpleGraphic host API (PoB UI); U1.1: pure text functions (fonts, widths, cursor index, escapes)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+image = { version = "0.25", default-features = false, features = ["tga"] }
+
+[dev-dependencies]
+serde_json.workspace = true
+
+[lints]
+workspace = true
