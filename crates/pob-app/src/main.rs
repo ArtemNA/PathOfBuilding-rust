@@ -2,7 +2,7 @@
 //! build screen is U2c).
 //!   cargo run -p pob-app --release [-- --pob <PathOfBuilding checkout>] [--user-path <documents dir>] [--secs N]
 //! - `--pob`: the PoB checkout whose `src/` (tree assets), `runtime/SimpleGraphic/Fonts`, `manifest.xml`,
-//!   `changelog.txt` and `help.txt` are read (read-only; default `POB_ROOT` or the project's checkout, UI-ARCH §10 п. 7).
+//!   `changelog.txt` and `help.txt` are read (read-only; default `POB_ROOT`, else `pobRoot` of `tools/upstream.json`, UI-ARCH §10 п. 7).
 //! - `--user-path`: replaces the "Documents" folder (`GetUserPath`); user data goes to
 //!   `<it>/Path of Building (Rust)/` (UI-ARCH §10 п. 2) — never into the original's `Documents\Path of Building`.
 //! - `--secs N`: closes the window after N seconds (smoke runs).
@@ -12,7 +12,23 @@ use pob_gfx::{Frame, Gfx};
 use pob_ui::launch::{App, LaunchConfig};
 use std::time::Instant;
 
-const DEFAULT_POB_ROOT: &str = "C:/pob-work/project_15/PathOfBuilding";
+/// `tools/upstream.json` (the ONE upstream config, R-UP), read at compile time for the default `--pob`.
+const UPSTREAM_JSON: &str = include_str!("../../../tools/upstream.json");
+
+/// `pobRoot` of `tools/upstream.json` (absolute, or relative to the repo root).
+fn default_pob_root() -> String {
+    let key = UPSTREAM_JSON.find("\"pobRoot\"").expect("tools/upstream.json: pobRoot");
+    let rest = &UPSTREAM_JSON[key + "\"pobRoot\"".len()..];
+    let open = rest.find('"').expect("pobRoot value");
+    let len = rest[open + 1..].find('"').expect("pobRoot value");
+    let p = std::path::PathBuf::from(&rest[open + 1..open + 1 + len]);
+    let p = if p.is_absolute() {
+        p
+    } else {
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..").join(p)
+    };
+    p.to_string_lossy().into_owned()
+}
 
 /// The data folder of the Rust port (UI-ARCH §10 п. 2).
 const USER_FOLDER: &str = "Path of Building (Rust)";
@@ -60,7 +76,7 @@ fn main() {
     let args: Vec<String> = std::env::args().collect();
     let pob = arg(&args, "--pob")
         .or_else(|| std::env::var("POB_ROOT").ok())
-        .unwrap_or_else(|| DEFAULT_POB_ROOT.to_string())
+        .unwrap_or_else(default_pob_root)
         .replace('\\', "/");
     let pob = pob.trim_end_matches('/').to_string();
     let user_path = arg(&args, "--user-path")

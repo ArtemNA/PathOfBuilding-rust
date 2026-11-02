@@ -3,134 +3,134 @@
   "dumps":[{
       "step":1,
       "state":{
-        "saved":0,
         "cancelled":0,
         "saveEnabled":true,
         "y":340,
         "sel":"edit",
-        "buf":"start",
         "changes":0,
-        "x":455
+        "x":455,
+        "buf":"start",
+        "saved":0
       }
     },{
       "step":2,
       "state":{
-        "saved":0,
         "cancelled":0,
         "saveEnabled":true,
         "y":340,
         "sel":"edit",
-        "buf":"xy",
         "changes":2,
-        "x":455
+        "x":455,
+        "buf":"xy",
+        "saved":0
       }
     },{
       "step":3,
       "state":{
-        "saved":0,
         "cancelled":0,
         "saveEnabled":true,
         "y":340,
         "sel":"edit",
-        "buf":"xy",
         "changes":2,
-        "x":455
+        "x":455,
+        "buf":"xy",
+        "saved":0
       }
     },{
       "step":4,
       "state":{
-        "saved":0,
         "cancelled":0,
         "saveEnabled":true,
         "y":340,
         "sel":"save",
-        "buf":"xy",
         "changes":2,
-        "x":455
+        "x":455,
+        "buf":"xy",
+        "saved":0
       }
     },{
       "step":5,
       "state":{
-        "saved":1,
         "cancelled":0,
         "saveEnabled":true,
         "y":340,
         "sel":"nil",
-        "buf":"xy",
         "changes":2,
-        "x":455
+        "x":455,
+        "buf":"xy",
+        "saved":1
       }
     },{
       "step":6,
       "state":{
-        "saved":2,
         "cancelled":0,
         "saveEnabled":true,
         "y":340,
         "sel":"nil",
-        "buf":"xy",
         "changes":2,
-        "x":455
+        "x":455,
+        "buf":"xy",
+        "saved":2
       }
     },{
       "step":7,
       "state":{
-        "saved":2,
         "cancelled":1,
         "saveEnabled":true,
         "y":340,
         "sel":"nil",
-        "buf":"xy",
         "changes":2,
-        "x":455
+        "x":455,
+        "buf":"xy",
+        "saved":2
       }
     },{
       "step":8,
       "state":{
-        "saved":2,
         "cancelled":1,
         "saveEnabled":true,
         "y":340,
         "sel":"edit",
-        "buf":"xy",
         "changes":2,
-        "x":455
+        "x":455,
+        "buf":"xy",
+        "saved":2
       }
     },{
       "step":9,
       "state":{
-        "saved":2,
         "cancelled":1,
         "saveEnabled":true,
         "y":340,
         "sel":"edit",
-        "buf":"xy",
         "changes":2,
-        "x":455
+        "x":455,
+        "buf":"xy",
+        "saved":2
       }
     },{
       "step":10,
       "state":{
-        "saved":2,
         "cancelled":1,
         "saveEnabled":false,
         "y":340,
         "sel":"edit",
-        "buf":"",
         "changes":3,
-        "x":455
+        "x":455,
+        "buf":"",
+        "saved":2
       }
     },{
       "step":11,
       "state":{
-        "saved":2,
         "cancelled":1,
         "saveEnabled":false,
         "y":340,
         "sel":"nil",
-        "buf":"",
         "changes":3,
-        "x":455
+        "x":455,
+        "buf":"",
+        "saved":2
       }
     }],
   "shots":["popup-idle","popup-typed","popup-hover","popup-disabled"],

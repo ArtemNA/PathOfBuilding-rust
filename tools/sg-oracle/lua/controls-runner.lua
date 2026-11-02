@@ -14,7 +14,8 @@ ConExecute("set vid_resizable 3")
 ConExecute("set vid_last 1280,800,40,40,0")
 local json = require("dkjson")
 local base = GetScriptPath()
-local POB = "C:/pob-work/project_15/PathOfBuilding/src/"
+local UPSTREAM = dofile(base .. "/upstream.lua") -- written by run.ps1 from tools/upstream.json
+local POB = UPSTREAM.root .. "src/"
 local SRC = base .. "/src/"
 local shotDir = GetRuntimePath() .. "/SimpleGraphic/Screenshots/"
 local function readAll(p) local f = assert(io.open(p, "rb")) local s = f:read("*a") f:close() return s end

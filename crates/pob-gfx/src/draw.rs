@@ -49,8 +49,6 @@ pub enum GfxError {
     /// is ignored: `"^1abc"`, `"^xFF80001"` — `fixtures/frame-probe/log.json`).
     InvalidColorEscape(String),
     NoImageLoaded,
-    /// `SetBlendMode(x)` with an unknown mode (scene `u13-blend`).
-    InvalidBlendMode(String),
 }
 
 impl fmt::Display for GfxError {
@@ -59,7 +57,6 @@ impl fmt::Display for GfxError {
             Self::LayerNeedsSubLayer => write!(f, "SetDrawLayer(): must provide subLayer if layer is nil"),
             Self::InvalidColorEscape(_) => write!(f, "SetDrawColor() argument 1: invalid color escape sequence"),
             Self::NoImageLoaded => write!(f, "image handle has no image loaded"),
-            Self::InvalidBlendMode(m) => write!(f, "bad argument #1 to '?' (invalid option '{m}')"),
         }
     }
 }
@@ -458,19 +455,8 @@ impl Frame<'_> {
         Ok(())
     }
 
-    /// `SetBlendMode(mode)`. The Lua UI never calls it (UI-ARCH §2.2: 0 calls), so only the default `"ALPHA"` is
-    /// implemented. The other modes were measured (scene `u13-blend`, over grey 127): `"ADDITIVE"` = (ONE, ONE)
-    /// (0.5 red, a 0.5 -> 254), `"PREALPHA"` = (ONE, ONE_MINUS_SRC_ALPHA) (0.5 green -> 191, others 64); an unknown
-    /// mode is a Lua error and keeps the current mode.
-    pub fn set_blend_mode(&mut self, mode: &str) -> Result<(), GfxError> {
-        match mode {
-            "ALPHA" => Ok(()),
-            "PREALPHA" | "ADDITIVE" => unimplemented!(
-                "SetBlendMode({mode:?}): not called by the PoB Lua UI (UI-ARCH §2.2, 0 calls); measured in tools/sg-oracle/scenes/u13-blend.json"
-            ),
-            other => Err(GfxError::InvalidBlendMode(other.to_string())),
-        }
-    }
+    // No `SetBlendMode`: SimpleGraphic v2.5.5 (PoB 620ffe6da) removed it from the Lua API (scene `u13-blend`: every call is
+    // "attempt to call a nil value", the squares are drawn with the default ALPHA blending); the Lua UI never called it.
 
     /// Viewport offset and clip rectangle in physical pixels. The original works with whole-pixel viewports:
     /// `x`, `y` are rounded (half away from zero), `w`, `h` rounded **up** — 12 fractional viewports of the SG-oracle

@@ -1,12 +1,15 @@
 # Recreates the SG-oracle sandbox tools/sg-oracle/runtime/ by COPYING the original PoB runtime.
 # Sources are only read. The original exe is ever launched only from this copy (see run.ps1).
 #   pwsh tools/sg-oracle/setup.ps1 [-Source <PoB checkout>] [-Force]
+# -Source defaults to the upstream of tools/upstream.json (upstream.ps1; env POB_ROOT overrides).
 param(
-    [string]$Source = 'C:\pob-work\project_15\PathOfBuilding',
+    [string]$Source,
     [switch]$Force
 )
 $ErrorActionPreference = 'Stop'
 $here = $PSScriptRoot
+. (Join-Path $here 'upstream.ps1')
+if (-not $Source) { $Source = (Get-SgUpstream).Root }
 $dst = Join-Path $here 'runtime'
 $src = Join-Path $Source 'runtime'
 if (-not (Test-Path (Join-Path $src 'SimpleGraphic.dll'))) { throw "no SimpleGraphic.dll under $src" }

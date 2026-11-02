@@ -1,122 +1,122 @@
 [{
     "name":"palette",
-    "shot":"110226_012948.png",
+    "shot":"110226_061042.png",
     "size":[420,140],
     "dpi":100,
     "screen":[1280,800],
     "scale":1,
+    "frames_until_file":2,
     "logs":[],
     "errors":[],
-    "frames_before_shot":5,
-    "frames_until_file":2
+    "frames_before_shot":5
   },{
     "name":"text-heights",
-    "shot":"110226_012949.png",
+    "shot":"110226_061043.png",
     "size":[400,348],
     "dpi":100,
     "screen":[1280,800],
     "scale":1,
+    "frames_until_file":2,
     "logs":[],
     "errors":[],
-    "frames_before_shot":32,
-    "frames_until_file":2
+    "frames_before_shot":32
   },{
     "name":"text-fonts",
-    "shot":"110226_012950.png",
+    "shot":"110226_061044.png",
     "size":[460,414],
     "dpi":100,
     "screen":[1280,800],
     "scale":1,
+    "frames_until_file":2,
     "logs":[],
     "errors":[],
-    "frames_before_shot":33,
-    "frames_until_file":2
+    "frames_before_shot":32
   },{
     "name":"align",
-    "shot":"110226_012951.png",
+    "shot":"110226_061046.png",
     "size":[480,320],
     "dpi":100,
     "screen":[1280,800],
     "scale":1,
+    "frames_until_file":2,
     "logs":[],
     "errors":[],
-    "frames_before_shot":33,
-    "frames_until_file":2
+    "frames_before_shot":32
   },{
     "name":"align-viewport",
-    "shot":"110226_012952.png",
+    "shot":"110226_061047.png",
     "size":[1280,140],
     "dpi":100,
     "screen":[1280,800],
     "scale":1,
+    "frames_until_file":2,
     "logs":[],
     "errors":[],
-    "frames_before_shot":33,
-    "frames_until_file":2
+    "frames_before_shot":32
   },{
     "name":"layers",
-    "shot":"110226_012953.png",
+    "shot":"110226_061048.png",
     "size":[320,200],
     "dpi":100,
     "screen":[1280,800],
     "scale":1,
+    "frames_until_file":2,
     "logs":[],
     "errors":[],
-    "frames_before_shot":33,
-    "frames_until_file":2
+    "frames_before_shot":32
   },{
     "name":"viewport",
-    "shot":"110226_012954.png",
+    "shot":"110226_061049.png",
     "size":[420,280],
     "dpi":100,
     "screen":[1280,800],
     "scale":1,
+    "frames_until_file":2,
     "logs":[],
     "errors":[],
-    "frames_before_shot":33,
-    "frames_until_file":2
+    "frames_before_shot":32
   },{
     "name":"image-tint",
-    "shot":"110226_012955.png",
+    "shot":"110226_061050.png",
     "size":[420,260],
     "dpi":100,
     "screen":[1280,800],
     "scale":1,
+    "frames_until_file":2,
     "logs":[],
     "errors":[],
-    "frames_before_shot":33,
-    "frames_until_file":2
+    "frames_before_shot":32
   },{
     "name":"escape-carry",
-    "shot":"110226_012957.png",
+    "shot":"110226_061051.png",
     "size":[420,200],
     "dpi":100,
     "screen":[1280,800],
     "scale":1,
+    "frames_until_file":2,
     "logs":[[4,"GetDrawColor",[1,0,0,1]],[7,"GetDrawColor",[0,1,0,1]],[12,"GetDrawColor",[0,0,1,1]],[16,"GetDrawColor",[1,0,0,1]],[18,"GetDrawColor",[1,1,0,1]],[20,"GetDrawColor",[1,1,1,1]]],
     "errors":[],
-    "frames_before_shot":33,
-    "frames_until_file":2
+    "frames_before_shot":33
   },{
     "name":"dpi150",
-    "shot":"110226_012958.png",
+    "shot":"110226_061052.png",
     "size":[320,160],
     "dpi":150,
     "screen":[1280,800],
     "scale":1.5,
+    "frames_until_file":2,
     "logs":[],
     "errors":[],
-    "frames_before_shot":33,
-    "frames_until_file":2
+    "frames_before_shot":33
   },{
     "name":"fractional",
-    "shot":"110226_012959.png",
+    "shot":"110226_061053.png",
     "size":[240,130],
     "dpi":100,
     "screen":[1280,800],
     "scale":1,
+    "frames_until_file":2,
     "logs":[],
     "errors":[],
-    "frames_before_shot":33,
-    "frames_until_file":2
+    "frames_before_shot":34
   }]

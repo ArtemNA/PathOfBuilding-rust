@@ -243,7 +243,7 @@ fn frame(gfx: &mut Gfx, l: &Rc<Launch>) -> DrawList {
 }
 
 fn pob_root() -> String {
-    std::env::var("POB_ROOT").unwrap_or_else(|_| scene::DEFAULT_POB_ROOT.to_string())
+    scene::pob_root()
 }
 
 /// Runs `scenes/ui/<name>.json` like `ui-runner.lua`.

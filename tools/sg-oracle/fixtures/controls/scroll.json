@@ -3,182 +3,182 @@
   "dumps":[{
       "step":1,
       "state":{
-        "v":0,
-        "div":"0.500000",
-        "sliderDragging":false,
         "slider":"0.000000",
-        "sel":"nil",
         "h":0,
+        "sel":"nil",
         "dragging":false,
-        "changes":0
+        "changes":0,
+        "sliderDragging":false,
+        "div":"0.500000",
+        "v":0
       }
     },{
       "step":2,
       "state":{
-        "v":20,
-        "div":"0.500000",
-        "sliderDragging":false,
         "slider":"0.000000",
-        "sel":"v",
         "h":0,
+        "sel":"v",
         "dragging":false,
-        "changes":0
+        "changes":0,
+        "sliderDragging":false,
+        "div":"0.500000",
+        "v":20
       }
     },{
       "step":3,
       "state":{
-        "v":20,
-        "div":"0.500000",
-        "sliderDragging":false,
         "slider":"0.000000",
-        "sel":"v",
         "h":0,
+        "sel":"v",
         "dragging":false,
-        "changes":0
+        "changes":0,
+        "sliderDragging":false,
+        "div":"0.500000",
+        "v":20
       }
     },{
       "step":4,
       "state":{
-        "v":40,
-        "div":"0.500000",
-        "sliderDragging":false,
         "slider":"0.000000",
-        "sel":"v",
         "h":0,
+        "sel":"v",
         "dragging":false,
-        "changes":0
+        "changes":0,
+        "sliderDragging":false,
+        "div":"0.500000",
+        "v":40
       }
     },{
       "step":5,
       "state":{
-        "v":120,
-        "div":"0.500000",
-        "sliderDragging":false,
         "slider":"0.000000",
-        "sel":"v",
         "h":0,
+        "sel":"v",
         "dragging":false,
-        "changes":0
+        "changes":0,
+        "sliderDragging":false,
+        "div":"0.500000",
+        "v":120
       }
     },{
       "step":6,
       "state":{
-        "v":120,
-        "div":"0.500000",
-        "sliderDragging":false,
         "slider":"0.000000",
-        "sel":"nil",
         "h":0,
+        "sel":"nil",
         "dragging":false,
-        "changes":0
+        "changes":0,
+        "sliderDragging":false,
+        "div":"0.500000",
+        "v":120
       }
     },{
       "step":7,
       "state":{
-        "v":120,
-        "div":"0.500000",
-        "sliderDragging":false,
         "slider":"0.000000",
-        "sel":"v",
         "h":0,
+        "sel":"v",
         "dragging":true,
-        "changes":0
+        "changes":0,
+        "sliderDragging":false,
+        "div":"0.500000",
+        "v":120
       }
     },{
       "step":8,
       "state":{
-        "v":477,
-        "div":"0.500000",
-        "sliderDragging":false,
         "slider":"0.000000",
-        "sel":"v",
         "h":0,
+        "sel":"v",
         "dragging":true,
-        "changes":0
+        "changes":0,
+        "sliderDragging":false,
+        "div":"0.500000",
+        "v":477
       }
     },{
       "step":9,
       "state":{
-        "v":536,
-        "div":"0.500000",
-        "sliderDragging":false,
         "slider":"0.000000",
-        "sel":"nil",
         "h":0,
+        "sel":"nil",
         "dragging":false,
-        "changes":0
+        "changes":0,
+        "sliderDragging":false,
+        "div":"0.500000",
+        "v":536
       }
     },{
       "step":10,
       "state":{
-        "v":536,
-        "div":"0.500000",
-        "sliderDragging":false,
         "slider":"0.000000",
-        "sel":"nil",
         "h":30,
+        "sel":"nil",
         "dragging":false,
-        "changes":0
+        "changes":0,
+        "sliderDragging":false,
+        "div":"0.500000",
+        "v":536
       }
     },{
       "step":11,
       "state":{
-        "v":536,
-        "div":"0.500000",
-        "sliderDragging":false,
         "slider":"0.000000",
-        "sel":"nil",
         "h":150,
+        "sel":"nil",
         "dragging":false,
-        "changes":0
+        "changes":0,
+        "sliderDragging":false,
+        "div":"0.500000",
+        "v":536
       }
     },{
       "step":12,
       "state":{
-        "v":536,
-        "div":"0.500000",
-        "sliderDragging":true,
         "slider":"0.500000",
-        "sel":"slider",
         "h":150,
+        "sel":"slider",
         "dragging":false,
-        "changes":1
+        "changes":1,
+        "sliderDragging":true,
+        "div":"0.500000",
+        "v":536
       }
     },{
       "step":13,
       "state":{
-        "v":536,
-        "div":"0.500000",
-        "sliderDragging":false,
         "slider":"0.774725",
-        "sel":"nil",
         "h":150,
+        "sel":"nil",
         "dragging":false,
-        "changes":2
+        "changes":2,
+        "sliderDragging":false,
+        "div":"0.500000",
+        "v":536
       }
     },{
       "step":14,
       "state":{
-        "v":536,
-        "div":"0.500000",
-        "sliderDragging":false,
         "slider":"1.000000",
-        "sel":"nil",
         "h":150,
+        "sel":"nil",
         "dragging":false,
-        "changes":3
+        "changes":3,
+        "sliderDragging":false,
+        "div":"0.500000",
+        "v":536
       }
     },{
       "step":15,
       "state":{
-        "v":536,
-        "div":"0.450000",
-        "sliderDragging":false,
         "slider":"1.000000",
-        "sel":"nil",
         "h":150,
+        "sel":"nil",
         "dragging":false,
-        "changes":3
+        "changes":3,
+        "sliderDragging":false,
+        "div":"0.450000",
+        "v":536
       }
     }],
   "shots":["scroll-idle","scroll-hold","scroll-drag","scroll-slide","slider-drag","slider-final"],

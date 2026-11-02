@@ -1,7 +1,7 @@
 {
-  "cpu_ms": 16,
-  "wall_ms": 10010,
-  "cpu_percent_of_one_core": 0.16,
+  "cpu_ms": 391,
+  "wall_ms": 10003,
+  "cpu_percent_of_one_core": 3.91,
   "working_set_mb": 88,
-  "private_mb": 260
+  "private_mb": 252
 }

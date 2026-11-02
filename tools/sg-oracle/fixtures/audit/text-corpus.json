@@ -2,7 +2,9 @@
   "script": "text-corpus.lua",
   "args": "",
   "exit": 0,
-  "ms": 1023,
+  "ms": 973,
+  "upstream_sha": "3dbca4463c0a59079d9f7f032d8240cf868e09da",
+  "simplegraphic_sha256": "FBCBF9B9E0E946D71237750E57126C3F6D1B07EEAF5D47AD0BB2C416D491423C",
   "sandbox_changes": [
     "CHG  <rt>\\imgui.ini",
     "CHG  <rt>\\SimpleGraphic\\SimpleGraphic.cfg"

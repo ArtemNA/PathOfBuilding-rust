@@ -1,16 +1,16 @@
 //! ns per call of the text functions, on the same inputs as the SG measurement in
 //! `tools/sg-oracle/lua/text-extra.lua` (`fixtures/text-extra/perf.json`, 200 000 calls each from Lua).
 //!   cargo run --release -p pob-gfx --example text_perf [-- <fonts dir>]
+#[path = "../tests/scene/mod.rs"]
+mod scene;
+
 use pob_gfx::text::{FontFamily, FontSet, strip_escapes};
 use std::hint::black_box;
 use std::path::PathBuf;
 use std::time::Instant;
 
 fn main() {
-    let dir = std::env::args().nth(1).map_or_else(
-        || PathBuf::from("C:/pob-work/project_15/PathOfBuilding/runtime/SimpleGraphic/Fonts"),
-        PathBuf::from,
-    );
+    let dir = std::env::args().nth(1).map_or_else(scene::fonts_dir, PathBuf::from);
     let t0 = Instant::now();
     let fonts = FontSet::load(&dir).expect("fonts");
     println!("load 7 .tgf: {:.2} ms", t0.elapsed().as_secs_f64() * 1e3);

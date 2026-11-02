@@ -1,6 +1,7 @@
 #@ SimpleGraphic
 -- Replays JSON scenes (sg/scenes/<name>.json, order from index.json) in the real SimpleGraphic and screenshots each one.
 -- Scene: {"size":[w,h] (virtual px), "dpi":100|150, "images":{name:[path, flags...]}, "calls":[[api, args...], ...]}
+--   an image path may start with "{POB}/" = the upstream checkout of tools/upstream.json (sg/upstream.lua).
 --   null -> nil; a string first arg of DrawImage/DrawImageQuad names an image; ["@log","GetDrawColor"] records the call's results.
 -- Every frame starts with SetDrawLayer(0,0), SetViewport(), SetDrawColor(1,1,1,1) (runner reset), then the scene calls.
 -- TakeScreenshot names files by the second (SimpleGraphic/Screenshots/%m%d%y_%H%M%S.png) -> shots >= 1.1 s apart; each new
@@ -11,6 +12,7 @@ ConExecute("set vid_resizable 3")
 ConExecute("set vid_last 1280,800,40,40,0")
 local json = require("dkjson")
 local base = GetScriptPath()
+local UPSTREAM = dofile(base .. "/upstream.lua") -- written by run.ps1 from tools/upstream.json
 local shotDir = GetRuntimePath() .. "/SimpleGraphic/Screenshots/"
 local function readAll(p) local f = assert(io.open(p, "rb")) local s = f:read("*a") f:close() return s end
 local names = json.decode(readAll(base .. "/scenes/index.json"))
@@ -41,6 +43,7 @@ function main:Begin()
 	s.name, s.frames, s.logs, s.errors, s.handles = name, 0, {}, {}, {}
 	for k, spec in pairs(s.images or {}) do
 		local h = NewImageHandle()
+		spec[1] = spec[1]:gsub("^{POB}/", function() return UPSTREAM.root end)
 		local ok, err = pcall(h.Load, h, unpack(spec))
 		if not ok then s.errors[#s.errors + 1] = "load " .. k .. ": " .. tostring(err) end
 		s.handles[k] = h

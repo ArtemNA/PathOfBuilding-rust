@@ -14,45 +14,49 @@
         "script": "<rt>/sg",
         "work": "<rt>/sg"
       },
-      "injector": "hwnd=5506922 pid=20844 layout=04090409 dblclick=500 foreground=True",
+      "injector": "hwnd=10092966 pid=6112 layout=04090409 dblclick=500 foreground=True",
       "cadence": {
         "idle_static": {
-          "intervals": 56,
+          "intervals": 57,
           "median_ms": 30,
           "min_ms": 30,
           "max_ms": 31,
-          "mean_ms": 30.29
+          "mean_ms": 30.35
         },
         "animated": {
-          "intervals": 68,
+          "intervals": 67,
           "median_ms": 30,
           "min_ms": 30,
           "max_ms": 31,
-          "mean_ms": 30.29
+          "mean_ms": 30.3
         },
         "during_input": {
-          "intervals": 362,
+          "intervals": 371,
           "median_ms": 30,
           "min_ms": 29,
-          "max_ms": 37,
-          "mean_ms": 30.47
+          "max_ms": 32,
+          "mean_ms": 30.42
         },
         "minimized": {
-          "frames": 0
+          "intervals": 4,
+          "median_ms": 1,
+          "min_ms": 0,
+          "max_ms": 5,
+          "mean_ms": 1.5
         },
-        "minimized_gap_ms": 2263.0,
+        "minimized_gap_ms": 2271.0,
         "after_restore": {
-          "intervals": 64,
+          "intervals": 65,
           "median_ms": 30,
           "min_ms": 30,
-          "max_ms": 32,
-          "mean_ms": 30.47
+          "max_ms": 31,
+          "mean_ms": 30.37
         }
       },
       "frame_start_state": [
         {
           "layer_sub_r_g_b_a": "0,False,1,0,0,0,5",
-          "frames": 640
+          "frames": 653
         },
         {
           "layer_sub_r_g_b_a": "0,False,1,1,1,1",
@@ -75,7 +79,7 @@
           "what": "wheel +120 -120 +240 +60 +60",
           "events": [
             [
-              153,
+              151,
               "OnKeyDown",
               "WHEELUP",
               false,
@@ -86,7 +90,7 @@
               }
             ],
             [
-              153,
+              151,
               "OnKeyUp",
               "WHEELUP",
               {
@@ -96,7 +100,7 @@
               }
             ],
             [
-              366,
+              365,
               "OnKeyDown",
               "WHEELDOWN",
               false,
@@ -107,7 +111,7 @@
               }
             ],
             [
-              366,
+              365,
               "OnKeyUp",
               "WHEELDOWN",
               {
@@ -138,7 +142,7 @@
               }
             ],
             [
-              763,
+              762,
               "OnKeyDown",
               "WHEELUP",
               false,
@@ -159,7 +163,7 @@
               }
             ],
             [
-              977,
+              976,
               "OnKeyDown",
               "WHEELUP",
               false,
@@ -170,7 +174,7 @@
               }
             ],
             [
-              983,
+              976,
               "OnKeyUp",
               "WHEELUP",
               {
@@ -186,7 +190,7 @@
           "what": "key A (vk 41 sc 1E)",
           "events": [
             [
-              152,
+              181,
               "OnKeyDown",
               "a",
               false,
@@ -197,7 +201,7 @@
               }
             ],
             [
-              152,
+              181,
               "OnChar",
               "a",
               [
@@ -210,7 +214,7 @@
               }
             ],
             [
-              243,
+              242,
               "OnKeyUp",
               "a",
               {
@@ -226,7 +230,7 @@
           "what": "ctrl down, key Z, ctrl up",
           "events": [
             [
-              150,
+              182,
               "OnKeyDown",
               "CTRL",
               false,
@@ -237,7 +241,7 @@
               }
             ],
             [
-              210,
+              243,
               "OnKeyDown",
               "z",
               false,
@@ -248,7 +252,7 @@
               }
             ],
             [
-              210,
+              243,
               "OnChar",
               "z",
               [
@@ -261,7 +265,7 @@
               }
             ],
             [
-              271,
+              335,
               "OnKeyUp",
               "z",
               {
@@ -271,7 +275,7 @@
               }
             ],
             [
-              392,
+              457,
               "OnKeyUp",
               "CTRL",
               {
@@ -327,7 +331,7 @@
           "what": "RETURN",
           "events": [
             [
-              153,
+              182,
               "OnKeyDown",
               "RETURN",
               false,
@@ -338,7 +342,7 @@
               }
             ],
             [
-              153,
+              182,
               "OnChar",
               "\r",
               [
@@ -351,7 +355,7 @@
               }
             ],
             [
-              213,
+              244,
               "OnKeyUp",
               "RETURN",
               {
@@ -367,7 +371,7 @@
           "what": "TAB",
           "events": [
             [
-              151,
+              152,
               "OnKeyDown",
               "TAB",
               false,
@@ -378,7 +382,7 @@
               }
             ],
             [
-              151,
+              152,
               "OnChar",
               "\t",
               [
@@ -391,7 +395,7 @@
               }
             ],
             [
-              212,
+              244,
               "OnKeyUp",
               "TAB",
               {
@@ -407,7 +411,7 @@
           "what": "ESCAPE",
           "events": [
             [
-              153,
+              183,
               "OnKeyDown",
               "ESCAPE",
               false,
@@ -418,7 +422,7 @@
               }
             ],
             [
-              153,
+              183,
               "OnChar",
               "\u001b",
               [
@@ -431,7 +435,7 @@
               }
             ],
             [
-              214,
+              243,
               "OnKeyUp",
               "ESCAPE",
               {
@@ -468,7 +472,7 @@
               }
             ],
             [
-              333,
+              334,
               "OnKeyDown",
               "DELETE",
               false,
@@ -479,7 +483,7 @@
               }
             ],
             [
-              393,
+              394,
               "OnKeyUp",
               "DELETE",
               {
@@ -489,7 +493,7 @@
               }
             ],
             [
-              514,
+              546,
               "OnKeyDown",
               "LEFT",
               false,
@@ -500,7 +504,7 @@
               }
             ],
             [
-              575,
+              606,
               "OnKeyUp",
               "LEFT",
               {
@@ -516,7 +520,7 @@
           "what": "WM_CHAR U+044F U+00E9 U+20AC 0x1A 0x08 0x7F 0x0D",
           "events": [
             [
-              183,
+              152,
               "OnChar",
               "?",
               [
@@ -529,7 +533,7 @@
               }
             ],
             [
-              274,
+              273,
               "OnChar",
               "?",
               [
@@ -542,7 +546,7 @@
               }
             ],
             [
-              366,
+              365,
               "OnChar",
               "?",
               [
@@ -561,7 +565,7 @@
           "what": "LMB x2, 80 ms apart",
           "events": [
             [
-              183,
+              152,
               "OnKeyDown",
               "LEFTBUTTON",
               false,
@@ -572,7 +576,7 @@
               }
             ],
             [
-              214,
+              182,
               "OnKeyUp",
               "LEFTBUTTON",
               {
@@ -582,7 +586,7 @@
               }
             ],
             [
-              306,
+              304,
               "OnKeyDown",
               "LEFTBUTTON",
               true,
@@ -593,7 +597,7 @@
               }
             ],
             [
-              337,
+              335,
               "OnKeyUp",
               "LEFTBUTTON",
               {
@@ -609,7 +613,7 @@
           "what": "LMB x2, 300 ms apart",
           "events": [
             [
-              150,
+              154,
               "OnKeyDown",
               "LEFTBUTTON",
               false,
@@ -620,7 +624,7 @@
               }
             ],
             [
-              180,
+              185,
               "OnKeyUp",
               "LEFTBUTTON",
               {
@@ -630,7 +634,7 @@
               }
             ],
             [
-              511,
+              488,
               "OnKeyDown",
               "LEFTBUTTON",
               true,
@@ -641,7 +645,7 @@
               }
             ],
             [
-              541,
+              519,
               "OnKeyUp",
               "LEFTBUTTON",
               {
@@ -678,7 +682,7 @@
               }
             ],
             [
-              850,
+              848,
               "OnKeyDown",
               "LEFTBUTTON",
               false,
@@ -689,7 +693,7 @@
               }
             ],
             [
-              881,
+              879,
               "OnKeyUp",
               "LEFTBUTTON",
               {
@@ -716,7 +720,7 @@
               }
             ],
             [
-              214,
+              183,
               "OnKeyUp",
               "LEFTBUTTON",
               {
@@ -726,7 +730,7 @@
               }
             ],
             [
-              306,
+              274,
               "OnKeyDown",
               "LEFTBUTTON",
               true,
@@ -737,7 +741,7 @@
               }
             ],
             [
-              367,
+              335,
               "OnKeyUp",
               "LEFTBUTTON",
               {
@@ -747,7 +751,7 @@
               }
             ],
             [
-              461,
+              457,
               "OnKeyDown",
               "LEFTBUTTON",
               false,
@@ -758,7 +762,7 @@
               }
             ],
             [
-              522,
+              487,
               "OnKeyUp",
               "LEFTBUTTON",
               {
@@ -774,7 +778,7 @@
           "what": "RMB x2, 80 ms; MMB x1",
           "events": [
             [
-              155,
+              151,
               "OnKeyDown",
               "RIGHTBUTTON",
               false,
@@ -785,7 +789,7 @@
               }
             ],
             [
-              185,
+              212,
               "OnKeyUp",
               "RIGHTBUTTON",
               {
@@ -795,7 +799,7 @@
               }
             ],
             [
-              276,
+              273,
               "OnKeyDown",
               "RIGHTBUTTON",
               true,
@@ -806,7 +810,7 @@
               }
             ],
             [
-              338,
+              334,
               "OnKeyUp",
               "RIGHTBUTTON",
               {
@@ -816,7 +820,7 @@
               }
             ],
             [
-              552,
+              547,
               "OnKeyDown",
               "MIDDLEBUTTON",
               false,
@@ -827,7 +831,7 @@
               }
             ],
             [
-              582,
+              607,
               "OnKeyUp",
               "MIDDLEBUTTON",
               {
@@ -843,7 +847,7 @@
           "what": "LMB down,up,WM_LBUTTONDBLCLK,up (real double-click sequence with CS_DBLCLKS)",
           "events": [
             [
-              152,
+              182,
               "OnKeyDown",
               "LEFTBUTTON",
               false,
@@ -854,7 +858,7 @@
               }
             ],
             [
-              152,
+              182,
               "OnKeyUp",
               "LEFTBUTTON",
               {
@@ -864,7 +868,7 @@
               }
             ],
             [
-              244,
+              274,
               "OnKeyUp",
               "LEFTBUTTON",
               {
@@ -904,45 +908,45 @@
         "script": "<rt>/sg",
         "work": "<rt>/sg"
       },
-      "injector": "hwnd=2949534 pid=20824 layout=04090409 dblclick=500 foreground=True",
+      "injector": "hwnd=15925576 pid=30168 layout=04090409 dblclick=500 foreground=True",
       "cadence": {
         "idle_static": {
-          "intervals": 56,
-          "median_ms": 31,
+          "intervals": 55,
+          "median_ms": 30,
           "min_ms": 30,
           "max_ms": 31,
-          "mean_ms": 30.59
+          "mean_ms": 30.44
         },
         "animated": {
-          "intervals": 66,
-          "median_ms": 31,
+          "intervals": 67,
+          "median_ms": 30,
           "min_ms": 30,
-          "max_ms": 32,
-          "mean_ms": 30.67
+          "max_ms": 31,
+          "mean_ms": 30.4
         },
         "during_input": {
-          "intervals": 368,
+          "intervals": 371,
           "median_ms": 30,
           "min_ms": 29,
           "max_ms": 32,
-          "mean_ms": 30.42
+          "mean_ms": 30.45
         },
         "minimized": {
           "frames": 0
         },
-        "minimized_gap_ms": 2270.0,
+        "minimized_gap_ms": 2284.0,
         "after_restore": {
-          "intervals": 64,
+          "intervals": 65,
           "median_ms": 30,
           "min_ms": 30,
           "max_ms": 31,
-          "mean_ms": 30.27
+          "mean_ms": 30.32
         }
       },
       "frame_start_state": [
         {
           "layer_sub_r_g_b_a": "0,False,1,0,0,0,5",
-          "frames": 645
+          "frames": 648
         },
         {
           "layer_sub_r_g_b_a": "0,False,1,1,1,1",
@@ -965,7 +969,7 @@
           "what": "wheel +120 -120 +240 +60 +60",
           "events": [
             [
-              183,
+              182,
               "OnKeyDown",
               "WHEELUP",
               false,
@@ -976,7 +980,7 @@
               }
             ],
             [
-              183,
+              182,
               "OnKeyUp",
               "WHEELUP",
               {
@@ -986,7 +990,7 @@
               }
             ],
             [
-              367,
+              395,
               "OnKeyDown",
               "WHEELDOWN",
               false,
@@ -997,7 +1001,7 @@
               }
             ],
             [
-              367,
+              396,
               "OnKeyUp",
               "WHEELDOWN",
               {
@@ -1007,7 +1011,7 @@
               }
             ],
             [
-              581,
+              608,
               "OnKeyDown",
               "WHEELUP",
               false,
@@ -1018,7 +1022,7 @@
               }
             ],
             [
-              582,
+              609,
               "OnKeyUp",
               "WHEELUP",
               {
@@ -1028,7 +1032,7 @@
               }
             ],
             [
-              796,
+              820,
               "OnKeyDown",
               "WHEELUP",
               false,
@@ -1039,7 +1043,7 @@
               }
             ],
             [
-              796,
+              820,
               "OnKeyUp",
               "WHEELUP",
               {
@@ -1049,7 +1053,7 @@
               }
             ],
             [
-              1010,
+              1034,
               "OnKeyDown",
               "WHEELUP",
               false,
@@ -1060,7 +1064,7 @@
               }
             ],
             [
-              1011,
+              1034,
               "OnKeyUp",
               "WHEELUP",
               {
@@ -1076,7 +1080,7 @@
           "what": "key A (vk 41 sc 1E)",
           "events": [
             [
-              184,
+              183,
               "OnKeyDown",
               "a",
               false,
@@ -1087,7 +1091,7 @@
               }
             ],
             [
-              185,
+              183,
               "OnChar",
               "a",
               [
@@ -1100,7 +1104,7 @@
               }
             ],
             [
-              246,
+              243,
               "OnKeyUp",
               "a",
               {
@@ -1116,7 +1120,7 @@
           "what": "ctrl down, key Z, ctrl up",
           "events": [
             [
-              183,
+              182,
               "OnKeyDown",
               "CTRL",
               false,
@@ -1127,7 +1131,7 @@
               }
             ],
             [
-              244,
+              273,
               "OnKeyDown",
               "z",
               false,
@@ -1138,7 +1142,7 @@
               }
             ],
             [
-              245,
+              274,
               "OnChar",
               "z",
               [
@@ -1151,7 +1155,7 @@
               }
             ],
             [
-              335,
+              334,
               "OnKeyUp",
               "z",
               {
@@ -1161,7 +1165,7 @@
               }
             ],
             [
-              459,
+              455,
               "OnKeyUp",
               "CTRL",
               {
@@ -1201,7 +1205,7 @@
               }
             ],
             [
-              244,
+              243,
               "OnKeyUp",
               "BACK",
               {
@@ -1217,7 +1221,7 @@
           "what": "RETURN",
           "events": [
             [
-              182,
+              153,
               "OnKeyDown",
               "RETURN",
               false,
@@ -1228,7 +1232,7 @@
               }
             ],
             [
-              182,
+              153,
               "OnChar",
               "\r",
               [
@@ -1257,7 +1261,7 @@
           "what": "TAB",
           "events": [
             [
-              153,
+              152,
               "OnKeyDown",
               "TAB",
               false,
@@ -1268,7 +1272,7 @@
               }
             ],
             [
-              154,
+              153,
               "OnChar",
               "\t",
               [
@@ -1281,7 +1285,7 @@
               }
             ],
             [
-              215,
+              245,
               "OnKeyUp",
               "TAB",
               {
@@ -1297,7 +1301,7 @@
           "what": "ESCAPE",
           "events": [
             [
-              151,
+              153,
               "OnKeyDown",
               "ESCAPE",
               false,
@@ -1308,7 +1312,7 @@
               }
             ],
             [
-              151,
+              154,
               "OnChar",
               "\u001b",
               [
@@ -1321,7 +1325,7 @@
               }
             ],
             [
-              242,
+              214,
               "OnKeyUp",
               "ESCAPE",
               {
@@ -1348,7 +1352,7 @@
               }
             ],
             [
-              246,
+              244,
               "OnKeyUp",
               "F1",
               {
@@ -1358,7 +1362,7 @@
               }
             ],
             [
-              367,
+              366,
               "OnKeyDown",
               "DELETE",
               false,
@@ -1369,7 +1373,7 @@
               }
             ],
             [
-              459,
+              457,
               "OnKeyUp",
               "DELETE",
               {
@@ -1379,7 +1383,7 @@
               }
             ],
             [
-              580,
+              579,
               "OnKeyDown",
               "LEFT",
               false,
@@ -1390,7 +1394,7 @@
               }
             ],
             [
-              641,
+              640,
               "OnKeyUp",
               "LEFT",
               {
@@ -1406,7 +1410,7 @@
           "what": "WM_CHAR U+044F U+00E9 U+20AC 0x1A 0x08 0x7F 0x0D",
           "events": [
             [
-              151,
+              153,
               "OnChar",
               "?",
               [
@@ -1419,7 +1423,7 @@
               }
             ],
             [
-              242,
+              244,
               "OnChar",
               "?",
               [
@@ -1432,7 +1436,7 @@
               }
             ],
             [
-              333,
+              367,
               "OnChar",
               "?",
               [
@@ -1451,7 +1455,7 @@
           "what": "LMB x2, 80 ms apart",
           "events": [
             [
-              151,
+              152,
               "OnKeyDown",
               "LEFTBUTTON",
               false,
@@ -1462,7 +1466,7 @@
               }
             ],
             [
-              211,
+              212,
               "OnKeyUp",
               "LEFTBUTTON",
               {
@@ -1472,7 +1476,7 @@
               }
             ],
             [
-              303,
+              304,
               "OnKeyDown",
               "LEFTBUTTON",
               false,
@@ -1483,7 +1487,7 @@
               }
             ],
             [
-              333,
+              334,
               "OnKeyUp",
               "LEFTBUTTON",
               {
@@ -1499,7 +1503,7 @@
           "what": "LMB x2, 300 ms apart",
           "events": [
             [
-              151,
+              153,
               "OnKeyDown",
               "LEFTBUTTON",
               false,
@@ -1510,7 +1514,7 @@
               }
             ],
             [
-              182,
+              183,
               "OnKeyUp",
               "LEFTBUTTON",
               {
@@ -1520,7 +1524,7 @@
               }
             ],
             [
-              514,
+              517,
               "OnKeyDown",
               "LEFTBUTTON",
               false,
@@ -1531,7 +1535,7 @@
               }
             ],
             [
-              544,
+              547,
               "OnKeyUp",
               "LEFTBUTTON",
               {
@@ -1547,7 +1551,7 @@
           "what": "LMB x2, 650 ms apart",
           "events": [
             [
-              151,
+              152,
               "OnKeyDown",
               "LEFTBUTTON",
               false,
@@ -1568,7 +1572,7 @@
               }
             ],
             [
-              849,
+              852,
               "OnKeyDown",
               "LEFTBUTTON",
               false,
@@ -1579,7 +1583,7 @@
               }
             ],
             [
-              879,
+              882,
               "OnKeyUp",
               "LEFTBUTTON",
               {
@@ -1595,7 +1599,7 @@
           "what": "LMB x3, 80 ms apart",
           "events": [
             [
-              151,
+              153,
               "OnKeyDown",
               "LEFTBUTTON",
               false,
@@ -1606,7 +1610,7 @@
               }
             ],
             [
-              181,
+              183,
               "OnKeyUp",
               "LEFTBUTTON",
               {
@@ -1616,7 +1620,7 @@
               }
             ],
             [
-              302,
+              275,
               "OnKeyDown",
               "LEFTBUTTON",
               false,
@@ -1627,7 +1631,7 @@
               }
             ],
             [
-              333,
+              305,
               "OnKeyUp",
               "LEFTBUTTON",
               {
@@ -1637,7 +1641,7 @@
               }
             ],
             [
-              423,
+              397,
               "OnKeyDown",
               "LEFTBUTTON",
               false,
@@ -1648,7 +1652,7 @@
               }
             ],
             [
-              454,
+              428,
               "OnKeyUp",
               "LEFTBUTTON",
               {
@@ -1664,7 +1668,7 @@
           "what": "RMB x2, 80 ms; MMB x1",
           "events": [
             [
-              151,
+              153,
               "OnKeyDown",
               "RIGHTBUTTON",
               false,
@@ -1675,7 +1679,7 @@
               }
             ],
             [
-              181,
+              183,
               "OnKeyUp",
               "RIGHTBUTTON",
               {
@@ -1685,7 +1689,7 @@
               }
             ],
             [
-              273,
+              304,
               "OnKeyDown",
               "RIGHTBUTTON",
               false,
@@ -1696,7 +1700,7 @@
               }
             ],
             [
-              303,
+              334,
               "OnKeyUp",
               "RIGHTBUTTON",
               {
@@ -1706,7 +1710,7 @@
               }
             ],
             [
-              516,
+              517,
               "OnKeyDown",
               "MIDDLEBUTTON",
               false,
@@ -1717,7 +1721,7 @@
               }
             ],
             [
-              546,
+              547,
               "OnKeyUp",
               "MIDDLEBUTTON",
               {
@@ -1733,7 +1737,7 @@
           "what": "LMB down,up,WM_LBUTTONDBLCLK,up (real double-click sequence with CS_DBLCLKS)",
           "events": [
             [
-              150,
+              153,
               "OnKeyDown",
               "LEFTBUTTON",
               false,
@@ -1744,7 +1748,7 @@
               }
             ],
             [
-              151,
+              153,
               "OnKeyUp",
               "LEFTBUTTON",
               {
@@ -1754,7 +1758,7 @@
               }
             ],
             [
-              242,
+              244,
               "OnKeyUp",
               "LEFTBUTTON",
               {
@@ -1784,11 +1788,52 @@
     }
   },
   "audits": {
-    "measure-desktop": {
-      "script": "measure.lua",
-      "args": "desktop",
+    "build-runner-open_edit_parts_saveas": {
+      "script": "build-runner.lua",
+      "args": "open,edit,parts,saveas",
       "exit": 0,
-      "ms": 22397,
+      "ms": 25845,
+      "upstream_sha": "3dbca4463c0a59079d9f7f032d8240cf868e09da",
+      "simplegraphic_sha256": "FBCBF9B9E0E946D71237750E57126C3F6D1B07EEAF5D47AD0BB2C416D491423C",
+      "sandbox_changes": [
+        "CHG  <rt>\\imgui.ini",
+        "CHG  <rt>\\SimpleGraphic\\SimpleGraphic.cfg"
+      ],
+      "outside_watched_changes": [],
+      "recent_writes_elsewhere": 4,
+      "pob_like_recent": []
+    },
+    "controls-runner-dragger": {
+      "script": "controls-runner.lua",
+      "args": "dragger",
+      "exit": 0,
+      "ms": 7805,
+      "sandbox_changes": [
+        "CHG  <rt>\\imgui.ini",
+        "CHG  <rt>\\SimpleGraphic\\SimpleGraphic.cfg"
+      ],
+      "outside_watched_changes": [],
+      "recent_writes_elsewhere": 4,
+      "pob_like_recent": []
+    },
+    "controls-runner-drop": {
+      "script": "controls-runner.lua",
+      "args": "drop",
+      "exit": 0,
+      "ms": 11090,
+      "sandbox_changes": [
+        "CHG  <rt>\\imgui.ini",
+        "CHG  <rt>\\SimpleGraphic\\SimpleGraphic.cfg"
+      ],
+      "outside_watched_changes": [],
+      "recent_writes_elsewhere": 6,
+      "pob_like_recent": []
+    },
+    "controls-runner-edit": {
+      "script": "controls-runner.lua",
+      "args": "edit",
+      "exit": 0,
+      "ms": 8933,
       "sandbox_changes": [
         "CHG  <rt>\\imgui.ini",
         "CHG  <rt>\\SimpleGraphic\\SimpleGraphic.cfg"
@@ -1797,24 +1842,309 @@
       "recent_writes_elsewhere": 7,
       "pob_like_recent": []
     },
-    "measure-window": {
-      "script": "measure.lua",
-      "args": "window",
+    "controls-runner-list": {
+      "script": "controls-runner.lua",
+      "args": "list",
       "exit": 0,
-      "ms": 22935,
+      "ms": 7716,
       "sandbox_changes": [
         "CHG  <rt>\\imgui.ini",
         "CHG  <rt>\\SimpleGraphic\\SimpleGraphic.cfg"
       ],
       "outside_watched_changes": [],
-      "recent_writes_elsewhere": 9,
+      "recent_writes_elsewhere": 4,
+      "pob_like_recent": []
+    },
+    "controls-runner-scroll": {
+      "script": "controls-runner.lua",
+      "args": "scroll",
+      "exit": 0,
+      "ms": 6683,
+      "sandbox_changes": [
+        "CHG  <rt>\\imgui.ini",
+        "CHG  <rt>\\SimpleGraphic\\SimpleGraphic.cfg"
+      ],
+      "outside_watched_changes": [],
+      "recent_writes_elsewhere": 6,
+      "pob_like_recent": []
+    },
+    "controls-runner": {
+      "script": "controls-runner.lua",
+      "args": "",
+      "exit": 0,
+      "ms": 52155,
+      "upstream_sha": "3dbca4463c0a59079d9f7f032d8240cf868e09da",
+      "simplegraphic_sha256": "FBCBF9B9E0E946D71237750E57126C3F6D1B07EEAF5D47AD0BB2C416D491423C",
+      "sandbox_changes": [
+        "CHG  <rt>\\imgui.ini",
+        "CHG  <rt>\\SimpleGraphic\\SimpleGraphic.cfg"
+      ],
+      "outside_watched_changes": [],
+      "recent_writes_elsewhere": 7,
+      "pob_like_recent": []
+    },
+    "draw-perf": {
+      "script": "draw-perf.lua",
+      "args": "",
+      "exit": 0,
+      "ms": 913,
+      "upstream_sha": "3dbca4463c0a59079d9f7f032d8240cf868e09da",
+      "simplegraphic_sha256": "FBCBF9B9E0E946D71237750E57126C3F6D1B07EEAF5D47AD0BB2C416D491423C",
+      "sandbox_changes": [
+        "CHG  <rt>\\imgui.ini",
+        "CHG  <rt>\\SimpleGraphic\\SimpleGraphic.cfg"
+      ],
+      "outside_watched_changes": [],
+      "recent_writes_elsewhere": 2,
+      "pob_like_recent": []
+    },
+    "first-frame": {
+      "script": "first-frame.lua",
+      "args": "",
+      "exit": 0,
+      "ms": 735,
+      "upstream_sha": "3dbca4463c0a59079d9f7f032d8240cf868e09da",
+      "simplegraphic_sha256": "FBCBF9B9E0E946D71237750E57126C3F6D1B07EEAF5D47AD0BB2C416D491423C",
+      "sandbox_changes": [
+        "CHG  <rt>\\imgui.ini",
+        "CHG  <rt>\\SimpleGraphic\\SimpleGraphic.cfg"
+      ],
+      "outside_watched_changes": [],
+      "recent_writes_elsewhere": 3,
+      "pob_like_recent": []
+    },
+    "frame-probe": {
+      "script": "frame-probe.lua",
+      "args": "",
+      "exit": 0,
+      "ms": 3335,
+      "upstream_sha": "3dbca4463c0a59079d9f7f032d8240cf868e09da",
+      "simplegraphic_sha256": "FBCBF9B9E0E946D71237750E57126C3F6D1B07EEAF5D47AD0BB2C416D491423C",
+      "sandbox_changes": [
+        "CHG  <rt>\\imgui.ini",
+        "CHG  <rt>\\SimpleGraphic\\SimpleGraphic.cfg"
+      ],
+      "outside_watched_changes": [],
+      "recent_writes_elsewhere": 4,
+      "pob_like_recent": []
+    },
+    "idle": {
+      "script": "idle.lua",
+      "args": "",
+      "exit": 0,
+      "ms": 14880,
+      "upstream_sha": "3dbca4463c0a59079d9f7f032d8240cf868e09da",
+      "simplegraphic_sha256": "FBCBF9B9E0E946D71237750E57126C3F6D1B07EEAF5D47AD0BB2C416D491423C",
+      "sandbox_changes": [
+        "CHG  <rt>\\imgui.ini",
+        "CHG  <rt>\\SimpleGraphic\\SimpleGraphic.cfg"
+      ],
+      "outside_watched_changes": [],
+      "recent_writes_elsewhere": 6,
+      "pob_like_recent": []
+    },
+    "input-probe-bisect_1080_320": {
+      "script": "input-probe.lua",
+      "args": "bisect 1080,320",
+      "exit": 0,
+      "ms": 13972,
+      "upstream_sha": "3dbca4463c0a59079d9f7f032d8240cf868e09da",
+      "simplegraphic_sha256": "FBCBF9B9E0E946D71237750E57126C3F6D1B07EEAF5D47AD0BB2C416D491423C",
+      "sandbox_changes": [
+        "CHG  <rt>\\imgui.ini",
+        "CHG  <rt>\\SimpleGraphic\\SimpleGraphic.cfg"
+      ],
+      "outside_watched_changes": [],
+      "recent_writes_elsewhere": 3,
+      "pob_like_recent": []
+    },
+    "input-probe-chars": {
+      "script": "input-probe.lua",
+      "args": "chars",
+      "exit": 0,
+      "ms": 9078,
+      "upstream_sha": "3dbca4463c0a59079d9f7f032d8240cf868e09da",
+      "simplegraphic_sha256": "FBCBF9B9E0E946D71237750E57126C3F6D1B07EEAF5D47AD0BB2C416D491423C",
+      "sandbox_changes": [
+        "CHG  <rt>\\imgui.ini",
+        "CHG  <rt>\\SimpleGraphic\\SimpleGraphic.cfg"
+      ],
+      "outside_watched_changes": [],
+      "recent_writes_elsewhere": 3,
+      "pob_like_recent": []
+    },
+    "input-probe-drag_1080_320": {
+      "script": "input-probe.lua",
+      "args": "drag 1080,320",
+      "exit": 0,
+      "ms": 5120,
+      "upstream_sha": "3dbca4463c0a59079d9f7f032d8240cf868e09da",
+      "simplegraphic_sha256": "FBCBF9B9E0E946D71237750E57126C3F6D1B07EEAF5D47AD0BB2C416D491423C",
+      "sandbox_changes": [
+        "CHG  <rt>\\imgui.ini",
+        "CHG  <rt>\\SimpleGraphic\\SimpleGraphic.cfg"
+      ],
+      "outside_watched_changes": [],
+      "recent_writes_elsewhere": 3,
+      "pob_like_recent": []
+    },
+    "input-probe-f10": {
+      "script": "input-probe.lua",
+      "args": "f10",
+      "exit": 0,
+      "ms": 6291,
+      "upstream_sha": "3dbca4463c0a59079d9f7f032d8240cf868e09da",
+      "simplegraphic_sha256": "FBCBF9B9E0E946D71237750E57126C3F6D1B07EEAF5D47AD0BB2C416D491423C",
+      "sandbox_changes": [
+        "CHG  <rt>\\imgui.ini",
+        "CHG  <rt>\\SimpleGraphic\\SimpleGraphic.cfg"
+      ],
+      "outside_watched_changes": [],
+      "recent_writes_elsewhere": 8,
+      "pob_like_recent": []
+    },
+    "input-probe-f10in_1080_320": {
+      "script": "input-probe.lua",
+      "args": "f10in 1080,320",
+      "exit": 0,
+      "ms": 6222,
+      "upstream_sha": "3dbca4463c0a59079d9f7f032d8240cf868e09da",
+      "simplegraphic_sha256": "FBCBF9B9E0E946D71237750E57126C3F6D1B07EEAF5D47AD0BB2C416D491423C",
+      "sandbox_changes": [
+        "CHG  <rt>\\imgui.ini",
+        "CHG  <rt>\\SimpleGraphic\\SimpleGraphic.cfg"
+      ],
+      "outside_watched_changes": [],
+      "recent_writes_elsewhere": 3,
+      "pob_like_recent": []
+    },
+    "input-probe-inside_1080_320": {
+      "script": "input-probe.lua",
+      "args": "inside 1080,320",
+      "exit": 0,
+      "ms": 20917,
+      "upstream_sha": "3dbca4463c0a59079d9f7f032d8240cf868e09da",
+      "simplegraphic_sha256": "FBCBF9B9E0E946D71237750E57126C3F6D1B07EEAF5D47AD0BB2C416D491423C",
+      "sandbox_changes": [
+        "CHG  <rt>\\imgui.ini",
+        "CHG  <rt>\\SimpleGraphic\\SimpleGraphic.cfg"
+      ],
+      "outside_watched_changes": [],
+      "recent_writes_elsewhere": 8,
+      "pob_like_recent": []
+    },
+    "input-probe": {
+      "script": "input-probe.lua",
+      "args": "",
+      "exit": 0,
+      "ms": 22409,
+      "upstream_sha": "3dbca4463c0a59079d9f7f032d8240cf868e09da",
+      "simplegraphic_sha256": "FBCBF9B9E0E946D71237750E57126C3F6D1B07EEAF5D47AD0BB2C416D491423C",
+      "sandbox_changes": [
+        "CHG  <rt>\\imgui.ini",
+        "CHG  <rt>\\SimpleGraphic\\SimpleGraphic.cfg"
+      ],
+      "outside_watched_changes": [],
+      "recent_writes_elsewhere": 3,
+      "pob_like_recent": []
+    },
+    "measure-desktop": {
+      "script": "measure.lua",
+      "args": "desktop",
+      "exit": 0,
+      "ms": 23286,
+      "upstream_sha": "3dbca4463c0a59079d9f7f032d8240cf868e09da",
+      "simplegraphic_sha256": "FBCBF9B9E0E946D71237750E57126C3F6D1B07EEAF5D47AD0BB2C416D491423C",
+      "sandbox_changes": [
+        "CHG  <rt>\\imgui.ini",
+        "CHG  <rt>\\SimpleGraphic\\SimpleGraphic.cfg"
+      ],
+      "outside_watched_changes": [],
+      "recent_writes_elsewhere": 5,
+      "pob_like_recent": []
+    },
+    "measure-window": {
+      "script": "measure.lua",
+      "args": "window",
+      "exit": 0,
+      "ms": 22932,
+      "upstream_sha": "3dbca4463c0a59079d9f7f032d8240cf868e09da",
+      "simplegraphic_sha256": "FBCBF9B9E0E946D71237750E57126C3F6D1B07EEAF5D47AD0BB2C416D491423C",
+      "sandbox_changes": [
+        "CHG  <rt>\\imgui.ini",
+        "CHG  <rt>\\SimpleGraphic\\SimpleGraphic.cfg"
+      ],
+      "outside_watched_changes": [],
+      "recent_writes_elsewhere": 5,
+      "pob_like_recent": []
+    },
+    "scene-runner-u12-frac_u12-dpi125_u12-image": {
+      "script": "scene-runner.lua",
+      "args": "u12-frac,u12-dpi125,u12-image",
+      "exit": 0,
+      "ms": 3265,
+      "upstream_sha": "3dbca4463c0a59079d9f7f032d8240cf868e09da",
+      "simplegraphic_sha256": "FBCBF9B9E0E946D71237750E57126C3F6D1B07EEAF5D47AD0BB2C416D491423C",
+      "sandbox_changes": [
+        "CHG  <rt>\\imgui.ini",
+        "CHG  <rt>\\SimpleGraphic\\SimpleGraphic.cfg"
+      ],
+      "outside_watched_changes": [],
+      "recent_writes_elsewhere": 3,
+      "pob_like_recent": []
+    },
+    "scene-runner-u12-holdout_u12-nearest": {
+      "script": "scene-runner.lua",
+      "args": "u12-holdout,u12-nearest",
+      "exit": 0,
+      "ms": 2148,
+      "upstream_sha": "3dbca4463c0a59079d9f7f032d8240cf868e09da",
+      "simplegraphic_sha256": "FBCBF9B9E0E946D71237750E57126C3F6D1B07EEAF5D47AD0BB2C416D491423C",
+      "sandbox_changes": [
+        "CHG  <rt>\\imgui.ini",
+        "CHG  <rt>\\SimpleGraphic\\SimpleGraphic.cfg"
+      ],
+      "outside_watched_changes": [],
+      "recent_writes_elsewhere": 5,
+      "pob_like_recent": []
+    },
+    "scene-runner-u13-h30probe": {
+      "script": "scene-runner.lua",
+      "args": "u13-h30probe",
+      "exit": 0,
+      "ms": 1043,
+      "upstream_sha": "3dbca4463c0a59079d9f7f032d8240cf868e09da",
+      "simplegraphic_sha256": "FBCBF9B9E0E946D71237750E57126C3F6D1B07EEAF5D47AD0BB2C416D491423C",
+      "sandbox_changes": [
+        "CHG  <rt>\\imgui.ini",
+        "CHG  <rt>\\SimpleGraphic\\SimpleGraphic.cfg"
+      ],
+      "outside_watched_changes": [],
+      "recent_writes_elsewhere": 2,
+      "pob_like_recent": []
+    },
+    "scene-runner-u13-negative_u13-layers_u13-placeholder_u13-dpi125_u13-blend_u15-demo": {
+      "script": "scene-runner.lua",
+      "args": "u13-negative,u13-layers,u13-placeholder,u13-dpi125,u13-blend,u15-demo",
+      "exit": 0,
+      "ms": 6562,
+      "upstream_sha": "3dbca4463c0a59079d9f7f032d8240cf868e09da",
+      "simplegraphic_sha256": "FBCBF9B9E0E946D71237750E57126C3F6D1B07EEAF5D47AD0BB2C416D491423C",
+      "sandbox_changes": [
+        "CHG  <rt>\\imgui.ini",
+        "CHG  <rt>\\SimpleGraphic\\SimpleGraphic.cfg"
+      ],
+      "outside_watched_changes": [],
+      "recent_writes_elsewhere": 3,
       "pob_like_recent": []
     },
     "scene-runner": {
       "script": "scene-runner.lua",
       "args": "",
       "exit": 0,
-      "ms": 12253,
+      "ms": 12415,
+      "upstream_sha": "3dbca4463c0a59079d9f7f032d8240cf868e09da",
+      "simplegraphic_sha256": "FBCBF9B9E0E946D71237750E57126C3F6D1B07EEAF5D47AD0BB2C416D491423C",
       "sandbox_changes": [
         "CHG  <rt>\\imgui.ini",
         "CHG  <rt>\\SimpleGraphic\\SimpleGraphic.cfg"
@@ -1827,13 +2157,105 @@
       "script": "text-corpus.lua",
       "args": "",
       "exit": 0,
-      "ms": 1023,
+      "ms": 973,
+      "upstream_sha": "3dbca4463c0a59079d9f7f032d8240cf868e09da",
+      "simplegraphic_sha256": "FBCBF9B9E0E946D71237750E57126C3F6D1B07EEAF5D47AD0BB2C416D491423C",
       "sandbox_changes": [
         "CHG  <rt>\\imgui.ini",
         "CHG  <rt>\\SimpleGraphic\\SimpleGraphic.cfg"
       ],
       "outside_watched_changes": [],
       "recent_writes_elsewhere": 7,
+      "pob_like_recent": []
+    },
+    "text-extra": {
+      "script": "text-extra.lua",
+      "args": "",
+      "exit": 0,
+      "ms": 1352,
+      "upstream_sha": "3dbca4463c0a59079d9f7f032d8240cf868e09da",
+      "simplegraphic_sha256": "FBCBF9B9E0E946D71237750E57126C3F6D1B07EEAF5D47AD0BB2C416D491423C",
+      "sandbox_changes": [
+        "CHG  <rt>\\imgui.ini",
+        "CHG  <rt>\\SimpleGraphic\\SimpleGraphic.cfg"
+      ],
+      "outside_watched_changes": [],
+      "recent_writes_elsewhere": 6,
+      "pob_like_recent": []
+    },
+    "text-probe": {
+      "script": "text-probe.lua",
+      "args": "",
+      "exit": 0,
+      "ms": 782,
+      "upstream_sha": "3dbca4463c0a59079d9f7f032d8240cf868e09da",
+      "simplegraphic_sha256": "FBCBF9B9E0E946D71237750E57126C3F6D1B07EEAF5D47AD0BB2C416D491423C",
+      "sandbox_changes": [
+        "CHG  <rt>\\imgui.ini",
+        "CHG  <rt>\\SimpleGraphic\\SimpleGraphic.cfg"
+      ],
+      "outside_watched_changes": [],
+      "recent_writes_elsewhere": 3,
+      "pob_like_recent": []
+    },
+    "ui-runner-files": {
+      "script": "ui-runner.lua",
+      "args": "files",
+      "exit": 0,
+      "ms": 12521,
+      "upstream_sha": "3dbca4463c0a59079d9f7f032d8240cf868e09da",
+      "simplegraphic_sha256": "FBCBF9B9E0E946D71237750E57126C3F6D1B07EEAF5D47AD0BB2C416D491423C",
+      "sandbox_changes": [
+        "CHG  <rt>\\imgui.ini",
+        "CHG  <rt>\\SimpleGraphic\\SimpleGraphic.cfg"
+      ],
+      "outside_watched_changes": [],
+      "recent_writes_elsewhere": 4,
+      "pob_like_recent": []
+    },
+    "ui-runner-nav": {
+      "script": "ui-runner.lua",
+      "args": "nav",
+      "exit": 0,
+      "ms": 10248,
+      "upstream_sha": "3dbca4463c0a59079d9f7f032d8240cf868e09da",
+      "simplegraphic_sha256": "FBCBF9B9E0E946D71237750E57126C3F6D1B07EEAF5D47AD0BB2C416D491423C",
+      "sandbox_changes": [
+        "CHG  <rt>\\imgui.ini",
+        "CHG  <rt>\\SimpleGraphic\\SimpleGraphic.cfg"
+      ],
+      "outside_watched_changes": [],
+      "recent_writes_elsewhere": 6,
+      "pob_like_recent": []
+    },
+    "ui-runner-popups": {
+      "script": "ui-runner.lua",
+      "args": "popups",
+      "exit": 0,
+      "ms": 4988,
+      "upstream_sha": "3dbca4463c0a59079d9f7f032d8240cf868e09da",
+      "simplegraphic_sha256": "FBCBF9B9E0E946D71237750E57126C3F6D1B07EEAF5D47AD0BB2C416D491423C",
+      "sandbox_changes": [
+        "CHG  <rt>\\imgui.ini",
+        "CHG  <rt>\\SimpleGraphic\\SimpleGraphic.cfg"
+      ],
+      "outside_watched_changes": [],
+      "recent_writes_elsewhere": 3,
+      "pob_like_recent": []
+    },
+    "ui-runner-smoke": {
+      "script": "ui-runner.lua",
+      "args": "smoke",
+      "exit": 0,
+      "ms": 1444,
+      "upstream_sha": "3dbca4463c0a59079d9f7f032d8240cf868e09da",
+      "simplegraphic_sha256": "FBCBF9B9E0E946D71237750E57126C3F6D1B07EEAF5D47AD0BB2C416D491423C",
+      "sandbox_changes": [
+        "CHG  <rt>\\imgui.ini",
+        "CHG  <rt>\\SimpleGraphic\\SimpleGraphic.cfg"
+      ],
+      "outside_watched_changes": [],
+      "recent_writes_elsewhere": 3,
       "pob_like_recent": []
     }
   }

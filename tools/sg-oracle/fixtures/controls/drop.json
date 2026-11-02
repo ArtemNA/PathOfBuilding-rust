@@ -3,23 +3,33 @@
   "dumps":[{
       "step":1,
       "state":{
-        "up":{
-          "scroll":0,
+        "wide":{
+          "sel":1,
+          "dw":218,
           "hover":"nil",
+          "scroll":0,
+          "up":false,
+          "dropped":false,
+          "term":"",
+          "count":2
+        },
+        "up":{
+          "sel":1,
           "dw":150,
+          "hover":"nil",
+          "scroll":0,
           "up":true,
           "dropped":false,
-          "sel":1,
           "term":"",
           "count":5
         },
         "dd":{
-          "scroll":0,
-          "hover":"nil",
+          "sel":1,
           "dw":200,
+          "hover":"nil",
+          "scroll":0,
           "up":false,
           "dropped":false,
-          "sel":1,
           "term":"",
           "count":30
         },
@@ -27,46 +37,46 @@
         "lastSel":"none",
         "sels":0,
         "tbl":{
-          "scroll":0,
-          "hover":"nil",
+          "sel":1,
           "dw":220,
+          "hover":"nil",
+          "scroll":0,
           "up":false,
           "dropped":false,
-          "sel":1,
           "term":"",
           "count":3
-        },
-        "wide":{
-          "scroll":0,
-          "hover":"nil",
-          "dw":218,
-          "up":false,
-          "dropped":false,
-          "sel":1,
-          "term":"",
-          "count":2
         }
       }
     },{
       "step":2,
       "state":{
-        "up":{
-          "scroll":0,
+        "wide":{
+          "sel":1,
+          "dw":218,
           "hover":"nil",
+          "scroll":0,
+          "up":false,
+          "dropped":false,
+          "term":"",
+          "count":2
+        },
+        "up":{
+          "sel":1,
           "dw":150,
+          "hover":"nil",
+          "scroll":0,
           "up":true,
           "dropped":false,
-          "sel":1,
           "term":"",
           "count":5
         },
         "dd":{
-          "scroll":0,
-          "hover":"nil",
+          "sel":1,
           "dw":200,
+          "hover":"nil",
+          "scroll":0,
           "up":false,
           "dropped":false,
-          "sel":1,
           "term":"",
           "count":30
         },
@@ -74,46 +84,46 @@
         "lastSel":"none",
         "sels":0,
         "tbl":{
-          "scroll":0,
-          "hover":"nil",
+          "sel":1,
           "dw":220,
+          "hover":"nil",
+          "scroll":0,
           "up":false,
           "dropped":false,
-          "sel":1,
           "term":"",
           "count":3
-        },
-        "wide":{
-          "scroll":0,
-          "hover":"nil",
-          "dw":218,
-          "up":false,
-          "dropped":false,
-          "sel":1,
-          "term":"",
-          "count":2
         }
       }
     },{
       "step":3,
       "state":{
-        "up":{
-          "scroll":0,
+        "wide":{
+          "sel":1,
+          "dw":218,
           "hover":"nil",
+          "scroll":0,
+          "up":false,
+          "dropped":false,
+          "term":"",
+          "count":2
+        },
+        "up":{
+          "sel":1,
           "dw":150,
+          "hover":"nil",
+          "scroll":0,
           "up":true,
           "dropped":false,
-          "sel":1,
           "term":"",
           "count":5
         },
         "dd":{
-          "scroll":0,
-          "hover":"nil",
+          "sel":1,
           "dw":200,
+          "hover":"nil",
+          "scroll":0,
           "up":false,
           "dropped":true,
-          "sel":1,
           "term":"",
           "count":30
         },
@@ -121,46 +131,46 @@
         "lastSel":"none",
         "sels":0,
         "tbl":{
-          "scroll":0,
-          "hover":"nil",
+          "sel":1,
           "dw":220,
+          "hover":"nil",
+          "scroll":0,
           "up":false,
           "dropped":false,
-          "sel":1,
           "term":"",
           "count":3
-        },
-        "wide":{
-          "scroll":0,
-          "hover":"nil",
-          "dw":218,
-          "up":false,
-          "dropped":false,
-          "sel":1,
-          "term":"",
-          "count":2
         }
       }
     },{
       "step":4,
       "state":{
-        "up":{
-          "scroll":0,
+        "wide":{
+          "sel":1,
+          "dw":218,
           "hover":"nil",
+          "scroll":0,
+          "up":false,
+          "dropped":false,
+          "term":"",
+          "count":2
+        },
+        "up":{
+          "sel":1,
           "dw":150,
+          "hover":"nil",
+          "scroll":0,
           "up":true,
           "dropped":false,
-          "sel":1,
           "term":"",
           "count":5
         },
         "dd":{
-          "scroll":0,
-          "hover":4,
+          "sel":1,
           "dw":200,
+          "hover":4,
+          "scroll":0,
           "up":false,
           "dropped":true,
-          "sel":1,
           "term":"",
           "count":30
         },
@@ -168,46 +178,46 @@
         "lastSel":"none",
         "sels":0,
         "tbl":{
-          "scroll":0,
-          "hover":"nil",
+          "sel":1,
           "dw":220,
+          "hover":"nil",
+          "scroll":0,
           "up":false,
           "dropped":false,
-          "sel":1,
           "term":"",
           "count":3
-        },
-        "wide":{
-          "scroll":0,
-          "hover":"nil",
-          "dw":218,
-          "up":false,
-          "dropped":false,
-          "sel":1,
-          "term":"",
-          "count":2
         }
       }
     },{
       "step":5,
       "state":{
-        "up":{
-          "scroll":0,
+        "wide":{
+          "sel":1,
+          "dw":218,
           "hover":"nil",
+          "scroll":0,
+          "up":false,
+          "dropped":false,
+          "term":"",
+          "count":2
+        },
+        "up":{
+          "sel":1,
           "dw":150,
+          "hover":"nil",
+          "scroll":0,
           "up":true,
           "dropped":false,
-          "sel":1,
           "term":"",
           "count":5
         },
         "dd":{
-          "scroll":64,
-          "hover":8,
+          "sel":1,
           "dw":200,
+          "hover":8,
+          "scroll":64,
           "up":false,
           "dropped":true,
-          "sel":1,
           "term":"",
           "count":30
         },
@@ -215,46 +225,46 @@
         "lastSel":"none",
         "sels":0,
         "tbl":{
-          "scroll":0,
-          "hover":"nil",
+          "sel":1,
           "dw":220,
+          "hover":"nil",
+          "scroll":0,
           "up":false,
           "dropped":false,
-          "sel":1,
           "term":"",
           "count":3
-        },
-        "wide":{
-          "scroll":0,
-          "hover":"nil",
-          "dw":218,
-          "up":false,
-          "dropped":false,
-          "sel":1,
-          "term":"",
-          "count":2
         }
       }
     },{
       "step":6,
       "state":{
-        "up":{
-          "scroll":0,
+        "wide":{
+          "sel":1,
+          "dw":218,
           "hover":"nil",
+          "scroll":0,
+          "up":false,
+          "dropped":false,
+          "term":"",
+          "count":2
+        },
+        "up":{
+          "sel":1,
           "dw":150,
+          "hover":"nil",
+          "scroll":0,
           "up":true,
           "dropped":false,
-          "sel":1,
           "term":"",
           "count":5
         },
         "dd":{
-          "scroll":0,
-          "hover":12,
+          "sel":1,
           "dw":200,
+          "hover":12,
+          "scroll":0,
           "up":false,
           "dropped":true,
-          "sel":1,
           "term":"1",
           "count":12
         },
@@ -262,46 +272,46 @@
         "lastSel":"none",
         "sels":0,
         "tbl":{
-          "scroll":0,
-          "hover":"nil",
+          "sel":1,
           "dw":220,
+          "hover":"nil",
+          "scroll":0,
           "up":false,
           "dropped":false,
-          "sel":1,
           "term":"",
           "count":3
-        },
-        "wide":{
-          "scroll":0,
-          "hover":"nil",
-          "dw":218,
-          "up":false,
-          "dropped":false,
-          "sel":1,
-          "term":"",
-          "count":2
         }
       }
     },{
       "step":7,
       "state":{
-        "up":{
-          "scroll":0,
+        "wide":{
+          "sel":1,
+          "dw":218,
           "hover":"nil",
+          "scroll":0,
+          "up":false,
+          "dropped":false,
+          "term":"",
+          "count":2
+        },
+        "up":{
+          "sel":1,
           "dw":150,
+          "hover":"nil",
+          "scroll":0,
           "up":true,
           "dropped":false,
-          "sel":1,
           "term":"",
           "count":5
         },
         "dd":{
-          "scroll":0,
-          "hover":21,
+          "sel":1,
           "dw":200,
+          "hover":21,
+          "scroll":0,
           "up":false,
           "dropped":true,
-          "sel":1,
           "term":"ite 2",
           "count":12
         },
@@ -309,46 +319,46 @@
         "lastSel":"none",
         "sels":0,
         "tbl":{
-          "scroll":0,
-          "hover":"nil",
+          "sel":1,
           "dw":220,
+          "hover":"nil",
+          "scroll":0,
           "up":false,
           "dropped":false,
-          "sel":1,
           "term":"",
           "count":3
-        },
-        "wide":{
-          "scroll":0,
-          "hover":"nil",
-          "dw":218,
-          "up":false,
-          "dropped":false,
-          "sel":1,
-          "term":"",
-          "count":2
         }
       }
     },{
       "step":8,
       "state":{
-        "up":{
-          "scroll":0,
+        "wide":{
+          "sel":1,
+          "dw":218,
           "hover":"nil",
+          "scroll":0,
+          "up":false,
+          "dropped":false,
+          "term":"",
+          "count":2
+        },
+        "up":{
+          "sel":1,
           "dw":150,
+          "hover":"nil",
+          "scroll":0,
           "up":true,
           "dropped":false,
-          "sel":1,
           "term":"",
           "count":5
         },
         "dd":{
-          "scroll":0,
-          "hover":21,
+          "sel":2,
           "dw":200,
+          "hover":21,
+          "scroll":0,
           "up":false,
           "dropped":false,
-          "sel":2,
           "term":"",
           "count":30
         },
@@ -356,46 +366,46 @@
         "lastSel":"2:Item 2",
         "sels":1,
         "tbl":{
-          "scroll":0,
-          "hover":"nil",
+          "sel":1,
           "dw":220,
+          "hover":"nil",
+          "scroll":0,
           "up":false,
           "dropped":false,
-          "sel":1,
           "term":"",
           "count":3
-        },
-        "wide":{
-          "scroll":0,
-          "hover":"nil",
-          "dw":218,
-          "up":false,
-          "dropped":false,
-          "sel":1,
-          "term":"",
-          "count":2
         }
       }
     },{
       "step":9,
       "state":{
-        "up":{
-          "scroll":0,
+        "wide":{
+          "sel":1,
+          "dw":218,
           "hover":"nil",
+          "scroll":0,
+          "up":false,
+          "dropped":false,
+          "term":"",
+          "count":2
+        },
+        "up":{
+          "sel":1,
           "dw":150,
+          "hover":"nil",
+          "scroll":0,
           "up":true,
           "dropped":false,
-          "sel":1,
           "term":"",
           "count":5
         },
         "dd":{
-          "scroll":0,
-          "hover":21,
+          "sel":3,
           "dw":200,
+          "hover":21,
+          "scroll":0,
           "up":false,
           "dropped":false,
-          "sel":3,
           "term":"",
           "count":30
         },
@@ -403,46 +413,46 @@
         "lastSel":"3:Item 3",
         "sels":2,
         "tbl":{
-          "scroll":0,
-          "hover":"nil",
+          "sel":1,
           "dw":220,
+          "hover":"nil",
+          "scroll":0,
           "up":false,
           "dropped":false,
-          "sel":1,
           "term":"",
           "count":3
-        },
-        "wide":{
-          "scroll":0,
-          "hover":"nil",
-          "dw":218,
-          "up":false,
-          "dropped":false,
-          "sel":1,
-          "term":"",
-          "count":2
         }
       }
     },{
       "step":10,
       "state":{
-        "up":{
-          "scroll":0,
+        "wide":{
+          "sel":1,
+          "dw":218,
           "hover":"nil",
+          "scroll":0,
+          "up":false,
+          "dropped":false,
+          "term":"",
+          "count":2
+        },
+        "up":{
+          "sel":1,
           "dw":150,
+          "hover":"nil",
+          "scroll":0,
           "up":true,
           "dropped":false,
-          "sel":1,
           "term":"",
           "count":5
         },
         "dd":{
-          "scroll":0,
-          "hover":21,
+          "sel":2,
           "dw":200,
+          "hover":21,
+          "scroll":0,
           "up":false,
           "dropped":false,
-          "sel":2,
           "term":"",
           "count":30
         },
@@ -450,46 +460,46 @@
         "lastSel":"2:Item 2",
         "sels":3,
         "tbl":{
-          "scroll":0,
-          "hover":"nil",
+          "sel":1,
           "dw":220,
+          "hover":"nil",
+          "scroll":0,
           "up":false,
           "dropped":false,
-          "sel":1,
           "term":"",
           "count":3
-        },
-        "wide":{
-          "scroll":0,
-          "hover":"nil",
-          "dw":218,
-          "up":false,
-          "dropped":false,
-          "sel":1,
-          "term":"",
-          "count":2
         }
       }
     },{
       "step":11,
       "state":{
-        "up":{
-          "scroll":0,
+        "wide":{
+          "sel":1,
+          "dw":218,
           "hover":"nil",
+          "scroll":0,
+          "up":false,
+          "dropped":false,
+          "term":"",
+          "count":2
+        },
+        "up":{
+          "sel":1,
           "dw":150,
+          "hover":"nil",
+          "scroll":0,
           "up":true,
           "dropped":false,
-          "sel":1,
           "term":"",
           "count":5
         },
         "dd":{
-          "scroll":0,
-          "hover":21,
+          "sel":2,
           "dw":200,
+          "hover":21,
+          "scroll":0,
           "up":false,
           "dropped":false,
-          "sel":2,
           "term":"",
           "count":30
         },
@@ -497,46 +507,46 @@
         "lastSel":"2:Item 2",
         "sels":3,
         "tbl":{
-          "scroll":0,
-          "hover":"nil",
+          "sel":1,
           "dw":220,
+          "hover":"nil",
+          "scroll":0,
           "up":false,
           "dropped":true,
-          "sel":1,
           "term":"",
           "count":3
-        },
-        "wide":{
-          "scroll":0,
-          "hover":"nil",
-          "dw":218,
-          "up":false,
-          "dropped":false,
-          "sel":1,
-          "term":"",
-          "count":2
         }
       }
     },{
       "step":12,
       "state":{
-        "up":{
-          "scroll":0,
+        "wide":{
+          "sel":1,
+          "dw":218,
           "hover":"nil",
+          "scroll":0,
+          "up":false,
+          "dropped":false,
+          "term":"",
+          "count":2
+        },
+        "up":{
+          "sel":1,
           "dw":150,
+          "hover":"nil",
+          "scroll":0,
           "up":true,
           "dropped":false,
-          "sel":1,
           "term":"",
           "count":5
         },
         "dd":{
-          "scroll":0,
-          "hover":21,
+          "sel":2,
           "dw":200,
+          "hover":21,
+          "scroll":0,
           "up":false,
           "dropped":false,
-          "sel":2,
           "term":"",
           "count":30
         },
@@ -544,46 +554,46 @@
         "lastSel":"2:Item 2",
         "sels":3,
         "tbl":{
-          "scroll":0,
-          "hover":2,
+          "sel":1,
           "dw":220,
+          "hover":2,
+          "scroll":0,
           "up":false,
           "dropped":true,
-          "sel":1,
           "term":"",
           "count":3
-        },
-        "wide":{
-          "scroll":0,
-          "hover":"nil",
-          "dw":218,
-          "up":false,
-          "dropped":false,
-          "sel":1,
-          "term":"",
-          "count":2
         }
       }
     },{
       "step":13,
       "state":{
-        "up":{
-          "scroll":0,
+        "wide":{
+          "sel":1,
+          "dw":218,
           "hover":"nil",
+          "scroll":0,
+          "up":false,
+          "dropped":false,
+          "term":"",
+          "count":2
+        },
+        "up":{
+          "sel":1,
           "dw":150,
+          "hover":"nil",
+          "scroll":0,
           "up":true,
           "dropped":false,
-          "sel":1,
           "term":"",
           "count":5
         },
         "dd":{
-          "scroll":0,
-          "hover":21,
+          "sel":2,
           "dw":200,
+          "hover":21,
+          "scroll":0,
           "up":false,
           "dropped":false,
-          "sel":2,
           "term":"",
           "count":30
         },
@@ -591,46 +601,46 @@
         "lastSel":"2:Item 2",
         "sels":3,
         "tbl":{
-          "scroll":0,
-          "hover":"nil",
+          "sel":1,
           "dw":220,
+          "hover":"nil",
+          "scroll":0,
           "up":false,
           "dropped":true,
-          "sel":1,
           "term":"del",
           "count":1
-        },
-        "wide":{
-          "scroll":0,
-          "hover":"nil",
-          "dw":218,
-          "up":false,
-          "dropped":false,
-          "sel":1,
-          "term":"",
-          "count":2
         }
       }
     },{
       "step":14,
       "state":{
-        "up":{
-          "scroll":0,
+        "wide":{
+          "sel":1,
+          "dw":218,
           "hover":"nil",
+          "scroll":0,
+          "up":false,
+          "dropped":false,
+          "term":"",
+          "count":2
+        },
+        "up":{
+          "sel":1,
           "dw":150,
+          "hover":"nil",
+          "scroll":0,
           "up":true,
           "dropped":false,
-          "sel":1,
           "term":"",
           "count":5
         },
         "dd":{
-          "scroll":0,
-          "hover":21,
+          "sel":2,
           "dw":200,
+          "hover":21,
+          "scroll":0,
           "up":false,
           "dropped":false,
-          "sel":2,
           "term":"",
           "count":30
         },
@@ -638,46 +648,46 @@
         "lastSel":"2:Item 2",
         "sels":3,
         "tbl":{
-          "scroll":0,
-          "hover":2,
+          "sel":1,
           "dw":220,
+          "hover":2,
+          "scroll":0,
           "up":false,
           "dropped":true,
-          "sel":1,
           "term":"",
           "count":3
-        },
-        "wide":{
-          "scroll":0,
-          "hover":"nil",
-          "dw":218,
-          "up":false,
-          "dropped":false,
-          "sel":1,
-          "term":"",
-          "count":2
         }
       }
     },{
       "step":15,
       "state":{
-        "up":{
-          "scroll":0,
+        "wide":{
+          "sel":1,
+          "dw":218,
           "hover":"nil",
+          "scroll":0,
+          "up":false,
+          "dropped":false,
+          "term":"",
+          "count":2
+        },
+        "up":{
+          "sel":1,
           "dw":150,
+          "hover":"nil",
+          "scroll":0,
           "up":true,
           "dropped":false,
-          "sel":1,
           "term":"",
           "count":5
         },
         "dd":{
-          "scroll":0,
-          "hover":21,
+          "sel":2,
           "dw":200,
+          "hover":21,
+          "scroll":0,
           "up":false,
           "dropped":false,
-          "sel":2,
           "term":"",
           "count":30
         },
@@ -685,46 +695,46 @@
         "lastSel":"2:Item 2",
         "sels":3,
         "tbl":{
-          "scroll":0,
-          "hover":2,
+          "sel":1,
           "dw":220,
+          "hover":2,
+          "scroll":0,
           "up":false,
           "dropped":false,
-          "sel":1,
           "term":"",
           "count":3
-        },
-        "wide":{
-          "scroll":0,
-          "hover":"nil",
-          "dw":218,
-          "up":false,
-          "dropped":false,
-          "sel":1,
-          "term":"",
-          "count":2
         }
       }
     },{
       "step":16,
       "state":{
-        "up":{
-          "scroll":0,
+        "wide":{
+          "sel":1,
+          "dw":218,
           "hover":"nil",
+          "scroll":0,
+          "up":false,
+          "dropped":false,
+          "term":"",
+          "count":2
+        },
+        "up":{
+          "sel":1,
           "dw":150,
+          "hover":"nil",
+          "scroll":0,
           "up":true,
           "dropped":true,
-          "sel":1,
           "term":"",
           "count":5
         },
         "dd":{
-          "scroll":0,
-          "hover":21,
+          "sel":2,
           "dw":200,
+          "hover":21,
+          "scroll":0,
           "up":false,
           "dropped":false,
-          "sel":2,
           "term":"",
           "count":30
         },
@@ -732,46 +742,46 @@
         "lastSel":"2:Item 2",
         "sels":3,
         "tbl":{
-          "scroll":0,
-          "hover":2,
+          "sel":1,
           "dw":220,
+          "hover":2,
+          "scroll":0,
           "up":false,
           "dropped":false,
-          "sel":1,
           "term":"",
           "count":3
-        },
-        "wide":{
-          "scroll":0,
-          "hover":"nil",
-          "dw":218,
-          "up":false,
-          "dropped":false,
-          "sel":1,
-          "term":"",
-          "count":2
         }
       }
     },{
       "step":17,
       "state":{
-        "up":{
+        "wide":{
+          "sel":1,
+          "dw":218,
+          "hover":"nil",
           "scroll":0,
-          "hover":3,
+          "up":false,
+          "dropped":false,
+          "term":"",
+          "count":2
+        },
+        "up":{
+          "sel":1,
           "dw":150,
+          "hover":3,
+          "scroll":0,
           "up":true,
           "dropped":true,
-          "sel":1,
           "term":"",
           "count":5
         },
         "dd":{
-          "scroll":0,
-          "hover":21,
+          "sel":2,
           "dw":200,
+          "hover":21,
+          "scroll":0,
           "up":false,
           "dropped":false,
-          "sel":2,
           "term":"",
           "count":30
         },
@@ -779,46 +789,46 @@
         "lastSel":"2:Item 2",
         "sels":3,
         "tbl":{
-          "scroll":0,
-          "hover":2,
+          "sel":1,
           "dw":220,
+          "hover":2,
+          "scroll":0,
           "up":false,
           "dropped":false,
-          "sel":1,
           "term":"",
           "count":3
-        },
-        "wide":{
-          "scroll":0,
-          "hover":"nil",
-          "dw":218,
-          "up":false,
-          "dropped":false,
-          "sel":1,
-          "term":"",
-          "count":2
         }
       }
     },{
       "step":18,
       "state":{
-        "up":{
+        "wide":{
+          "sel":1,
+          "dw":218,
+          "hover":"nil",
           "scroll":0,
-          "hover":3,
+          "up":false,
+          "dropped":false,
+          "term":"",
+          "count":2
+        },
+        "up":{
+          "sel":3,
           "dw":150,
+          "hover":3,
+          "scroll":0,
           "up":true,
           "dropped":false,
-          "sel":3,
           "term":"",
           "count":5
         },
         "dd":{
-          "scroll":0,
-          "hover":21,
+          "sel":2,
           "dw":200,
+          "hover":21,
+          "scroll":0,
           "up":false,
           "dropped":false,
-          "sel":2,
           "term":"",
           "count":30
         },
@@ -826,46 +836,46 @@
         "lastSel":"2:Item 2",
         "sels":3,
         "tbl":{
-          "scroll":0,
-          "hover":2,
+          "sel":1,
           "dw":220,
+          "hover":2,
+          "scroll":0,
           "up":false,
           "dropped":false,
-          "sel":1,
           "term":"",
           "count":3
-        },
-        "wide":{
-          "scroll":0,
-          "hover":"nil",
-          "dw":218,
-          "up":false,
-          "dropped":false,
-          "sel":1,
-          "term":"",
-          "count":2
         }
       }
     },{
       "step":19,
       "state":{
-        "up":{
+        "wide":{
+          "sel":1,
+          "dw":218,
+          "hover":"nil",
           "scroll":0,
-          "hover":3,
+          "up":false,
+          "dropped":true,
+          "term":"",
+          "count":2
+        },
+        "up":{
+          "sel":3,
           "dw":150,
+          "hover":3,
+          "scroll":0,
           "up":true,
           "dropped":false,
-          "sel":3,
           "term":"",
           "count":5
         },
         "dd":{
-          "scroll":0,
-          "hover":21,
+          "sel":2,
           "dw":200,
+          "hover":21,
+          "scroll":0,
           "up":false,
           "dropped":false,
-          "sel":2,
           "term":"",
           "count":30
         },
@@ -873,46 +883,46 @@
         "lastSel":"2:Item 2",
         "sels":3,
         "tbl":{
-          "scroll":0,
-          "hover":2,
+          "sel":1,
           "dw":220,
+          "hover":2,
+          "scroll":0,
           "up":false,
           "dropped":false,
-          "sel":1,
           "term":"",
           "count":3
-        },
-        "wide":{
-          "scroll":0,
-          "hover":"nil",
-          "dw":218,
-          "up":false,
-          "dropped":true,
-          "sel":1,
-          "term":"",
-          "count":2
         }
       }
     },{
       "step":20,
       "state":{
-        "up":{
+        "wide":{
+          "sel":1,
+          "dw":218,
+          "hover":1,
           "scroll":0,
-          "hover":3,
+          "up":false,
+          "dropped":true,
+          "term":"",
+          "count":2
+        },
+        "up":{
+          "sel":3,
           "dw":150,
+          "hover":3,
+          "scroll":0,
           "up":true,
           "dropped":false,
-          "sel":3,
           "term":"",
           "count":5
         },
         "dd":{
-          "scroll":0,
-          "hover":21,
+          "sel":2,
           "dw":200,
+          "hover":21,
+          "scroll":0,
           "up":false,
           "dropped":false,
-          "sel":2,
           "term":"",
           "count":30
         },
@@ -920,46 +930,46 @@
         "lastSel":"2:Item 2",
         "sels":3,
         "tbl":{
-          "scroll":0,
-          "hover":2,
+          "sel":1,
           "dw":220,
+          "hover":2,
+          "scroll":0,
           "up":false,
           "dropped":false,
-          "sel":1,
           "term":"",
           "count":3
-        },
-        "wide":{
-          "scroll":0,
-          "hover":1,
-          "dw":218,
-          "up":false,
-          "dropped":true,
-          "sel":1,
-          "term":"",
-          "count":2
         }
       }
     },{
       "step":21,
       "state":{
-        "up":{
+        "wide":{
+          "sel":1,
+          "dw":218,
+          "hover":1,
           "scroll":0,
-          "hover":3,
+          "up":false,
+          "dropped":false,
+          "term":"",
+          "count":2
+        },
+        "up":{
+          "sel":3,
           "dw":150,
+          "hover":3,
+          "scroll":0,
           "up":true,
           "dropped":false,
-          "sel":3,
           "term":"",
           "count":5
         },
         "dd":{
-          "scroll":0,
-          "hover":21,
+          "sel":2,
           "dw":200,
+          "hover":21,
+          "scroll":0,
           "up":false,
           "dropped":false,
-          "sel":2,
           "term":"",
           "count":30
         },
@@ -967,24 +977,14 @@
         "lastSel":"2:Item 2",
         "sels":3,
         "tbl":{
-          "scroll":0,
-          "hover":2,
+          "sel":1,
           "dw":220,
+          "hover":2,
+          "scroll":0,
           "up":false,
           "dropped":false,
-          "sel":1,
           "term":"",
           "count":3
-        },
-        "wide":{
-          "scroll":0,
-          "hover":1,
-          "dw":218,
-          "up":false,
-          "dropped":false,
-          "sel":1,
-          "term":"",
-          "count":2
         }
       }
     }],

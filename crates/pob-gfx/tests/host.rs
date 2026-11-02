@@ -6,7 +6,7 @@
 mod scene;
 
 use pob_gfx::text::FontFamily;
-use pob_gfx::{Gfx, GfxError, TestPlatform, WindowRequests};
+use pob_gfx::{Gfx, TestPlatform, WindowRequests};
 use serde_json::Value;
 
 fn gfx_with(tp: &TestPlatform) -> Gfx {
@@ -118,18 +118,6 @@ fn draw_string_width_of_drift_probe_matches_original() {
         assert_eq!(g.draw_string_width(h, FontFamily::Var, s), w, "h {h} {s:?}");
     }
     assert_eq!(rows.len(), 102);
-}
-
-#[test]
-fn set_blend_mode_alpha_and_errors() {
-    let tp = TestPlatform::new();
-    let mut g = gfx_with(&tp);
-    let mut f = g.begin_frame();
-    assert_eq!(f.set_blend_mode("ALPHA"), Ok(()));
-    let e = f.set_blend_mode("FOO").unwrap_err();
-    assert_eq!(e, GfxError::InvalidBlendMode("FOO".into()));
-    // scene u13-blend: "call 12 SetBlendMode: bad argument #1 to '?' (invalid option 'FOO')"
-    assert_eq!(e.to_string(), "bad argument #1 to '?' (invalid option 'FOO')");
 }
 
 #[test]

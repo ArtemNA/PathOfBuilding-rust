@@ -16,12 +16,22 @@ $here = $PSScriptRoot
 $rt = Join-Path $here 'runtime'
 $exe = Join-Path $rt 'Path{space}of{space}Building.exe'
 if (-not (Test-Path $exe)) { throw 'sandbox missing: run setup.ps1' }
+# The upstream checkout (tools/upstream.json via upstream.ps1): the Lua runners read its src/ in place (read-only) and the
+# sandbox must be a copy of ITS runtime (else: setup.ps1 -Force).
+. (Join-Path $here 'upstream.ps1')
+$up = Get-SgUpstream
+$upWin = $up.Root -replace '/', '\'
+if ((Get-FileHash "$rt\SimpleGraphic.dll").Hash -ne (Get-FileHash "$upWin\runtime\SimpleGraphic.dll").Hash) {
+    throw "sandbox SimpleGraphic.dll differs from $($up.Root)/runtime: run setup.ps1 -Force"
+}
 $docs = [Environment]::GetFolderPath('MyDocuments')
 $watch = @(
     @{ p = "$docs\Path of Building"; hash = $true },
     @{ p = "$docs\Path of Building (PoE2)"; hash = $true },
     @{ p = "$env:APPDATA\Path of Building Community"; hash = $false },
     @{ p = "$env:APPDATA\Path of Building Community (PoE2)"; hash = $false },
+    @{ p = "$upWin\runtime"; hash = $false },
+    @{ p = "$upWin\src"; hash = $false },
     @{ p = 'C:\pob-work\project_15\PathOfBuilding\runtime'; hash = $false },
     @{ p = 'C:\pob-work\project_15\PathOfBuilding\src'; hash = $false }
 )
@@ -53,6 +63,8 @@ $sg = Join-Path $rt 'sg'
 if (Test-Path $sg) { Remove-Item -Recurse -Force $sg }
 New-Item -ItemType Directory "$sg\out" | Out-Null
 Copy-Item "$here\lua\*.lua" $sg
+# The upstream root for the runners (`dofile(base .. "/upstream.lua")`) and scene image paths (`{POB}/...`).
+"return { root = `"$($up.Root)/`", sha = `"$($up.Sha)`" }" | Set-Content "$sg\upstream.lua" -Encoding ascii
 if (Test-Path "$here\scenes") { Copy-Item "$here\scenes" "$sg\scenes" -Recurse }
 $shots = Join-Path $rt 'SimpleGraphic\Screenshots'
 if (Test-Path $shots) { Remove-Item -Recurse -Force $shots }
@@ -91,6 +103,7 @@ $recent
 # Audit record (no foreign paths: other apps' noise is only counted).
 New-Item -ItemType Directory -Force "$sg\out\audit" | Out-Null
 [ordered]@{ script = $Script; args = $ScriptArgs; exit = $p.ExitCode; ms = [int]($t1 - $t0).TotalMilliseconds
+    upstream_sha = $up.Sha; simplegraphic_sha256 = (Get-FileHash "$rt\SimpleGraphic.dll").Hash
     sandbox_changes = $sbChanges; outside_watched_changes = $outside; recent_writes_elsewhere = @($recent).Count; pob_like_recent = $suspect
 } | ConvertTo-Json | Set-Content ("$sg\out\audit\" + ($Script -replace '\.lua$', '') + $(if ($ScriptArgs) { "-$($ScriptArgs -replace '[^\w-]', '_')" }) + '.json')
 if ($outside.Count -or $suspect.Count) { Write-Warning 'STOP: original exe changed files outside the sandbox'; exit 2 }

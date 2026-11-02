@@ -1,7 +1,7 @@
 {
   "colors":[["^1",true,null,[1,0,0,1]],["^1abc",true,null,[1,0,0,1]],["^xFF8000",true,null,[1,0.50196081399918,0,1]],["^xff8000zz",true,null,[1,0.50196081399918,0,1]],["^X00FF00",true,null,[0,1,0,1]],["^",false,"SetDrawColor() argument 1: invalid color escape sequence",[0.25,0.5,0.75,0.5]],["^x",false,"SetDrawColor() argument 1: invalid color escape sequence",[0.25,0.5,0.75,0.5]],["^x12345",false,"SetDrawColor() argument 1: invalid color escape sequence",[0.25,0.5,0.75,0.5]],["^xGG0000",false,"SetDrawColor() argument 1: invalid color escape sequence",[0.25,0.5,0.75,0.5]],["1",false,"SetDrawColor() argument 1: invalid color escape sequence",[0.25,0.5,0.75,0.5]],["",false,"SetDrawColor() argument 1: invalid color escape sequence",[0.25,0.5,0.75,0.5]],[" ^1",false,"SetDrawColor() argument 1: invalid color escape sequence",[0.25,0.5,0.75,0.5]],["^1^2",true,null,[1,0,0,1]],["^x00FF00^1",true,null,[0,1,0,1]],["^a",false,"SetDrawColor() argument 1: invalid color escape sequence",[0.25,0.5,0.75,0.5]],["^^1",false,"SetDrawColor() argument 1: invalid color escape sequence",[0.25,0.5,0.75,0.5]],["^xFF80001",true,null,[1,0.50196081399918,0,1]],["(1,0,0)",true,null,[1,0,0,1]]],
   "dpi":{
-    "file":"110226_024814.png",
+    "file":"110226_061215.png",
     "foundAfterFrames":2,
     "shotFrame":78
   },
@@ -13,12 +13,12 @@
   },
   "frames":[[1,"shot",1,0,null,1],[2,"shot",2,0,null,1],[3,"shot",3,0,null,1],[4,"shot",4,0,null,1],[5,"shot",5,0,null,1],[6,"shot",6,0,null,1],[7,"shot",7,0,null,1],[8,"shot",8,0,null,1],[9,"shot",9,0,null,1],[10,"shot",10,0,null,1],[11,"viewport",1,0,null,1],[12,"viewport",2,0,null,1],[13,"viewport",3,0,null,1],[14,"viewport",4,0,null,1],[15,"viewport",5,0,null,1],[16,"viewport",6,0,null,1],[17,"viewport",7,0,null,1],[18,"viewport",8,0,null,1],[19,"viewport",9,0,null,1],[20,"viewport",10,0,null,1],[21,"viewport",11,0,null,1],[22,"viewport",12,0,null,1],[23,"viewport",13,0,null,1],[24,"viewport",14,0,null,1],[25,"viewport",15,0,null,1],[26,"viewport",16,0,null,1],[27,"viewport",17,0,null,1],[28,"viewport",18,0,null,1],[29,"viewport",19,0,null,1],[30,"viewport",20,0,null,1],[31,"viewport",21,0,null,1],[32,"viewport",22,0,null,1],[33,"viewport",23,0,null,1],[34,"viewport",24,0,null,1],[35,"viewport",25,0,null,1],[36,"viewport",26,0,null,1],[37,"viewport",27,0,null,1],[38,"viewport",28,0,null,1],[39,"viewport",29,0,null,1],[40,"viewport",30,0,null,1],[41,"viewport",31,0,null,1],[42,"viewport",32,0,null,1],[43,"viewport",33,0,null,1],[44,"viewport",34,0,null,1],[45,"viewport",35,0,null,1],[46,"dpi",1,0,null,1],[47,"dpi",2,0,null,1],[48,"dpi",3,0,null,1],[49,"dpi",4,0,null,1],[50,"dpi",5,0,null,1],[51,"dpi",6,0,null,1],[52,"dpi",7,0,null,1],[53,"dpi",8,0,null,1],[54,"dpi",9,0,null,1],[55,"dpi",10,0,null,1],[56,"dpi",11,0,null,1],[57,"dpi",12,0,null,1],[58,"dpi",13,0,null,1],[59,"dpi",14,0,null,1],[60,"dpi",15,0,null,1]],
   "shot":{
-    "file":"110226_024811.png",
+    "file":"110226_061213.png",
     "foundAfterFrames":2,
     "shotFrame":8
   },
   "viewport":{
-    "file":"110226_024812.png",
+    "file":"110226_061214.png",
     "foundAfterFrames":2,
     "shotFrame":43
   }

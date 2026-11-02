@@ -10,13 +10,26 @@ use serde_json::Value;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-pub const DEFAULT_POB_ROOT: &str = "C:/pob-work/project_15/PathOfBuilding";
+/// The upstream PoB checkout the SG-oracle fixtures were taken on: `POB_ROOT`, else `pobRoot` of `tools/upstream.json`
+/// (the ONE upstream config, R-UP; `tools/sg-oracle/run.ps1` hands the same root to the oracle's Lua). No trailing `/`.
+pub fn pob_root() -> String {
+    let norm = |p: &Path| p.to_string_lossy().replace('\\', "/").trim_end_matches('/').to_string();
+    if let Some(v) = std::env::var_os("POB_ROOT") {
+        return norm(Path::new(&v));
+    }
+    let repo = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let cfg = repo.join("tools/upstream.json");
+    let v: Value = serde_json::from_str(&std::fs::read_to_string(&cfg).unwrap_or_else(|e| panic!("{}: {e}", cfg.display())))
+        .unwrap_or_else(|e| panic!("{}: {e}", cfg.display()));
+    let p = PathBuf::from(v["pobRoot"].as_str().expect("tools/upstream.json: pobRoot"));
+    norm(&if p.is_absolute() { p } else { repo.join(p) })
+}
+
 /// The oracle's fixed window (scene-runner.lua: `vid_last 1280,800,…`).
 pub const SCREEN: (u32, u32) = (1280, 800);
 
 pub fn fonts_dir() -> PathBuf {
-    let root = std::env::var_os("POB_ROOT").map_or_else(|| PathBuf::from(DEFAULT_POB_ROOT), PathBuf::from);
-    root.join("runtime/SimpleGraphic/Fonts")
+    PathBuf::from(pob_root()).join("runtime/SimpleGraphic/Fonts")
 }
 
 pub fn oracle_dir() -> PathBuf {
@@ -33,6 +46,9 @@ pub enum Call {
     Image(Option<String>, [f64; 4], Option<[f64; 4]>),
     Quad(Option<String>, [f64; 8], Option<[f64; 8]>),
     Text(f64, f64, Align, f64, FontFamily, String),
+    /// A name that is not a function in the original's Lua API (`SetBlendMode`: gone in SimpleGraphic v2.5.5, scene
+    /// `u13-blend` -> "attempt to call a nil value"): a Lua error without effect.
+    Nil,
 }
 
 fn decode(name: &str, call: &[Value]) -> Call {
@@ -69,6 +85,7 @@ fn decode(name: &str, call: &[Value]) -> Call {
             FontFamily::from_lua_name(a[4].as_str().expect("font")).expect("font name"),
             a[5].as_str().expect("text").to_string(),
         ),
+        "SetBlendMode" => Call::Nil,
         other => panic!("scene {name}: unsupported call {other}"),
     }
 }
@@ -92,7 +109,8 @@ impl Scene {
         if let Some(m) = v["images"].as_object() {
             for (k, spec) in m {
                 let spec = spec.as_array().expect("image spec");
-                let path = dir.join(spec[0].as_str().expect("path"));
+                // `{POB}/` = the upstream checkout (scene-runner.lua substitutes the same root).
+                let path = dir.join(spec[0].as_str().expect("path").replace("{POB}", &pob_root()));
                 let flags: Vec<&str> = spec[1..].iter().map(|f| f.as_str().expect("flag")).collect();
                 let h = ImageHandle::new();
                 h.load_lua(&path, &flags).unwrap_or_else(|e| panic!("load {k}: {e}"));
@@ -147,6 +165,7 @@ impl Scene {
                 Call::Image(k, [l, t, w, h], tc) => f.draw_image(img(k), *l, *t, *w, *h, *tc).expect("DrawImage"),
                 Call::Quad(k, xy, st) => f.draw_image_quad(img(k), *xy, *st).expect("DrawImageQuad"),
                 Call::Text(l, t, al, h, font, text) => f.draw_string(*l, *t, *al, *h, *font, text),
+                Call::Nil => {}
             }
         }
         logs

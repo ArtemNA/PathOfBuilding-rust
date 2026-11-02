@@ -11,8 +11,8 @@ use scene::{SCREEN, Scene};
 use serde_json::Value;
 
 /// Scenes of `index.json` (U1.0) plus the U1.2 checks/holdouts (`run-scenes.ps1 -Tag u12`, `-Tag u12-holdout`) and the U1.3/U1.5
-/// scenes (`-Tag u13`, `-Tag u13-h30probe`). `u13-blend` is a measurement only (`SetBlendMode` modes other than ALPHA are
-/// `unimplemented`: the Lua UI never calls them).
+/// scenes (`-Tag u13`, `-Tag u13-h30probe`). `u13-blend`: SimpleGraphic v2.5.5 has no `SetBlendMode` (its calls are Lua
+/// errors without effect), so the scene is plain ALPHA blending.
 fn all_scenes() -> Vec<String> {
     let mut v = Scene::names();
     v.extend(
@@ -26,6 +26,7 @@ fn all_scenes() -> Vec<String> {
             "u13-layers",
             "u13-placeholder",
             "u13-dpi125",
+            "u13-blend",
             "u13-h30probe",
             "u15-demo",
         ]

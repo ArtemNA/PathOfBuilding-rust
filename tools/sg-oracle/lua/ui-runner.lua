@@ -16,8 +16,9 @@ ConExecute("set vid_resizable 3")
 ConExecute("set vid_last 1280,800,40,40,0")
 local json = require("dkjson")
 local base = GetScriptPath()
-local POB = "C:/pob-work/project_15/PathOfBuilding/src/"
-local POB_ROOT = "C:/pob-work/project_15/PathOfBuilding/"
+local UPSTREAM = dofile(base .. "/upstream.lua") -- written by run.ps1 from tools/upstream.json
+local POB = UPSTREAM.root .. "src/"
+local POB_ROOT = UPSTREAM.root
 local BUILDS = "C:/pob-work/pob-rust/builds/pc/3.29/"
 local SRC = base .. "/src/"
 local USER = base .. "/user"

@@ -1,67 +1,67 @@
 [{
     "name":"u13-negative",
-    "shot":"110226_025000.png",
+    "shot":"110226_061132.png",
     "size":[400,200],
     "dpi":100,
     "screen":[1280,800],
     "scale":1,
-    "frames_before_shot":5,
+    "errors":[],
     "frames_until_file":2,
-    "logs":[],
-    "errors":[]
+    "frames_before_shot":5,
+    "logs":[]
   },{
     "name":"u13-layers",
-    "shot":"110226_025001.png",
+    "shot":"110226_061133.png",
     "size":[300,130],
     "dpi":100,
     "screen":[1280,800],
     "scale":1,
-    "frames_before_shot":33,
+    "errors":[],
     "frames_until_file":2,
-    "logs":[],
-    "errors":[]
+    "frames_before_shot":33,
+    "logs":[]
   },{
     "name":"u13-placeholder",
-    "shot":"110226_025002.png",
+    "shot":"110226_061134.png",
     "size":[700,400],
     "dpi":100,
     "screen":[1280,800],
     "scale":1,
-    "frames_before_shot":33,
+    "errors":[],
     "frames_until_file":2,
-    "logs":[],
-    "errors":[]
+    "frames_before_shot":33,
+    "logs":[]
   },{
     "name":"u13-dpi125",
-    "shot":"110226_025003.png",
+    "shot":"110226_061135.png",
     "size":[400,200],
     "dpi":125,
     "screen":[1280,800],
     "scale":1.25,
-    "frames_before_shot":33,
+    "errors":[],
     "frames_until_file":2,
-    "logs":[],
-    "errors":[]
+    "frames_before_shot":33,
+    "logs":[]
   },{
     "name":"u13-blend",
-    "shot":"110226_025005.png",
+    "shot":"110226_061136.png",
     "size":[320,100],
     "dpi":100,
     "screen":[1280,800],
     "scale":1,
-    "frames_before_shot":33,
+    "errors":["call 3 SetBlendMode: attempt to call a nil value","call 6 SetBlendMode: attempt to call a nil value","call 9 SetBlendMode: attempt to call a nil value","call 12 SetBlendMode: attempt to call a nil value","call 15 SetBlendMode: attempt to call a nil value"],
     "frames_until_file":2,
-    "logs":[],
-    "errors":["call 12 SetBlendMode: bad argument #1 to '?' (invalid option 'FOO')"]
+    "frames_before_shot":33,
+    "logs":[]
   },{
     "name":"u15-demo",
-    "shot":"110226_025006.png",
+    "shot":"110226_061137.png",
     "size":[640,400],
     "dpi":100,
     "screen":[1280,800],
     "scale":1,
-    "frames_before_shot":32,
+    "errors":[],
     "frames_until_file":2,
-    "logs":[],
-    "errors":[]
+    "frames_before_shot":33,
+    "logs":[]
   }]

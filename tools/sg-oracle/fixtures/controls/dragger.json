@@ -3,197 +3,197 @@
   "dumps":[{
       "step":1,
       "state":{
-        "right":0,
-        "h":40,
-        "w":200,
-        "clicked":false,
-        "rdrag":false,
-        "sel":"nil",
-        "dragging":false,
         "downX":-1,
         "downY":-1,
         "upDX":0,
-        "upDY":0
+        "upDY":0,
+        "right":0,
+        "dragging":false,
+        "h":40,
+        "clicked":false,
+        "rdrag":false,
+        "w":200,
+        "sel":"nil"
       }
     },{
       "step":2,
       "state":{
-        "right":0,
-        "h":40,
-        "w":200,
-        "clicked":false,
-        "rdrag":true,
-        "sel":"redit",
-        "dragging":false,
         "downX":-1,
         "downY":-1,
         "upDX":0,
-        "upDY":0
+        "upDY":0,
+        "right":0,
+        "dragging":false,
+        "h":40,
+        "clicked":false,
+        "rdrag":true,
+        "w":200,
+        "sel":"redit"
       }
     },{
       "step":3,
       "state":{
-        "right":0,
-        "h":80,
-        "w":280,
-        "clicked":false,
-        "rdrag":true,
-        "sel":"redit",
-        "dragging":false,
         "downX":-1,
         "downY":-1,
         "upDX":0,
-        "upDY":0
+        "upDY":0,
+        "right":0,
+        "dragging":false,
+        "h":80,
+        "clicked":false,
+        "rdrag":true,
+        "w":280,
+        "sel":"redit"
       }
     },{
       "step":4,
       "state":{
-        "right":0,
-        "h":200,
-        "w":400,
-        "clicked":false,
-        "rdrag":true,
-        "sel":"redit",
-        "dragging":false,
         "downX":-1,
         "downY":-1,
         "upDX":0,
-        "upDY":0
+        "upDY":0,
+        "right":0,
+        "dragging":false,
+        "h":200,
+        "clicked":false,
+        "rdrag":true,
+        "w":400,
+        "sel":"redit"
       }
     },{
       "step":5,
       "state":{
-        "right":0,
-        "h":200,
-        "w":400,
-        "clicked":false,
-        "rdrag":false,
-        "sel":"redit",
-        "dragging":false,
         "downX":-1,
         "downY":-1,
         "upDX":0,
-        "upDY":0
+        "upDY":0,
+        "right":0,
+        "dragging":false,
+        "h":200,
+        "clicked":false,
+        "rdrag":false,
+        "w":400,
+        "sel":"redit"
       }
     },{
       "step":6,
       "state":{
-        "right":0,
-        "h":30,
-        "w":100,
-        "clicked":false,
-        "rdrag":false,
-        "sel":"redit",
-        "dragging":false,
         "downX":-1,
         "downY":-1,
         "upDX":0,
-        "upDY":0
+        "upDY":0,
+        "right":0,
+        "dragging":false,
+        "h":30,
+        "clicked":false,
+        "rdrag":false,
+        "w":100,
+        "sel":"redit"
       }
     },{
       "step":7,
       "state":{
-        "right":0,
-        "h":200,
-        "w":400,
-        "clicked":false,
-        "rdrag":false,
-        "sel":"redit",
-        "dragging":false,
         "downX":-1,
         "downY":-1,
         "upDX":0,
-        "upDY":0
+        "upDY":0,
+        "right":0,
+        "dragging":false,
+        "h":200,
+        "clicked":false,
+        "rdrag":false,
+        "w":400,
+        "sel":"redit"
       }
     },{
       "step":8,
       "state":{
-        "right":0,
-        "h":200,
-        "w":400,
-        "clicked":false,
-        "rdrag":false,
-        "sel":"redit",
-        "dragging":false,
         "downX":-1,
         "downY":-1,
         "upDX":0,
-        "upDY":0
+        "upDY":0,
+        "right":0,
+        "dragging":false,
+        "h":200,
+        "clicked":false,
+        "rdrag":false,
+        "w":400,
+        "sel":"redit"
       }
     },{
       "step":9,
       "state":{
-        "right":0,
-        "h":200,
-        "w":400,
-        "clicked":false,
-        "rdrag":false,
-        "sel":"redit",
-        "dragging":false,
         "downX":-1,
         "downY":-1,
         "upDX":0,
-        "upDY":0
+        "upDY":0,
+        "right":0,
+        "dragging":false,
+        "h":200,
+        "clicked":false,
+        "rdrag":false,
+        "w":400,
+        "sel":"redit"
       }
     },{
       "step":10,
       "state":{
-        "right":0,
-        "h":200,
-        "w":400,
-        "clicked":true,
-        "rdrag":false,
-        "sel":"drag",
-        "dragging":true,
         "downX":50,
         "downY":50,
         "upDX":0,
-        "upDY":0
+        "upDY":0,
+        "right":0,
+        "dragging":true,
+        "h":200,
+        "clicked":true,
+        "rdrag":false,
+        "w":400,
+        "sel":"drag"
       }
     },{
       "step":11,
       "state":{
-        "right":0,
-        "h":200,
-        "w":400,
-        "clicked":true,
-        "rdrag":false,
-        "sel":"drag",
-        "dragging":true,
         "downX":50,
         "downY":50,
         "upDX":0,
-        "upDY":0
+        "upDY":0,
+        "right":0,
+        "dragging":true,
+        "h":200,
+        "clicked":true,
+        "rdrag":false,
+        "w":400,
+        "sel":"drag"
       }
     },{
       "step":12,
       "state":{
-        "right":0,
-        "h":200,
-        "w":400,
-        "clicked":false,
-        "rdrag":false,
-        "sel":"drag",
-        "dragging":false,
         "downX":50,
         "downY":50,
         "upDX":-20,
-        "upDY":-15
+        "upDY":-15,
+        "right":0,
+        "dragging":false,
+        "h":200,
+        "clicked":false,
+        "rdrag":false,
+        "w":400,
+        "sel":"drag"
       }
     },{
       "step":13,
       "state":{
-        "right":0,
-        "h":200,
-        "w":400,
-        "clicked":false,
-        "rdrag":false,
-        "sel":"drag",
-        "dragging":false,
         "downX":230,
         "downY":50,
         "upDX":0,
-        "upDY":0
+        "upDY":0,
+        "right":0,
+        "dragging":false,
+        "h":200,
+        "clicked":false,
+        "rdrag":false,
+        "w":400,
+        "sel":"drag"
       }
     }],
   "shots":["dragger-idle","redit-drag","redit-min","redit-max","redit-typed","dragger-hover","dragger-drag"],

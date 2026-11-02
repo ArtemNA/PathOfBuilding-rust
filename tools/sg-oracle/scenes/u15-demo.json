@@ -1,12 +1,12 @@
 {"note": "U1.5 demo gallery (examples/demo.rs draws the same scene): PoB Assets images (read-only from the checkout), 7 fonts, escapes, layers, viewport clipping, quads", "size": [640, 400], "dpi": 100,
 "images": {
- "hdrL": ["C:/pob-work/project_15/PathOfBuilding/src/Assets/itemsheaderrareleft.png", "CLAMP"],
- "hdrM": ["C:/pob-work/project_15/PathOfBuilding/src/Assets/itemsheaderraremiddle.png"],
- "hdrR": ["C:/pob-work/project_15/PathOfBuilding/src/Assets/itemsheaderrareright.png", "CLAMP"],
- "helmet": ["C:/pob-work/project_15/PathOfBuilding/src/Assets/icon_helmet.png"],
- "ring": ["C:/pob-work/project_15/PathOfBuilding/src/Assets/icon_ring_left.png"],
- "weapon": ["C:/pob-work/project_15/PathOfBuilding/src/Assets/icon_weapon.png", "CLAMP"],
- "ui": ["C:/pob-work/project_15/PathOfBuilding/src/Assets/game_ui_small.png", "CLAMP"]
+ "hdrL": ["{POB}/src/Assets/itemsheaderrareleft.png", "CLAMP"],
+ "hdrM": ["{POB}/src/Assets/itemsheaderraremiddle.png"],
+ "hdrR": ["{POB}/src/Assets/itemsheaderrareright.png", "CLAMP"],
+ "helmet": ["{POB}/src/Assets/icon_helmet.png"],
+ "ring": ["{POB}/src/Assets/icon_ring_left.png"],
+ "weapon": ["{POB}/src/Assets/icon_weapon.png", "CLAMP"],
+ "ui": ["{POB}/src/Assets/game_ui_small.png", "CLAMP"]
 },
 "calls": [
 ["SetDrawColor", 0.08, 0.1, 0.12],

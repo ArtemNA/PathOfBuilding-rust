@@ -26,7 +26,7 @@ fn start(tag: &str) -> (Tmp, Gfx, TestPlatform, Rc<Launch>) {
     let tp = TestPlatform::new();
     let mut gfx = Gfx::with_platform(&scene::fonts_dir(), scene::SCREEN, 1.0, Box::new(tp.clone())).expect("fonts");
     gfx.set_dpi_scale_override_percent(100);
-    let root = scene::DEFAULT_POB_ROOT;
+    let root = scene::pob_root();
     let l = Launch::new(LaunchConfig {
         user_path: Some(dir.to_string_lossy().replace('\\', "/")),
         user_folder: "PoB test".into(),

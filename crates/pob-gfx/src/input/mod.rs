@@ -13,10 +13,12 @@
 //!   callback). Left/right Shift/Ctrl/Alt → `SHIFT`/`CTRL`/`ALT`; `XBUTTON1/2` → `MOUSE4`/`MOUSE5`.
 //! - **`OnChar`** after `OnKeyDown`: `"\b"`, `"\r"`, `"\t"`, `"\x1b"` are synthesised from Backspace / Enter / Tab /
 //!   Escape (not from numpad Enter); typed text arrives as [`RawEvent::Char`] and is converted like the original:
-//!   control codes (< 32, 127) are dropped, ASCII passes, U+0080..U+009F give `"?"` except U+0081/8D/8F/90/9D (nothing),
-//!   **U+00A0..U+00AA give the key names `"F7"`…`"F15"`, `"NUMLOCK"`, `"SCROLLLOCK"`**, U+00AB..U+00FF give `"?"`, higher
-//!   code points go through the measured Windows-1252 best-fit table ([`bestfit`]: `ā` → `"a"`, `＋` → `"+"`, U+2007 →
-//!   `"F7"`) or give `"?"`; a code point above U+FFFF gives two `"?"` (one per UTF-16 half).
+//!   control codes (< 32, 127) and U+0080..U+009F are dropped, ASCII passes, **U+00A0..U+00AA give the key names
+//!   `"F7"`…`"F15"`, `"NUMLOCK"`, `"SCROLLLOCK"`**, every higher code point gives `"?"`; a UTF-16 surrogate pair is one
+//!   code point (one `"?"`). SimpleGraphic v2.5.5 (PoB 620ffe6da, `input-probe-chars.json`: 1440 code points; GLFW 3.4's
+//!   `WM_CHAR` handling: the high surrogate is held and combined with the next low one, a lone low surrogate is code
+//!   point 0, `_glfwInputChar` drops < 32 and 127..159). The v2.5-3b1a346 DLL before it used a Windows-1252 best-fit
+//!   table (`ā` → `"a"`, `＋` → `"+"`), gave `"?"` for most of U+0080..U+009F and one `"?"` per surrogate.
 //! - **Wheel**: every non-zero vertical message → `OnKeyDown` + `OnKeyUp` of `WHEELUP`/`WHEELDOWN` (no accumulation);
 //!   horizontal wheel → nothing.
 //! - **Repeats**: an auto-repeated key press fires `OnKeyDown` (and its `OnChar`) again.
@@ -35,8 +37,6 @@
 //!   over — but **only while the OS cursor is over the window**: with the idle cursor outside the client (window-mode
 //!   runs) posted clicks never double; with it inside (`measure-raw-desktop`, `input-probe-inside`) they do: 80, 300 and
 //!   10 ms apart → `true`, 650 ms or 10 px apart → `false`, triple click → `false, true, false`.
-
-mod bestfit;
 
 use std::fmt;
 
@@ -301,18 +301,12 @@ pub enum Callback {
     Char(&'static str),
 }
 
-/// `OnChar` text for a typed code point / UTF-16 unit (rules in the module docs).
+/// `OnChar` text for a typed code point (rules in the module docs).
 pub fn char_text(cp: u32) -> Option<&'static str> {
-    const NOTHING_C1: [u32; 5] = [0x81, 0x8D, 0x8F, 0x90, 0x9D];
     let byte = match cp {
-        0..=0x1F | 0x7F => return None,
-        0x20..=0x7E => cp as u8,
-        0x80..=0x9F if NOTHING_C1.contains(&cp) => return None,
-        0x80..=0xFF => cp as u8,
-        _ => match bestfit::BEST_FIT.binary_search_by_key(&cp, |e| e.0) {
-            Ok(i) => bestfit::BEST_FIT[i].1,
-            Err(_) => return Some("?"),
-        },
+        0..=0x1F | 0x7F..=0x9F => return None,
+        0x20..=0xFF => cp as u8,
+        _ => return Some("?"),
     };
     Some(match byte {
         32..=126 => ascii_str(byte),
@@ -331,6 +325,8 @@ pub struct InputState {
     /// The OS cursor is over the client area.
     inside: bool,
     last_click: Option<(Button, u64, (f64, f64))>,
+    /// A `WM_CHAR` high surrogate waiting for its low half (GLFW 3.4 `highSurrogate`).
+    high_surrogate: Option<u32>,
 }
 
 impl InputState {
@@ -406,7 +402,16 @@ impl InputState {
                     out.push(Callback::KeyUp(k.name()));
                 }
             }
-            RawEvent::Char(cp) => out.extend(char_text(cp).map(Callback::Char)),
+            RawEvent::Char(unit @ 0xD800..=0xDBFF) => self.high_surrogate = Some(unit),
+            RawEvent::Char(unit) => {
+                let cp = match (unit, self.high_surrogate.take()) {
+                    (0xDC00..=0xDFFF, Some(hi)) => 0x10000 + ((hi - 0xD800) << 10) + (unit - 0xDC00),
+                    // [H: GLFW 3.4 source, not measured] a lone low surrogate is code point 0 (dropped).
+                    (0xDC00..=0xDFFF, None) => 0,
+                    _ => unit,
+                };
+                out.extend(char_text(cp).map(Callback::Char));
+            }
             RawEvent::Button { button, pressed, pos } => {
                 let k = button.key_id();
                 if pressed {
@@ -444,7 +449,7 @@ impl InputState {
 }
 
 /// The `RawEvent::Char` units of a typed character: one code point, or two UTF-16 halves above U+FFFF (the original
-/// receives `WM_CHAR` per UTF-16 unit and gives one `"?"` per half).
+/// receives `WM_CHAR` per UTF-16 unit; [`InputState::translate`] joins the halves into one code point, as GLFW 3.4).
 pub fn char_units(c: char) -> impl Iterator<Item = u32> {
     let mut buf = [0u16; 2];
     let units: Vec<u32> = c.encode_utf16(&mut buf).iter().map(|&u| u32::from(u)).collect();
@@ -474,15 +479,17 @@ mod tests {
         assert_eq!(char_text(u32::from('a')), Some("a"));
         assert_eq!(char_text(0x0D), None);
         assert_eq!(char_text(0x7F), None);
-        assert_eq!(char_text(0x80), Some("?"));
-        assert_eq!(char_text(0x81), None);
+        assert_eq!(char_text(0x80), None);
+        assert_eq!(char_text(0x9F), None);
         assert_eq!(char_text(0xA0), Some("F7"));
         assert_eq!(char_text(0xAA), Some("SCROLLLOCK"));
         assert_eq!(char_text(0xE9), Some("?"));
-        assert_eq!(char_text(0x101), Some("a"));
-        assert_eq!(char_text(0x2007), Some("F7"));
+        assert_eq!(char_text(0x101), Some("?"));
+        assert_eq!(char_text(0x2007), Some("?"));
         assert_eq!(char_text(0x44F), Some("?"));
-        assert_eq!(char_units('\u{1F600}').map(char_text).collect::<Vec<_>>(), [Some("?"), Some("?")]);
+        let mut s = InputState::new();
+        let typed: Vec<Callback> = char_units('\u{1F600}').flat_map(|u| s.translate(RawEvent::Char(u), 0)).collect();
+        assert_eq!(typed, [Callback::Char("?")]);
     }
 
     #[test]

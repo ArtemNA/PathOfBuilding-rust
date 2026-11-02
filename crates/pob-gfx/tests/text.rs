@@ -1,22 +1,17 @@
 //! U1.1 gate: the pure text functions equal the original SimpleGraphic on the whole SG-oracle corpus
 //! `tools/sg-oracle/fixtures/text/*.json` (written by `tools/sg-oracle/lua/text-corpus.lua`), 0 mismatches.
-//! Fonts: `<POB_ROOT>/runtime/SimpleGraphic/Fonts` (POB_ROOT defaults to the read-only PoB checkout).
+//! Fonts: `<upstream>/runtime/SimpleGraphic/Fonts` (`scene::pob_root`: `POB_ROOT`, else `tools/upstream.json`).
+
+mod scene;
 
 use pob_gfx::text::{FontFamily, FontSet, strip_escapes};
 use serde_json::Value;
 use std::path::PathBuf;
 use std::sync::OnceLock;
 
-const DEFAULT_POB_ROOT: &str = "C:/pob-work/project_15/PathOfBuilding";
-
-fn fonts_dir() -> PathBuf {
-    let root = std::env::var_os("POB_ROOT").map_or_else(|| PathBuf::from(DEFAULT_POB_ROOT), PathBuf::from);
-    root.join("runtime/SimpleGraphic/Fonts")
-}
-
 fn fonts() -> &'static FontSet {
     static F: OnceLock<FontSet> = OnceLock::new();
-    F.get_or_init(|| FontSet::load(&fonts_dir()).expect("load fonts"))
+    F.get_or_init(|| FontSet::load(&scene::fonts_dir()).expect("load fonts"))
 }
 
 fn fixture(dir: &str, name: &str) -> Value {

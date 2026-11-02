@@ -286,7 +286,9 @@ fn f10_script() -> Script {
     for (n, f) in [(1, 10), (2, 10), (3, 9), (4, 10)] {
         s.mark(n).key(PhysKey::F(f), None, 60, 300);
     }
-    s.mark(26);
+    // A click after the F-keys, then the screenshot mark (`fixtures/input-probe-f10.png`).
+    s.mark(5).click(Button::Left, 30).wait(1000);
+    s.mark(25).wait(1500).mark(26);
     s
 }
 
@@ -456,8 +458,8 @@ fn input_probe_replays() {
 
 #[test]
 fn input_probe_inside_replays() {
-    // Step 20 (the two callbacks before the final mark, of 190): see the module docs.
-    let n = 190;
+    // Step 20 (the two callbacks before the final mark, of 188): see the module docs.
+    let n = 188;
     replay("input-probe-inside.json", &probe_script(true), false, &[n - 3, n - 2]);
 }
 
