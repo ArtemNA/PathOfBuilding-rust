@@ -1438,6 +1438,8 @@ dependencies = [
  "image",
  "indexmap",
  "pob-build",
+ "pob-data",
+ "pob-engine",
  "pob-gfx",
  "pob-lua",
  "serde_json",

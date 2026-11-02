@@ -3,12 +3,12 @@
 //!
 //! Not ported here (later phases or never; each place is marked): the item databases and mod cache (`loadItemDBs`,
 //! `SaveModCache` — U6), passive trees (`LoadTree` keeps only the background image `assets.Background2` — U3), the
-//! `BUILD` mode (a stub until U2c, [`super::build_stub`]), build import from the command line (`arg[1]` — U8),
+//! the tabs of the `BUILD` mode ([`super::build`], U3–U8), build import from the command line (`arg[1]` — U8),
 //! update popups and `SetManifestBranch` (no auto-update, UI-ARCH §10 п. 6), shared items are kept as raw text
 //! (`new("Item")` is U6).
 
+use super::build::BuildMode;
 use super::build_list::ListMode;
-use super::build_stub::BuildStub;
 use super::toast::ToastNotification;
 use crate::colors::{default_color_code, update_color_code};
 use crate::common::{screen_size, set_screen_size, wrap_string};
@@ -136,6 +136,7 @@ pub struct Main {
     pub host: ControlHost,
     pub modes: IndexMap<&'static str, Rc<dyn Mode>>,
     pub list_mode: Rc<ListMode>,
+    pub build_mode: Rc<BuildMode>,
     pub mode: RefCell<Option<String>>,
     pub new_mode: RefCell<Option<String>>,
     pub new_mode_args: RefCell<Vec<ModeArg>>,
@@ -228,13 +229,15 @@ impl Main {
         let list_mode = ListMode::new();
         let mut modes: IndexMap<&'static str, Rc<dyn Mode>> = IndexMap::new();
         modes.insert("LIST", list_mode.clone());
-        modes.insert("BUILD", Rc::new(BuildStub::default()));
+        let build_mode = BuildMode::new();
+        modes.insert("BUILD", build_mode.clone());
         let anchor_main = BareControl::new(None, rect(4.0, 0.0, 0.0, 0.0));
         anchor_main.base.y.set_fn(|_| screen_size().1 - 4.0);
         let m = Rc::new(Main {
             host: ControlHost::new(),
             modes,
             list_mode,
+            build_mode,
             mode: RefCell::new(None),
             new_mode: RefCell::new(None),
             new_mode_args: RefCell::new(Vec::new()),
@@ -2262,4 +2265,3 @@ pub fn copy_file(src: &str, dst: &str) -> Result<(), String> {
 pub fn file_exists(name: &str) -> bool {
     std::fs::File::open(name).is_ok()
 }
-

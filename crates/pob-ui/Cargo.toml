@@ -11,6 +11,8 @@ publish.workspace = true
 pob-gfx = { path = "../pob-gfx" }
 pob-lua = { path = "../pob-lua" }
 pob-build.workspace = true
+pob-data.workspace = true
+pob-engine = { path = "../pob-engine" }
 indexmap.workspace = true
 
 [dev-dependencies]

@@ -30,6 +30,9 @@ pub struct Engine {
     /// `RefreshStatList`, again by every [`Engine::display_stats_json`]; a recalc (`engine_recalc`, no `RefreshStatList`) leaves output order.
     skill_dps: Option<Vec<FullDpsSkill>>,
     settings: DisplaySettings,
+    /// What the last `RefreshStatList` left: `controls.statBox.list` + `controls.warnings.lines` and the point display (U2c shell).
+    stat_list: crate::display::StatList,
+    points: crate::shell::PointDisplay,
 }
 
 /// The gem property `engine_setGem` edits (boot.lua:405-460).
@@ -57,6 +60,8 @@ impl Engine {
             calcs,
             skill_dps: None,
             settings: DisplaySettings::default(),
+            stat_list: Default::default(),
+            points: Default::default(),
         };
         e.refresh_stat_list()?;
         Ok(e)
@@ -64,15 +69,50 @@ impl Engine {
 
     /// `Build:RefreshStatList` (Build.lua:2078) over the new output: its one `table.sort` of `SkillDPS` is the state `SaveDB` reads.
     /// Its `EstimatePlayerProgress` (Build.lua:898-913) moves `characterLevel` in auto mode -- the level of the next run and of `SaveDB`.
-    fn refresh_stat_list(&mut self) -> Result<(), String> {
+    /// The stat box, the warnings and the point display it builds are kept ([`Engine::stat_list`], [`Engine::point_display`]).
+    pub fn refresh_stat_list(&mut self) -> Result<(), String> {
         let minion = MinionBorrow::new(&self.res);
         let mut denv = DisplayEnv::new(&self.res, &minion)?;
-        crate::display::refresh_stat_list(&mut denv, &self.settings)?;
+        let list = crate::display::refresh_stat_list(&mut denv, &self.settings)?;
         self.skill_dps = denv.player.skill_dps.take();
+        drop(denv);
+        drop(minion);
+        self.stat_list = list;
+        self.points = crate::shell::point_display(&self.res);
         if self.model.character_level_auto_mode {
             self.model.level = self.res.character_level;
         }
         Ok(())
+    }
+
+    /// The `buildFlag` branch of `Build:OnFrame` (Build.lua:1258-1271): `skillsTab:UpdateSocketGroups()` + `calcsTab:BuildOutput()` +
+    /// `RefreshStatList()`. `UpdateSocketGroups` runs over the CURRENT `socketGroupList` -- with the groups CalcSetup added for item-granted
+    /// skills, which a fresh load does not have yet (see [`Engine::set_gem`]): the model is first rebuilt from `SaveDB`.
+    pub fn refresh(&mut self) -> Result<(), String> {
+        if self.model_has_runtime_groups() {
+            self.materialize()?;
+        }
+        self.recalc()?;
+        self.refresh_stat_list()
+    }
+
+    /// `controls.statBox.list` / `controls.warnings.lines` of the last `RefreshStatList`.
+    pub fn stat_list(&self) -> &crate::display::StatList {
+        &self.stat_list
+    }
+
+    /// `controls.pointDisplay.str` / `.req` of the last `EstimatePlayerProgress` (Build.lua:930-939).
+    pub fn point_display(&self) -> &crate::shell::PointDisplay {
+        &self.points
+    }
+
+    /// The display settings (`main.showThousandsSeparators` …); the next `RefreshStatList` uses them.
+    pub fn set_display_settings(&mut self, settings: DisplaySettings) {
+        self.settings = settings;
+    }
+
+    pub(crate) fn model_mut(&mut self) -> &mut BuildModel {
+        &mut self.model
     }
 
     /// `engine_recalc` (boot.lua:132-150): `wipeGlobalCache()` + `calcsTab:BuildOutput()` (a fresh session over the model) -- no
@@ -320,7 +360,7 @@ impl Engine {
     }
 
     /// Whether `socketGroupList` holds groups the model does not (CalcSetup's item-granted groups).
-    fn model_has_runtime_groups(&self) -> bool {
+    pub fn model_has_runtime_groups(&self) -> bool {
         self.socket_group_count() != pob_build::active_skill_groups(&self.model).len()
     }
 
@@ -624,7 +664,7 @@ fn active_spec_mut(m: &mut BuildModel) -> &mut pob_build::SpecModel {
 }
 
 /// The `<SkillSet>` [`pob_build::active_skill_groups`] picks, mutable.
-fn active_skill_set_mut(m: &mut BuildModel) -> Option<&mut pob_build::SkillSetModel> {
+pub(crate) fn active_skill_set_mut(m: &mut BuildModel) -> Option<&mut pob_build::SkillSetModel> {
     let id = m.skills.active_skill_set;
     let i = m
         .skills
