@@ -10,6 +10,7 @@ publish.workspace = true
 [dependencies]
 pob-gfx = { path = "../pob-gfx" }
 pob-lua = { path = "../pob-lua" }
+pob-build.workspace = true
 indexmap.workspace = true
 
 [dev-dependencies]

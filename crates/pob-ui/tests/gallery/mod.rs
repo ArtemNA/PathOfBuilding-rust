@@ -8,17 +8,21 @@
 pub mod scene;
 
 use pob_gfx::input::PhysKey;
-use pob_gfx::{Button, DrawList, Gfx, RawEvent, TestPlatform};
+use pob_gfx::{Button, DrawList, Frame, Gfx, RawEvent, TestPlatform};
 use pob_ui::controls::*;
-use pob_ui::{ControlHost, ControlRef, InputEvent, Rect, anchor, rect};
+use pob_ui::{ControlHost, ControlRef, InputEvent, InputEvents, Rect, anchor, rect};
 use serde_json::{Value, json};
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::rc::Rc;
 
+pub type CustomFrame = Box<dyn Fn(&mut Frame<'_>, &mut InputEvents, &Rect)>;
+
 pub struct Env {
     pub host: Rc<ControlHost>,
     pub dump: Box<dyn Fn(&mut Gfx) -> Value>,
+    /// Replaces `host:ProcessControlsInput` + `host:DrawControls` (the popup gallery's host table).
+    pub custom: Option<CustomFrame>,
 }
 
 fn sel_name(host: &ControlHost, named: &[(&str, &ControlRef)]) -> Value {
@@ -159,6 +163,7 @@ pub fn basic(g: &Gfx) -> Env {
     let h = host.clone();
     Env {
         host,
+        custom: None,
         dump: Box::new(move |_g| {
             json!({
                 "clicks": clicks.get(), "checked": checked.get(), "lastCheck": *last_check.borrow(), "check": check_rc.state.get(),
@@ -203,6 +208,7 @@ pub fn scroll(g: &Gfx) -> Env {
     let (vr, hr, sr): (ControlRef, ControlRef, ControlRef) = (v.clone(), h.clone(), slider.clone());
     Env {
         host,
+        custom: None,
         dump: Box::new(move |_g| {
             json!({
                 "v": v.offset.get(), "h": h.offset.get(), "slider": format!("{:.6}", slider.val.get()), "div": format!("{:.6}", div.val.get()),
@@ -319,6 +325,7 @@ pub fn edit(g: &Gfx) -> Env {
     };
     Env {
         host,
+        custom: None,
         dump: Box::new(move |g| {
             let refs: Vec<(&str, &ControlRef)> = named.iter().map(|(n, c)| (*n, c)).collect();
             json!({
@@ -418,6 +425,7 @@ pub fn drop(g: &Gfx) -> Env {
     };
     Env {
         host,
+        custom: None,
         dump: Box::new(move |_g| {
             let refs: Vec<(&str, &ControlRef)> = named.iter().map(|(n, c)| (*n, c)).collect();
             json!({ "dd": d(&dd), "tbl": d(&tbl), "up": d(&up), "wide": d(&wide), "sels": sels.get(), "lastSel": *last_sel.borrow(), "sel": sel_name(&hst, &refs) })
@@ -577,6 +585,7 @@ pub fn list(_g: &Gfx) -> Env {
     let opt = |o: Option<usize>| o.map_or(json!("nil"), |v| json!(v));
     Env {
         host,
+        custom: None,
         dump: Box::new(move |_g| {
             let refs: Vec<(&str, &ControlRef)> = named.iter().map(|(n, c)| (*n, c)).collect();
             let order: Vec<String> = l.list.borrow().iter().map(|v| v.0.n.to_string()).collect();
@@ -592,8 +601,10 @@ pub fn list(_g: &Gfx) -> Env {
     }
 }
 
-pub fn build(name: &str, g: &Gfx) -> Env {
+pub fn build(name: &str, g: &mut Gfx) -> Env {
     match name {
+        "popup" => popup(g),
+        "dragger" => dragger(g),
         "basic" => basic(g),
         "scroll" => scroll(g),
         "edit" => edit(g),
@@ -645,8 +656,12 @@ fn frame(gfx: &mut Gfx, env: &Env, events: Vec<Option<InputEvent>>) -> DrawList 
     pob_ui::sg::set_draw_layer(&mut f, Some(0), 0);
     f.set_viewport(None);
     f.set_draw_color(1.0, 1.0, 1.0, 1.0);
-    env.host.process_controls_input(&mut f, &mut events, &vp);
-    env.host.draw_controls(&mut f, &vp, None);
+    if let Some(custom) = &env.custom {
+        custom(&mut f, &mut events, &vp);
+    } else {
+        env.host.process_controls_input(&mut f, &mut events, &vp);
+        env.host.draw_controls(&mut f, &vp, None);
+    }
     f.finish()
 }
 
@@ -658,7 +673,7 @@ pub fn run(name: &str) -> Run {
     let mut gfx = Gfx::with_platform(&scene::fonts_dir(), scene::SCREEN, 1.0, Box::new(tp.clone())).expect("fonts");
     gfx.set_dpi_scale_override_percent(100);
     gfx.input(RawEvent::Cursor { x: -100.0, y: -100.0 });
-    let env = build(sc["build"].as_str().expect("build"), &gfx);
+    let env = build(sc["build"].as_str().expect("build"), &mut gfx);
     let mut out = Run {
         dumps: Vec::new(),
         shots: Vec::new(),
@@ -725,4 +740,179 @@ pub fn oracle_record(name: &str) -> Value {
 pub fn scenario_names() -> Vec<String> {
     let p = scene::oracle_dir().join("scenes/controls/index.json");
     serde_json::from_str(&std::fs::read_to_string(p).expect("index")).expect("json")
+}
+
+/// `G.popup` (controls-gallery.lua).
+pub fn popup(g: &mut Gfx) -> Env {
+    pob_ui::common::set_screen_size(1280.0, 800.0);
+    let saved = Rc::new(Cell::new(0));
+    let cancelled = Rc::new(Cell::new(0));
+    let changes = Rc::new(Cell::new(0));
+    let save_cell: Rc<RefCell<Option<Rc<ButtonControl>>>> = Rc::new(RefCell::new(None));
+    let mut controls: indexmap::IndexMap<String, ControlRef> = indexmap::IndexMap::new();
+    controls.insert(
+        "1".into(),
+        LabelControl::new(None, rect(0.0, 20.0, 0.0, 16.0), "^7First line of the message".to_string()),
+    );
+    controls.insert(
+        "2".into(),
+        LabelControl::new(None, rect(0.0, 36.0, 0.0, 16.0), "^8second ^1line".to_string()),
+    );
+    let (ch, sc) = (changes.clone(), save_cell.clone());
+    let edit = EditControl::new(
+        g,
+        None,
+        rect(0.0, 60.0, 350.0, 20.0),
+        EditArgs {
+            init: Some("start".into()),
+            filter: Some(r#"\/:%*%?"<>|%c"#.into()),
+            limit: Some(100),
+            change_func: Some(Rc::new(move |_g: &mut Gfx, buf: &str, _| {
+                ch.set(ch.get() + 1);
+                let save = sc.borrow().clone().expect("save");
+                save.base.enabled.set(pob_ui::lua::is_match(buf, "%S"));
+            })),
+            ..Default::default()
+        },
+    );
+    controls.insert("edit".into(), edit.clone());
+    let s = saved.clone();
+    let save = ButtonControl::new(None, rect(-45.0, 90.0, 80.0, 20.0), "Save".to_string(), move |_| s.set(s.get() + 1));
+    *save_cell.borrow_mut() = Some(save.clone());
+    controls.insert("save".into(), save.clone());
+    let c = cancelled.clone();
+    controls.insert(
+        "cancel".into(),
+        ButtonControl::new(None, rect(45.0, 90.0, 80.0, 20.0), "Cancel".to_string(), move |_| {
+            c.set(c.get() + 1)
+        }),
+    );
+    let off = ButtonControl::new(
+        pob_ui::control::anchor_nil("TOPLEFT", "TOPLEFT"),
+        rect(10.0, 90.0, 50.0, 20.0),
+        "Off".to_string(),
+        |_| {},
+    );
+    off.base.enabled.set(false);
+    controls.insert("off".into(), off);
+    let named: Vec<(String, ControlRef)> = controls.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
+    let popup = PopupDialog::new(
+        g,
+        370.0,
+        120.0,
+        "Popup ^1Title",
+        controls,
+        Some("save"),
+        Some("edit"),
+        Some("cancel"),
+        None,
+        None,
+    );
+    let p = popup.clone();
+    Env {
+        host: Rc::new(ControlHost::new()),
+        custom: Some(Box::new(move |f, events, vp| {
+            p.process_input(f, events, vp);
+            pob_ui::sg::set_draw_layer(f, Some(10), 0);
+            pob_ui::sg::set_draw_color_a(f, 0.0, 0.0, 0.0, 0.5);
+            let (w, h) = pob_ui::common::screen_size();
+            pob_ui::sg::draw_rect(f, 0.0, 0.0, w, h);
+            p.draw_popup(f, vp);
+            pob_ui::sg::set_draw_layer(f, Some(0), 0);
+        })),
+        dump: Box::new(move |g| {
+            let refs: Vec<(&str, &ControlRef)> = named.iter().map(|(n, c)| (n.as_str(), c)).collect();
+            let (x, y) = pob_ui::Control::get_pos(&*popup, g);
+            json!({
+                "saved": saved.get(), "cancelled": cancelled.get(), "changes": changes.get(), "buf": *edit.buf.borrow(),
+                "sel": sel_name(&popup.host, &refs), "x": x, "y": y, "saveEnabled": save.base.enabled.get(g),
+            })
+        }),
+    }
+}
+
+/// `G.dragger` (controls-gallery.lua).
+pub fn dragger(g: &mut Gfx) -> Env {
+    let host = Rc::new(ControlHost::new());
+    let down = Rc::new(Cell::new((-1.0, -1.0)));
+    let up = Rc::new(Cell::new((0.0, 0.0)));
+    let right = Rc::new(Cell::new(0));
+    let (d, u, r) = (down.clone(), up.clone(), right.clone());
+    let drag = DraggerControl::new(
+        None,
+        rect(40.0, 40.0, 20.0, 20.0),
+        "+".to_string(),
+        Some(Rc::new(move |_g: &mut Gfx, x, y| d.set((x, y)))),
+        Some(Rc::new(move |_g: &mut Gfx, x, y| u.set((x, y)))),
+        Some(Rc::new(move |_g: &mut Gfx, _x, _y| r.set(r.get() + 1))),
+    );
+    drag.tip.tooltip_text.set(Some("Dragger tooltip".to_string()));
+    let drag_ref: ControlRef = drag.clone();
+    let mk = |prev: &ControlRef, w: f64, label: &str| -> Rc<DraggerControl> {
+        DraggerControl::new(
+            anchor("LEFT", prev, "RIGHT"),
+            rect(4.0, 0.0, w, 20.0),
+            label.to_string(),
+            None,
+            None,
+            None,
+        )
+    };
+    let minus: ControlRef = mk(&drag_ref, 20.0, "-");
+    let cross: ControlRef = mk(&minus, 20.0, "x");
+    let slash: ControlRef = mk(&cross, 20.0, "//");
+    let text: ControlRef = mk(&slash, 60.0, "Drag");
+    let locked = mk(&text, 60.0, "Lock");
+    locked.locked.set(true);
+    let locked: ControlRef = locked;
+    let off = mk(&locked, 60.0, "Off");
+    off.base.enabled.set(false);
+    let off: ControlRef = off;
+    let redit = ResizableEditControl::new(
+        g,
+        None,
+        [
+            Some(100.0),
+            Some(100.0),
+            Some(200.0),
+            Some(40.0),
+            Some(100.0),
+            Some(30.0),
+            Some(400.0),
+            Some(200.0),
+        ],
+        EditArgs {
+            init: Some("line one\nline two".into()),
+            line_height: Some(16.0),
+            ..Default::default()
+        },
+    );
+    let redit_ref: ControlRef = redit.clone();
+    let named: Vec<(&'static str, ControlRef)> = vec![
+        ("drag", drag_ref),
+        ("minus", minus),
+        ("cross", cross),
+        ("slash", slash),
+        ("text", text),
+        ("locked", locked),
+        ("off", off),
+        ("redit", redit_ref),
+    ];
+    for (n, c) in &named {
+        host.add(n, c.clone());
+    }
+    let h = host.clone();
+    Env {
+        host,
+        custom: None,
+        dump: Box::new(move |g| {
+            let refs: Vec<(&str, &ControlRef)> = named.iter().map(|(n, c)| (*n, c)).collect();
+            let ((dx, dy), (ux, uy)) = (down.get(), up.get());
+            json!({
+                "downX": dx, "downY": dy, "upDX": ux, "upDY": uy, "right": right.get(),
+                "dragging": drag.dragging.get(), "clicked": drag.clicked.get(), "sel": sel_name(&h, &refs),
+                "w": redit.edit.base.width.get(g), "h": redit.edit.base.height.get(g), "rdrag": redit.dragger_height.dragging.get(),
+            })
+        }),
+    }
 }

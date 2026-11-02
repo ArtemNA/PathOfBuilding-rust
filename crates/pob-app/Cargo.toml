@@ -1,0 +1,15 @@
+[package]
+name = "pob-app"
+description = "Path of Building (Rust): the desktop application (window + pob-ui)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+pob-gfx = { path = "../pob-gfx" }
+pob-ui = { path = "../pob-ui" }
+
+[lints]
+workspace = true

@@ -24,6 +24,17 @@ pub struct MainFlags {
     pub disable_scroll_control_interaction: Cell<bool>,
     /// `main.unicode` (`nil` by default; EditControl.lua:50 filter `%c` instead of `^%w%p `).
     pub unicode: Cell<bool>,
+    /// `main.screenW` / `main.screenH` (set each frame by `main:OnFrame`, Main.lua:380).
+    pub screen: Cell<(f64, f64)>,
+}
+
+/// `main.screenW, main.screenH`.
+pub fn screen_size() -> (f64, f64) {
+    MAIN.with(|m| m.screen.get())
+}
+
+pub fn set_screen_size(w: f64, h: f64) {
+    MAIN.with(|m| m.screen.set((w, h)));
 }
 
 pub fn disable_scroll_control_interaction() -> bool {
@@ -42,6 +53,7 @@ thread_local! {
             invert_slider_scroll_direction: Cell::new(false),
             disable_scroll_control_interaction: Cell::new(false),
             unicode: Cell::new(false),
+            screen: Cell::new((0.0, 0.0)),
         }
     };
 }
@@ -155,6 +167,48 @@ pub fn wrap_string(g: &Gfx, s: &str, height: f64, width: f64) -> Vec<String> {
             out.push(sub(s, line_start, last_break).to_string());
             line_start = last_space;
         }
+    }
+    out
+}
+
+thread_local! {
+    /// `main.showDragText` (set by a list dragging onto another control, drawn and cleared by `main:OnFrame`).
+    static SHOW_DRAG_TEXT: std::cell::RefCell<Option<String>> = const { std::cell::RefCell::new(None) };
+}
+
+pub fn set_show_drag_text(text: String) {
+    SHOW_DRAG_TEXT.with(|t| *t.borrow_mut() = Some(text));
+}
+
+pub fn take_show_drag_text() -> Option<String> {
+    SHOW_DRAG_TEXT.with(|t| t.borrow_mut().take())
+}
+
+/// `sanitiseText(text)` (Common.lua:306-329).
+pub fn sanitise_text(text: &str) -> String {
+    let b = text.as_bytes();
+    if !b.iter().any(|&c| c >= 128 || c == b'<') {
+        return text.to_string();
+    }
+    let mut s = crate::lua::gsub(text, "%b<>", "");
+    for (from, to) in [
+        ("\u{2010}", "-"),
+        ("\u{2011}", "-"),
+        ("\u{2012}", "-"),
+        ("\u{2013}", "-"),
+        ("\u{2014}", "-"),
+        ("\u{2015}", "-"),
+        ("\u{2212}", "-"),
+        ("\u{e4}", "a"),
+        ("\u{f6}", "o"),
+    ] {
+        s = s.replace(from, to);
+    }
+    // Single-byte Windows-1252 replacements (\150, \151, \228, \246) and `[\128-\255]` → "?": Rust strings are UTF-8,
+    // so every remaining non-ASCII byte becomes "?" (one per byte, like the Lua pattern).
+    let mut out = String::with_capacity(s.len());
+    for &c in s.as_bytes() {
+        out.push(if c >= 128 { '?' } else { c as char });
     }
     out
 }

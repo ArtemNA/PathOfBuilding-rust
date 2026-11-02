@@ -10,11 +10,13 @@
 //! - [`render`]: the `wgpu` renderer (window surface or offscreen RGBA readback).
 //! - [`input`] (U1.4): key names, `OnKeyDown`/`OnKeyUp`/`OnChar` translation, `IsKeyDown`, `GetCursorPos`.
 //! - [`platform`]: clock (`GetTime`), clipboard (`Copy`/`Paste`), `OpenURL`; a scripted [`platform::TestPlatform`].
+//! - [`fs`] (U2b): `NewFileSearch`, `MakeDir`, `RemoveDir`, `GetUserPath`, `GetCloudProvider`.
 //! - [`screenshot`]: `TakeScreenshot` files.
 //! - [`window`]: the `winit` loop calling a [`MainObject`]'s callbacks.
 
 pub mod color;
 pub mod draw;
+pub mod fs;
 pub mod image;
 pub mod input;
 pub mod platform;

@@ -1,0 +1,18 @@
+{
+  "build": "dragger",
+  "steps": [
+    { "dump": true, "shot": "dragger-idle" },
+    { "cursor": [300, 140], "hold": ["LEFTBUTTON"], "events": [["KeyDown", "LEFTBUTTON"]], "dump": true },
+    { "cursor": [380, 180], "dump": true, "shot": "redit-drag" },
+    { "cursor": [520, 330], "dump": true },
+    { "release": ["LEFTBUTTON"], "events": [["KeyUp", "LEFTBUTTON"]], "dump": true },
+    { "cursor": [500, 300], "events": [["KeyDown", "RIGHTBUTTON"], ["KeyUp", "RIGHTBUTTON"]], "dump": true, "shot": "redit-min" },
+    { "cursor": [200, 130], "events": [["KeyDown", "RIGHTBUTTON"], ["KeyUp", "RIGHTBUTTON"]], "dump": true, "shot": "redit-max" },
+    { "cursor": [300, 200], "events": [["KeyDown", "LEFTBUTTON"], ["KeyUp", "LEFTBUTTON"], ["Char", "Z"]], "dump": true, "shot": "redit-typed" },
+    { "cursor": [50, 50], "dump": true, "shot": "dragger-hover" },
+    { "hold": ["LEFTBUTTON"], "events": [["KeyDown", "LEFTBUTTON"]], "dump": true },
+    { "cursor": [70, 65], "dump": true, "shot": "dragger-drag" },
+    { "release": ["LEFTBUTTON"], "events": [["KeyUp", "LEFTBUTTON"]], "dump": true },
+    { "cursor": [230, 50], "events": [["KeyDown", "LEFTBUTTON"], ["KeyUp", "LEFTBUTTON"]], "dump": true }
+  ]
+}

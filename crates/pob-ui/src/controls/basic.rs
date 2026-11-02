@@ -124,6 +124,10 @@ impl Control for ButtonControl {
         &self.base
     }
 
+    fn click(&self, g: &mut Gfx) {
+        ButtonControl::click(self, g);
+    }
+
     /// ButtonControl.lua:34-39
     fn is_mouse_over(&self, g: &Gfx) -> Option<bool> {
         Some(self.mouse_over(g))

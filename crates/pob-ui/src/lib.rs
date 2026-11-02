@@ -7,11 +7,14 @@
 // Ported classes keep Lua's callback fields (`RefCell<Option<Rc<dyn Fn…>>>`) and argument lists.
 #![allow(clippy::type_complexity, clippy::too_many_arguments)]
 
+pub mod colors;
 pub mod common;
 pub mod control;
 pub mod controls;
 pub mod host;
+pub mod launch;
 pub mod lua;
+pub mod modules;
 pub mod search;
 pub mod sg;
 pub mod tooltip;

@@ -203,4 +203,76 @@ function G.list()
 	}
 end
 
+-- U2b: PopupDialog (as main:OpenPopup shows it: layer 10, dimmed screen; input through popup:ProcessInput) with numbered
+-- labels, an edit (defaultControl), enter/escape buttons and a disabled button.
+function G.popup()
+	main.screenW, main.screenH = 1280, 800
+	local st = { saved = 0, cancelled = 0, changes = 0 }
+	local controls = { }
+	controls[1] = new("LabelControl"):LabelControl(nil, { 0, 20, 0, 16 }, "^7First line of the message")
+	controls[2] = new("LabelControl"):LabelControl(nil, { 0, 36, 0, 16 }, "^8second ^1line")
+	controls.edit = new("EditControl"):EditControl(nil, { 0, 60, 350, 20 }, "start", nil, "\\/:%*%?\"<>|%c", 100, function(buf)
+		st.changes = st.changes + 1
+		controls.save.enabled = buf:match("%S") ~= nil
+	end)
+	controls.save = new("ButtonControl"):ButtonControl(nil, { -45, 90, 80, 20 }, "Save", function() st.saved = st.saved + 1 end)
+	controls.cancel = new("ButtonControl"):ButtonControl(nil, { 45, 90, 80, 20 }, "Cancel", function() st.cancelled = st.cancelled + 1 end)
+	controls.off = new("ButtonControl"):ButtonControl({ "TOPLEFT", nil, "TOPLEFT" }, { 10, 90, 50, 20 }, "Off", function() end)
+	controls.off.enabled = false
+	local popup = new("PopupDialog"):PopupDialog(370, 120, "Popup ^1Title", controls, "save", "edit", "cancel")
+	local host = {
+		ProcessControlsInput = function(_, inputEvents, viewPort) popup:ProcessInput(inputEvents, viewPort) end,
+		DrawControls = function(_, viewPort)
+			SetDrawLayer(10)
+			SetDrawColor(0, 0, 0, 0.5)
+			DrawImage(nil, 0, 0, main.screenW, main.screenH)
+			popup:Draw(viewPort)
+			SetDrawLayer(0)
+		end,
+	}
+	return {
+		host = host,
+		dump = function()
+			local sel = "nil"
+			for k, v in pairs(controls) do if popup.selControl == v then sel = tostring(k) end end
+			local x, y = popup:GetPos()
+			return { saved = st.saved, cancelled = st.cancelled, changes = st.changes, buf = controls.edit.buf, sel = sel, x = x, y = y,
+				saveEnabled = controls.save.enabled == true }
+		end,
+	}
+end
+
+-- U2b: DraggerControl (labels + / - / x / // / text, callbacks) and ResizableEditControl (drag and right-click reset).
+function G.dragger()
+	local host = new("ControlHost"):ControlHost()
+	local c = host.controls
+	local st = { downX = -1, downY = -1, upDX = 0, upDY = 0, right = 0 }
+	c.drag = new("DraggerControl"):DraggerControl(nil, { 40, 40, 20, 20 }, "+", function(pos)
+		st.downX, st.downY = pos.X, pos.Y
+	end, function(delta)
+		st.upDX, st.upDY = delta.X, delta.Y
+	end, function(pos)
+		st.right = st.right + 1
+	end)
+	c.drag.tooltipText = "Dragger tooltip"
+	c.minus = new("DraggerControl"):DraggerControl({ "LEFT", c.drag, "RIGHT" }, { 4, 0, 20, 20 }, "-")
+	c.cross = new("DraggerControl"):DraggerControl({ "LEFT", c.minus, "RIGHT" }, { 4, 0, 20, 20 }, "x")
+	c.slash = new("DraggerControl"):DraggerControl({ "LEFT", c.cross, "RIGHT" }, { 4, 0, 20, 20 }, "//")
+	c.text = new("DraggerControl"):DraggerControl({ "LEFT", c.slash, "RIGHT" }, { 4, 0, 60, 20 }, "Drag")
+	c.locked = new("DraggerControl"):DraggerControl({ "LEFT", c.text, "RIGHT" }, { 4, 0, 60, 20 }, "Lock")
+	c.locked.locked = true
+	c.off = new("DraggerControl"):DraggerControl({ "LEFT", c.locked, "RIGHT" }, { 4, 0, 60, 20 }, "Off")
+	c.off.enabled = false
+	c.redit = new("ResizableEditControl"):ResizableEditControl(nil, { 100, 100, 200, 40, 100, 30, 400, 200 }, "line one\nline two", nil, nil, nil, nil, 16)
+	return {
+		host = host,
+		dump = function()
+			local sel = "nil"
+			for k, v in pairs(c) do if host.selControl == v then sel = k end end
+			return { downX = st.downX, downY = st.downY, upDX = st.upDX, upDY = st.upDY, right = st.right,
+				dragging = c.drag.dragging == true, clicked = c.drag.clicked == true, sel = sel,
+				w = c.redit.width, h = c.redit.height, rdrag = c.redit.controls.draggerHeight.dragging == true }
+		end,
+	}
+end
 return G

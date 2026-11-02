@@ -1282,6 +1282,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "pob-app"
+version = "0.1.0"
+dependencies = [
+ "pob-gfx",
+ "pob-ui",
+]
+
+[[package]]
 name = "pob-build"
 version = "0.1.0"
 dependencies = [
@@ -1429,6 +1437,7 @@ version = "0.1.0"
 dependencies = [
  "image",
  "indexmap",
+ "pob-build",
  "pob-gfx",
  "pob-lua",
  "serde_json",

@@ -97,3 +97,26 @@ pub fn utf8_next(s: &str, idx: usize, offset: i32) -> Option<usize> {
 pub fn rep(s: &str, n: i64) -> String {
     if n <= 0 { String::new() } else { s.repeat(n as usize) }
 }
+
+/// `s:match(p)` → all captures (strings; position captures as decimal text); `None` = no match.
+pub fn lmatch_all(s: &str, p: &str) -> Option<Vec<String>> {
+    let caps = pattern::match_(s.as_bytes(), p.as_bytes(), None).unwrap_or_else(|e| pat_err(p, e))?;
+    let mut out = Vec::new();
+    let mut i = 0;
+    while let Some(c) = caps.get(i) {
+        out.push(match c {
+            Capture::Str { start, end } => lossy(&s.as_bytes()[start..end]),
+            Capture::Pos(n) => n.to_string(),
+        });
+        i += 1;
+    }
+    if out.is_empty() {
+        out.push(s.to_string());
+    }
+    Some(out)
+}
+
+/// `tostring(n)` of a number (`%.14g`, L1).
+pub fn tostring_num(n: f64) -> String {
+    pob_lua::format::tostring_num(n)
+}

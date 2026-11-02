@@ -30,6 +30,8 @@ pub fn ipairs(events: &InputEvents) -> impl Iterator<Item = (usize, &InputEvent)
 pub struct ControlHost {
     pub controls: RefCell<IndexMap<String, ControlRef>>,
     pub sel_control: RefCell<Option<ControlRef>>,
+    /// An instance's own `GetMouseOverControl` (Main.lua:1307-1313 assigns one to the options popup).
+    pub mouse_over_override: RefCell<Option<Rc<dyn Fn(&Gfx) -> Option<ControlRef>>>>,
 }
 
 impl ControlHost {
@@ -77,6 +79,10 @@ impl ControlHost {
 
     /// `ControlHost:GetMouseOverControl()` (ControlHost.lua:31-48).
     pub fn get_mouse_over_control(&self, g: &Gfx) -> Option<ControlRef> {
+        let o = self.mouse_over_override.borrow().clone();
+        if let Some(o) = o {
+            return o(g);
+        }
         for control in self.snapshot() {
             if control.is_mouse_over(g) == Some(true) {
                 let Some(clip) = control.mouse_clip_rect(g) else {

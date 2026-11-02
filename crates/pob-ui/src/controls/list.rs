@@ -1,9 +1,8 @@
 //! `ListControl.lua` (abstract list; "derived classes" supply [`ListHooks`]) and `TextListControl.lua`.
 //!
 //! List values are compared with `==` like Lua (`value == self.selValue`): for table values use a type whose
-//! `PartialEq` is identity (e.g. [`ByRef`]). Dragging to **other** controls (`dragTargetList`, `otherDragSource`
-//! set by another list, `ReceiveDrag`, `main.showDragText`) is `unimplemented!` — used by the skills/items tabs (U5/U6);
-//! reordering inside a mutable list is ported.
+//! `PartialEq` is identity (e.g. [`ByRef`]). Dragging to other controls (`dragTargetList` → [`DragTarget`],
+//! `otherDragSource`, `ReceiveDrag`, `main.showDragText`) and reordering inside a mutable list are ported (U2b).
 
 use crate::control::{Anchor, Control, ControlBase, ControlRef, Prop, PropCell, Rect, RectProps, anchor_weak};
 use crate::controls::scroll_bar::ScrollBarControl;
@@ -89,6 +88,50 @@ pub trait ListHooks<V>: 'static {
         false
     }
     fn re_sort(&self, list: &ListControl<V>, column: usize) {}
+    /// `:GetDragValue(index, value)` → `(dragType, dragValue)` (needed when `dragTargetList` is set).
+    fn get_drag_value(&self, list: &ListControl<V>, index: usize, value: &V) -> (String, V) {
+        unimplemented!("ListControl.lua:162: GetDragValue of this list")
+    }
+    fn on_drag_send(&self, list: &ListControl<V>, g: &mut Gfx, index: usize, value: &V) {}
+    /// This list as a drag target (`self` in its own `dragTargetList`): `CanReceiveDrag` / `ReceiveDrag`.
+    fn can_receive_drag(&self, list: &ListControl<V>, drag_type: &str, value: &V) -> bool {
+        true
+    }
+    fn receive_drag(&self, list: &ListControl<V>, g: &mut Gfx, drag_type: &str, value: &V) {}
+}
+
+/// A member of `dragTargetList`: `CanReceiveDrag` (`nil` = accepts everything), `otherDragSource` (here a flag:
+/// one list drags at a time), `otherDragTargeting`, `IsMouseOver`, `ReceiveDrag`.
+pub trait DragTarget<V> {
+    fn can_receive_drag(&self, drag_type: &str, value: &V) -> bool;
+    fn set_other_drag_source(&self, on: bool);
+    fn other_drag_source(&self) -> bool;
+    fn set_other_drag_targeting(&self, _on: bool) {}
+    fn is_mouse_over(&self, g: &Gfx) -> bool;
+    fn receive_drag(&self, g: &mut Gfx, drag_type: &str, value: &V);
+}
+
+/// The list itself as a member of its own `dragTargetList` (BuildListControl.lua:57).
+pub struct SelfTarget<V>(pub Weak<ListControl<V>>);
+
+impl<V: Clone + PartialEq + 'static> DragTarget<V> for SelfTarget<V> {
+    fn can_receive_drag(&self, drag_type: &str, value: &V) -> bool {
+        let l = self.0.upgrade().expect("list");
+        l.hooks.can_receive_drag(&l, drag_type, value)
+    }
+    fn set_other_drag_source(&self, on: bool) {
+        self.0.upgrade().expect("list").other_drag_source.set(on);
+    }
+    fn other_drag_source(&self) -> bool {
+        self.0.upgrade().expect("list").other_drag_source.get()
+    }
+    fn is_mouse_over(&self, g: &Gfx) -> bool {
+        self.0.upgrade().expect("list").mouse_over(g)
+    }
+    fn receive_drag(&self, g: &mut Gfx, drag_type: &str, value: &V) {
+        let l = self.0.upgrade().expect("list");
+        l.hooks.receive_drag(&l, g, drag_type, value);
+    }
 }
 
 pub struct ListControl<V> {
@@ -123,6 +166,10 @@ pub struct ListControl<V> {
     pub other_drag_source: Cell<bool>,
     pub hover_index: Cell<Option<usize>>,
     pub hover_value: RefCell<Option<V>>,
+    pub drag_target_list: RefCell<Option<Vec<Rc<dyn DragTarget<V>>>>>,
+    /// `self.dragType, self.dragValue`.
+    pub drag: RefCell<Option<(String, V)>>,
+    pub drag_target: RefCell<Option<Rc<dyn DragTarget<V>>>>,
 }
 
 impl<V: Clone + PartialEq + 'static> ListControl<V> {
@@ -207,6 +254,9 @@ impl<V: Clone + PartialEq + 'static> ListControl<V> {
                 other_drag_source: Cell::new(false),
                 hover_index: Cell::new(None),
                 hover_value: RefCell::new(None),
+                drag_target_list: RefCell::new(None),
+                drag: RefCell::new(None),
+                drag_target: RefCell::new(None),
             }
         })
     }
@@ -270,10 +320,12 @@ impl<V: Clone + PartialEq + 'static> ListControl<V> {
     }
 
     /// `self.dragTargetList = { … }`: dragging values onto other controls.
-    pub fn set_drag_target_list(&self, _targets: Vec<ControlRef>) {
-        unimplemented!(
-            "ListControl.lua:161-168, :179-189, :326-328, :451-463: drag to other controls (dragTargetList / otherDragSource / ReceiveDrag / main.showDragText) — skills/items tabs (U5/U6)"
-        );
+    pub fn set_drag_target_list(&self, targets: Vec<Rc<dyn DragTarget<V>>>) {
+        *self.drag_target_list.borrow_mut() = Some(targets);
+    }
+
+    fn drag_targets(&self) -> Option<Vec<Rc<dyn DragTarget<V>>>> {
+        self.drag_target_list.borrow().clone()
     }
 
     fn can_drag_to(&self, index: usize, value: &V) -> bool {
@@ -292,7 +344,7 @@ impl<V: Clone + PartialEq + 'static> Control for ListControl<V> {
     }
 
     fn sel_drag_holds_focus(&self) -> bool {
-        false // `selDragActive and dragTargetList`: drag targets unimplemented (module docs)
+        self.sel_drag_active.get() && self.drag_target_list.borrow().is_some()
     }
 
     fn has_draw(&self) -> bool {
@@ -338,6 +390,19 @@ impl<V: Clone + PartialEq + 'static> Control for ListControl<V> {
             let (dx, dy) = (cursor_x - self.sel_cx.get(), cursor_y - self.sel_cy.get());
             if dx * dx + dy * dy > 100.0 {
                 self.sel_drag_active.set(true);
+                if let Some(targets) = self.drag_targets() {
+                    let (si, sv) = (
+                        self.sel_index.get().expect("selIndex"),
+                        self.sel_value.borrow().clone().expect("selValue"),
+                    );
+                    let (ty, val) = self.hooks.get_drag_value(self, si, &sv);
+                    for t in &targets {
+                        if t.can_receive_drag(&ty, &val) {
+                            t.set_other_drag_source(true);
+                        }
+                    }
+                    *self.drag.borrow_mut() = Some((ty, val));
+                }
             }
         }
         self.sel_drag_index.set(None);
@@ -352,6 +417,19 @@ impl<V: Clone + PartialEq + 'static> Control for ListControl<V> {
             let sel = self.sel_index.get().map(|s| s as i64);
             if sel.is_none_or(|s| index < s || index > s + 1) {
                 self.sel_drag_index.set(Some(index.min(n as i64 + 1).max(0) as usize));
+            }
+        }
+        if self.sel_drag_active.get()
+            && let Some(targets) = self.drag_targets()
+        {
+            *self.drag_target.borrow_mut() = None;
+            for t in targets {
+                if self.drag_target.borrow().is_none() && t.other_drag_source() && t.is_mouse_over(f) {
+                    t.set_other_drag_targeting(true);
+                    *self.drag_target.borrow_mut() = Some(t);
+                } else {
+                    t.set_other_drag_targeting(false);
+                }
             }
         }
         if let Some(label) = self.label.get(f) {
@@ -528,6 +606,13 @@ impl<V: Clone + PartialEq + 'static> Control for ListControl<V> {
             sg::draw_rect(f, 0.0, line_y, width - 20.0, 1.0);
         }
         sg::set_viewport(f, None);
+        if self.sel_drag_active.get() && self.drag_target_list.borrow().is_some() && (!self.is_mutable || !self.mouse_over(f)) {
+            let (si, sv) = (
+                self.sel_index.get().expect("selIndex"),
+                self.sel_value.borrow().clone().expect("selValue"),
+            );
+            crate::common::set_show_drag_text(self.hooks.get_row_value(self, f, 1, si, &sv));
+        }
         self.hover_index.set(tt.as_ref().map(|t| t.0));
         *self.hover_value.borrow_mut() = tt.as_ref().map(|t| t.1.clone());
         if let Some((tt_index, tt_value, tt_x, tt_y, tt_width)) = tt
@@ -589,7 +674,7 @@ impl<V: Clone + PartialEq + 'static> Control for ListControl<V> {
                 }
             }
             if self.select_index(g, new_select) {
-                if self.is_mutable && self.is_shown(g) {
+                if (self.is_mutable || self.drag_target_list.borrow().is_some()) && self.is_shown(g) {
                     self.sel_cx.set(cursor_x);
                     self.sel_cy.set(cursor_y);
                     self.sel_dragging.set(true);
@@ -683,7 +768,26 @@ impl<V: Clone + PartialEq + 'static> Control for ListControl<V> {
                     }
                     self.hooks.on_order_change(&self, si, sdi);
                     *self.sel_value.borrow_mut() = None;
+                } else {
+                    let target = self.drag_target.borrow().clone();
+                    if let Some(target) = target {
+                        let (ty, val) = self.drag.borrow().clone().expect("dragValue");
+                        target.receive_drag(g, &ty, &val);
+                        let sv = self.sel_value.borrow().clone();
+                        if let Some(sv) = sv {
+                            self.hooks.on_drag_send(&self, g, si, &sv);
+                        }
+                        *self.sel_value.borrow_mut() = None;
+                    }
                 }
+                if let Some(targets) = self.drag_targets() {
+                    for t in targets {
+                        t.set_other_drag_source(false);
+                        t.set_other_drag_targeting(false);
+                    }
+                }
+                *self.drag.borrow_mut() = None;
+                *self.drag_target.borrow_mut() = None;
             }
         }
         Some(self)

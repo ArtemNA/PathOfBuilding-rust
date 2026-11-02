@@ -1,0 +1,7 @@
+{
+  "steps": [
+    { "dump": true, "shot": "ui-smoke" },
+    { "perf": 300 },
+    { "cursor": [400, 131], "dump": true }
+  ]
+}

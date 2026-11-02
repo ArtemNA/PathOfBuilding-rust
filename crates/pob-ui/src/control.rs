@@ -142,7 +142,8 @@ pub struct AnchorState {
 /// `{ point, other, otherPoint, collapse }` — the constructor's `anchor` argument.
 pub struct Anchor {
     pub point: &'static str,
-    pub other: WeakControl,
+    /// `nil` other: resolved later (PopupDialog.lua:23-31 sets it to the popup).
+    pub other: Option<WeakControl>,
     pub other_point: &'static str,
     pub collapse: bool,
 }
@@ -151,7 +152,7 @@ pub struct Anchor {
 pub fn anchor(point: &'static str, other: &ControlRef, other_point: &'static str) -> Option<Anchor> {
     Some(Anchor {
         point,
-        other: Rc::downgrade(other),
+        other: Some(Rc::downgrade(other)),
         other_point,
         collapse: false,
     })
@@ -161,7 +162,17 @@ pub fn anchor(point: &'static str, other: &ControlRef, other_point: &'static str
 pub fn anchor_weak(point: &'static str, other: WeakControl, other_point: &'static str) -> Option<Anchor> {
     Some(Anchor {
         point,
-        other,
+        other: Some(other),
+        other_point,
+        collapse: false,
+    })
+}
+
+/// `{ point, nil, otherPoint }`: an anchor whose `other` is filled in later (by `PopupDialog`).
+pub fn anchor_nil(point: &'static str, other_point: &'static str) -> Option<Anchor> {
+    Some(Anchor {
+        point,
+        other: None,
         other_point,
         collapse: false,
     })
@@ -208,7 +219,7 @@ impl ControlBase {
             tab_order: RefCell::new(None),
         };
         if let Some(a) = anchor {
-            b.set_anchor(a.point, Some(a.other), a.other_point, None, a.collapse);
+            b.set_anchor(a.point, a.other, a.other_point, None, a.collapse);
         }
         b
     }
@@ -374,6 +385,11 @@ pub trait Control: Any {
     /// `selControl.selDragActive and selControl.dragTargetList` (ControlHost.lua:17).
     fn sel_drag_holds_focus(&self) -> bool {
         false
+    }
+
+    /// `control:Click()`: only buttons have it (PopupDialog enter/escape controls, ButtonControl.lua:19-23).
+    fn click(&self, _g: &mut Gfx) {
+        panic!("attempt to call method 'Click' (a nil value)");
     }
 
     /// `selControl.imbuedSelect and selControl.dropped` (ControlHost.lua:55).
