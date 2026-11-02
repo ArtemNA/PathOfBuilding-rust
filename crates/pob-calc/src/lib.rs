@@ -26,6 +26,7 @@ pub(crate) mod minion;
 pub(crate) mod mirages;
 pub(crate) mod offence;
 pub mod output;
+pub mod party;
 pub mod perform;
 pub mod pools;
 pub mod power;

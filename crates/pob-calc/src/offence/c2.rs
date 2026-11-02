@@ -56,8 +56,11 @@ pub(super) fn resist_for_type(off: &Off<'_>, dt: &str, cfg: Option<&ModCfg>) -> 
                     .opt_num(&rname)
                     .unwrap_or_else(|| panic!("{LUA}:506: bad argument #1 to 'min' (number expected, got nil)"))
             } else if dflag(&off.st.party_members.mod_db, None, &[&flag_name]) {
-                // the PartyTab stand-in's output is empty (P5)
-                panic!("{LUA}:506: bad argument #1 to 'min' (number expected, got nil)")
+                // :500-501 `env.partyMembers.output[damageType.."Resist"]` (R-party)
+                off.st
+                    .party_members
+                    .out(&rname)
+                    .unwrap_or_else(|| panic!("{LUA}:506: bad argument #1 to 'min' (number expected, got nil)"))
             } else {
                 let mut names = vec![rname.as_str()];
                 if is_elemental(dt) {

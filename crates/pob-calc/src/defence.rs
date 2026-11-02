@@ -186,14 +186,17 @@ fn from_parent(out: &mut Output, parent: Option<&Output>, key: &str, line: u32) 
     }
 }
 
-/// `actor.partyMembers.output[key]` -- PartyTab is P5; the stub's output table is empty (as perform's `party_output`).
-fn party_output(_key: &str) -> Option<f64> {
-    None
+/// `actor.partyMembers.output[key]` (R-party): only the player has `partyMembers` (CalcPerform.lua:1311), any other actor raises.
+fn party_output(party: Option<&crate::party::PartyTab>, key: &str, line: u32) -> Option<f64> {
+    match party {
+        Some(p) => p.out_num(key),
+        None => panic!("{}: attempt to index field 'partyMembers' (a nil value)", site(line)),
+    }
 }
 
 /// `output[key] = actor.partyMembers.output[key]`.
-fn set_from_party(out: &mut Output, key: &str) {
-    match party_output(key) {
+fn set_from_party(out: &mut Output, party: Option<&crate::party::PartyTab>, key: &str, line: u32) {
+    match party_output(party, key, line) {
         Some(v) => out.set_num(key, v),
         None => out.remove(key),
     }
@@ -505,6 +508,9 @@ pub fn defence(env: &mut Env, state: &mut PerformState, who: Who) {
     };
     let fl = |names: &[&str]| flag(&db, names);
     let efl = |names: &[&str]| flag(&enemy_db, names);
+    // `actor.partyMembers` (R-party): the party tab on the player, nil on any other actor
+    let party_rc = (who == Who::Player).then(|| env.party.clone());
+    let party = party_rc.as_deref();
     // :660 `local condList = modDB.conditions` -- never read.
 
     // --- :662-676 action speed, resistances, minion branches ------------------------------------------------------
@@ -550,7 +556,7 @@ pub fn defence(env: &mut Env, state: &mut PerformState, who: Who) {
     if fl(&["MaximumBlockAttackChanceIsEqualToParent"]) {
         from_parent(out, parent, "BlockChanceMax", 681);
     } else if fl(&["MaximumBlockAttackChanceIsEqualToPartyMember"]) {
-        set_from_party(out, "BlockChanceMax"); // not covered by goldens
+        set_from_party(out, party, "BlockChanceMax", 685); // not covered by goldens
     }
     out.set_num("BlockChanceOverCap", 0.0);
     out.set_num("SpellBlockChanceOverCap", 0.0);
@@ -580,8 +586,9 @@ pub fn defence(env: &mut Env, state: &mut PerformState, who: Who) {
         let m = out.num("BlockChanceMax");
         out.set_num("BlockChance", min2(v, m));
     } else if fl(&["BlockAttackChanceIsEqualToPartyMember"]) {
-        // :704 `m_min(nil, ...)` with the empty party output -- not covered by goldens
-        let v = party_output("BlockChance").unwrap_or_else(|| panic!("{}: bad argument #1 to 'min' (number expected, got nil)", site(704)));
+        // :706 `m_min(actor.partyMembers.output.BlockChance, ...)` -- not covered by goldens
+        let v = party_output(party, "BlockChance", 706)
+            .unwrap_or_else(|| panic!("{}: bad argument #1 to 'min' (number expected, got nil)", site(706)));
         let m = out.num("BlockChanceMax");
         out.set_num("BlockChance", min2(v, m));
     } else if fl(&["MaxBlockIfNotBlockedRecently"]) {
@@ -1331,7 +1338,7 @@ pub fn defence(env: &mut Env, state: &mut PerformState, who: Who) {
     if fl(&["MaximumLifeLeechIsEqualToParent"]) {
         from_parent(out, parent, "MaxLifeLeechRatePercent", 1223);
     } else if fl(&["MaximumLifeLeechIsEqualToPartyMember"]) {
-        set_from_party(out, "MaxLifeLeechRatePercent"); // not covered by goldens
+        set_from_party(out, party, "MaxLifeLeechRatePercent", 1227); // not covered by goldens
     }
     let v = out.num("Life") * out.num("MaxLifeLeechRatePercent") / 100.0;
     out.set_num("MaxLifeLeechRate", v);
@@ -1848,9 +1855,9 @@ pub fn defence(env: &mut Env, state: &mut PerformState, who: Who) {
     // --- :1542-1559 movement speed, blind -------------------------------------------------------------------------------
     let msm = match override_(&db, "MovementSpeed") {
         Some(v) if v.truthy() => num_val(&v, 1543),
-        // `Flag and partyMembers.output.MovementSpeedMod or calcLib.mod(...)` -- the empty party output answers nil
+        // `Flag and actor.partyMembers.output.MovementSpeedMod or calcLib.mod(...)` (PartyMemberStats `MovementSpeedMod`)
         _ => match fl(&["MovementSpeedEqualHighestLinkedPlayers"])
-            .then(|| party_output("MovementSpeedMod"))
+            .then(|| party_output(party, "MovementSpeedMod", 1545))
             .flatten()
         {
             Some(v) => v,

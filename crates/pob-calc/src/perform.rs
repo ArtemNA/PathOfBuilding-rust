@@ -111,11 +111,20 @@ impl ActorState {
     }
 }
 
-/// `env.build.partyTab.actor` (:1310): PartyTab is P5; with no party member perform only asks it for an empty ModDB and
-/// an empty output table.
+/// `env.build.partyTab.actor` (:1310, R-party): its ModDB (the "PartyMemberStats" flags), the mod core's actor table (its `output`
+/// numbers, what `PercentStat`/`PerStat` tags with `actor = "partyMembers"` read) and the parsed tab ([`crate::party::PartyTab`]: the
+/// buff lists and the full `output`, tables included).
 pub struct PartyStub {
     pub mod_db: StoreRef,
     pub actor: ActorRef,
+    pub tab: Rc<crate::party::PartyTab>,
+}
+
+impl PartyStub {
+    /// `partyMembers.output[key]` as a number.
+    pub fn out(&self, key: &str) -> Option<f64> {
+        self.tab.out_num(key)
+    }
 }
 
 /// The tables perform creates (`env.player.output`, `env.enemy.output`, `env.partyMembers`, `env.aegisItem`) -- kept
@@ -1777,9 +1786,9 @@ fn do_actor_misc(env: &mut Env, who: Who, st: &mut ActorState, party: &PartyStub
     apply_enemy_modifiers(&db, &enemy_db, st, false);
 }
 
-/// `env.partyMembers.output[key]` -- PartyTab is P5, its output table is always empty.
-fn party_output(_party: &PartyStub, _key: &str) -> Option<f64> {
-    None
+/// `env.partyMembers.output[key]` (a number, or nil).
+fn party_output(party: &PartyStub, key: &str) -> Option<f64> {
+    party.out(key)
 }
 
 /// :817-848 Elusive.
@@ -2388,11 +2397,24 @@ pub fn perform_skip_ehp(
     let mut player = ActorState::new(&player_actor);
     let enemy = ActorState::new(&enemy_actor);
 
-    // :1310-1311 `env.partyMembers = env.build.partyTab.actor` -- PartyTab is P5: an empty stand-in actor.
+    // :1310-1311 `env.partyMembers = env.build.partyTab.actor` (R-party): `actor.modDB` holds the "PartyMemberStats" flags
+    // (PartyTab.lua:793), `actor.output` its numbers (a `k1.k2=v` table is only read by CalcOffence.lua:3110, through the stub).
     let party_db = ModStore::new_db(None);
+    for m in &env.party.member_mods {
+        party_db.borrow_mut().add_mod(m.clone());
+    }
+    let party_out: IndexMap<pob_mods::Str, f64> = env
+        .party
+        .output
+        .iter()
+        .filter_map(|(k, v)| match v {
+            crate::party::PartyOut::Num(n) => Some((Rc::from(k.as_str()), *n)),
+            crate::party::PartyOut::Table(_) => None,
+        })
+        .collect();
     let party_actor = Rc::new(std::cell::RefCell::new(Actor {
         mod_db: Some(party_db.clone()),
-        output: Some(IndexMap::new()),
+        output: Some(party_out),
         ..Actor::default()
     }));
     party_db.borrow_mut().set_actor(&party_actor);
@@ -2403,6 +2425,7 @@ pub fn perform_skip_ehp(
     let party = PartyStub {
         mod_db: party_db,
         actor: party_actor,
+        tab: env.party.clone(),
     };
     // :1312 `partyTabEnableExportBuffs` is only read by the buff-export tail (skipped).
     skip(env, "1312 partyTab.enableExportBuffs / buff export (P5)");
@@ -2861,12 +2884,14 @@ pub fn perform_skip_ehp(
             // :3124-3141 alternate charges; :3143-3316 extra curses, curse limit, slots ([`curses`]).
             buffs::alternate_charges(env);
             curses::extra_curses(env, &mut combined.curses, &mut combined.minion_curses);
+            let ally_curses = curses::ally_curses(env);
             let slots = curses::curse_slots(
                 env,
                 &mut player.output,
                 &combined.curses,
                 &combined.minion_curses,
                 combined.minion_curse_limit,
+                &ally_curses,
             );
             // :3317-3376 guards, then apply everything ([`guards`]).
             guards::guard_slots(env, &combined.guards, &mut combined.buffs, &mut player.output);
@@ -3018,6 +3043,21 @@ pub fn perform_skip_ehp(
                     Rc::from(renamed.as_str())
                 };
                 mod_db.borrow_mut().add_mod(Rc::new(totem_mod));
+            }
+        }
+    }
+    // :3474-3486 the party members' extra auras (`allyBuffs["extraAura"]`, R-party)
+    let party_tab = env.party.clone();
+    if let Some(g) = party_tab.aura.group("extraAura") {
+        for (_, buff) in buffs::party_entries(g, 3479) {
+            let i = inc(&mod_db, &["BuffEffectOnSelf", "AuraEffectOnSelf"]);
+            let m = more(&mod_db, None, &["BuffEffectOnSelf", "AuraEffectOnSelf"]);
+            ok(mod_db.borrow_mut().scale_add_list(&buff.mod_list, (1.0 + i / 100.0) * m, false));
+            if env.minion.is_some() {
+                let mdb = db_of(env, Who::Minion);
+                let i = inc(&mdb, &["BuffEffectOnSelf", "AuraEffectOnSelf"]);
+                let m = more(&mdb, None, &["BuffEffectOnSelf", "AuraEffectOnSelf"]);
+                ok(mdb.borrow_mut().scale_add_list(&buff.mod_list, (1.0 + i / 100.0) * m, false));
             }
         }
     }

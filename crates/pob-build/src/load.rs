@@ -746,6 +746,7 @@ fn load_model(xml_text: &str, on_config: &mut dyn FnMut(&BuildModel) -> Result<(
         calcs_input: IndexMap::new(),
         unknown_sections: Vec::new(),
         has_config_section: false,
+        party_imported_buffs: Vec::new(),
     };
     // Build.lua:2236-2241: only the FIRST <Build>, before every other section (it has no saver, :628-638).
     if let Some(b) = root.child_elements().find(|e| e.name == "Build") {
@@ -769,6 +770,27 @@ fn load_model(xml_text: &str, on_config: &mut dyn FnMut(&BuildModel) -> Result<(
                 m.config = load_config(el)?;
                 m.has_config_section = true;
                 on_config(&m)?;
+            }
+            "Party" => {
+                // PartyTab:Load (PartyTab.lua:516-558): `ParseBuffs(..., node[1] or "")` -- an element there is a table, and
+                // `buf:gmatch` on it fails (the line of the `gmatch` of that buffer type).
+                let buffers = crate::model::party_imported_buffs(el);
+                for b in &buffers {
+                    let line = match b.name.as_str() {
+                        "PartyMemberStats" => 768,
+                        "Aura" | "Curse" | "Warcry Skills" | "Link Skills" => 806,
+                        "EnemyConditions" => 724,
+                        "EnemyMods" => 732,
+                        _ => continue,
+                    };
+                    if b.text == crate::model::PartyText::Element {
+                        return Err(BuildLoadError::runtime(&format!(
+                            "Classes/PartyTab.lua:{line}: attempt to call method 'gmatch' (a nil value)"
+                        )));
+                    }
+                }
+                m.party_imported_buffs.extend(buffers);
+                m.unknown_sections.push("Party".to_owned());
             }
             other => m.unknown_sections.push(other.to_owned()),
         }

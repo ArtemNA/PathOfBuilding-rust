@@ -271,27 +271,25 @@ impl SaveExtras {
         Ok(x)
     }
 
-    /// PartyTab.lua:516-573 (the buffers' `ParseBuffs` feed the calc -- not modelled by the calc either).
+    /// PartyTab.lua:516-573 -- the edit buffers (`pob_build::party_imported_buffs`, the same reading the calc's `ParseBuffs` gets
+    /// through `BuildModel::party_imported_buffs`).
     fn party_load(&mut self, node: &XmlElement) -> Result<(), String> {
-        for c in node.child_elements() {
-            if c.name == "ImportedBuffs" {
-                let Some(name) = c.attr("name") else { continue };
-                // `node[1] or ""`
-                let t = match c.children.first() {
-                    Some(XmlNode::Text(t)) => t.clone(),
-                    Some(XmlNode::Element(_)) => {
-                        return Err(format!(
-                            "Classes/PartyTab.lua:523 ImportedBuffs '{name}': node[1] is an element (SetText of a table)"
-                        ));
-                    }
-                    None => String::new(),
-                };
-                let key = match name {
-                    "PartyMemberStats" | "Aura" | "Curse" | "Warcry Skills" | "Link Skills" | "EnemyConditions" | "EnemyMods" => name,
-                    _ => continue,
-                };
-                self.party.buffers.insert(key.to_owned(), t);
-            }
+        for b in pob_build::party_imported_buffs(node) {
+            // `node[1] or ""`
+            let t = match b.text {
+                pob_build::PartyText::Text(t) => t,
+                pob_build::PartyText::Element => {
+                    return Err(format!(
+                        "Classes/PartyTab.lua:523 ImportedBuffs '{}': node[1] is an element (SetText of a table)",
+                        b.name
+                    ));
+                }
+            };
+            let key = match b.name.as_str() {
+                "PartyMemberStats" | "Aura" | "Curse" | "Warcry Skills" | "Link Skills" | "EnemyConditions" | "EnemyMods" => b.name,
+                _ => continue,
+            };
+            self.party.buffers.insert(key, t);
         }
         // :566 `SelByValue(destination or "All")`: an unknown value keeps the selection (index 1 after the ctor)
         if let Some(d) = PARTY_DESTINATIONS.iter().find(|d| **d == node.attr("destination").unwrap_or("All")) {

@@ -248,6 +248,9 @@ pub struct Env {
     /// `env.override` (CalcSetup.lua:502): what this env was built with (`None` = `{}`); the accelerated re-init of `calcFullDPS` reads
     /// its `conditions` again (:696).
     pub calc_override: Option<Rc<CalcOverride>>,
+    /// `build.partyTab` after its `Load` (R-party, [`crate::party`]): `env.partyMembers` (CalcPerform.lua:1310) and `enemyModList`
+    /// (CalcSetup.lua:697).
+    pub party: Rc<crate::party::PartyTab>,
 }
 
 impl Env {

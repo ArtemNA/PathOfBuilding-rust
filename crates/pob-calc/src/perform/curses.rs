@@ -3,7 +3,7 @@
 //!
 //! * `pairs({[curses] = modDB, [minionCurses] = env.minion and env.minion.modDB})` (:3144): table keys -- a per-process order (R13); each
 //!   entry writes its own `dest` and its own DB and only reads `enemyDB`, so the order cannot matter: Rust takes the player first.
-//! * Ally curses (:3193-3211): the PartyTab stand-in has no `Curse.Curse` (P5) -- `allyCurses` is empty, its `limit` nil is never read.
+//! * Ally curses (:3217-3238, R-party): [`ally_curses`] from the party tab's `Curse.Curse` -- slotted after the player's and the minion's.
 //! * `minionCurses` (limit 1, or a spectre's `EnemyCurseLimit` + 1) gets the curses of the minions' own skills (:2909-2920) and the minion's
 //!   extra curses (R7.10).
 //! * The slots: `curseSlots` fills from 1 without holes (a slot is either the first empty one or an occupied one), so `#curseSlots` is the
@@ -162,8 +162,54 @@ fn extra_curses_for(env: &Env, mod_db: &pob_mods::StoreRef, curses: &mut Vec<Cur
     }
 }
 
-/// :3215-3316 the curse limit and the slots; returns `curseSlots`.
-pub(super) fn curse_slots(env: &Env, output: &mut Output, curses: &[Curse], minion_curses: &[Curse], minion_limit: f64) -> Vec<Rc<Curse>> {
+/// `allyCurses` (:3217-3238, R-party): the party members' curses (`partyMembers.Curse.Curse`), priority 0, scaled by their effect (a
+/// non-mark also by the enemy's `CurseEffectOnSelf` MORE), and `allyCurses.limit` (the tab's "Curse Limit" line, nil without curses).
+pub(super) struct AllyCurses {
+    pub curses: Vec<Curse>,
+    pub limit: pob_mods::Value,
+}
+
+pub(super) fn ally_curses(env: &Env) -> AllyCurses {
+    let party = env.party.clone();
+    let mut out = AllyCurses {
+        curses: Vec::new(),
+        limit: pob_mods::Value::Nil,
+    };
+    // `if allyPartyCurses["Curse"] then allyCurses.limit = allyPartyCurses.limit else allyPartyCurses = { Curse = {} } end`
+    let Some(g) = party.curse.group("Curse") else {
+        return out;
+    };
+    out.limit = party.curse.limit.clone();
+    for (curse_name, curse) in super::buffs::party_entries(g, 3230) {
+        let mut mult = super::buffs::effect_mult_num(&curse.effect_mult, 3230) / 100.0;
+        if !curse.is_mark {
+            mult *= more(&env.enemy_db, None, &["CurseEffectOnSelf"]);
+        }
+        let l = new_list();
+        scale_add(&l, &curse.mod_list, mult);
+        out.curses.push(Curse {
+            name: curse_name.clone(),
+            priority: 0.0,
+            is_mark: curse.is_mark,
+            ignore_hex_limit: false,
+            socketed_curses_hex_limit: false,
+            mod_list: Some(list_mods(&l)),
+            buff_mod_list: None,
+            minion_buff_mod_list: None,
+        });
+    }
+    out
+}
+
+/// :3241-3341 the curse limit and the slots; returns `curseSlots`.
+pub(super) fn curse_slots(
+    env: &Env,
+    output: &mut Output,
+    curses: &[Curse],
+    minion_curses: &[Curse],
+    minion_limit: f64,
+    ally: &AllyCurses,
+) -> Vec<Rc<Curse>> {
     let mod_db = env.mod_db.clone();
     // :3215 `Flag and output.PowerChargesMax or Sum(...)`
     let limit = if flag(&mod_db, &["CurseLimitIsMaximumPowerCharges"])
@@ -181,12 +227,18 @@ pub(super) fn curse_slots(env: &Env, output: &mut Output, curses: &[Curse], mini
     let mut slots: Vec<Rc<Curse>> = Vec::new();
     // Currently assume only 1 mark is possible
     let mut mark_slotted = false;
-    // :3224 `ipairs({curses, minionCurses, allyCurses})` -- `allyCurses` is empty (see the module doc).
+    // :3250 `ipairs({curses, minionCurses, allyCurses})`
     let player_limit = limit;
+    let ally_curses: Vec<Rc<Curse>> = ally.curses.iter().cloned().map(Rc::new).collect();
+    let ally_limit = || match &ally.limit {
+        pob_mods::Value::Num(n) => *n,
+        _ => panic!("Modules/CalcPerform.lua:3265: 'for' limit must be a number"),
+    };
     for (curse, limit) in curses
         .iter()
         .map(|c| (c, player_limit))
         .chain(minion_curses.iter().map(|c| (c, minion_limit)))
+        .chain(ally_curses.iter().map(|c| (c, ally_limit())))
     {
         // Calculate curses that ignore hex limit after
         if curse.ignore_hex_limit || curse.socketed_curses_hex_limit {

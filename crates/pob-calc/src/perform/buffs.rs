@@ -6,10 +6,11 @@
 //! * `env.minion` (R7.10): every `if env.minion` half, the minions' own skills (`activeSkill.minion.activeSkillList`, :2777-2993) and the
 //!   spectres (:2210-2272) are ported; `minionBuffs` / `minionCurses` go to [`Combined`].
 //! * `getCachedOutputValue` (:2281-2301, Blight / Penance Brand / Earthquake stages): a cached run that stopped at a boundary of the port is recorded, its stages skipped.
-//! * PartyTab (P5): `env.partyMembers` is the empty stand-in actor, so `allyBuffs` (:2207) has no `Aura`/`AuraDebuff`/`otherEffects`/
-//!   `extraAura`, `partyMembers.Warcry/Link` are empty (:2997-3115 never run), and `partyTabEnableExportBuffs` is false
-//!   (`enableExportBuffs` is never loaded from a build, PartyTab.lua:26): `buffExports` is write-only here and not kept, the Link branch
-//!   (:2711, gated by `partyTabEnableExportBuffs or linksApplyToMinions`) is dead.
+//! * PartyTab (R-party): `allyBuffs = env.partyMembers["Aura"]` (:2232) is the party tab's Aura list ([`crate::party`]); a stronger ally
+//!   aura / aura debuff of the same name wins over the player's (:2491, :2509, :2662, :2886, :2904, :2995), and the party members' buffs
+//!   are applied by [`allies`] (:3023-3142). `partyTabEnableExportBuffs` (:1312, ImportTab `exportParty`) is taken as false -- the
+//!   buff export and the Link branch it opens (:2737, `partyTabEnableExportBuffs or linksApplyToMinions`) are the recorded :1312 boundary;
+//!   `buffExports` is write-only here and not kept.
 //! * `activeSkill.buffSkill` / `minionBuffSkill` / `debuffSkill` / `totemBuffSkill` are only read by the CALCS display (Calcs.lua:755) --
 //!   not kept. `mult = ...` at :2575 assigns a Lua GLOBAL (no local in scope) that this phase never reads.
 //!
@@ -27,6 +28,7 @@ use pob_mods::{Mod, ModCfg, ModStore, ModType, StoreRef, Value, compare_mod_para
 use super::{flag, flag_cfg, nm, set_cond, skill_cfg_of, skill_guard, skill_list_of, skill_type_u32};
 use crate::calc_lib;
 use crate::env::Env;
+use crate::party::{BuffGroup, PartyBuff, PartyTab};
 use crate::setup::{keyword_flag, list_mods, n, ok, s, tag};
 
 const CP: &str = "Modules/CalcPerform.lua";
@@ -134,6 +136,44 @@ pub(super) fn new_list() -> StoreRef {
 /// `str:gsub(" ", "")`.
 pub(super) fn no_spaces(s: &str) -> String {
     s.replace(' ', "")
+}
+
+/// Lua arithmetic on a party buff's `effectMult` (a number, a numeric string -- `otherEffects` -- coerced, anything else raises).
+pub(super) fn effect_mult_num(v: &Value, line: u32) -> f64 {
+    match v {
+        Value::Num(n) => *n,
+        Value::Str(s) if pob_lua::tonumber(s).is_some() => pob_lua::tonumber(s).unwrap_or_default(),
+        _ => panic!(
+            "{CP}:{line}: attempt to perform arithmetic on field 'effectMult' (a {} value)",
+            v.type_name()
+        ),
+    }
+}
+
+/// `not allyBuffs[ty] or not allyBuffs[ty][name] or allyBuffs[ty][name].effectMult / 100 <= mult` (R-party; :2491, :2509, :2886, :2904).
+fn ally_allows(party: &PartyTab, ty: &str, name: &str, mult: f64, line: u32) -> bool {
+    match party.aura.group(ty).and_then(|g| g.named.get(name)) {
+        None => true,
+        Some(b) => effect_mult_num(&b.effect_mult, line) / 100.0 <= mult,
+    }
+}
+
+/// `allyBuffs[ty] and allyBuffs[ty][name] and allyBuffs[ty][name].effectMult / 100 > mult` (R-party; :2605, :2662, :2995).
+fn ally_exceeds(party: &PartyTab, ty: &str, name: &str, mult: f64, line: u32) -> bool {
+    party
+        .aura
+        .group(ty)
+        .and_then(|g| g.named.get(name))
+        .is_some_and(|b| effect_mult_num(&b.effect_mult, line) / 100.0 > mult)
+}
+
+/// `pairs(group)` over a party buff group whose loop body reads `buff.modList` / `buff.effectMult` of every key: a `Vaal` sub-table among
+/// the keys (PartyTab.lua:848-851) is a table without those fields -- Lua raises there.
+pub(super) fn party_entries(group: &BuffGroup, line: u32) -> impl Iterator<Item = (&String, &PartyBuff)> {
+    if group.vaal.is_some() {
+        panic!("{CP}:{line}: bad argument #1 to 'ipairs' (table expected, got nil)");
+    }
+    group.named.iter()
 }
 
 /// `str:gsub("%s+", "")` (Lua `%s`: space, \t, \n, \v, \f, \r).
@@ -537,17 +577,19 @@ fn minion_skill_buffs(
                         let more = q.more(Some(&skill_cfg), &["AuraEffect", "BuffEffect", "AuraBuffEffect"])
                             * super::more(mod_db, Some(&skill_cfg), &["BuffEffectOnSelf", "AuraEffectOnSelf"]);
                         let mult = (1.0 + inc / 100.0) * more;
-                        // `allyBuffs["Aura"]` is nil (P5)
-                        set_cond(mod_db, "AffectedByAura", true);
-                        if name.as_bytes().get(..4) == Some(b"Vaal") {
-                            set_cond(mod_db, &format!("AffectedBy{}", no_spaces(name.get(5..).unwrap_or(""))), true);
+                        // :2886 unless an ally's same aura is stronger
+                        if ally_allows(&env.party, "Aura", name, mult, 2886) {
+                            set_cond(mod_db, "AffectedByAura", true);
+                            if name.as_bytes().get(..4) == Some(b"Vaal") {
+                                set_cond(mod_db, &format!("AffectedBy{}", no_spaces(name.get(5..).unwrap_or(""))), true);
+                            }
+                            set_cond(mod_db, &key, true);
+                            let src = new_list();
+                            scale_add(&src, &buff.mod_list, mult);
+                            scale_add(&src, &extra, mult);
+                            set_spectre_source(&src, spectre, Some(name), cm_name);
+                            merge_buff(&list_mods(&src), &mut out.buffs, name);
                         }
-                        set_cond(mod_db, &key, true);
-                        let src = new_list();
-                        scale_add(&src, &buff.mod_list, mult);
-                        scale_add(&src, &extra, mult);
-                        set_spectre_source(&src, spectre, Some(name), cm_name);
-                        merge_buff(&list_mods(&src), &mut out.buffs, name);
                     }
                     if let Some(em) = env_minion
                         && super::cond(&em.db, &key) != Some(true)
@@ -558,13 +600,16 @@ fn minion_skill_buffs(
                         let more = q.more(Some(&skill_cfg), &["AuraEffect", "BuffEffect"])
                             * super::more(&em.db, Some(&skill_cfg), &["BuffEffectOnSelf", "AuraEffectOnSelf"]);
                         let mult = (1.0 + inc / 100.0) * more;
-                        set_cond(&em.db, &key, true);
-                        set_cond(&em.db, "AffectedByAura", true);
-                        let src = new_list();
-                        scale_add(&src, &buff.mod_list, mult);
-                        scale_add(&src, &extra, mult);
-                        set_spectre_source(&src, spectre, Some(name), cm_name);
-                        merge_buff(&list_mods(&src), &mut out.minion_buffs, name);
+                        // :2904 unless an ally's same aura is stronger
+                        if ally_allows(&env.party, "Aura", name, mult, 2904) {
+                            set_cond(&em.db, &key, true);
+                            set_cond(&em.db, "AffectedByAura", true);
+                            let src = new_list();
+                            scale_add(&src, &buff.mod_list, mult);
+                            scale_add(&src, &extra, mult);
+                            set_spectre_source(&src, spectre, Some(name), cm_name);
+                            merge_buff(&list_mods(&src), &mut out.minion_buffs, name);
+                        }
                     }
                     // :2888-2899 buffExports (write-only)
                     if main.flag("totem") && super::cond(&main.list, &key) != Some(true) {
@@ -628,8 +673,8 @@ fn minion_skill_buffs(
                                 let inc = q.sum(ModType::Inc, Some(&skill_cfg), &names);
                                 let more = q.more(Some(&skill_cfg), &names);
                                 mult = (1.0 + inc / 100.0) * more;
-                                // `allyBuffs["AuraDebuff"]` is nil (P5); buffExports write-only
-                                if super::cond(enemy_db, &key) == Some(true) {
+                                // :2993-3000 buffExports write-only; a stronger ally aura debuff (:2995) or an applied one wins
+                                if super::cond(enemy_db, &key) == Some(true) || ally_exceeds(&env.party, "AuraDebuff", name, mult, 2995) {
                                     mult = 0.0;
                                 }
                             }
@@ -968,7 +1013,10 @@ pub(super) fn combine(env: &mut Env) -> Combined {
                                 let inc = q.sum(ModType::Inc, Some(&skill_cfg), &names);
                                 let more = q.more(Some(&skill_cfg), &names);
                                 mult = (1.0 + inc / 100.0) * more;
-                                // :2627-2635 buffExports (write-only); `allyBuffs["AuraDebuff"]` is nil (PartyTab, P5).
+                                // :2661 buffExports (write-only); :2662-2664 a stronger ally aura debuff of the same name wins
+                                if ally_exceeds(&env.party, "AuraDebuff", name, mult, 2662) {
+                                    mult = 0.0;
+                                }
                             }
                         }
                         if ty == "Debuff" {
@@ -1071,9 +1119,137 @@ pub(super) fn combine(env: &mut Env) -> Combined {
             minion_skill_buffs(env, i, minion.as_ref(), &main, &mod_db, &enemy_db, &mut out);
         }
     }
-    // :2997-3115 allies (`allyBuffs.otherEffects/Aura/AuraDebuff`, `partyMembers.Warcry/Link`): the PartyTab stand-in is empty (P5).
+    // :3023-3142 allies (`allyBuffs.otherEffects/Aura/AuraDebuff`, `partyMembers.Warcry/Link`, R-party)
+    allies(env, &mod_db, &enemy_db, minion.as_ref(), &mut out);
     env.unimplemented.extend(notes);
     out
+}
+
+/// `ScaleAddList(list, scale)` onto a fresh ModList, merged into `dest[name]` (`mergeBuff`).
+fn merge_scaled(list: &[Rc<Mod>], scale: f64, dest: &mut Buffs, name: &str) {
+    let src = new_list();
+    scale_add(&src, list, scale);
+    merge_buff(&list_mods(&src), dest, name);
+}
+
+/// :3023-3142 the party members' buffs (R-party): `allyBuffs.otherEffects` (:3023-3040), `allyBuffs.Aura` and its Vaal auras
+/// (:3041-3081), `allyBuffs.AuraDebuff` (:3082-3107, effective mode), `partyMembers.Warcry.Warcry` (:3108-3130) and
+/// `partyMembers.Link.Link` (:3131-3142). `pairs` over buff names: insertion order (R13; each name writes its own key).
+fn allies(env: &Env, mod_db: &StoreRef, enemy_db: &StoreRef, minion: Option<&MinionCtx>, out: &mut Combined) {
+    let party = env.party.clone();
+    let aura = &party.aura;
+    if let Some(g) = aura.group("otherEffects") {
+        for (buff_name, buff) in party_entries(g, 3029) {
+            let key = format!("AffectedBy{}", no_spaces(buff_name));
+            set_cond(mod_db, &key, true);
+            let inc = super::inc(mod_db, &["BuffEffectOnSelf", "AuraEffectOnSelf"]);
+            let more = super::more(mod_db, None, &["BuffEffectOnSelf", "AuraEffectOnSelf"]);
+            let eff = effect_mult_num(&buff.effect_mult, 3029);
+            merge_scaled(&buff.mod_list, (eff + inc) / 100.0 * more, &mut out.buffs, buff_name);
+            if let Some(mc) = minion {
+                set_cond(&mc.db, &key, true);
+                let inc = super::inc(&mc.db, &["BuffEffectOnSelf", "AuraEffectOnSelf"]);
+                let more = super::more(&mc.db, None, &["BuffEffectOnSelf", "AuraEffectOnSelf"]);
+                merge_scaled(&buff.mod_list, (eff + inc) / 100.0 * more, &mut out.minion_buffs, buff_name);
+            }
+        }
+    }
+    if let Some(g) = aura.group("Aura") {
+        // :3042-3060 (the `Vaal` key is skipped here and walked below)
+        for (aura_name, a) in &g.named {
+            let compressed = no_spaces(aura_name);
+            let key = format!("AffectedBy{compressed}");
+            if !flag(mod_db, &["AlliesAurasCannotAffectSelf"]) && super::cond(mod_db, &key) != Some(true) {
+                set_cond(mod_db, "AffectedByAura", true);
+                set_cond(mod_db, &key, true);
+                merge_scaled(&a.mod_list, effect_mult_num(&a.effect_mult, 3049) / 100.0, &mut out.buffs, aura_name);
+            }
+            if let Some(mc) = minion
+                && super::cond(&mc.db, &key) != Some(true)
+            {
+                set_cond(&mc.db, "AffectedByAura", true);
+                set_cond(&mc.db, &key, true);
+                merge_scaled(&a.mod_list, effect_mult_num(&a.effect_mult, 3056) / 100.0, &mut out.minion_buffs, aura_name);
+            }
+        }
+        // :3061-3080 the Vaal auras
+        for (aura_name, a) in g.vaal.iter().flatten() {
+            let compressed = no_spaces(aura_name);
+            let key = format!("AffectedBy{compressed}");
+            if !flag(mod_db, &["AlliesAurasCannotAffectSelf"]) && super::cond(mod_db, &key) != Some(true) {
+                set_cond(mod_db, "AffectedByAura", true);
+                // `auraName:sub(6):gsub(" ","")`
+                set_cond(mod_db, &format!("AffectedBy{}", no_spaces(aura_name.get(5..).unwrap_or(""))), true);
+                set_cond(mod_db, &key, true);
+                merge_scaled(&a.mod_list, effect_mult_num(&a.effect_mult, 3069) / 100.0, &mut out.buffs, aura_name);
+            }
+            if let Some(mc) = minion
+                && super::cond(&mc.db, &key) != Some(true)
+            {
+                set_cond(&mc.db, "AffectedByAura", true);
+                set_cond(&mc.db, &key, true);
+                merge_scaled(&a.mod_list, effect_mult_num(&a.effect_mult, 3076) / 100.0, &mut out.minion_buffs, aura_name);
+            }
+        }
+    }
+    if let Some(g) = aura.group("AuraDebuff")
+        && env.mode_effective
+    {
+        // :3083-3106 (the `Vaal` key skipped, then the Vaal aura debuffs)
+        for (aura_name, a) in g.named.iter().chain(g.vaal.iter().flatten()) {
+            let key = format!("AffectedBy{}", no_spaces(aura_name));
+            if super::cond(enemy_db, &key) != Some(true) {
+                set_cond(enemy_db, &key, true);
+                set_cond(mod_db, &key, true);
+                merge_scaled(&a.mod_list, effect_mult_num(&a.effect_mult, 3090) / 100.0, &mut out.debuffs, aura_name);
+            }
+        }
+    }
+    if let Some(g) = party.warcry.group("Warcry") {
+        // :3108-3130 each warcry buff scaled by its own `warcryPowerBonus` (written onto the mod's first tag by a player warcry)
+        let scaled = |w: &PartyBuff| -> StoreRef {
+            let src = new_list();
+            let eff = if w.effect_mult.is_nil() { 100.0 } else { effect_mult_num(&w.effect_mult, 3116) };
+            for wb in &w.mod_list {
+                let bonus = match wb.tags.first() {
+                    Some(t) => match t.get("warcryPowerBonus") {
+                        Value::Nil | Value::Bool(false) => 1.0,
+                        v => effect_mult_num(&v, 3116),
+                    },
+                    None => panic!("{CP}:3116: attempt to index field '?' (a nil value)"),
+                };
+                scale_add(&src, std::slice::from_ref(wb), eff / 100.0 * bonus);
+            }
+            src
+        };
+        for (warcry_name, w) in party_entries(g, 3115) {
+            let key = format!("AffectedBy{}", no_spaces(warcry_name));
+            if super::cond(mod_db, &key) != Some(true) {
+                set_cond(mod_db, "AffectedByWarcry", true);
+                set_cond(mod_db, &key, true);
+                merge_buff(&list_mods(&scaled(w)), &mut out.buffs, warcry_name);
+            }
+            if let Some(mc) = minion
+                && super::cond(&mc.db, &key) != Some(true)
+            {
+                set_cond(&mc.db, "AffectedByWarcry", true);
+                set_cond(&mc.db, &key, true);
+                merge_buff(&list_mods(&scaled(w)), &mut out.minion_buffs, warcry_name);
+            }
+        }
+    }
+    if let Some(g) = party.link.group("Link") {
+        // :3131-3142
+        for (link_name, l) in party_entries(g, 3138) {
+            let key = format!("AffectedBy{}", no_spaces(link_name));
+            if super::cond(mod_db, &key) != Some(true) {
+                set_cond(mod_db, "AffectedByLink", true);
+                set_cond(mod_db, &key, true);
+                let eff = if l.effect_mult.is_nil() { 100.0 } else { effect_mult_num(&l.effect_mult, 3138) };
+                merge_scaled(&l.mod_list, eff / 100.0, &mut out.buffs, link_name);
+            }
+        }
+    }
 }
 
 /// :2363-2441 a `Warcry` buff.
@@ -1293,24 +1469,26 @@ fn aura(
         let inc = q.sum(ModType::Inc, Some(skill_cfg), &names);
         let more = q.more(Some(skill_cfg), &names);
         let mult = (1.0 + inc / 100.0) * more;
-        // :2465 `AlliesAurasCannotAffectSelf or not allyBuffs["Aura"] or ...` -- `allyBuffs["Aura"]` is nil (P5): always true.
-        set_cond(mod_db, "AffectedByAura", true);
-        if name.as_bytes().get(..4) == Some(b"Vaal") {
-            // `buff.name:sub(6)`
-            let rest = name.get(5..).unwrap_or("");
-            set_cond(mod_db, &format!("AffectedBy{}", no_spaces(rest)), true);
+        // :2491 `AlliesAurasCannotAffectSelf or not allyBuffs["Aura"] or not allyBuffs["Aura"][name] or effectMult / 100 <= mult`
+        if flag(mod_db, &["AlliesAurasCannotAffectSelf"]) || ally_allows(&env.party, "Aura", name, mult, 2491) {
+            set_cond(mod_db, "AffectedByAura", true);
+            if name.as_bytes().get(..4) == Some(b"Vaal") {
+                // `buff.name:sub(6)`
+                let rest = name.get(5..).unwrap_or("");
+                set_cond(mod_db, &format!("AffectedBy{}", no_spaces(rest)), true);
+            }
+            set_cond(mod_db, &format!("AffectedBy{}", no_spaces(name)), true);
+            let src = new_list();
+            scale_add(&src, &buff.mod_list, mult);
+            scale_add(&src, &extra, mult);
+            merge_buff(&list_mods(&src), &mut out.buffs, name);
         }
-        set_cond(mod_db, &format!("AffectedBy{}", no_spaces(name)), true);
-        let src = new_list();
-        scale_add(&src, &buff.mod_list, mult);
-        scale_add(&src, &extra, mult);
-        merge_buff(&list_mods(&src), &mut out.buffs, name);
     }
     if !(flag(mod_db, &["SelfAurasCannotAffectAllies"])
         || flag(mod_db, &["SelfAurasOnlyAffectYou"])
         || flag(mod_db, &["SelfAuraSkillsCannotAffectAllies"]))
     {
-        // :2479-2492 the minion (R7.10); `allyBuffs["Aura"]` is nil (P5). :2493-2502 buffExports (write-only).
+        // :2505-2518 the minion (R7.10), unless an ally's same aura is stronger (:2509). :2519-2528 buffExports (write-only).
         if let Some(mc) = minion
             && (!mc.hostile || flag(mod_db, &["AurasAffectEnemies"]))
         {
@@ -1319,12 +1497,14 @@ fn aura(
             let more = q.more(Some(skill_cfg), &["AuraEffect", "BuffEffect"])
                 * super::more(&mc.db, Some(skill_cfg), &["BuffEffectOnSelf", "AuraEffectOnSelf"]);
             let mult = (1.0 + inc / 100.0) * more;
-            set_cond(&mc.db, &format!("AffectedBy{}", no_spaces(name)), true);
-            set_cond(&mc.db, "AffectedByAura", true);
-            let src = new_list();
-            scale_add(&src, &buff.mod_list, mult);
-            scale_add(&src, &extra, mult);
-            merge_buff(&list_mods(&src), &mut out.minion_buffs, name);
+            if ally_allows(&env.party, "Aura", name, mult, 2509) {
+                set_cond(&mc.db, &format!("AffectedBy{}", no_spaces(name)), true);
+                set_cond(&mc.db, "AffectedByAura", true);
+                let src = new_list();
+                scale_add(&src, &buff.mod_list, mult);
+                scale_add(&src, &extra, mult);
+                merge_buff(&list_mods(&src), &mut out.minion_buffs, name);
+            }
         }
         let names = ["AuraEffect", "BuffEffect"];
         let inc = q.sum(ModType::Inc, Some(skill_cfg), &names);
@@ -1356,10 +1536,11 @@ fn aura(
         let found = sk.buff_list.iter().any(|b| b.ty.as_str() == Some("AuraDebuff"));
         if !found {
             let extra = extra_effect_list(mod_db, Some(skill_cfg), "ExtraAuraDebuffEffect", 2556);
-            // :2575 `mult = ...` assigns a Lua GLOBAL (no local `mult` in scope; this phase never reads it), buffExports (write-only);
-            // `allyBuffs["AuraDebuff"]` is nil.
+            // :2601 `mult = ...` assigns a Lua GLOBAL (no local `mult` in scope; this phase never reads it), buffExports (write-only);
+            // :2605 the ally check only writes that global (`mult = 0`) -- evaluated for its errors alone.
             let names = ["AuraEffect", "BuffEffect", "DebuffEffect"];
-            let _ = (q.sum(ModType::Inc, Some(skill_cfg), &names), q.more(Some(skill_cfg), &names));
+            let mult = (1.0 + q.sum(ModType::Inc, Some(skill_cfg), &names) / 100.0) * q.more(Some(skill_cfg), &names);
+            let _ = ally_exceeds(&env.party, "AuraDebuff", name, mult, 2605);
             // `newModList:AddList(extraAuraModList)` -- the unscaled mods.
             merge_buff(&extra, &mut out.debuffs, name);
         }
