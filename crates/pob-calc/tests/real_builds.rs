@@ -304,9 +304,10 @@ fn build_xml_bytes(path: &Path) -> Vec<u8> {
     desktop_bytes(path)
 }
 
-/// The inputs of the P5 module pob-calc does not port that this build really uses (measured from its XML): imported party buffs
-/// (`<Party><ImportedBuffs>` with content -> PartyTab -> `env.partyMembers` CalcPerform.lua:1310, `enemyModList` CalcSetup.lua:685). Tattoo
-/// `<Override>`s (PassiveSpec.lua:158-186 -> `hashOverrides`) are ported since R-tattoo (pob-tree `tattoo.rs`): such builds are gated as they are.
+/// The filled Party tab of this build (measured from its XML; reported, not a boundary): imported party buffs (`<Party><ImportedBuffs>` with
+/// content -> PartyTab -> `env.partyMembers` CalcPerform.lua:1310, `enemyModList` CalcSetup.lua:697) are ported since R-party (pob-calc
+/// `party.rs`), tattoo `<Override>`s (PassiveSpec.lua:158-186) since R-tattoo: such builds are gated as they are. The `p5stripped` variants
+/// the probe still writes (the build without its <Party>) are ordinary gated fixtures now.
 fn p5_inputs(xml: &str) -> Vec<String> {
     let mut v = Vec::new();
     let mut party = Vec::new();
@@ -322,7 +323,7 @@ fn p5_inputs(xml: &str) -> Vec<String> {
         }
     }
     if !party.is_empty() {
-        v.push(format!("P5 party buffs ({})", party.join(",")));
+        v.push(format!("party buffs ({})", party.join(",")));
     }
     v
 }
@@ -396,12 +397,11 @@ fn run_build(slug: &str, fx: &Json) -> Row {
 
 /// `unimplemented` notes every build carries (the 6 goldens too: party / buff export, display, UI-only, P5 tree bookkeeping that does not
 /// change the output) -- the rest are what this build reaches beyond them.
-const EVERY_BUILD_NOTES: [&str; 10] = [
+const EVERY_BUILD_NOTES: [&str; 9] = [
     "CalcPerform.lua:1312 ",
     "CalcPerform.lua:3803-3990 ",
     "CalcSetup.lua:1011 ",
     "CalcSetup.lua:174 ",
-    "CalcSetup.lua:685 ",
     "Calcs.lua:450-464 ",
     "PassiveSpec.lua:1520-1560 ",
     "PassiveSpec.lua:1591-1617 ",
@@ -496,16 +496,15 @@ fn real_builds_match_luajit() {
     }
     println!("--- timeout (> {BUILD_TIMEOUT:?} in Rust): {timeouts:?} ---");
     println!(
-        "{:<56} {:>8} {:>8} {:>6} {:>7} {:>5} {:>6} {:>7}  P5 inputs | own unimplemented notes",
+        "{:<56} {:>8} {:>8} {:>6} {:>7} {:>5} {:>6} {:>7}  party / boundary inputs | own unimplemented notes",
         "build", "compared", "exact", "bad", "missing", "extra", "minion", "m.exact"
     );
-    // class of a row: "equal"; "p5" = as-is build that uses a P5 input (reported, the p5stripped variant is its gate); "bad" = gated divergence
+    // class of a row: "equal"; "boundary" / "known" (recorded); "bad" = gated divergence. R-party: no P5 class any more -- a build with a
+    // filled Party tab is gated as it is.
     let class = |r: &Row| {
         let own_boundary = r.unimplemented.iter().any(|u| BOUNDARY_NOTES.iter().any(|p| u.starts_with(p)));
         if r.bad.is_empty() {
             "equal"
-        } else if !r.slug.ends_with(".p5stripped") && !r.p5.is_empty() {
-            "p5"
         } else if !r.boundary.is_empty() || own_boundary {
             "boundary"
         } else if KNOWN.iter().any(|(sha, n, _)| r.sha.starts_with(sha) && *n == r.bad.len()) {
@@ -514,7 +513,7 @@ fn real_builds_match_luajit() {
             "bad"
         }
     };
-    let mut by_league: BTreeMap<String, [usize; 6]> = BTreeMap::new();
+    let mut by_league: BTreeMap<String, [usize; 5]> = BTreeMap::new();
     for r in &rows {
         println!(
             "{:<56} {:>8} {:>8} {:>6} {:>7} {:>5} {:>6} {:>7}  {} | {}",
@@ -539,17 +538,16 @@ fn real_builds_match_luajit() {
         e[0] += 1;
         e[match class(r) {
             "equal" => 1,
-            "p5" => 2,
-            "boundary" => 3,
-            "known" => 4,
-            _ => 5,
+            "boundary" => 2,
+            "known" => 3,
+            _ => 4,
         }] += 1;
     }
     println!(
-        "--- per league: builds / = LuaJIT / P5 inputs stripped by the probe (party) / other port boundary / known (pinned) / other divergence ---"
+        "--- per league: builds / = LuaJIT / port boundary / known (pinned) / other divergence ---"
     );
-    for (l, [n, eq, p5, bd, kn, bad]) in &by_league {
-        println!("{l:<24} {n:>3} {eq:>3} {p5:>3} {bd:>3} {kn:>3} {bad:>3}");
+    for (l, [n, eq, bd, kn, bad]) in &by_league {
+        println!("{l:<24} {n:>3} {eq:>3} {bd:>3} {kn:>3} {bad:>3}");
     }
     println!("--- not loaded / not calculated in LuaJIT ({}) ---", not_loaded.len());
     for n in &not_loaded {
@@ -564,11 +562,10 @@ fn real_builds_match_luajit() {
     let n = |c: &str| rows.iter().filter(|r| class(r) == c).count();
     let pairs = |c: &str| rows.iter().filter(|r| class(r) == c).map(|r| r.bad.len()).sum::<usize>();
     println!(
-        "real_builds: {} fixtures; {} = LuaJIT bit for bit; {} P5 inputs ({} pairs); {} other boundary ({} pairs); {} known ({} pairs); {} other divergent ({} pairs); {} player + {} Minion keys compared; {} not loaded in LuaJIT",
+        "real_builds: {} fixtures; {} = LuaJIT bit for bit; {} with a filled Party tab; {} boundary ({} pairs); {} known ({} pairs); {} other divergent ({} pairs); {} player + {} Minion keys compared; {} not loaded in LuaJIT",
         rows.len(),
         n("equal"),
-        n("p5"),
-        pairs("p5"),
+        rows.iter().filter(|r| !r.p5.is_empty()).count(),
         n("boundary"),
         pairs("boundary"),
         n("known"),
@@ -579,21 +576,12 @@ fn real_builds_match_luajit() {
         rows.iter().map(|r| r.minion_compared).sum::<usize>(),
         not_loaded.len()
     );
-    // every as-is build at the P5 boundary has its p5stripped twin in the corpus (the twin is gated)
-    for r in rows.iter().filter(|r| class(r) == "p5") {
-        let twin = format!("{}.p5stripped", r.slug);
-        assert!(
-            rows.iter().any(|t| t.slug == twin),
-            "{}: at the P5 boundary but no {twin} fixture (re-run export-real.ts)",
-            r.slug
-        );
-    }
     assert!(timeouts.is_empty(), "builds over {BUILD_TIMEOUT:?} in Rust: {timeouts:?}");
     // every pinned build that is in the gated (re-taken) sample still diverges exactly as pinned (sampling: the others are not gated)
     for (sha, n, why) in KNOWN {
         if let Some(r) = rows.iter().find(|r| r.sha.starts_with(sha)) {
             assert!(
-                class(r) == "known" || class(r) == "p5" || class(r) == "boundary",
+                class(r) == "known" || class(r) == "boundary",
                 "{}: pinned known divergence ({n} pairs, {why}) changed: {} pairs now -- update KNOWN",
                 r.slug,
                 r.bad.len()

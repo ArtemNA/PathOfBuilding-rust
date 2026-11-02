@@ -1945,7 +1945,7 @@ pub fn estimations(env: &mut Env, state: &mut PerformState, who: Who) {
                 }
             }
         }
-        // :2561-2570 allied energy shield. The player has no parent; its party stub's output is empty (P5).
+        // :2561-2570 allied energy shield. The player has no parent; `partyMembers` is the party tab's actor (R-party).
         out.set_num("SoulLinkMitigation", base(&db, &["TakenFromParentESBeforeYou"]));
         if on(out, "SoulLinkMitigation") != 0.0 {
             let p = parent.unwrap_or_else(|| panic!("{}: attempt to index field 'parent' (a nil value)", site(2564)));
@@ -1958,8 +1958,8 @@ pub fn estimations(env: &mut Env, state: &mut PerformState, who: Who) {
                 if !is_player {
                     panic!("{}: attempt to index field 'partyMembers' (a nil value)", site(2568));
                 }
-                // `actor.partyMembers.output.EnergyShieldRecoveryCap or 0` -- the stub's output is empty.
-                out.set_num("AlliedEnergyShield", 0.0);
+                // `actor.partyMembers.output.EnergyShieldRecoveryCap or 0` (R-party)
+                out.set_num("AlliedEnergyShield", env.party.out_num("EnergyShieldRecoveryCap").unwrap_or(0.0));
             }
         }
     }

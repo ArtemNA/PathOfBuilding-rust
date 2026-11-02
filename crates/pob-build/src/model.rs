@@ -129,6 +129,48 @@ pub struct BuildModel {
     /// pob-ts has no such flag (MINEFIELD D17 asks for it); not part of the compared form.
     #[serde(skip)]
     pub has_config_section: bool,
+    /// PartyTab:Load (PartyTab.lua:516-558): every `<ImportedBuffs name>` of every `<Party>` section, in document order -- the
+    /// buffers `ParseBuffs` turns into the party actor and `enemyModList` (pob-calc `party`) and that `PartyTab:Save` writes back
+    /// (pob-engine). Not part of the pob-ts compared form.
+    #[serde(skip)]
+    pub party_imported_buffs: Vec<PartyImportedBuffs>,
+}
+
+/// One `<ImportedBuffs name="...">` of a `<Party>` section (PartyTab.lua:518-542).
+#[derive(Clone, Debug, PartialEq)]
+pub struct PartyImportedBuffs {
+    /// `node.attrib.name` (an element without one is skipped: `ConPrintf("missing name")`).
+    pub name: String,
+    /// `node[1] or ""`: the first child -- a text run (xml.lua trims it), "" without children, or an element (a table, which `SetText`
+    /// turns into `tostring(table)` and on which `ParseBuffs` fails).
+    pub text: PartyText,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum PartyText {
+    Text(String),
+    /// `node[1]` is an element.
+    Element,
+}
+
+/// PartyTab.lua:517-519 + `node[1] or ""` over one `<Party>` section: its `ImportedBuffs` children that carry a name.
+pub fn party_imported_buffs(party: &XmlElement) -> Vec<PartyImportedBuffs> {
+    party
+        .child_elements()
+        .filter(|c| c.name == "ImportedBuffs")
+        .filter_map(|c| {
+            let name = c.attr("name")?;
+            let text = match c.children.first() {
+                Some(crate::xml::XmlNode::Text(t)) => PartyText::Text(t.clone()),
+                Some(crate::xml::XmlNode::Element(_)) => PartyText::Element,
+                None => PartyText::Text(String::new()),
+            };
+            Some(PartyImportedBuffs {
+                name: name.to_owned(),
+                text,
+            })
+        })
+        .collect()
 }
 
 #[derive(Clone, Debug, Serialize)]

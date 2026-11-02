@@ -1015,6 +1015,8 @@ fn init_env_core(
         session: std::rc::Weak::new(),
         minion: None,
         calc_override: ov.cloned(),
+        // PartyTab:Load (PartyTab.lua:516-558) -- a Lua error there fails the build load
+        party: Rc::new(crate::party::PartyTab::load(&build.party_imported_buffs).map_err(InitEnvError)?),
         spec,
     };
     // The config apply closures this port has no entry for (R3.5): visible, not silent.
@@ -1327,15 +1329,10 @@ fn init_env_core(
                 vec![tag(&[("type", s("ActorCondition")), ("actor", s("player")), ("var", s("Combat"))])],
             );
 
-            // --- (8) the config tab's two lists (:681-685); the party tab's is empty ------------------------------------------
+            // --- (8) the config tab's two lists (:693-694) and the party tab's (:697, R-party) -------------------------------
             mod_db.borrow_mut().add_list(&config_lists.mod_list.mods);
             enemy_db.borrow_mut().add_list(&config_lists.enemy_mod_list.mods);
-            // :685 `enemyDB:AddList(build.partyTab.enemyModList)` -- the Party tab is not modelled; only a build whose XML carries
-            // a <Party> section can lose anything here.
-            if build.unknown_sections.iter().any(|s| s == "Party") {
-                env.unimplemented
-                    .push("CalcSetup.lua:685 build.partyTab.enemyModList (<Party> section present, PartyTab is P5)".into());
-            }
+            enemy_db.borrow_mut().add_list(&env.party.enemy_mod_list);
             // :687 `cachedPlayerDB, cachedEnemyDB, cachedMinionDB = specCopy(env)`
             spec_copy(&env)
         }

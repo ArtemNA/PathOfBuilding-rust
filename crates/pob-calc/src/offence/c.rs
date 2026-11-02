@@ -862,8 +862,16 @@ fn crits(off: &mut Off<'_>, pi: usize) {
             if off.who == crate::perform::Who::Minion {
                 panic!("{LUA}:3081: attempt to index field 'partyMembers' (a nil value)");
             }
-            // the PartyTab stand-in has an empty output and no weaponData1 (P5): `... or 0`
-            crit_override = Some(Value::Num(0.0));
+            // `output.MainHand and output.MainHand.CritChance or (weaponData1 and ... or 0)` -- the party actor has no weaponData1
+            // (R-party: `MainHand.CritChance=` of PartyMemberStats)
+            let v = match off.env.party.output.get("MainHand") {
+                Some(crate::party::PartyOut::Table(t)) => t.get("CritChance").copied(),
+                Some(crate::party::PartyOut::Num(_)) => {
+                    panic!("{LUA}:3110: attempt to index field 'MainHand' (a number value)")
+                }
+                None => None,
+            };
+            crit_override = Some(Value::Num(v.unwrap_or(0.0)));
         }
         // `critOverride or source.CritChance or 0`
         let source_crit = match &off.passes[pi].source {
