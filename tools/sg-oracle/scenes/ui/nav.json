@@ -1,0 +1,25 @@
+{
+  "steps": [
+    { "cursor": [400, 131], "dump": true, "shot": "nav-hover" },
+    { "cursor": [400, 111], "events": [["KeyDown", "LEFTBUTTON", true], ["KeyUp", "LEFTBUTTON"]], "dump": true, "shot": "nav-folder" },
+    { "cursor": [200, 65], "events": [["KeyDown", "LEFTBUTTON"], ["KeyUp", "LEFTBUTTON"]], "dump": true },
+    { "cursor": [400, 151], "events": [["KeyDown", "LEFTBUTTON"], ["KeyUp", "LEFTBUTTON"]], "dump": true },
+    { "events": [["KeyDown", "DOWN"], ["KeyDown", "DOWN"]], "dump": true, "shot": "nav-down" },
+    { "events": [["KeyDown", "MOUSE4"]], "dump": true },
+    { "events": [["KeyDown", "MOUSE5"]], "dump": true },
+    { "cursor": [850, 14], "events": [["KeyDown", "LEFTBUTTON"], ["KeyUp", "LEFTBUTTON"]], "dump": true, "shot": "nav-sort-open" },
+    { "cursor": [850, 50], "events": [["KeyDown", "LEFTBUTTON"], ["KeyUp", "LEFTBUTTON"]], "dump": true, "shot": "nav-sort-class" },
+    { "cursor": [850, 14], "events": [["KeyDown", "LEFTBUTTON"], ["KeyUp", "LEFTBUTTON"]], "dump": true },
+    { "cursor": [850, 82], "events": [["KeyDown", "LEFTBUTTON"], ["KeyUp", "LEFTBUTTON"]], "dump": true, "shot": "nav-sort-level" },
+    { "cursor": [600, 39], "events": [["KeyDown", "LEFTBUTTON"], ["KeyUp", "LEFTBUTTON"], ["Char", "m"], ["Char", "e"], ["Char", "r"], ["Char", "c"]], "dump": true, "shot": "nav-search" },
+    { "hold": ["CTRL"], "events": [["KeyDown", "a"]], "dump": true },
+    { "release": ["CTRL"], "events": [["Char", "c"], ["Char", "l"], ["Char", "a"], ["Char", "s"], ["Char", "s"], ["Char", ":"], ["Char", "g"], ["Char", "l"], ["Char", "a"], ["Char", "d"]], "dump": true, "shot": "nav-search-class" },
+    { "hold": ["CTRL"], "events": [["KeyDown", "a"]], "dump": true },
+    { "release": ["CTRL"], "events": [["KeyDown", "BACK"], ["Char", "\b"]], "dump": true },
+    { "cursor": [850, 14], "events": [["KeyDown", "LEFTBUTTON"], ["KeyUp", "LEFTBUTTON"]], "dump": true },
+    { "cursor": [850, 34], "events": [["KeyDown", "LEFTBUTTON"], ["KeyUp", "LEFTBUTTON"]], "dump": true },
+    { "cursor": [10, 300], "events": [["KeyDown", "LEFTBUTTON"], ["KeyUp", "LEFTBUTTON"]], "dump": true },
+    { "events": [["KeyDown", "F1"], ["KeyUp", "F1"]], "dump": true, "shot": "nav-help" },
+    { "events": [["KeyDown", "ESCAPE"]], "dump": true }
+  ]
+}

@@ -1,0 +1,5 @@
+{"note": "U1.2 holdout: a NEAREST-only image (no other handle on the same file), magnified", "size": [200, 100], "dpi": 100, "images": {"imgn": ["scenes/img/test8.png", "NEAREST"]}, "calls": [
+["SetDrawColor", 1, 1, 1],
+["DrawImage", "imgn", 10, 10, 64, 64],
+["DrawImage", "imgn", 84, 10, 80, 80, 0, 0, 2, 2]
+]}

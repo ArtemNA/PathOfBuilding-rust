@@ -1,0 +1,21 @@
+[package]
+name = "pob-ui"
+description = "Port of PoB's Lua UI classes (controls, later Main/Build/tabs) onto the pob-gfx SimpleGraphic host"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+pob-gfx = { path = "../pob-gfx" }
+pob-lua = { path = "../pob-lua" }
+pob-build.workspace = true
+indexmap.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true
+image = { version = "0.25", default-features = false, features = ["png"] }
+
+[lints]
+workspace = true

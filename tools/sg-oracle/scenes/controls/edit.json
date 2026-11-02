@@ -1,0 +1,29 @@
+{
+  "build": "edit",
+  "steps": [
+    { "dump": true, "shot": "edit-idle" },
+    { "cursor": [100, 50], "hold": ["LEFTBUTTON"], "events": [["KeyDown", "LEFTBUTTON"]], "dump": true },
+    { "release": ["LEFTBUTTON"], "events": [["KeyUp", "LEFTBUTTON"]], "dump": true },
+    { "events": [["Char", "X"], ["Char", "Y"], ["Char", "\u00e9"]], "dump": true, "shot": "edit-typed" },
+    { "hold": ["SHIFT"], "events": [["KeyDown", "LEFT"], ["KeyDown", "LEFT"], ["KeyDown", "LEFT"]], "dump": true, "shot": "edit-sel" },
+    { "release": ["SHIFT"], "hold": ["CTRL"], "events": [["KeyDown", "c"], ["KeyDown", "RIGHT"], ["KeyDown", "v"]], "dump": true },
+    { "events": [["KeyDown", "z"]], "dump": true },
+    { "events": [["KeyDown", "z"], ["KeyDown", "y"]], "dump": true },
+    { "events": [["KeyDown", "a"]], "release": ["CTRL"], "dump": true },
+    { "events": [["Char", "Q"], ["KeyDown", "RETURN"]], "dump": true, "time": 700, "shot": "edit-replaced" },
+    { "cursor": [100, 160], "hold": ["LEFTBUTTON"], "events": [["KeyDown", "LEFTBUTTON"]], "dump": true },
+    { "release": ["LEFTBUTTON"], "events": [["KeyUp", "LEFTBUTTON"]], "dump": true },
+    { "events": [["KeyDown", "DOWN"], ["KeyDown", "END"]], "dump": true },
+    { "hold": ["CTRL"], "events": [["KeyDown", "LEFT"]], "dump": true },
+    { "release": ["CTRL"], "events": [["KeyDown", "RETURN"], ["Char", "z"], ["KeyDown", "DOWN"], ["KeyDown", "DOWN"]], "dump": true, "shot": "edit-multi" },
+    { "hold": ["CTRL"], "events": [["KeyDown", "BACK"]], "dump": true },
+    { "release": ["CTRL"], "events": [["KeyDown", "HOME"], ["KeyDown", "DELETE"], ["KeyUp", "WHEELDOWN"]], "dump": true },
+    { "cursor": [60, 110], "events": [["KeyDown", "LEFTBUTTON"], ["KeyUp", "LEFTBUTTON"]], "dump": true },
+    { "events": [["KeyUp", "WHEELUP"], ["KeyUp", "WHEELUP"], ["KeyUp", "DOWN"]], "dump": true },
+    { "cursor": [112, 110], "events": [["KeyDown", "LEFTBUTTON"], ["KeyUp", "LEFTBUTTON"]], "dump": true, "shot": "edit-num" },
+    { "cursor": [340, 250], "events": [["KeyDown", "LEFTBUTTON"], ["KeyUp", "LEFTBUTTON"]], "dump": true },
+    { "cursor": [100, 80], "events": [["KeyDown", "LEFTBUTTON"], ["KeyUp", "LEFTBUTTON"], ["Char", "a"], ["Char", "b"]], "dump": true },
+    { "hold": ["SHIFT"], "events": [["KeyDown", "HOME"]], "dump": true, "shot": "edit-final" },
+    { "release": ["SHIFT"], "cursor": [700, 500], "events": [["KeyDown", "LEFTBUTTON"], ["KeyUp", "LEFTBUTTON"]], "dump": true, "shot": "edit-blur" }
+  ]
+}

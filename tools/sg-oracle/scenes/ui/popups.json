@@ -1,0 +1,19 @@
+{
+  "steps": [
+    { "cursor": [38, 786], "events": [["KeyDown", "LEFTBUTTON"], ["KeyUp", "LEFTBUTTON"]], "dump": true },
+    { "cursor": [320, 524], "events": [["KeyDown", "LEFTBUTTON"], ["KeyUp", "LEFTBUTTON"]], "dump": true },
+    { "cursor": [920, 238], "events": [["KeyDown", "LEFTBUTTON"], ["KeyUp", "LEFTBUTTON"]], "dump": true, "shot": "popups-options" },
+    { "cursor": [595, 641], "events": [["KeyDown", "LEFTBUTTON"], ["KeyUp", "LEFTBUTTON"]], "dump": true, "settings": true },
+    { "cursor": [38, 786], "events": [["KeyDown", "LEFTBUTTON"], ["KeyUp", "LEFTBUTTON"]], "dump": true, "shot": "popups-options2" },
+    { "cursor": [320, 420], "events": [["KeyDown", "LEFTBUTTON"], ["KeyUp", "LEFTBUTTON"]], "dump": true },
+    { "cursor": [685, 641], "events": [["KeyDown", "LEFTBUTTON"], ["KeyUp", "LEFTBUTTON"]], "dump": true, "settings": true },
+    { "cursor": [110, 786], "events": [["KeyDown", "LEFTBUTTON"], ["KeyUp", "LEFTBUTTON"]], "dump": true },
+    { "cursor": [1013, 180], "events": [["KeyDown", "LEFTBUTTON"], ["KeyUp", "LEFTBUTTON"]], "dump": true, "shot": "popups-help" },
+    { "cursor": [640, 450], "events": [["KeyDown", "WHEELDOWN"], ["KeyUp", "WHEELDOWN"], ["KeyDown", "WHEELDOWN"], ["KeyUp", "WHEELDOWN"], ["KeyDown", "WHEELDOWN"], ["KeyUp", "WHEELDOWN"]], "dump": true, "shot": "popups-help-scroll" },
+    { "cursor": [300, 180], "events": [["KeyDown", "LEFTBUTTON"], ["KeyUp", "LEFTBUTTON"]], "dump": true },
+    { "cursor": [640, 157], "events": [["KeyDown", "LEFTBUTTON"], ["KeyUp", "LEFTBUTTON"]], "dump": true },
+    { "cursor": [1010, 106], "events": [["KeyDown", "LEFTBUTTON"], ["KeyUp", "LEFTBUTTON"]], "dump": true },
+    { "cursor": [10, 300], "hold": ["CTRL"], "events": [["KeyDown", "n"]], "dump": true },
+    { "release": ["CTRL"], "dump": true }
+  ]
+}
