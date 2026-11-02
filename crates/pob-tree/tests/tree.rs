@@ -168,7 +168,7 @@ fn model(nodes: &[u32]) -> SpecModel {
         cluster_hash_format_version: 2.0,
         class_id: 1.0,
         ascend_class_id: 2.0,
-        secondary_ascend_class_id: 0.0,
+        secondary_ascend_class_id: Some(0.0),
         nodes: nodes.iter().map(|&n| f64::from(n)).collect(),
         mastery_effects: NumMap::default(),
         jewels: NumMap::default(),

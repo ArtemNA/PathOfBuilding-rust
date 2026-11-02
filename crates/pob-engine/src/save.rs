@@ -991,10 +991,10 @@ pub fn save_tree_of(m: &BuildModel, env: &pob_calc::Env) -> Result<XmlElement, S
         let spec: &PassiveSpec = if std::ptr::eq(sm, active_model) {
             &env.spec
         } else {
-            // every `<Spec>` is a full PassiveSpec upstream (TreeTab.lua:510-519) with its PostLoad (:529-534); only the active one
-            // gets the socket slots' Populate (TreeTab.lua:548-576)
+            // every `<Spec>` is a full PassiveSpec upstream (TreeTab.lua:510-519) with its PostLoad (:529-534); the socket slots'
+            // Populate touches only the active one (pob-calc `load_spec`)
             let jewels = pob_calc::init_env::spec_jewels_of(&sm.jewels, &env.items).map_err(|e| e.0)?;
-            let mut s = PassiveSpec::load_inactive_mode_jewels(sm, pob_calc::ParseMode::Full, jewels).map_err(|e| e.0)?;
+            let mut s = PassiveSpec::load_mode_jewels(sm, pob_calc::ParseMode::Full, jewels).map_err(|e| e.0)?;
             pob_calc::init_env::post_load_spec(&mut s, &env.items).map_err(|e| e.0)?;
             loaded = s;
             &loaded

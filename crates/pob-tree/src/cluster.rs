@@ -159,7 +159,7 @@ impl PassiveSpec {
             }
         }
         // :1816-1820 -- `pairs(self.jewels)`: LuaJIT's walk of the table built by `self.jewels[k] = v` in the order the keys were
-        // first set (`NumMap` keeps it: Load's <Socket>s, then the socket slots' 0s of `populate_socket_slots`). The order decides
+        // first set (`NumMap` keeps it: Load's <Socket>s, then the socket slots' 0s, pob-calc `populate_socket_slots`). The order decides
         // which value lands when two keys map to one socket (a legacy socket id onto a socket whose slot wrote 0: the jewel is lost).
         let keys: Vec<f64> = self.jewels.0.iter().map(|&(k, _)| k).collect();
         let walk = crate::lj_table::pairs_order(&keys);

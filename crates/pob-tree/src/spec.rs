@@ -540,7 +540,7 @@ impl PassiveSpec {
     /// :654-690 -- a no-op without `alternate_ascendancies` (every tree <= 3.21, and 3.22-3.24 whose only alternate ascendancies are
     /// the legacy ones PassiveTree.lua:132-176 drops): `curSecondaryAscendClassId` then stays nil (SaveDB writes "nil"). A legacy id
     /// (1-3) on a tree with bloodlines selects nothing (`alternate_ascendancies[id]` is nil) but is kept as the id.
-    pub fn select_secondary_ascend_class(&mut self, ascend_class_id: f64) -> Result<(), TreeError> {
+    pub fn select_secondary_ascend_class(&mut self, ascend_class_id: Option<f64>) -> Result<(), TreeError> {
         let tree = self.tree.clone();
         let Some(alt) = tree.alternate_ascendancies.as_ref() else {
             return Ok(());
@@ -560,10 +560,10 @@ impl PassiveSpec {
             self.alloc_nodes.shift_remove(&old_start);
             self.alloc_nil(old_start);
         }
-        self.cur_secondary_ascend_class_id = Some(ascend_class_id);
-        if ascend_class_id == 0.0 {
+        self.cur_secondary_ascend_class_id = ascend_class_id;
+        if ascend_class_id == Some(0.0) {
             self.cur_secondary_ascend_class_name = "None".into();
-        } else if let Some(a) = class_of(ascend_class_id) {
+        } else if let Some(a) = ascend_class_id.and_then(class_of) {
             self.cur_secondary_ascend_class_name = a.name.clone();
             if let Some(start) = a.start_node_id {
                 // :680-685 allocate the new ascendancy class's start node
@@ -585,7 +585,7 @@ impl PassiveSpec {
         &mut self,
         class_id: f64,
         ascend_class_id: f64,
-        secondary_ascend_class_id: f64,
+        secondary_ascend_class_id: Option<f64>,
         hash_list: &[f64],
         mastery_effects: &NumMap<f64>,
     ) -> Result<(), TreeError> {
@@ -1282,43 +1282,9 @@ impl PassiveSpec {
         PassiveSpec::load_with_tree_jewels(model, tree, Vec::new())
     }
 
-    /// The ACTIVE spec as TreeTab:Load leaves it before PostLoad: [`PassiveSpec::load_inactive_mode_jewels`], then the socket slots'
-    /// Populate of `SetActiveSpec` ([`PassiveSpec::populate_socket_slots`]).
-    pub fn load_mode_jewels(
-        model: &SpecModel,
-        mode: pob_parser::ParseMode,
-        jewels: Vec<(f64, Rc<crate::timeless::SpecJewel>)>,
-    ) -> Result<PassiveSpec, TreeError> {
-        let mut spec = PassiveSpec::load_inactive_mode_jewels(model, mode, jewels)?;
-        spec.populate_socket_slots()?;
-        Ok(spec)
-    }
-
-    /// TreeTab:Load's `SetActiveSpec` (TreeTab.lua:548-576) -> `ItemsTab:PopulateSlots` -> `ItemSlotControl:Populate`
-    /// (ItemSlotControl.lua:86-107) on the active spec, before PostLoad: every socket slot -- one per `Socket` node of
-    /// `build.latestTree` (ItemsTab.lua:220-234) -- whose `spec.jewels[nodeId]` is missing or 0 runs `SetSelItemId(0)` (:105-106) ->
-    /// `spec.jewels[nodeId] = 0` (:75; no BuildClusterJewelGraphs, the id did not change). The keys this adds change only
-    /// `pairs(self.jewels)`: in ApplyLegacyClusterNodeRemap (:1816-1820, `crate::cluster`) a socket's 0 can overwrite the jewel a legacy
-    /// cluster-socket id maps onto (measured on 3 user builds). Not here: a slot holding an item it does not accept, or one that does
-    /// not exist -- `SetSelItemId(0)` with a rebuild; that needs the items (pob-calc `populate_slots` reports it), and
-    /// `SetActiveSpec` populates only when the build has an item (`itemOrderList[1]`, :573) -- a build without any item has no jewel
-    /// to lose. Upstream walks `pairs(self.slots)` (string keys: a per-process order, MINEFIELD-RUST R13); ascending node id here
-    /// (the remap reports a collision whose outcome would depend on it).
-    pub fn populate_socket_slots(&mut self) -> Result<(), TreeError> {
-        let latest = pob_data::tree::tree_versions()?.latest_tree_version.clone();
-        for &node_id in crate::tree::socket_ids(&latest)?.iter() {
-            let id = f64::from(node_id);
-            if self.jewels.get(id).is_none_or(|&v| v == 0.0) {
-                self.jewels.set(id, 0.0);
-            }
-        }
-        Ok(())
-    }
-
     /// [`PassiveSpec::load_mode`] with the socketed jewels' item data known from the start (R8.7): the items tab is loaded before the
     /// tree (Build.lua:655-677), so the BuildAllDependsAndPaths of `ImportFromNodeList` already sees them (conquests, Intuitive Leap).
-    /// A spec that is not the active one (TreeTab.lua:510-519) -- no socket slot Populate.
-    pub fn load_inactive_mode_jewels(
+    pub fn load_mode_jewels(
         model: &SpecModel,
         mode: pob_parser::ParseMode,
         jewels: Vec<(f64, Rc<crate::timeless::SpecJewel>)>,

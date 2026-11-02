@@ -337,7 +337,8 @@ fn populate_slots(slots: &mut [Slot], spec: &PassiveSpec, items: &ParsedItems) -
         });
         if slots[i].node_id.is_some() {
             if !valid && sel_id != 0.0 {
-                // :72-79 SetSelItemId on a socket writes `spec.jewels[nodeId] = 0` and rebuilds the cluster graphs.
+                // `populate_socket_slots` emptied every slot of the latest tree on the load: left is a spec handed in by the caller
+                // (not loaded here), or a socket of `spec.tree` the latest tree does not have (no slot upstream, D19.4).
                 unimplemented.push(format!(
                     "ItemSlotControl.lua:105-106 + :72-79 unequipping the invalid jewel {sel_id} from {} (spec.jewels, BuildClusterJewelGraphs)",
                     slots[i].slot_name
@@ -460,19 +461,45 @@ pub fn spec_jewels_of(jewels: &pob_build::NumMap<f64>, items: &IndexMap<u64, Rc<
     Ok(out)
 }
 
+/// `GetJewel(itemId)` as `BuildSubgraph` reads it, from the build's items.
+fn cluster_jewel_lookup(items: &IndexMap<u64, Rc<Item>>, item_id: f64) -> Option<Rc<ClusterJewel>> {
+    if item_id < 0.0 || item_id.fract() != 0.0 {
+        return None;
+    }
+    items.get(&(item_id as u64)).and_then(|i| cluster_jewel_of(i)).map(Rc::new)
+}
+
 /// `spec:PostLoad()` (PassiveSpec.lua:251, run by Build.lua:680 once the items tab has loaded): the cluster-jewel subgraphs
 /// of the spec, built from the build's items.
 pub fn post_load_spec(spec: &mut PassiveSpec, items: &IndexMap<u64, Rc<Item>>) -> Result<(), TreeError> {
     // The items tab is loaded before the tree (Build.lua:655-677), so BuildAllDependsAndPaths sees the jewels' conquests.
     let jewels = spec_jewels_of(&spec.jewels, items)?;
     spec.set_jewel_items(jewels);
-    let lookup = |item_id: f64| -> Option<Rc<ClusterJewel>> {
-        if item_id < 0.0 || item_id.fract() != 0.0 {
-            return None;
+    spec.post_load(&|item_id| cluster_jewel_lookup(items, item_id))
+}
+
+/// `ItemsTab:PopulateSlots` (ItemsTab.lua:1705-1709) on the socket slots of the active spec: one per `Socket` node of `build.latestTree`
+/// (ItemsTab.lua:220-234). `ItemSlotControl:Populate` (ItemSlotControl.lua:87-88, :105-107): a slot whose `spec.jewels[nodeId]` is
+/// missing, 0, not an item or not accepted by the slot runs `SetSelItemId(0)` -- `spec.jewels[nodeId] = 0` (:75), and when it held
+/// an id, BuildClusterJewelGraphs (:76-77). The new 0 keys change `pairs(self.jewels)` of ApplyLegacyClusterNodeRemap (PassiveSpec.lua:1816-1820):
+/// a socket's 0 can overwrite the jewel a legacy cluster-socket id maps onto. Upstream walks `pairs(self.slots)` (string keys: a per-process
+/// order, MINEFIELD-RUST R13); ascending node id here (the remap reports a collision whose outcome depends on the 0s' order).
+fn populate_socket_slots(spec: &mut PassiveSpec, items: &ParsedItems) -> Result<(), TreeError> {
+    let latest = &pob_data::tree::tree_versions()?.latest_tree_version;
+    for &node_id in pob_tree::tree::socket_ids(latest)?.iter() {
+        let id = f64::from(node_id);
+        let sel = spec.jewels.get(id).copied().unwrap_or(0.0);
+        let slot_name = format!("Jewel {node_id}");
+        // the "Jewel" branch of IsItemValidForSlot reads no other slot
+        if parsed_item(items, sel).is_some_and(|item| is_item_valid_for_slot(item, &slot_name, spec, items, |_| 0.0)) {
+            continue;
         }
-        items.get(&(item_id as u64)).and_then(|i| cluster_jewel_of(i)).map(Rc::new)
-    };
-    spec.post_load(&lookup)
+        spec.jewels.set(id, 0.0);
+        if sel != 0.0 {
+            spec.build_cluster_jewel_graphs(&|item_id| cluster_jewel_lookup(items, item_id))?;
+        }
+    }
+    Ok(())
 }
 
 /// The `<Item>` attributes as `Item::parse` wants them.
@@ -853,7 +880,12 @@ fn load_spec(build: &BuildModel, opts: InitEnvOptions) -> Result<(Rc<PassiveSpec
         None if opts.parse_mode == pob_parser::ParseMode::Full => {
             let sm = active_spec(build);
             let jewels = spec_jewels_of(&sm.jewels, &parsed_items)?;
-            PassiveSpec::load_mode_jewels(sm, opts.parse_mode, jewels)?
+            let mut s = PassiveSpec::load_mode_jewels(sm, opts.parse_mode, jewels)?;
+            // TreeTab.lua:573-576 (SetActiveSpec): "Update item slots if items have been loaded already" (`itemOrderList[1]`).
+            if !parsed_items.is_empty() {
+                populate_socket_slots(&mut s, &parsed_items)?;
+            }
+            s
         }
         None => PassiveSpec::load_mode(active_spec(build), opts.parse_mode)?,
     };
@@ -861,6 +893,8 @@ fn load_spec(build: &BuildModel, opts: InitEnvOptions) -> Result<(Rc<PassiveSpec
     // cluster graphs (its gates -- env (a), perform/defence/full fixtures -- are pinned without them).
     if opts.parse_mode == pob_parser::ParseMode::Full && !spec.post_loaded {
         post_load_spec(&mut spec, &parsed_items)?;
+        // TreeTab.lua:532 -- TreeTab:PostLoad ends with `PopulateSlots`.
+        populate_socket_slots(&mut spec, &parsed_items)?;
     }
     Ok((Rc::new(spec), parsed_items))
 }

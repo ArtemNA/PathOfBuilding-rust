@@ -12,7 +12,7 @@
 //   node tools/lua-corpus/export-real.ts [--set pc|user|corpus] [regex]  -> fixtures for every build of the set whose relative path matches
 //   node tools/lua-corpus/export-real.ts perf [re] -> builds/pc-fixtures/_perf-luajit.json: buildOutput(MAIN) ms (default: 3.29)
 //   node tools/lua-corpus/export-real.ts tree-save [re] -> <slug>.tree-save.json for every build of the set with tattoos (`<Override `): LuaJIT's
-//     `build.treeTab:Save` composed by xml.lua ComposeXML after the load (PassiveSpec.lua:197-265, R-tattoo; gate crates/pob-engine/tests/tattoo_save.rs)
+//     `build.treeTab:Save` composed by xml.lua ComposeXML after the load (PassiveSpec.lua:197-265, R-tattoo; gate crates/pob-engine/tests/tattoo_save.rs); REAL_TREE_SAVE_ANY=1: every build matching [re], tattoos or not
 //   `--out <dir>` (any mode): write there instead of builds/<set>-fixtures (a re-take into a folder of one's own).
 // Sets (R-UP, builds/README.md): pc = builds/pc/**/*.xml -> builds/pc-fixtures; user = builds/user/*.{xml,txt} (txt = a build code) ->
 // builds/user-fixtures; corpus = builds/corpus/manifest.json -> builds/corpus-fixtures. All three fixture dirs are gitignored.
@@ -391,7 +391,7 @@ async function perf(filter: RegExp): Promise<void> {
 
 /** R-tattoo: LuaJIT's `<Tree>` of SaveDB (TreeTab:Save -> every PassiveSpec:Save, PassiveSpec.lua:197-265) for the builds with tattoos, two runs. */
 async function treeSave(filter?: RegExp): Promise<void> {
-  const files = listBuilds().filter((f) => (!filter || filter.test(relOf(f))) && desktopBytes(f).includes('<Override '))
+  const files = listBuilds().filter((f) => (!filter || filter.test(relOf(f))) && (process.env.REAL_TREE_SAVE_ANY === '1' || desktopBytes(f).includes('<Override ')))
   if (!files.length) throw new Error(`no build with tattoos of set ${SET} matches ${filter}`)
   await prepareLuts(files)
   mkdirSync(OUT, { recursive: true })

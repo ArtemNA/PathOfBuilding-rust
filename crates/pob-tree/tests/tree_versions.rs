@@ -139,3 +139,42 @@ fn tree_shape_matches_luajit() {
     println!("tree shapes: {} versions, {} differences", trees.len(), bad.len());
     assert!(bad.is_empty(), "tree shape != LuaJIT:\n{}", bad.join("\n"));
 }
+
+/// Perf: `PassiveTree` build and `socket_ids` (R-tree-legacy): `cargo test --release -p pob-tree --test tree_versions -- --ignored --nocapture`.
+#[test]
+#[ignore = "perf"]
+fn tree_load_perf() {
+    for ver in ["3_29", "3_23", "3_13"] {
+        let mut ms: Vec<f64> = (0..10)
+            .map(|_| {
+                let t = std::time::Instant::now();
+                std::hint::black_box(PassiveTree::build_mode(ver, ParseMode::Full).unwrap());
+                t.elapsed().as_secs_f64() * 1000.0
+            })
+            .skip(1)
+            .collect();
+        ms.sort_by(f64::total_cmp);
+        println!(
+            "PassiveTree {ver}: median {:.2} ms, min {:.2} (9 runs after one warm-up)",
+            ms[4], ms[0]
+        );
+    }
+    let t = std::time::Instant::now();
+    let n = pob_tree::tree::socket_ids("3_29").unwrap().len();
+    println!(
+        "socket_ids 3_29 (cold, tree JSON already parsed): {:.3} ms, {n} sockets",
+        t.elapsed().as_secs_f64() * 1000.0
+    );
+}
+
+/// Perf: the first `socket_ids` of a process parses the latest tree's JSON (what a build of an older tree newly pays once): run alone.
+#[test]
+#[ignore = "perf"]
+fn socket_ids_cold_perf() {
+    let t = std::time::Instant::now();
+    let n = pob_tree::tree::socket_ids("3_29").unwrap().len();
+    println!(
+        "socket_ids 3_29 (cold, JSON parse included): {:.1} ms, {n} sockets",
+        t.elapsed().as_secs_f64() * 1000.0
+    );
+}
