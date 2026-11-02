@@ -1258,15 +1258,12 @@ fn apply_enemy_modifiers(db: &StoreRef, enemy_db: &StoreRef, st: &mut ActorState
         if cache.iter().any(|c| Rc::ptr_eq(c, &m)) {
             continue;
         }
-        let source = m
-            .source
-            .clone()
-            .or_else(|| e.mod_.source.clone())
-            .unwrap_or_else(|| panic!("Modules/ModTools.lua:239: setSource with a nil source"));
         // `enemyDB:AddMod(modLib.setSource(mod, source))` re-sources the shared object in place; the copy here carries
-        // the same fields (shallow, tags shared) and nothing reads the original's source afterwards.
+        // the same fields (shallow, tags shared) and nothing reads the original's source afterwards. Both nil: a line of `modLib.parseMod` nobody sourced (TreeTab.lua:2043 `Generate`), it stays without one.
         let mut c = (*m).clone();
-        pob_mods::format::set_source(&mut c, &source);
+        if let Some(source) = m.source.clone().or_else(|| e.mod_.source.clone()) {
+            pob_mods::format::set_source(&mut c, &source);
+        }
         enemy_db.borrow_mut().add_mod(Rc::new(c));
         cache.push(m);
     }

@@ -198,6 +198,8 @@ struct Run {
     orders: HashMap<String, Value>,
     paths: HashMap<String, Value>,
     unimplemented: Vec<String>,
+    /// `powerProgress` steps: (the report list's label, the toast's text).
+    progress: Vec<(Option<String>, Option<String>)>,
 }
 
 fn held_event(name: &str) -> RawEvent {
@@ -305,6 +307,7 @@ fn run(name: &str) -> Run {
         serde_json::from_str(&std::fs::read_to_string(scene::oracle_dir().join(format!("scenes/tree/{name}.json"))).expect("scenario"))
             .expect("json");
     let sandbox = Sandbox::new(name);
+    pob_ui::tabs::timeless::set_radius_order_sample(HashMap::new());
     let tp = TestPlatform::new();
     let mut gfx = Gfx::with_platform(&scene::fonts_dir(), scene::SCREEN, 1.0, Box::new(tp.clone())).expect("fonts");
     gfx.set_dpi_scale_override_percent(100);
@@ -332,6 +335,7 @@ fn run(name: &str) -> Run {
         orders: HashMap::new(),
         paths: HashMap::new(),
         unimplemented: Vec::new(),
+        progress: Vec::new(),
     };
     let mut held: HashMap<String, RawEvent> = HashMap::new();
     let oracle_dumps = oracle_record_opt(name).unwrap_or(Value::Null);
@@ -358,6 +362,18 @@ fn run(name: &str) -> Run {
             pob_ui::tabs::tree::wait_power(&gfx);
             frame(&mut gfx, &l);
             out.perf.push(("power".into(), t0.elapsed().as_secs_f64() * 1e3));
+            continue;
+        }
+        if let Some(p) = st["powerProgress"].as_array() {
+            // `powerBuilderProgressCallback(percent)` at a given time; `dismiss`: the user closed the toast first
+            let t = main().build_mode.tree_tab.borrow().clone().expect("tab");
+            if st["dismiss"].as_bool() == Some(true) {
+                let id = t.power_toast.borrow().clone().expect("toast");
+                main().toasts.dismiss(&id);
+            }
+            t.power_builder_progress(p[0].as_u64().expect("time"), p[1].as_i64());
+            let toast = t.power_toast.borrow().as_deref().and_then(|id| main().toasts.message(id));
+            out.progress.push((t.power_report_list.label.get(&gfx), toast));
             continue;
         }
         if let Some(s) = st["perfPower"].as_str() {
@@ -458,6 +474,16 @@ fn run(name: &str) -> Run {
                 .as_mut()
                 .expect("view")
                 .set_order_sample(ids.clone(), conns);
+            if let Some(radius) = rec["radiusOrder"].as_object() {
+                let of = |l: &Value| {
+                    l.as_array()
+                        .expect("order")
+                        .iter()
+                        .map(|v| v.as_f64().expect("id") as u32)
+                        .collect()
+                };
+                pob_ui::tabs::timeless::set_radius_order_sample(radius.iter().map(|(k, l)| (k.parse().expect("id"), of(l))).collect());
+            }
             if let Some(names) = rec["clusterNames"].as_array() {
                 let names = names.iter().filter_map(|v| v.as_str().map(str::to_owned)).collect();
                 *main()
@@ -584,7 +610,7 @@ fn oracle_record(name: &str) -> Value {
     serde_json::from_str(&std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("{}: {e}", p.display()))).expect("json")
 }
 
-/// U3c: what the tab cannot do yet is a note with `file:line`, no crash; the original has these branches (the network, Abyss, `Generate`).
+/// U3c: what the tab cannot do yet is a note with `file:line`, no crash; the original has these branches (the network). Abyss and `Generate` now run (U3d).
 #[test]
 fn unported_branches_do_not_crash() {
     if let Some(why) = missing_inputs() {
@@ -596,14 +622,31 @@ fn unported_branches_do_not_crash() {
     }
     let notes = pob_ui::modules::main::not_ported_notes();
     eprintln!("notes: {notes:#?}");
-    for want in [
-        "TreeTab.lua:823-836",
-        "TreeTab.lua:765-794",
-        "TreeTab.lua:2575-2609",
-        "TreeTab.lua:1951-2117",
-    ] {
+    for want in ["TreeTab.lua:823-836", "TreeTab.lua:765-794"] {
         assert!(notes.iter().any(|n| n.starts_with(want)), "{want}: {notes:?}");
     }
+}
+
+/// U3d: the toast and the report list's label at a given progress, TreeTab.lua:291-311.
+#[test]
+fn power_progress_toast_text() {
+    if let Some(why) = missing_inputs() {
+        eprintln!("SKIPPED power_progress_toast_text: {why}");
+        return;
+    }
+    let got = run("u3d-progress").progress;
+    let line = |label: &str, toast: Option<&str>| (Some(label.to_string()), toast.map(str::to_string));
+    let want = vec![
+        line("Building Power Report... (0%)", Some("Building Power Report... (0%)")),
+        // under 100 ms since the last: nothing changes
+        line("Building Power Report... (0%)", Some("Building Power Report... (0%)")),
+        line("Building Power Report... (42%)", Some("Building Power Report... (42%)")),
+        line("Building Power Report...", Some("Building Power Report...")),
+        line("Building Power Report... (100%)", Some("Building Power Report... (100%)")),
+        // dismissed: the label goes on, the toast stays
+        line("Building Power Report... (100%)", Some("Building Power Report... (100%)")),
+    ];
+    assert_eq!(got, want);
 }
 
 /// `(w, h)` of the JPEG / WebP sheets of the trees the scenes use.

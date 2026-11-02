@@ -421,6 +421,26 @@ function runner:Step()
 		-- what the search edit's changeFunc does (TreeTab.lua:181)
 		main.modes.BUILD.treeTab.viewer.searchStr = st.search
 	end
+	if st.legionLines then
+		-- U3d: what TreeTab.lua:2006 asks of Data/StatDescriptions, for crates/pob-data/src/legion_stat_lines.json
+		local lines = { }
+		local legion = main.tree[latestTreeVersion].legion
+		for _, list in ipairs({ legion.nodes, legion.additions }) do
+			for _, p in ipairs(list) do
+				if p.sortedStats and #p.sortedStats > 1 then
+					local byStat = { }
+					for _, statKey in ipairs(p.sortedStats) do
+						local statValues = { }
+						for key in pairs(p.stats) do statValues[key] = key == statKey and 100 or 0 end
+						byStat[statKey] = data.describeStats(statValues, "stat_descriptions")[1]
+					end
+					lines[p.id] = byStat
+				end
+			end
+		end
+		writeAll(OUT .. st.legionLines .. ".json", json.encode({ pobSha = UPSTREAM.sha, lines = lines }, { indent = true }) .. "\n")
+		return
+	end
 	if st.treeOrder then
 		local b = main.modes.BUILD
 		local ids, groups, conns, subs = { }, { }, { }, { }
@@ -430,7 +450,16 @@ function runner:Step()
 		for id in pairs(b.spec.subGraphs) do subs[#subs + 1] = id end
 		local clusterNames = { }
 		for name in pairs(b.spec.tree.clusterNodeMap) do clusterNames[#clusterNames + 1] = name end
-		writeAll(OUT .. st.treeOrder .. ".json", json.encode({ nodes = ids, groups = groups, connectors = conns, subGraphs = subs, clusterNames = clusterNames, size = b.spec.tree.size }) .. "\n")
+		-- U3d: `pairs(nodesInRadius[3])` of every socket: `pairs(self.nodes)` fills it in an order of this process, and the search adds its non-integer weights in that order
+		local radiusOrder = { }
+		for id, node in pairs(b.spec.tree.nodes) do
+			if node.isJewelSocket and node.nodesInRadius then
+				local o = { }
+				for nodeId in pairs(node.nodesInRadius[3]) do o[#o + 1] = nodeId end
+				radiusOrder[tostring(id)] = o
+			end
+		end
+		writeAll(OUT .. st.treeOrder .. ".json", json.encode({ nodes = ids, groups = groups, connectors = conns, subGraphs = subs, clusterNames = clusterNames, size = b.spec.tree.size, radiusOrder = radiusOrder }) .. "\n")
 		return
 	end
 	if st.treePaths then

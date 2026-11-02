@@ -6,9 +6,10 @@
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::rc::{Rc, Weak};
+use std::sync::Arc;
 
 use indexmap::IndexMap;
-use pob_engine::tree_tab::{PowerResult, PowerStat, ReportDist, ReportEntry, SpecSummary, SpecUndoState, power_stat_list};
+use pob_engine::tree_tab::{PowerProgress, PowerResult, PowerStat, ReportDist, ReportEntry, SpecSummary, SpecUndoState, power_stat_list};
 use pob_gfx::{Frame, Gfx};
 
 use crate::colors::color_code;
@@ -118,6 +119,7 @@ pub struct TreeTab {
     pub power_build_flag: Cell<bool>,
     #[allow(clippy::type_complexity)]
     pub power_job: RefCell<Option<std::thread::JoinHandle<Result<Option<PowerResult>, String>>>>,
+    pub power_progress: RefCell<Arc<PowerProgress>>,
     pub power: RefCell<Option<Rc<PowerResult>>>,
     pub power_toast: RefCell<Option<String>>,
     power_slice_start: Cell<u64>,
@@ -337,33 +339,46 @@ impl TreeTab {
             let depth = self.node_power_max_depth.get();
             let threads = std::thread::available_parallelism().map_or(1, usize::from);
             let (model, live) = engine_read(|e| (e.model().clone(), e.live_spec_paths()));
+            let progress = Arc::new(PowerProgress::default());
+            *self.power_progress.borrow_mut() = progress.clone();
             *self.power_job.borrow_mut() = Some(std::thread::spawn(move || {
-                pob_engine::tree_tab::power_thread(&model, &live, stat.as_ref(), depth, threads)
+                pob_engine::tree_tab::power_thread(&model, &live, stat.as_ref(), depth, threads, &progress)
             }));
             self.power_slice_start.set(g.get_time());
         }
-        // CalcsTab.lua:656-660 the walk reports after each 100 ms; TreeTab.lua:291-311 `powerBuilderProgressCallback`. No percent: the background walk of pob-calc has no counter to read.
+        // CalcsTab.lua:655-660 the walk reports after each 100 ms
         let now = g.get_time();
         if self.power_job.borrow().is_some() && now.saturating_sub(self.power_slice_start.get()) > 100 {
             self.power_slice_start.set(now);
-            if now.saturating_sub(self.power_last_progress.get()) >= 100 {
-                let message = "Building Power Report...";
-                self.power_report_list.label.set(Some(message.to_string()));
-                let mut toast = self.power_toast.borrow_mut();
-                if !toast.as_deref().is_some_and(|id| main().toasts.was_dismissed(id)) {
-                    self.power_last_progress.set(now);
-                    match toast.as_deref() {
-                        Some(id) if main().toasts.exists(id) => {
-                            main().toasts.update(id, message);
-                        }
-                        _ => *toast = Some(main().toasts.add(message)),
-                    }
-                }
-            }
+            let percent = self.power_progress.borrow().percent();
+            self.power_builder_progress(now, percent);
         }
         let done = self.power_job.borrow().as_ref().is_some_and(std::thread::JoinHandle::is_finished);
         if done {
             self.finish_power(g);
+        }
+    }
+
+    /// TreeTab.lua:291-311 `powerBuilderProgressCallback(percent)`. `percent` is `None` only while the sessions of the background walk are being made, before it has a plan.
+    pub fn power_builder_progress(&self, now: u64, percent: Option<i64>) {
+        if now.saturating_sub(self.power_last_progress.get()) < 100 {
+            return;
+        }
+        let message = match percent {
+            Some(p) => pob_lua::format::format("Building Power Report... (%d%%)", &[pob_lua::format::Arg::Num(p as f64)]).expect("format"),
+            None => "Building Power Report...".to_string(),
+        };
+        self.power_report_list.label.set(Some(message.clone()));
+        let mut toast = self.power_toast.borrow_mut();
+        if toast.as_deref().is_some_and(|id| main().toasts.was_dismissed(id)) {
+            return;
+        }
+        self.power_last_progress.set(now);
+        match toast.as_deref() {
+            Some(id) if main().toasts.exists(id) => {
+                main().toasts.update(id, &message);
+            }
+            _ => *toast = Some(main().toasts.add(&message)),
         }
     }
 
@@ -981,6 +996,7 @@ pub fn new_tree_tab(g: &mut Gfx) -> Rc<TreeTab> {
         // the load's `CalcsTab:BuildOutput` set it
         power_build_flag: Cell::new(true),
         power_job: RefCell::new(None),
+        power_progress: RefCell::new(Arc::default()),
         power: RefCell::new(None),
         power_toast: RefCell::new(None),
         power_slice_start: Cell::new(0),

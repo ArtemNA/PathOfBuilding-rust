@@ -1,0 +1,8 @@
+{"steps":[{"open":"Generals Perforate Zerker"},
+{"waitAssets":true},
+{"powerProgress":[1000,0]},
+{"powerProgress":[1050,50]},
+{"powerProgress":[1200,42]},
+{"powerProgress":[1400,null]},
+{"powerProgress":[1600,100]},
+{"powerProgress":[1800,100],"dismiss":true}]}

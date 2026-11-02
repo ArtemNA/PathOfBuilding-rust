@@ -76,6 +76,13 @@ impl PassiveTree {
         self.legion.get_or_init(|| build_legion(self)).as_ref().map_err(Clone::clone)
     }
 
+    /// `modLib.parseMod(line)` in the tree's `ParseMode`: the list (with or without `extra`), nothing for a line it does not know (`AddList(nil)` adds nothing).
+    pub fn parse_mod_list(&self, line: &str) -> Vec<Rc<Mod>> {
+        pob_parser::parse_mod_line(line, false, self.parse_mode)
+            .mod_list
+            .map_or_else(Vec::new, |l| l.into_iter().map(Rc::new).collect())
+    }
+
     /// `self.keystoneMap[name]`'s modList: the tree's keystone, else a legacy legion keystone (:739-741).
     pub fn keystone_mods(&self, name: &str) -> Option<&[Rc<Mod>]> {
         if let Some(&i) = self.keystone_map.get(name) {

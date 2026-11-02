@@ -1,0 +1,512 @@
+{
+  "lines":{
+    "abyss_ghastly_notable_23":{
+      "minion_global_maximum_added_fire_damage":"Minions deal 0 to 100 additional Fire Damage",
+      "minion_global_minimum_added_fire_damage":"Minions deal 100 to 0 additional Fire Damage"
+    },
+    "abyss_ghastly_notable_24":{
+      "minion_global_maximum_added_cold_damage":"Minions deal 0 to 100 additional Cold Damage",
+      "minion_global_minimum_added_cold_damage":"Minions deal 100 to 0 additional Cold Damage"
+    },
+    "abyss_ghastly_notable_25":{
+      "minion_global_maximum_added_lightning_damage":"Minions deal 0 to 100 additional Lightning Damage",
+      "minion_global_minimum_added_lightning_damage":"Minions deal 100 to 0 additional Lightning Damage"
+    },
+    "abyss_ghastly_notable_26":{
+      "minion_global_maximum_added_physical_damage":"Minions deal 0 to 100 additional Physical Damage",
+      "minion_global_minimum_added_physical_damage":"Minions deal 100 to 0 additional Physical Damage"
+    },
+    "abyss_ghastly_notable_27":{
+      "minion_global_maximum_added_chaos_damage":"Minions deal 0 to 100 additional Chaos Damage",
+      "minion_global_minimum_added_chaos_damage":"Minions deal 100 to 0 additional Chaos Damage"
+    },
+    "abyss_ghastly_small_attribute35":{
+      "minion_attack_speed_+%":"Minions have 100% increased Attack Speed",
+      "minion_cast_speed_+%":"Minions have 100% increased Cast Speed"
+    },
+    "abyss_hypnotic_notable_19":{
+      "spell_maximum_added_fire_damage_while_dual_wielding":"0 to 100 Added Spell Fire Damage while Dual Wielding",
+      "spell_minimum_added_fire_damage_while_dual_wielding":"100 to 0 Added Spell Fire Damage while Dual Wielding"
+    },
+    "abyss_hypnotic_notable_20":{
+      "spell_maximum_added_cold_damage_while_dual_wielding":"0 to 100 Added Spell Cold Damage while Dual Wielding",
+      "spell_minimum_added_cold_damage_while_dual_wielding":"100 to 0 Added Spell Cold Damage while Dual Wielding"
+    },
+    "abyss_hypnotic_notable_21":{
+      "spell_maximum_added_lightning_damage_while_dual_wielding":"0 to 100 Added Spell Lightning Damage while Dual Wielding",
+      "spell_minimum_added_lightning_damage_while_dual_wielding":"100 to 0 Added Spell Lightning Damage while Dual Wielding"
+    },
+    "abyss_hypnotic_notable_22":{
+      "spell_maximum_added_physical_damage_while_dual_wielding":"0 to 100 Added Spell Physical Damage while Dual Wielding",
+      "spell_minimum_added_physical_damage_while_dual_wielding":"100 to 0 Added Spell Physical Damage while Dual Wielding"
+    },
+    "abyss_hypnotic_notable_23":{
+      "spell_maximum_added_chaos_damage_while_dual_wielding":"0 to 100 Added Spell Chaos Damage while Dual Wielding",
+      "spell_minimum_added_chaos_damage_while_dual_wielding":"100 to 0 Added Spell Chaos Damage while Dual Wielding"
+    },
+    "abyss_hypnotic_notable_24":{
+      "spell_maximum_added_fire_damage_while_wielding_two_handed_weapon":"0 to 100 Added Spell Fire Damage while wielding a Two Handed Weapon",
+      "spell_minimum_added_fire_damage_while_wielding_two_handed_weapon":"100 to 0 Added Spell Fire Damage while wielding a Two Handed Weapon"
+    },
+    "abyss_hypnotic_notable_25":{
+      "spell_maximum_added_cold_damage_while_wielding_two_handed_weapon":"0 to 100 Added Spell Cold Damage while wielding a Two Handed Weapon",
+      "spell_minimum_added_cold_damage_while_wielding_two_handed_weapon":"100 to 0 Added Spell Cold Damage while wielding a Two Handed Weapon"
+    },
+    "abyss_hypnotic_notable_26":{
+      "spell_maximum_added_lightning_damage_while_wielding_two_handed_weapon":"0 to 100 Added Spell Lightning Damage while wielding a Two Handed Weapon",
+      "spell_minimum_added_lightning_damage_while_wielding_two_handed_weapon":"100 to 0 Added Spell Lightning Damage while wielding a Two Handed Weapon"
+    },
+    "abyss_hypnotic_notable_27":{
+      "spell_maximum_added_physical_damage_while_wielding_two_handed_weapon":"0 to 100 Added Spell Physical Damage while wielding a Two Handed Weapon",
+      "spell_minimum_added_physical_damage_while_wielding_two_handed_weapon":"100 to 0 Added Spell Physical Damage while wielding a Two Handed Weapon"
+    },
+    "abyss_hypnotic_notable_28":{
+      "spell_maximum_added_chaos_damage_while_wielding_two_handed_weapon":"0 to 100 Added Spell Chaos Damage while wielding a Two Handed Weapon",
+      "spell_minimum_added_chaos_damage_while_wielding_two_handed_weapon":"100 to 0 Added Spell Chaos Damage while wielding a Two Handed Weapon"
+    },
+    "abyss_hypnotic_notable_29":{
+      "spell_maximum_added_fire_damage_while_holding_a_shield":"0 to 100 Added Spell Fire Damage while holding a Shield",
+      "spell_minimum_added_fire_damage_while_holding_a_shield":"100 to 0 Added Spell Fire Damage while holding a Shield"
+    },
+    "abyss_hypnotic_notable_30":{
+      "spell_maximum_added_cold_damage_while_holding_a_shield":"0 to 100 Added Spell Cold Damage while holding a Shield",
+      "spell_minimum_added_cold_damage_while_holding_a_shield":"100 to 0 Added Spell Cold Damage while holding a Shield"
+    },
+    "abyss_hypnotic_notable_31":{
+      "spell_maximum_added_lightning_damage_while_holding_a_shield":"0 to 100 Added Spell Lightning Damage while holding a Shield",
+      "spell_minimum_added_lightning_damage_while_holding_a_shield":"100 to 0 Added Spell Lightning Damage while holding a Shield"
+    },
+    "abyss_hypnotic_notable_32":{
+      "spell_maximum_added_physical_damage_while_holding_a_shield":"0 to 100 Added Spell Physical Damage while holding a Shield",
+      "spell_minimum_added_physical_damage_while_holding_a_shield":"100 to 0 Added Spell Physical Damage while holding a Shield"
+    },
+    "abyss_hypnotic_notable_33":{
+      "spell_maximum_added_chaos_damage_while_holding_a_shield":"0 to 100 Added Spell Chaos Damage while holding a Shield",
+      "spell_minimum_added_chaos_damage_while_holding_a_shield":"100 to 0 Added Spell Chaos Damage while holding a Shield"
+    },
+    "abyss_hypnotic_notable_34":{
+      "spell_maximum_added_fire_damage":"Adds 0 to 100 Fire Damage to Spells",
+      "spell_minimum_added_fire_damage":"Adds 100 to 0 Fire Damage to Spells"
+    },
+    "abyss_hypnotic_notable_35":{
+      "spell_maximum_added_cold_damage":"Adds 0 to 100 Cold Damage to Spells",
+      "spell_minimum_added_cold_damage":"Adds 100 to 0 Cold Damage to Spells"
+    },
+    "abyss_hypnotic_notable_36":{
+      "spell_maximum_added_lightning_damage":"Adds 0 to 100 Lightning Damage to Spells",
+      "spell_minimum_added_lightning_damage":"Adds 100 to 0 Lightning Damage to Spells"
+    },
+    "abyss_hypnotic_notable_37":{
+      "spell_maximum_added_physical_damage":"Adds 0 to 100 Physical Damage to Spells",
+      "spell_minimum_added_physical_damage":"Adds 100 to 0 Physical Damage to Spells"
+    },
+    "abyss_hypnotic_notable_38":{
+      "spell_maximum_added_chaos_damage":"Adds 0 to 100 Chaos Damage to Spells",
+      "spell_minimum_added_chaos_damage":"Adds 100 to 0 Chaos Damage to Spells"
+    },
+    "abyss_murderous_notable_18":{
+      "attack_maximum_added_physical_damage_with_daggers":"0 to 100 Added Physical Damage with Dagger Attacks",
+      "attack_minimum_added_physical_damage_with_daggers":"100 to 0 Added Physical Damage with Dagger Attacks"
+    },
+    "abyss_murderous_notable_19":{
+      "attack_maximum_added_physical_damage_with_claws":"0 to 100 Added Physical Damage with Claw Attacks",
+      "attack_minimum_added_physical_damage_with_claws":"100 to 0 Added Physical Damage with Claw Attacks"
+    },
+    "abyss_murderous_notable_20":{
+      "attack_maximum_added_physical_damage_with_swords":"0 to 100 Added Physical Damage with Sword Attacks",
+      "attack_minimum_added_physical_damage_with_swords":"100 to 0 Added Physical Damage with Sword Attacks"
+    },
+    "abyss_murderous_notable_21":{
+      "attack_maximum_added_physical_damage_with_axes":"0 to 100 Added Physical Damage with Axe Attacks",
+      "attack_minimum_added_physical_damage_with_axes":"100 to 0 Added Physical Damage with Axe Attacks"
+    },
+    "abyss_murderous_notable_22":{
+      "attack_maximum_added_physical_damage_with_maces":"0 to 100 Added Physical Damage with Mace or Sceptre Attacks",
+      "attack_minimum_added_physical_damage_with_maces":"100 to 0 Added Physical Damage with Mace or Sceptre Attacks"
+    },
+    "abyss_murderous_notable_23":{
+      "attack_maximum_added_physical_damage_with_staves":"0 to 100 Added Physical Damage with Staff Attacks",
+      "attack_minimum_added_physical_damage_with_staves":"100 to 0 Added Physical Damage with Staff Attacks"
+    },
+    "abyss_murderous_notable_24":{
+      "attack_maximum_added_lightning_damage_with_daggers":"0 to 100 Added Lightning Damage with Dagger Attacks",
+      "attack_minimum_added_lightning_damage_with_daggers":"100 to 0 Added Lightning Damage with Dagger Attacks"
+    },
+    "abyss_murderous_notable_25":{
+      "attack_maximum_added_lightning_damage_with_claws":"0 to 100 Added Lightning Damage with Claw Attacks",
+      "attack_minimum_added_lightning_damage_with_claws":"100 to 0 Added Lightning Damage with Claw Attacks"
+    },
+    "abyss_murderous_notable_26":{
+      "attack_maximum_added_lightning_damage_with_swords":"0 to 100 Added Lightning Damage with Sword Attacks",
+      "attack_minimum_added_lightning_damage_with_swords":"100 to 0 Added Lightning Damage with Sword Attacks"
+    },
+    "abyss_murderous_notable_27":{
+      "attack_maximum_added_lightning_damage_with_axes":"0 to 100 Added Lightning Damage with Axe Attacks",
+      "attack_minimum_added_lightning_damage_with_axes":"100 to 0 Added Lightning Damage with Axe Attacks"
+    },
+    "abyss_murderous_notable_28":{
+      "attack_maximum_added_lightning_damage_with_maces":"0 to 100 Added Lightning Damage with Mace or Sceptre Attacks",
+      "attack_minimum_added_lightning_damage_with_maces":"100 to 0 Added Lightning Damage with Mace or Sceptre Attacks"
+    },
+    "abyss_murderous_notable_29":{
+      "attack_maximum_added_lightning_damage_with_staves":"0 to 100 Added Lightning Damage with Staff Attacks",
+      "attack_minimum_added_lightning_damage_with_staves":"100 to 0 Added Lightning Damage with Staff Attacks"
+    },
+    "abyss_murderous_notable_30":{
+      "attack_maximum_added_fire_damage_with_daggers":"0 to 100 Added Fire Damage with Dagger Attacks",
+      "attack_minimum_added_fire_damage_with_daggers":"100 to 0 Added Fire Damage with Dagger Attacks"
+    },
+    "abyss_murderous_notable_31":{
+      "attack_maximum_added_fire_damage_with_claws":"0 to 100 Added Fire Damage with Claw Attacks",
+      "attack_minimum_added_fire_damage_with_claws":"100 to 0 Added Fire Damage with Claw Attacks"
+    },
+    "abyss_murderous_notable_32":{
+      "attack_maximum_added_fire_damage_with_swords":"0 to 100 Added Fire Damage with Sword Attacks",
+      "attack_minimum_added_fire_damage_with_swords":"100 to 0 Added Fire Damage with Sword Attacks"
+    },
+    "abyss_murderous_notable_33":{
+      "attack_maximum_added_fire_damage_with_axes":"0 to 100 Added Fire Damage with Axe Attacks",
+      "attack_minimum_added_fire_damage_with_axes":"100 to 0 Added Fire Damage with Axe Attacks"
+    },
+    "abyss_murderous_notable_34":{
+      "attack_maximum_added_fire_damage_with_maces":"0 to 100 Added Fire Damage with Mace or Sceptre Attacks",
+      "attack_minimum_added_fire_damage_with_maces":"100 to 0 Added Fire Damage with Mace or Sceptre Attacks"
+    },
+    "abyss_murderous_notable_35":{
+      "attack_maximum_added_fire_damage_with_staves":"0 to 100 Added Fire Damage with Staff Attacks",
+      "attack_minimum_added_fire_damage_with_staves":"100 to 0 Added Fire Damage with Staff Attacks"
+    },
+    "abyss_murderous_notable_36":{
+      "attack_maximum_added_cold_damage_with_daggers":"0 to 100 Added Cold Damage with Dagger Attacks",
+      "attack_minimum_added_cold_damage_with_daggers":"100 to 0 Added Cold Damage with Dagger Attacks"
+    },
+    "abyss_murderous_notable_37":{
+      "attack_maximum_added_cold_damage_with_claws":"0 to 100 Added Cold Damage with Claw Attacks",
+      "attack_minimum_added_cold_damage_with_claws":"100 to 0 Added Cold Damage with Claw Attacks"
+    },
+    "abyss_murderous_notable_38":{
+      "attack_maximum_added_cold_damage_with_swords":"0 to 100 Added Cold Damage with Sword Attacks",
+      "attack_minimum_added_cold_damage_with_swords":"100 to 0 Added Cold Damage with Sword Attacks"
+    },
+    "abyss_murderous_notable_39":{
+      "attack_maximum_added_cold_damage_with_axes":"0 to 100 Added Cold Damage with Axe Attacks",
+      "attack_minimum_added_cold_damage_with_axes":"100 to 0 Added Cold Damage with Axe Attacks"
+    },
+    "abyss_murderous_notable_40":{
+      "attack_maximum_added_cold_damage_with_maces":"0 to 100 Added Cold Damage with Mace or Sceptre Attacks",
+      "attack_minimum_added_cold_damage_with_maces":"100 to 0 Added Cold Damage with Mace or Sceptre Attacks"
+    },
+    "abyss_murderous_notable_41":{
+      "attack_maximum_added_cold_damage_with_staves":"0 to 100 Added Cold Damage with Staff Attacks",
+      "attack_minimum_added_cold_damage_with_staves":"100 to 0 Added Cold Damage with Staff Attacks"
+    },
+    "abyss_murderous_notable_42":{
+      "attack_maximum_added_chaos_damage_with_daggers":"0 to 100 Added Chaos Damage with Dagger Attacks",
+      "attack_minimum_added_chaos_damage_with_daggers":"100 to 0 Added Chaos Damage with Dagger Attacks"
+    },
+    "abyss_murderous_notable_43":{
+      "attack_maximum_added_chaos_damage_with_claws":"0 to 100 Added Chaos Damage with Claw Attacks",
+      "attack_minimum_added_chaos_damage_with_claws":"100 to 0 Added Chaos Damage with Claw Attacks"
+    },
+    "abyss_murderous_notable_45":{
+      "attack_maximum_added_fire_damage":"Adds 0 to 100 Fire Damage to Attacks",
+      "attack_minimum_added_fire_damage":"Adds 100 to 0 Fire Damage to Attacks"
+    },
+    "abyss_murderous_notable_46":{
+      "attack_maximum_added_cold_damage":"Adds 0 to 100 Cold Damage to Attacks",
+      "attack_minimum_added_cold_damage":"Adds 100 to 0 Cold Damage to Attacks"
+    },
+    "abyss_murderous_notable_47":{
+      "attack_maximum_added_lightning_damage":"Adds 0 to 100 Lightning Damage to Attacks",
+      "attack_minimum_added_lightning_damage":"Adds 100 to 0 Lightning Damage to Attacks"
+    },
+    "abyss_murderous_notable_48":{
+      "attack_maximum_added_physical_damage":"Adds 0 to 100 Physical Damage to Attacks",
+      "attack_minimum_added_physical_damage":"Adds 100 to 0 Physical Damage to Attacks"
+    },
+    "abyss_murderous_notable_49":{
+      "attack_maximum_added_chaos_damage":"Adds 0 to 100 Chaos Damage to Attacks",
+      "attack_minimum_added_chaos_damage":"Adds 100 to 0 Chaos Damage to Attacks"
+    },
+    "abyss_searching_notable_27":{
+      "attack_maximum_added_fire_damage":"Adds 0 to 100 Fire Damage to Attacks",
+      "attack_minimum_added_fire_damage":"Adds 100 to 0 Fire Damage to Attacks"
+    },
+    "abyss_searching_notable_28":{
+      "attack_maximum_added_cold_damage":"Adds 0 to 100 Cold Damage to Attacks",
+      "attack_minimum_added_cold_damage":"Adds 100 to 0 Cold Damage to Attacks"
+    },
+    "abyss_searching_notable_29":{
+      "attack_maximum_added_lightning_damage":"Adds 0 to 100 Lightning Damage to Attacks",
+      "attack_minimum_added_lightning_damage":"Adds 100 to 0 Lightning Damage to Attacks"
+    },
+    "abyss_searching_notable_30":{
+      "attack_maximum_added_physical_damage":"Adds 0 to 100 Physical Damage to Attacks",
+      "attack_minimum_added_physical_damage":"Adds 100 to 0 Physical Damage to Attacks"
+    },
+    "abyss_searching_notable_31":{
+      "attack_maximum_added_chaos_damage":"Adds 0 to 100 Chaos Damage to Attacks",
+      "attack_minimum_added_chaos_damage":"Adds 100 to 0 Chaos Damage to Attacks"
+    },
+    "abyss_searching_notable_32":{
+      "attack_maximum_added_physical_damage_with_wands":"0 to 100 Added Physical Damage with Wand Attacks",
+      "attack_minimum_added_physical_damage_with_wands":"100 to 0 Added Physical Damage with Wand Attacks"
+    },
+    "abyss_searching_notable_33":{
+      "attack_maximum_added_physical_damage_with_bow":"0 to 100 Added Physical Damage with Bow Attacks",
+      "attack_minimum_added_physical_damage_with_bow":"100 to 0 Added Physical Damage with Bow Attacks"
+    },
+    "abyss_searching_notable_34":{
+      "attack_maximum_added_lightning_damage_with_wand":"0 to 100 Added Lightning Damage with Wand Attacks",
+      "attack_minimum_added_lightning_damage_with_wand":"100 to 0 Added Lightning Damage with Wand Attacks"
+    },
+    "abyss_searching_notable_35":{
+      "attack_maximum_added_lightning_damage_with_bows":"0 to 100 Added Lightning Damage with Bow Attacks",
+      "attack_minimum_added_lightning_damage_with_bows":"100 to 0 Added Lightning Damage with Bow Attacks"
+    },
+    "abyss_searching_notable_36":{
+      "attack_maximum_added_fire_damage_with_wand":"0 to 100 Added Fire Damage with Wand Attacks",
+      "attack_minimum_added_fire_damage_with_wand":"100 to 0 Added Fire Damage with Wand Attacks"
+    },
+    "abyss_searching_notable_37":{
+      "attack_maximum_added_fire_damage_with_bow":"0 to 100 Added Fire Damage with Bow Attacks",
+      "attack_minimum_added_fire_damage_with_bow":"100 to 0 Added Fire Damage with Bow Attacks"
+    },
+    "abyss_searching_notable_38":{
+      "attack_maximum_added_cold_damage_with_wand":"0 to 100 Added Cold Damage with Wand Attacks",
+      "attack_minimum_added_cold_damage_with_wand":"100 to 0 Added Cold Damage with Wand Attacks"
+    },
+    "abyss_searching_notable_39":{
+      "attack_maximum_added_cold_damage_with_bows":"0 to 100 Added Cold Damage with Bow Attacks",
+      "attack_minimum_added_cold_damage_with_bows":"100 to 0 Added Cold Damage with Bow Attacks"
+    },
+    "abyss_searching_notable_40":{
+      "attack_maximum_added_chaos_damage_with_bows":"0 to 100 Added Chaos Damage with Bow Attacks",
+      "attack_minimum_added_chaos_damage_with_bows":"100 to 0 Added Chaos Damage with Bow Attacks"
+    },
+    "abyss_special_small_attribute35":{
+      "minion_attack_speed_+%":"Minions have 100% increased Attack Speed",
+      "minion_cast_speed_+%":"Minions have 100% increased Cast Speed"
+    },
+    "eternal_notable_bleed_damage_1":{
+      "bleeding_damage_+%":"100% increased Damage with Bleeding",
+      "faster_bleed_%":"Bleeding you inflict deals Damage 100% faster"
+    },
+    "kalguur_notable_1":{
+      "flask_duration_+%":"100% increased Flask Effect Duration",
+      "ward_+%_during_any_flask_effect":"100% increased Ward during any Flask Effect"
+    },
+    "kalguur_notable_12":{
+      "damage_+%_while_you_have_unbroken_ward":"100% increased Damage while you have Unbroken Ward",
+      "ward_delay_recovery_+%":"100% faster Restoration of Ward"
+    },
+    "kalguur_notable_13":{
+      "damage_penetrates_%_elemental_resistance_while_you_have_broken_ward":"Damage Penetrates 100% Elemental Resistances while your Ward is Broken",
+      "elemental_damage_+%":"100% increased Elemental Damage"
+    },
+    "kalguur_notable_14":{
+      "base_aura_area_of_effect_+%":"100% increased Area of Effect of Aura Skills",
+      "non_curse_aura_effect_+%_while_you_have_broken_ward":"100% increased effect of Non-Curse Auras from your skills while your Ward is Broken"
+    },
+    "kalguur_notable_15":{
+      "base_spell_block_%":"100% Chance to Block Spell Damage",
+      "restore_ward_on_block_%":"100% chance to Restore Ward when you Block"
+    },
+    "kalguur_notable_16":{
+      "monster_base_block_%":"100% Chance to Block Attack Damage",
+      "restore_ward_on_block_%":"100% chance to Restore Ward when you Block"
+    },
+    "kalguur_notable_18":{
+      "base_chaos_damage_resistance_%":"+100% to Chaos Resistance",
+      "ward_+%":"100% increased Ward"
+    },
+    "kalguur_notable_19":{
+      "maximum_energy_shield_+%":"100% increased maximum Energy Shield",
+      "ward_+%":"100% increased Ward"
+    },
+    "kalguur_notable_2":{
+      "charges_gained_+%":"100% increased Flask Charges gained",
+      "ward_%_chance_to_restore_on_flask_use":"100% chance for Ward to be Restored when you Use a Flask"
+    },
+    "kalguur_notable_20":{
+      "evasion_rating_+%":"100% increased Evasion Rating",
+      "ward_+%":"100% increased Ward"
+    },
+    "kalguur_notable_21":{
+      "physical_damage_reduction_rating_+%":"100% increased Armour",
+      "ward_+%":"100% increased Ward"
+    },
+    "kalguur_notable_22":{
+      "energy_shield_delay_-%":"100% faster start of Energy Shield Recharge",
+      "ward_delay_recovery_+%":"100% faster Restoration of Ward"
+    },
+    "kalguur_notable_23":{
+      "ward_+%":"100% increased Ward",
+      "ward_from_armour_item_+%":"100% increased Ward from Equipped Armour Items"
+    },
+    "kalguur_notable_24":{
+      "remove_random_damaging_ailment_when_ward_restores":"Remove a random Damaging Ailment when Ward is Restored"
+    },
+    "kalguur_notable_25":{
+      "flask_duration_+%":"100% increased Flask Effect Duration",
+      "iron_flasks_gain_x_charge_when_ward_breaks":"Iron Flasks gain 100 charges when your Ward Breaks"
+    },
+    "kalguur_notable_3":{
+      "endurance_charge_duration_+%":"100% increased Endurance Charge Duration",
+      "gain_x_endurance_charge_when_ward_breaks":"Gain 100 Endurance Charges when Ward Breaks"
+    },
+    "kalguur_notable_4":{
+      "gain_x_power_charge_when_ward_breaks":"Gain 100 Power Charges when Ward Breaks",
+      "power_charge_duration_+%":"100% increased Power Charge Duration"
+    },
+    "kalguur_notable_5":{
+      "base_frenzy_charge_duration_+%":"100% increased Frenzy Charge Duration",
+      "gain_x_frenzy_charge_when_ward_breaks":"Gain 100 Frenzy Charges when Ward Breaks"
+    },
+    "kalguur_notable_6":{
+      "armour_+%_while_you_have_unbroken_ward":"100% increased Armour while you have Unbroken Ward",
+      "ward_delay_recovery_+%":"100% faster Restoration of Ward"
+    },
+    "kalguur_notable_7":{
+      "evasion_rating_+%_while_you_have_unbroken_ward":"100% increased Evasion Rating while you have Unbroken Ward",
+      "ward_delay_recovery_+%":"100% faster Restoration of Ward"
+    },
+    "vaal_notable_armour_1":{
+      "base_additional_physical_damage_reduction_%":"100% additional Physical Damage Reduction",
+      "physical_damage_reduction_rating_+%":"100% increased Armour"
+    },
+    "vaal_notable_aura_1":{
+      "base_aura_area_of_effect_+%":"100% increased Area of Effect of Aura Skills",
+      "non_curse_aura_effect_+%":"100% increased effect of Non-Curse Auras from your Skills"
+    },
+    "vaal_notable_block_1":{
+      "additional_block_%":"+100% Chance to Block Attack Damage",
+      "life_gained_on_block":"100 Life gained when you Block"
+    },
+    "vaal_notable_block_2":{
+      "base_spell_block_%":"100% Chance to Block Spell Damage",
+      "shield_armour_+%":"100% increased Defences from Equipped Shield"
+    },
+    "vaal_notable_chaos_damage_1":{
+      "chaos_damage_+%":"100% increased Chaos Damage",
+      "withered_on_hit_for_2_seconds_%_chance":"Inflict Withered for 2 seconds on Hit"
+    },
+    "vaal_notable_chaos_damage_2":{
+      "base_life_leech_from_chaos_damage_permyriad":"1% of Chaos Damage Leeched as Life",
+      "chaos_damage_+%":"100% increased Chaos Damage"
+    },
+    "vaal_notable_chaos_resistance_1":{
+      "base_chaos_damage_resistance_%":"+100% to Chaos Resistance",
+      "base_maximum_chaos_damage_resistance_%":"+100% to maximum Chaos Resistance"
+    },
+    "vaal_notable_cold_damage_1":{
+      "base_reduce_enemy_cold_resistance_%":"Damage Penetrates 100% Cold Resistance",
+      "cold_damage_+%":"100% increased Cold Damage"
+    },
+    "vaal_notable_cold_damage_2":{
+      "base_life_leech_from_cold_damage_permyriad":"1% of Cold Damage Leeched as Life",
+      "cold_damage_+%":"100% increased Cold Damage"
+    },
+    "vaal_notable_cold_damage_3":{
+      "base_physical_damage_%_to_convert_to_cold":"100% of Physical Damage Converted to Cold Damage",
+      "cold_damage_+%":"100% increased Cold Damage"
+    },
+    "vaal_notable_cold_resistance_1":{
+      "base_cold_damage_resistance_%":"+100% to Cold Resistance",
+      "base_maximum_cold_damage_resistance_%":"+100% to maximum Cold Resistance"
+    },
+    "vaal_notable_curse_1":{
+      "curse_effect_+%":"100% increased Effect of your Curses",
+      "curse_skill_effect_duration_+%":"Curse Skills have 100% increased Skill Effect Duration"
+    },
+    "vaal_notable_damage_over_time_1":{
+      "damage_over_time_+%":"100% increased Damage over Time",
+      "skill_effect_duration_+%":"100% increased Skill Effect Duration"
+    },
+    "vaal_notable_dodge_1":{
+      "avoid_all_elemental_status_%":"100% chance to Avoid Elemental Ailments",
+      "base_avoid_stun_%":"100% chance to Avoid being Stunned"
+    },
+    "vaal_notable_dodge_2":{
+      "base_resist_all_elements_%":"+100% to all Elemental Resistances",
+      "base_spell_suppression_chance_%":"+100% chance to Suppress Spell Damage"
+    },
+    "vaal_notable_energy_shield_1":{
+      "energy_shield_recharge_rate_+%":"100% increased Energy Shield Recharge Rate",
+      "maximum_energy_shield_+%":"100% increased maximum Energy Shield"
+    },
+    "vaal_notable_energy_shield_2":{
+      "base_energy_shield_leech_from_spell_damage_permyriad":"1% of Spell Damage Leeched as Energy Shield",
+      "maximum_energy_shield_+%":"100% increased maximum Energy Shield"
+    },
+    "vaal_notable_evasion_1":{
+      "evasion_rating_+%":"100% increased Evasion Rating",
+      "global_chance_to_blind_on_hit_%":"100% Global chance to Blind Enemies on hit"
+    },
+    "vaal_notable_fire_damage_1":{
+      "base_reduce_enemy_fire_resistance_%":"Damage Penetrates 100% Fire Resistance",
+      "fire_damage_+%":"100% increased Fire Damage"
+    },
+    "vaal_notable_fire_damage_2":{
+      "base_life_leech_from_fire_damage_permyriad":"1% of Fire Damage Leeched as Life",
+      "fire_damage_+%":"100% increased Fire Damage"
+    },
+    "vaal_notable_fire_damage_3":{
+      "base_physical_damage_%_to_convert_to_fire":"100% of Physical Damage Converted to Fire Damage",
+      "fire_damage_+%":"100% increased Fire Damage"
+    },
+    "vaal_notable_fire_resistance_1":{
+      "base_fire_damage_resistance_%":"+100% to Fire Resistance",
+      "base_maximum_fire_damage_resistance_%":"+100% to maximum Fire Resistance"
+    },
+    "vaal_notable_life_1":{
+      "life_regeneration_rate_per_minute_%":"Regenerate 1.67% of Life per second",
+      "maximum_life_+%":"100% increased maximum Life"
+    },
+    "vaal_notable_life_2":{
+      "base_life_leech_from_attack_damage_permyriad":"1% of Attack Damage Leeched as Life",
+      "maximum_life_+%":"100% increased maximum Life"
+    },
+    "vaal_notable_lightning_damage_1":{
+      "base_reduce_enemy_lightning_resistance_%":"Damage Penetrates 100% Lightning Resistance",
+      "lightning_damage_+%":"100% increased Lightning Damage"
+    },
+    "vaal_notable_lightning_damage_2":{
+      "base_life_leech_from_lightning_damage_permyriad":"1% of Lightning Damage Leeched as Life",
+      "lightning_damage_+%":"100% increased Lightning Damage"
+    },
+    "vaal_notable_lightning_damage_3":{
+      "base_physical_damage_%_to_convert_to_lightning":"100% of Physical Damage Converted to Lightning Damage",
+      "lightning_damage_+%":"100% increased Lightning Damage"
+    },
+    "vaal_notable_lightning_resistance_1":{
+      "base_lightning_damage_resistance_%":"+100% to Lightning Resistance",
+      "base_maximum_lightning_damage_resistance_%":"+100% to maximum Lightning Resistance"
+    },
+    "vaal_notable_mana_1":{
+      "mana_regeneration_rate_+%":"100% increased Mana Regeneration Rate",
+      "maximum_mana_+%":"100% increased maximum Mana"
+    },
+    "vaal_notable_minion_damage_1":{
+      "minion_damage_+%":"Minions deal 100% increased Damage",
+      "minion_maximum_life_+%":"Minions have 100% increased maximum Life"
+    },
+    "vaal_notable_physical_damage_1":{
+      "chance_to_deal_double_damage_%":"100% chance to deal Double Damage",
+      "physical_damage_+%":"100% increased Global Physical Damage"
+    },
+    "vaal_notable_physical_damage_2":{
+      "base_life_leech_from_physical_damage_permyriad":"1% of Physical Damage Leeched as Life",
+      "physical_damage_+%":"100% increased Global Physical Damage"
+    },
+    "vaal_notable_physical_damage_3":{
+      "faster_bleed_%":"Bleeding you inflict deals Damage 100% faster",
+      "physical_damage_+%":"100% increased Global Physical Damage"
+    },
+    "vaal_notable_spell_damage_1":{
+      "spell_critical_strike_chance_+%":"100% increased Spell Critical Strike Chance",
+      "spell_damage_+%":"100% increased Spell Damage"
+    }
+  },
+  "pobSha":"3dbca4463c0a59079d9f7f032d8240cf868e09da"
+}

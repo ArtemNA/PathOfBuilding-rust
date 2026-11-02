@@ -330,20 +330,21 @@ pub fn read_lut(seed: f64, node_id: u32, jewel_type: usize) -> Result<Vec<u32>, 
 }
 
 /// One GV node, as `loadTimelessJewel` lays it out (:57-86): `sizes` = the first `nodeCount * seedSize + 1` bytes, then each
-/// node's raw block (`nodeIDList[id].size` bytes, in index order), cut per seed by the size bytes.
-struct GvNode<'a> {
-    sizes: &'a [u8],
-    raw: &'a [u8],
+/// node's raw block (`nodeIDList[id].size` bytes, in index order), cut per seed by the size bytes. Upstream cuts every node at load; here a node on its first read,
+/// after which a read costs what upstream's does.
+struct GvNode {
+    sizes: &'static [u8],
+    raw: &'static [u8],
     /// Byte offset in `raw` of each seed's slice (`seedKey` 1..=seedSize+1, :66-71), 0-based.
-    starts: Vec<usize>,
+    starts: Vec<u32>,
 }
 
-impl GvNode<'_> {
+impl GvNode {
     fn seed_start(&self, seed_offset: i64) -> Result<usize, DataError> {
         usize::try_from(seed_offset)
             .ok()
             .and_then(|o| self.starts.get(o))
-            .copied()
+            .map(|&s| s as usize)
             .ok_or_else(|| {
                 DataError(format!(
                     "unimplemented: {HELPER}:240: GV seed offset {seed_offset} outside the node"
@@ -353,40 +354,426 @@ impl GvNode<'_> {
 }
 
 /// Node `index`'s block and the start of every seed's slice in it.
-fn gv_node<'a>(data: &'a [u8], list: &NodeIdList, index: u32, seed_size: i64) -> Result<GvNode<'a>, DataError> {
+fn gv_node(data: &'static [u8], list: &NodeIdList, index: u32, seed_size: i64) -> Result<&'static GvNode, DataError> {
     static OFFSETS: OnceLock<Vec<usize>> = OnceLock::new();
+    static NODES: OnceLock<Vec<OnceLock<GvNode>>> = OnceLock::new();
     let ss = usize::try_from(seed_size).map_err(|_| DataError(format!("{HELPER}:60: seed size {seed_size}")))?;
     let node_count = list.size as usize;
     let size_offset = node_count * ss;
-    // :61 `jewelData:sub(1, sizeOffset + 1)` (clamped like `sub`).
-    let sizes = &data[..(size_offset + 1).min(data.len())];
-    // :64-75 -- node i's raw block starts after the sizes and every earlier node's block.
-    let offsets = OFFSETS.get_or_init(|| {
-        let mut v = Vec::with_capacity(node_count + 1);
-        let mut off = size_offset;
-        for i in 0..node_count {
-            v.push(off);
-            let id = list.by_index.get(i).copied().unwrap_or(u32::MAX);
-            off += list.nodes.get(&id).map_or(0, |e| e.size as usize);
-        }
-        v.push(off);
-        v
-    });
     let i = index as usize;
-    let (from, to) = (
-        offsets.get(i).copied().unwrap_or(usize::MAX),
-        offsets.get(i + 1).copied().unwrap_or(usize::MAX),
-    );
-    let raw = &data[from.min(data.len())..to.min(data.len())];
-    // :66-71 -- `for seedKey = 1, seedSize + 1`: slice `seedKey` starts after the lengths of the earlier ones.
-    let mut starts = Vec::with_capacity(ss + 1);
-    let mut off = 0usize;
-    for seed_key in 1..=ss + 1 {
-        starts.push(off);
-        off += usize::from(sizes.get(i * ss + seed_key - 1).copied().unwrap_or(0));
-    }
-    Ok(GvNode { sizes, raw, starts })
+    let nodes = NODES.get_or_init(|| (0..list.by_index.len()).map(|_| OnceLock::new()).collect());
+    let Some(slot) = nodes.get(i) else {
+        return Err(DataError(format!("{HELPER}:240: GV node index {index} outside nodeIDList")));
+    };
+    Ok(slot.get_or_init(|| {
+        // :61 `jewelData:sub(1, sizeOffset + 1)` (clamped like `sub`).
+        let sizes = &data[..(size_offset + 1).min(data.len())];
+        // :64-75 -- node i's raw block starts after the sizes and every earlier node's block.
+        let offsets = OFFSETS.get_or_init(|| {
+            let mut v = Vec::with_capacity(node_count + 1);
+            let mut off = size_offset;
+            for i in 0..node_count {
+                v.push(off);
+                let id = list.by_index.get(i).copied().unwrap_or(u32::MAX);
+                off += list.nodes.get(&id).map_or(0, |e| e.size as usize);
+            }
+            v.push(off);
+            v
+        });
+        let (from, to) = (
+            offsets.get(i).copied().unwrap_or(usize::MAX),
+            offsets.get(i + 1).copied().unwrap_or(usize::MAX),
+        );
+        let raw = &data[from.min(data.len())..to.min(data.len())];
+        // :66-71 -- `for seedKey = 1, seedSize + 1`: slice `seedKey` starts after the lengths of the earlier ones.
+        let mut starts = Vec::with_capacity(ss + 1);
+        let mut off = 0u32;
+        for seed_key in 1..=ss + 1 {
+            starts.push(off);
+            off += u32::from(sizes.get(i * ss + seed_key - 1).copied().unwrap_or(0));
+        }
+        GvNode { sizes, raw, starts }
+    }))
 }
+
+// --- Abyss jewels -----------------------------------------------------------------------------------------------------------
+
+const ABYSS_HELPER: &str = "Modules/DataAbyssJewelLookUpTableHelper.lua";
+
+/// One part of a modification (:31-44): `type` 1 replaces the node, 2 adds to it; `id` is global.
+#[derive(Clone, Debug, PartialEq)]
+pub struct AbyssComponent {
+    pub ty: u8,
+    pub id: u32,
+    pub rolls: Vec<f64>,
+}
+
+/// `data.getAbyssJewelComponentRoll(component, node, statIndex)` (:59-73) over `node.stats`: the stat with `index == stat_index` and its roll.
+pub fn abyss_component_roll<'s>(
+    component: &AbyssComponent,
+    stats: &'s OrderedMap<LegionStat>,
+    stat_index: usize,
+) -> (Option<&'s LegionStat>, Option<f64>) {
+    let Some(stat) = stats.values().find(|m| m.index == stat_index as f64) else {
+        return (None, None);
+    };
+    let roll = stat_index.checked_sub(1).and_then(|i| component.rolls.get(i)).copied();
+    // :69 A negative stored value is shown as a positive number in "reduced" descriptions.
+    (Some(stat), roll.map(|r| if r < 0.0 && stat.min >= 0.0 { -r } else { r }))
+}
+
+/// `jewelLUT.seedOffsets[blockKey]` of one block (:192-201).
+struct AbyssBlock {
+    offset: usize,
+    seeds: OnceLock<Result<Vec<u32>, DataError>>,
+}
+
+impl AbyssBlock {
+    fn new(offset: usize) -> AbyssBlock {
+        AbyssBlock {
+            offset,
+            seeds: OnceLock::new(),
+        }
+    }
+}
+
+/// `data.timelessJewelLUTs[jewelType]` of an Abyss file (:103-112).
+struct AbyssLut {
+    data: &'static [u8],
+    /// `format == "ABYN"` (Zorath: one block per passive node) or `"ABYS"` (one block per socket).
+    by_node: bool,
+    seed_minimum: f64,
+    seed_maximum: f64,
+    seed_increment: f64,
+    seed_count: usize,
+    blocks: HashMap<u32, AbyssBlock>,
+    ascendancies: HashMap<Vec<u8>, AbyssBlock>,
+}
+
+/// `s_byte(jewelData, offset)`, 0-based here.
+fn abyss_byte(data: &[u8], offset: usize, line: u32) -> Result<usize, DataError> {
+    data.get(offset).map(|&b| usize::from(b)).ok_or_else(|| {
+        DataError(format!(
+            "{ABYSS_HELPER}:{line}: attempt to perform arithmetic on a nil value (offset {offset})"
+        ))
+    })
+}
+
+/// `bytesToUShort` (Common.lua:384-387): a missing byte reads 0.
+fn abyss_u16(data: &[u8], offset: usize) -> u32 {
+    let b = |o: usize| u32::from(data.get(o).copied().unwrap_or(0));
+    b(offset) + b(offset + 1) * 256
+}
+
+/// `skipModification` (:16-24).
+fn skip_modification(data: &[u8], mut offset: usize) -> Result<usize, DataError> {
+    let count = abyss_byte(data, offset, 18)?;
+    offset += 1;
+    for _ in 0..count {
+        offset += 3 + abyss_byte(data, offset + 2, 21)? * 2;
+    }
+    Ok(offset)
+}
+
+/// `readModification` (:26-47).
+fn read_modification(data: &[u8], mut offset: usize, jewel_type: usize) -> Result<(Vec<AbyssComponent>, usize), DataError> {
+    let count = abyss_byte(data, offset, 28)?;
+    let mut out = Vec::with_capacity(count);
+    offset += 1;
+    for _ in 0..count {
+        let ty = abyss_byte(data, offset, 31)? as u8;
+        let local = abyss_byte(data, offset + 1, 31)? as u32;
+        let stat_count = abyss_byte(data, offset + 2, 39)?;
+        offset += 3;
+        let mut rolls = Vec::with_capacity(stat_count);
+        for _ in 0..stat_count {
+            let roll = abyss_u16(data, offset);
+            offset += 2;
+            rolls.push(if roll >= 32768 {
+                f64::from(roll) - 65536.0
+            } else {
+                f64::from(roll)
+            });
+        }
+        out.push(AbyssComponent {
+            ty,
+            id: convert_local_id_to_global_id(jewel_type, local),
+            rolls,
+        });
+    }
+    Ok((out, offset))
+}
+
+/// `skipSocketRecord` (:75-82).
+fn skip_socket_record(data: &[u8], mut offset: usize) -> Result<usize, DataError> {
+    let count = abyss_byte(data, offset, 76)?;
+    offset += 1;
+    for _ in 0..count {
+        offset = skip_modification(data, offset + 2)?;
+    }
+    Ok(offset)
+}
+
+/// `skipAscendancyRecord` (:84-86).
+fn skip_ascendancy_record(data: &[u8], offset: usize) -> Result<usize, DataError> {
+    Ok(offset + 1 + abyss_byte(data, offset, 85)? * 2)
+}
+
+/// `parseAbyssJewel(jewelType, jewelData)` (:88-164).
+fn parse_abyss_jewel(jewel_type: usize, data: &'static [u8]) -> Result<AbyssLut, DataError> {
+    let format = data.get(..4).unwrap_or(data);
+    let version = data.get(4).copied();
+    let stored = data.get(5).copied().map(usize::from);
+    let seed_minimum = abyss_u16(data, 6);
+    let seed_maximum = abyss_u16(data, 8);
+    let seed_increment = abyss_u16(data, 10);
+    let mut offset = 12;
+    if version != Some(1) || stored != Some(jewel_type) || seed_increment == 0 {
+        return Err(DataError(format!(
+            "{ABYSS_HELPER}:100: Invalid Abyss timeless jewel header for jewel type {jewel_type}"
+        )));
+    }
+    let seed_count_f = (f64::from(seed_maximum) - f64::from(seed_minimum)) / f64::from(seed_increment) + 1.0;
+    let seed_count = seed_count_f as usize;
+    let mut blocks = HashMap::new();
+    let mut ascendancies = HashMap::new();
+    let by_node = match format {
+        b"ABYS" => {
+            // :114-128 Each socket has one entry for every seed.
+            let socket_count = abyss_byte(data, offset, 116)?;
+            offset += 2;
+            let mut ids = Vec::with_capacity(socket_count);
+            for _ in 0..socket_count {
+                ids.push(abyss_u16(data, offset));
+                offset += 2;
+            }
+            for id in ids {
+                blocks.insert(id, AbyssBlock::new(offset));
+                for _ in 0..seed_count {
+                    offset = skip_socket_record(data, offset)?;
+                }
+            }
+            false
+        }
+        b"ABYN" => {
+            // :129-159 Zorath has one block per passive node, so only allocated path nodes are read later.
+            let node_count = abyss_u16(data, offset) as usize;
+            offset += 2;
+            let mut ids = Vec::with_capacity(node_count);
+            for _ in 0..node_count {
+                ids.push(abyss_u16(data, offset));
+                offset += 2;
+            }
+            for id in ids {
+                blocks.insert(id, AbyssBlock::new(offset));
+                for _ in 0..seed_count {
+                    offset = skip_modification(data, offset)?;
+                }
+            }
+            if data.get(offset..offset + 4) != Some(b"ASCS") {
+                return Err(DataError(format!(
+                    "{ABYSS_HELPER}:145: Missing Abyss ascendancy section for jewel type {jewel_type}"
+                )));
+            }
+            offset += 4;
+            let ascendancy_count = abyss_u16(data, offset) as usize;
+            offset += 2;
+            for _ in 0..ascendancy_count {
+                let name_length = abyss_byte(data, offset, 152)?;
+                let name = data.get(offset + 1..offset + 1 + name_length).unwrap_or_default().to_vec();
+                offset += name_length + 1;
+                ascendancies.insert(name, AbyssBlock::new(offset));
+                for _ in 0..seed_count {
+                    offset = skip_ascendancy_record(data, offset)?;
+                }
+            }
+            true
+        }
+        other => {
+            return Err(DataError(format!(
+                "{ABYSS_HELPER}:161: Unknown Abyss timeless jewel format {}",
+                String::from_utf8_lossy(other)
+            )));
+        }
+    };
+    Ok(AbyssLut {
+        data,
+        by_node,
+        seed_minimum: f64::from(seed_minimum),
+        seed_maximum: f64::from(seed_maximum),
+        seed_increment: f64::from(seed_increment),
+        seed_count,
+        blocks,
+        ascendancies,
+    })
+}
+
+/// `loadAbyssJewel(jewelType)` (:166-178): `None` = no file.
+fn load_abyss_jewel(jewel_type: usize) -> Result<Option<&'static AbyssLut>, DataError> {
+    static LOADED: [OnceLock<Result<Option<AbyssLut>, DataError>>; 5] = [const { OnceLock::new() }; 5];
+    let slot = jewel_type
+        .checked_sub(7)
+        .and_then(|i| LOADED.get(i))
+        .ok_or_else(|| DataError(format!("{ABYSS_HELPER}:166: no Abyss jewel type {jewel_type}")))?;
+    slot.get_or_init(|| {
+        let (name, _, _) = timeless_jewel_type(jewel_type).expect("the Abyss jewel types are in the table");
+        let stem: String = name.chars().filter(|c| !c.is_ascii_whitespace()).collect();
+        let cell = LUTS.get(jewel_type - 1).expect("a jewel type");
+        let data =
+            cell.get_or_init(|| load_jewel_file(&stem)?.ok_or_else(|| DataError(format!("{ABYSS_HELPER}:173: no jewel data: {stem}"))));
+        match data {
+            Ok(d) => parse_abyss_jewel(jewel_type, d).map(Some),
+            // :173-175 the file is not there: an empty result, not an error
+            Err(e) if e.0.starts_with(ABYSS_HELPER) => Ok(None),
+            Err(e) => Err(e.clone()),
+        }
+    })
+    .as_ref()
+    .map(Option::as_ref)
+    .map_err(Clone::clone)
+}
+
+impl AbyssLut {
+    /// `getSeedIndex` (:180-186), 0-based.
+    fn seed_index(&self, seed: f64) -> Option<usize> {
+        let seed_offset = seed - self.seed_minimum;
+        if seed_offset < 0.0 || seed > self.seed_maximum || seed_offset % self.seed_increment != 0.0 {
+            return None;
+        }
+        Some((seed_offset / self.seed_increment) as usize)
+    }
+
+    /// `getRecordOffsets` (:188-203).
+    fn record_offsets<'a>(
+        &self,
+        block: &'a AbyssBlock,
+        skip: fn(&[u8], usize) -> Result<usize, DataError>,
+    ) -> Result<&'a [u32], DataError> {
+        block
+            .seeds
+            .get_or_init(|| {
+                let mut offsets = Vec::with_capacity(self.seed_count);
+                let mut offset = block.offset;
+                for _ in 0..self.seed_count {
+                    offsets.push(offset as u32);
+                    offset = skip(self.data, offset)?;
+                }
+                Ok(offsets)
+            })
+            .as_deref()
+            .map_err(Clone::clone)
+    }
+
+    /// `readNode` (:205-213), past its checks.
+    fn read_node(&self, seed_index: usize, node_id: u32, jewel_type: usize) -> Result<Vec<AbyssComponent>, DataError> {
+        let Some(block) = self.blocks.get(&node_id) else {
+            return Ok(Vec::new());
+        };
+        let offsets = self.record_offsets(block, skip_modification)?;
+        Ok(read_modification(self.data, offsets[seed_index] as usize, jewel_type)?.0)
+    }
+}
+
+/// `data.readAbyssJewelLUT(seed, socketId, jewelType, path, ascendancyName)` (:215-273): the affected nodes in the order of their first assignment (the table's `pairs` order is the caller's:
+/// `pob_tree::lj_table`). `path`: the keys of `path`, in `pairs` order.
+pub fn read_abyss_jewel_lut(
+    seed: f64,
+    socket_id: u32,
+    jewel_type: usize,
+    path: Option<&[u32]>,
+    ascendancy_name: Option<&str>,
+) -> Result<IndexMap<u32, Vec<AbyssComponent>>, DataError> {
+    let mut affected = IndexMap::new();
+    if (7..=10).contains(&jewel_type) {
+        let Some(lut) = load_abyss_jewel(jewel_type)? else {
+            return Ok(affected);
+        };
+        let Some(seed_index) = lut.seed_index(seed).filter(|_| !lut.by_node) else {
+            return Ok(affected);
+        };
+        let Some(block) = lut.blocks.get(&socket_id) else {
+            return Ok(affected);
+        };
+        let mut offset = lut.record_offsets(block, skip_socket_record)?[seed_index] as usize;
+        let count = abyss_byte(lut.data, offset, 228)?;
+        offset += 1;
+        for _ in 0..count {
+            let node_id = abyss_u16(lut.data, offset);
+            let (modification, next) = read_modification(lut.data, offset + 2, jewel_type)?;
+            offset = next;
+            affected.insert(node_id, modification);
+        }
+        return Ok(affected);
+    }
+    let (11, Some(path)) = (jewel_type, path) else {
+        return Ok(affected);
+    };
+    let Some(lut) = load_abyss_jewel(jewel_type)? else {
+        return Ok(affected);
+    };
+    let Some(seed_index) = lut.seed_index(seed).filter(|_| lut.by_node) else {
+        // :206-210 `readNode` gives `{ }` for every node of the path, and :250 skips the ascendancies
+        return Ok(affected);
+    };
+    for &node_id in path {
+        let modification = lut.read_node(seed_index, node_id, jewel_type)?;
+        if !modification.is_empty() {
+            affected.insert(node_id, modification);
+        }
+    }
+    // :251-270 A Zorath seed selects one node in every ascendancy; a name limits the result to that section.
+    let Some(name) = ascendancy_name else {
+        return Err(DataError(format!(
+            "unimplemented: {ABYSS_HELPER}:257 every ascendancy of a Zorath seed (`pairs(ascendancyOffsets)`): only PassiveSpec.lua:1142 asks for it"
+        )));
+    };
+    if let Some(block) = lut.ascendancies.get(name.as_bytes()) {
+        let mut offset = lut.record_offsets(block, skip_ascendancy_record)?[seed_index] as usize;
+        let selected = abyss_byte(lut.data, offset, 262)?;
+        offset += 1;
+        for _ in 0..selected {
+            let node_id = abyss_u16(lut.data, offset);
+            offset += 2;
+            let modification = lut.read_node(seed_index, node_id, jewel_type)?;
+            affected.insert(node_id, modification);
+        }
+    }
+    Ok(affected)
+}
+// --- what `data.describeStats` says of the legion passives ---------------------------------------------------------------------
+
+/// `data.describeStats({ [stat] = 100, others = 0 }, "stat_descriptions")[1]` of the legion passives with several stats (TreeTab.lua:2006). `Data/StatDescriptions` is not ported: the only asker is
+/// `Generate`, so these lines are taken from the original (`tools/sg-oracle/lua/tree-runner.lua`, step `legionLines`) and pinned to the PoB commit of `data.lock`.
+const LEGION_STAT_LINES: &str = include_str!("legion_stat_lines.json");
+
+/// The line of `stat` of the legion passive `id`; `None` where it has no such stat.
+pub fn legion_stat_line(id: &str, stat: &str) -> Result<Option<&'static str>, DataError> {
+    #[derive(Deserialize)]
+    struct Lines {
+        #[serde(rename = "pobSha")]
+        pob_sha: String,
+        lines: HashMap<String, HashMap<String, String>>,
+    }
+    static L: OnceLock<Result<Lines, DataError>> = OnceLock::new();
+    let l = L
+        .get_or_init(|| {
+            let l: Lines =
+                serde_json::from_str(LEGION_STAT_LINES).map_err(|e| DataError(format!("pob-data: legion_stat_lines.json: {e}")))?;
+            let dir = ensure_data()?;
+            let lock = verify_lock(dir, &lock_path(dir))?;
+            if l.pob_sha != lock.pob_sha {
+                return Err(DataError(format!(
+                    "pob-data: legion_stat_lines.json was taken from PoB {}, data.lock has {} -- re-take it: tools/sg-oracle/run.ps1 -Script tree-runner.lua -ScriptArgs legion-lines",
+                    l.pob_sha, lock.pob_sha
+                )));
+            }
+            Ok(l)
+        })
+        .as_ref()
+        .map_err(Clone::clone)?;
+    Ok(l.lines.get(id).and_then(|m| m.get(stat)).map(String::as_str))
+}
+
 // --- legion passives ------------------------------------------------------------------------------------------------------
 
 /// One `stats[key]` entry of a legion node/addition.

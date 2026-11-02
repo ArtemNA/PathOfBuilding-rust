@@ -745,7 +745,12 @@ impl PassiveSpec {
     }
 
     /// [`Self::alloc_node_path`] with the graph rebuild of :836-838 (`get_jewel`: `GetJewel` of the build's items).
-    pub fn alloc_node_full(&mut self, i: usize, alt_path: Option<&[usize]>, get_jewel: crate::cluster::JewelLookup<'_>) -> Result<(), TreeError> {
+    pub fn alloc_node_full(
+        &mut self,
+        i: usize,
+        alt_path: Option<&[usize]>,
+        get_jewel: crate::cluster::JewelLookup<'_>,
+    ) -> Result<(), TreeError> {
         if self.alloc_node_marks(i, alt_path) {
             self.build_cluster_jewel_graphs(get_jewel)
         } else {
@@ -821,7 +826,13 @@ impl PassiveSpec {
 
     /// :694-715 `IsClassConnected(classId)`.
     pub fn is_class_connected(&mut self, class_id: usize) -> bool {
-        let Some(start) = self.tree.classes.get(class_id).and_then(|c| c.start_node_id).and_then(|id| self.node_idx(id)) else {
+        let Some(start) = self
+            .tree
+            .classes
+            .get(class_id)
+            .and_then(|c| c.start_node_id)
+            .and_then(|id| self.node_idx(id))
+        else {
             return false;
         };
         for other in self.nodes[start].linked.clone() {
@@ -843,7 +854,13 @@ impl PassiveSpec {
 
     /// :718-789 `ConnectToClass(classId)`: the shortest path from the target class's start node to the allocated tree, allocated.
     pub fn connect_to_class(&mut self, class_id: usize, get_jewel: crate::cluster::JewelLookup<'_>) -> Result<bool, TreeError> {
-        let Some(target) = self.tree.classes.get(class_id).and_then(|c| c.start_node_id).and_then(|id| self.node_idx(id)) else {
+        let Some(target) = self
+            .tree
+            .classes
+            .get(class_id)
+            .and_then(|c| c.start_node_id)
+            .and_then(|id| self.node_idx(id))
+        else {
             return Ok(false);
         };
         let is_main = |n: &SpecNode| !n.tree_node().is_proxy && n.ascendancy_name().is_none() && !n.ty().is_start();
@@ -948,16 +965,6 @@ impl PassiveSpec {
     /// `crate::timeless`), apply mastery selections and the four counters, then prune every allocated node with no path to a
     /// start node. Errors: what upstream raises in the conquest half (and its unported abyss branch).
     pub fn build_all_depends_and_paths(&mut self) -> Result<(), TreeError> {
-        self.build_all_depends_and_paths_inner()?;
-        LIVE_PATHS.with_borrow(|l| {
-            if let Some(l) = l {
-                l.apply(self);
-            }
-        });
-        Ok(())
-    }
-
-    fn build_all_depends_and_paths_inner(&mut self) -> Result<(), TreeError> {
         let mut visited: Vec<usize> = Vec::new();
         // :1110-1140 -- the abyss conquests (an error, out of scope) and the radius jewels of `self.jewels`.
         let radius_jewels = self.gather_radius_jewels()?;
@@ -1372,6 +1379,63 @@ impl PassiveSpec {
         node
     }
 
+    /// TreeTab.lua:2019-2047 a plain table `{ id = "<legion id>", modList = .. }` for `override.addNodes`: it has no `type` and no tree node. Here: the id no tree has (`env.allocNodes` keys on it) and,
+    /// read through, an ordinary small passive -- `type` is what initEnv's counters and `buildModListForNode` read of it, and only `Keystone` and the counted types mean anything to them.
+    pub fn mod_list_node(&self, mods: Vec<Rc<pob_mods::Mod>>) -> SpecNode {
+        let base = self
+            .tree
+            .nodes
+            .iter()
+            .position(|n| n.ty == NodeType::Normal && n.ascendancy_name.is_none())
+            .expect("a tree has a small passive");
+        let mut node = SpecNode::with_base(&self.tree, u32::MAX, NodeBase::Tree(base));
+        node.own_stats = Some(NodeStats {
+            mod_list: pob_mods::store::ModList { mods },
+            ..NodeStats::default()
+        });
+        node.own_sd = Some(Vec::new());
+        node.own_reminder_text = Some(Vec::new());
+        node
+    }
+
+    /// PassiveSpec.lua:992-1033 `GetShortestPathToClassStart(rootId)`: the keys of the path, in `pairs` order; `None` = nil.
+    pub fn shortest_path_to_class_start(&self, root_id: u32) -> Option<Vec<u32>> {
+        let root = self.node_idx(root_id).filter(|&r| self.nodes[r].alloc)?;
+        let target = self.cur_class().start_node_id;
+        let mut parent: std::collections::HashMap<u32, usize> = std::collections::HashMap::new();
+        let mut queue = vec![root];
+        let mut o = 0;
+        while o < queue.len() {
+            let node = queue[o];
+            o += 1;
+            for &other in &self.nodes[node].linked {
+                let other_id = self.nodes[other].id;
+                if Some(other_id) == target {
+                    // `{ [root.id] = true, [other.id] = true }`, then the chain of parents
+                    let mut path = crate::lj_table::LjTable::with_constructor_size(2);
+                    path.set(f64::from(root_id));
+                    path.set(f64::from(other_id));
+                    let mut cur = Some(node);
+                    while let Some(c) = cur {
+                        path.set(f64::from(self.nodes[c].id));
+                        cur = parent.get(&self.nodes[c].id).copied();
+                    }
+                    return Some(path.pairs_keys().into_iter().map(|k| k as u32).collect());
+                }
+                if self.nodes[other].alloc
+                    && self.nodes[node].ty() != NodeType::Mastery
+                    && !matches!(self.nodes[other].ty(), NodeType::ClassStart | NodeType::AscendClassStart)
+                    && !parent.contains_key(&other_id)
+                    && other_id != root_id
+                {
+                    parent.insert(other_id, node);
+                    queue.push(other);
+                }
+            }
+        }
+        None
+    }
+
     /// The tree node `tree_idx` itself (`tree.clusterNodeMap` entries, CalcsTab.lua:714-736) as initEnv sees it in `override.addNodes`.
     pub fn tree_node_view(&self, tree_idx: usize) -> SpecNode {
         SpecNode::new(&self.tree, tree_idx)
@@ -1580,7 +1644,7 @@ impl LiveSpecPaths {
     }
 
     /// A node the session's spec does not have keeps nothing: the session's own node then stays as the load built it.
-    fn apply(&self, spec: &mut PassiveSpec) {
+    pub fn apply(&self, spec: &mut PassiveSpec) {
         if self.tree_version != spec.tree_version {
             return;
         }
@@ -1595,22 +1659,4 @@ impl LiveSpecPaths {
             n.path_dist = *dist;
         }
     }
-}
-
-thread_local! {
-    static LIVE_PATHS: std::cell::RefCell<Option<LiveSpecPaths>> = const { std::cell::RefCell::new(None) };
-}
-
-/// `f`, with every `BuildAllDependsAndPaths` of this thread leaving the paths of `live` (the coordinating thread of the node power walk: its plan reads them; the workers only
-/// take jobs by node index). The calculation itself does not read `path`.
-pub fn with_live_paths<R>(live: &LiveSpecPaths, f: impl FnOnce() -> R) -> R {
-    struct Reset;
-    impl Drop for Reset {
-        fn drop(&mut self) {
-            LIVE_PATHS.with_borrow_mut(|l| *l = None);
-        }
-    }
-    LIVE_PATHS.with_borrow_mut(|l| *l = Some(live.clone()));
-    let _reset = Reset;
-    f()
 }

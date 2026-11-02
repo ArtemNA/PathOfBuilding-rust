@@ -13,7 +13,7 @@ use pob_tree::{NodeType, PassiveSpec};
 
 use crate::engine::Engine;
 
-pub use pob_calc::power::{NodePower, PowerMax, PowerResult, PowerStat, ReportDist, ReportEntry, power_stat_list};
+pub use pob_calc::power::{NodePower, PowerMax, PowerProgress, PowerResult, PowerStat, ReportDist, ReportEntry, power_stat_list};
 
 /// `PassiveSpec:CreateUndoState()` (PassiveSpec.lua:2359-2381). `secondaryAscendClassId = self.secondaryAscendClassId` reads a field nothing sets
 /// (the spec's is `curSecondaryAscendClassId`): an undo always passes nil -- kept (no field here).
@@ -852,6 +852,39 @@ impl Engine {
         ))
     }
 
+    /// TreeTab.lua:1951-1976 `generateFallbackWeights(nodes, powerStat)`: `weight1`, `weight2`, .. of each node. `calcFunc({ addNodes = { [node] = true } })` over the build's calculator.
+    pub fn fallback_weights(&self, nodes: &[FallbackNode], stat: &PowerStat) -> Result<Vec<Vec<f64>>, String> {
+        let calc = self.misc_calculator()?;
+        let spec = calc.session().shared().map_err(|e| e.to_string())?.spec.clone();
+        let view_tree = self.view_mode_is_tree.get();
+        let power = |run: &pob_calc::session::RunRef| pob_calc::power::get_from_output(&run.borrow().state.player.output, stat);
+        let base_power = power(&calc.base);
+        let mut out = Vec::with_capacity(nodes.len());
+        for node in nodes {
+            let mut weights = Vec::with_capacity(node.lines.len());
+            for line in &node.lines {
+                let ov = pob_calc::env::CalcOverride {
+                    add_nodes: Some(vec![pob_calc::env::OverrideNode::Other(Rc::new(
+                        spec.mod_list_node(line.mods.clone()),
+                    ))]),
+                    ..pob_calc::env::CalcOverride::default()
+                };
+                let run = calc.calc(&Rc::new(ov), None, view_tree).map_err(|e| e.0)?;
+                let node_power = power(&run);
+                // avoid infinity
+                weights.push(if base_power == 0.0 {
+                    0.0
+                } else {
+                    // normalize with absolute base power so that the result isn't negative
+                    let gain = (node_power - base_power) / base_power.abs();
+                    gain / line.divisor.or(node.divisor).unwrap_or(1.0)
+                });
+            }
+            out.push(weights);
+        }
+        Ok(out)
+    }
+
     /// `calcFunc({ spec = spec })` + `AddStatComparesToTooltip(tooltip, calcBase, output, "^7Switching to this tree will give you:")` (TreeTab.lua:67-71).
     pub fn spec_stat_compare(&self, i: usize) -> Result<Vec<String>, String> {
         let spec = Rc::new(self.load_spec(i)?);
@@ -890,6 +923,20 @@ impl Engine {
     }
 }
 
+/// One `nodes[i]` of `setupFallbackWeights` (TreeTab.lua:2012-2104): `lines` = `newNode.node or { newNode }`.
+#[derive(Clone, Debug, Default)]
+pub struct FallbackNode {
+    pub divisor: Option<f64>,
+    pub lines: Vec<FallbackLine>,
+}
+
+/// `modList` and `divisor` of a `nodeLines[i]`.
+#[derive(Clone, Debug, Default)]
+pub struct FallbackLine {
+    pub mods: Vec<Rc<pob_mods::Mod>>,
+    pub divisor: Option<f64>,
+}
+
 /// The background part of the power walk: over a clone of the model, on its own thread.
 pub fn power_thread(
     model: &pob_build::BuildModel,
@@ -897,10 +944,20 @@ pub fn power_thread(
     stat: Option<&PowerStat>,
     max_depth: Option<f64>,
     threads: usize,
+    progress: &pob_calc::power::PowerProgress,
 ) -> Result<Option<PowerResult>, String> {
-    pob_tree::spec::with_live_paths(live, || {
-        pob_calc::power::build_power_threads(model, pob_calc::CalculateOptions::default(), stat, max_depth, threads, None)
-    })
+    pob_calc::power::build_power_walk(
+        model,
+        pob_calc::CalculateOptions::default(),
+        stat,
+        max_depth,
+        pob_calc::power::PowerWalk {
+            threads,
+            cancel: None,
+            live_paths: Some(live),
+            progress: Some(progress),
+        },
+    )
 }
 
 impl Engine {

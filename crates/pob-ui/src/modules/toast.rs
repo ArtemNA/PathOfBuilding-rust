@@ -104,6 +104,16 @@ impl ToastNotification {
         self.toasts.borrow().iter().any(|t| t.id == id)
     }
 
+    /// What the toast's dismiss button leaves (:186).
+    pub fn dismiss(&self, id: &str) {
+        self.dismissed_ids.borrow_mut().insert(id.to_string());
+    }
+
+    /// The text of a toast.
+    pub fn message(&self, id: &str) -> Option<String> {
+        self.toasts.borrow().iter().find(|t| t.id == id).map(|t| t.message.borrow().clone())
+    }
+
     /// `ToastNotification:Clear(immediate)` (:129-138).
     pub fn clear(&self, g: &Gfx, immediate: bool) {
         if immediate {

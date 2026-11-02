@@ -129,7 +129,7 @@ fn alloc_pairs_order_equals_luajit() {
     );
 }
 
-use pob_calc::power::{NodePower, PowerResult, PowerStat, build_power_threads, find_power_stat};
+use pob_calc::power::{NodePower, PowerProgress, PowerResult, PowerStat, build_power_threads, find_power_stat};
 
 /// `node.power` as the probe dumps it (`%.17g` strings; a node with an empty table is absent).
 fn dump_power(p: &NodePower) -> Option<Json> {
@@ -387,4 +387,56 @@ fn steps_equal_threads_and_cancel() {
         c.cancel();
         assert!(c.is_done() && c.result().is_none(), "a cancelled walk has no result");
     }
+}
+
+/// U3d: the counter of the walk on threads: `nodeIndex` / `total` of the coroutine (CalcsTab.lua:654-657), and the live paths as a parameter.
+#[test]
+fn walk_counts_nodes_and_takes_live_paths() {
+    let p = PowerProgress::default();
+    assert_eq!(p.percent(), None, "no plan yet");
+    p.set(0, 1500);
+    assert_eq!(p.percent(), Some(0));
+    p.set(749, 1500);
+    assert_eq!(p.percent(), Some(49), "m_floor(749/1500*100)");
+    p.set(1500, 1500);
+    assert_eq!(p.percent(), Some(100));
+    p.set(3, 1500);
+    assert_eq!(p.counts(), (1500, 1500), "out-of-order threads do not move it back");
+
+    let model = model("Dual Savior");
+    let sess = CalcSession::new(Rc::new(model.clone()), CalculateOptions::default());
+    let main = sess.build_output(pob_calc::CalcMode::Main).expect("buildOutput");
+    let granted = main.run.borrow().env.granted_passives.clone();
+    let calc = sess.get_misc_calculator().expect("getMiscCalculator");
+    let spec = sess.shared().expect("shared").spec.clone();
+    let plan = pob_calc::power::PowerPlan::new(&spec, &granted, pob_calc::power::PowerMode::of(None), None);
+    let after = plan.units_after_calls();
+    assert_eq!(after.len(), plan.jobs.len() + 1);
+    assert!(after.windows(2).all(|w| w[0] <= w[1]), "the walk only goes forward");
+    assert_eq!(*after.last().expect("calls"), plan.units());
+    drop(calc);
+
+    let plain = build_power_threads(&model, CalculateOptions::default(), None, None, threads(), None)
+        .expect("threads")
+        .expect("not cancelled");
+    let progress = PowerProgress::default();
+    let live = pob_tree::LiveSpecPaths::of(&spec);
+    let walked = pob_calc::power::build_power_walk(
+        &model,
+        CalculateOptions::default(),
+        None,
+        None,
+        pob_calc::power::PowerWalk {
+            threads: threads(),
+            cancel: None,
+            live_paths: Some(&live),
+            progress: Some(&progress),
+        },
+    )
+    .expect("walk")
+    .expect("not cancelled");
+    assert!(walked == plain, "the same paths: the same result");
+    let (index, total) = progress.counts();
+    println!("nodeIndex {index}, total {total}, percent {:?}", progress.percent());
+    assert_eq!((index, total), (plan.units(), walked.total));
 }
