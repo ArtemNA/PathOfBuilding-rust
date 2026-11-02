@@ -430,38 +430,19 @@ const BOUNDARY_NOTES: [&str; 5] = [
     "CalcSetup.lua:1434 ",
 ];
 
-/// Port boundaries read from the build file: a legacy alternate ascendancy (`secondaryAscendClassId` 1-3 = Warden / Warlock / Primalist) --
-/// PassiveTree.lua:132-176 removes their nodes from every tree that lists them (pob-tree: `PassiveTree.lua:131-172 alternate_ascendancies`,
-/// P5), Rust keeps and allocates them (measured: 9 extra allocated nodes, charm sockets with charms).
-fn boundary_inputs(xml: &str) -> Vec<String> {
-    let mut v = Vec::new();
-    for id in ["1", "2", "3"] {
-        if xml.contains(&format!("secondaryAscendClassId=\"{id}\"")) {
-            v.push(format!("legacy alternate ascendancy {id} (PassiveTree.lua:132-176, pob-tree P5)"));
-        }
-    }
-    v
+/// Port boundaries read from the build file. None since R-tree-legacy: the legacy alternate ascendancies (`secondaryAscendClassId`
+/// 1-3) are dropped as PassiveTree.lua:132-176 does (pob-tree `tree.rs`), such builds are gated as they are.
+fn boundary_inputs(_xml: &str) -> Vec<String> {
+    Vec::new()
 }
 
 /// Divergences measured to the root but outside this card's files, pinned by the build's sha256 prefix (no names in the repo) and the
 /// exact number of divergent (build, key) pairs: `(sha prefix, pairs, cause)`.
-const KNOWN: [(&str, usize, &str); 5] = [
-    ("eadab62bb90e601b", 31, CLUSTER_SOCKET),
-    ("ceeb2e12d6ac6841", 22, CLUSTER_SOCKET),
-    ("41ed0be8d17e4d48", 29, CLUSTER_SOCKET),
-    // R-tattoo: the as-is twin of 41ed0be8 (tattoos kept, gated since the port): the same 29 keys diverge, 24 with the very same values
-    ("11c64fa5acfeaf61", 29, CLUSTER_SOCKET),
-    (
-        "6eee1e8401984f67",
-        1,
-        "ManaFlaskChargeGen 1-2 ulp (2.6666666666666701 vs ...696): root not measured",
-    ),
-];
-
-/// A plain jewel saved in a socket of a cluster subgraph under its legacy node id (`<Socket nodeId="11150">`, a `Small Jewel Socket` with
-/// `expansionJewel.parent`): LuaJIT's spec has no such node (PassiveSpec.lua:54) and clears `spec.jewels[11150]` to 0 -- the jewel is not
-/// applied; Rust remaps the id through the legacy cluster-hash conversion (pob-tree `cluster.rs`, 11150 -> 6910, 16218 -> 29712) and applies it.
-const CLUSTER_SOCKET: &str = "jewel in a legacy cluster-subgraph socket: LuaJIT drops it, Rust remaps it (pob-tree cluster.rs)";
+const KNOWN: [(&str, usize, &str); 1] = [(
+    "6eee1e8401984f67",
+    1,
+    "ManaFlaskChargeGen 1-2 ulp (2.6666666666666701 vs ...696): root not measured",
+)];
 
 /// Per-build limit of the Rust gate (a broken build that loads for minutes is reported as a timeout, not waited for).
 const BUILD_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60);

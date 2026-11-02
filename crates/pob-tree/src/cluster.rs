@@ -158,18 +158,36 @@ impl PassiveSpec {
                 }
             }
         }
-        let mut jewels: NumMap<f64> = NumMap::default();
-        for &(node_id, item_id) in &self.jewels.0 {
-            let to = self.get_mapped_cluster_node_id(node_id);
-            if jewels.get(to).is_some() {
+        // :1816-1820 -- `pairs(self.jewels)`: LuaJIT's walk of the table built by `self.jewels[k] = v` in the order the keys were
+        // first set (`NumMap` keeps it: Load's <Socket>s, then the socket slots' 0s of `populate_socket_slots`). The order decides
+        // which value lands when two keys map to one socket (a legacy socket id onto a socket whose slot wrote 0: the jewel is lost).
+        let keys: Vec<f64> = self.jewels.0.iter().map(|&(k, _)| k).collect();
+        let walk = crate::lj_table::pairs_order(&keys);
+        let jewels = self.remap_jewels(&walk);
+        // The 0s were set in `pairs(self.slots)` order upstream (string keys, per process): a collision whose outcome changes when they
+        // are set in the opposite order is reported, not resolved silently.
+        let (set, zeros): (Vec<f64>, Vec<f64>) = keys.iter().partition(|&&k| self.jewels.get(k).is_some_and(|&v| v != 0.0));
+        let reversed: Vec<f64> = set.into_iter().chain(zeros.into_iter().rev()).collect();
+        let other = self.remap_jewels(&crate::lj_table::pairs_order(&reversed));
+        for &(to, item_id) in &jewels.0 {
+            if other.get(to) != Some(&item_id) {
                 self.unimplemented.push(format!(
-                    "{SPEC}:1795 D13: two jewels map to socket {} -- which one wins depends on pairs(self.jewels)",
+                    "{SPEC}:1818 D13: two jewels map to socket {} -- which one wins depends on the per-process pairs(self.slots) order of ItemsTab:PopulateSlots",
                     pob_lua::tostring_num(to)
                 ));
             }
-            jewels.set(to, item_id);
         }
         self.jewels = jewels;
+    }
+
+    /// :1816-1819 `convertedJewels[self:GetMappedClusterNodeId(nodeId)] = itemId` over `walk` (the `pairs` order of `self.jewels`).
+    fn remap_jewels(&self, walk: &[f64]) -> NumMap<f64> {
+        let mut jewels: NumMap<f64> = NumMap::default();
+        for &node_id in walk {
+            let item_id = *self.jewels.get(node_id).expect("a key of self.jewels");
+            jewels.set(self.get_mapped_cluster_node_id(node_id), item_id);
+        }
+        jewels
     }
 
     /// :1801-1805

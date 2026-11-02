@@ -217,8 +217,113 @@ pub struct PassiveTree {
     pub(crate) legion: std::cell::OnceCell<Result<crate::timeless::Legion, TreeError>>,
     /// `self.tattoo` (PassiveTree.lua:80 + :758-786), processed on first use (`crate::tattoo`).
     pub(crate) tattoo: std::cell::OnceCell<Result<crate::tattoo::Tattoo, TreeError>>,
+    /// `self.alternate_ascendancies` once :132-176 dropped the legacy ones (Warden / Warlock / Primalist): `(Lua key, class)` in
+    /// ascending key order (the JSON array index + 1); `None` = nil (no alternate ascendancies, or only legacy ones).
+    /// `start_node_id` is set by the `AscendClassStart` node (:552-555 through `ascendNameMap`, :214-224).
+    pub alternate_ascendancies: Option<Vec<(i64, AscendClass)>>,
+    /// `self.secondaryAscendNameMap` (:208-225): an alternate ascendancy's id -> its key in `alternate_ascendancies`.
+    pub secondary_ascend_name_map: Option<IndexMap<String, i64>>,
+    /// :140 `legacyAscMap` -- the legacy alternate ascendancy ids the tree data lists; their nodes and groups are dropped (:157-166).
+    legacy_ascendancies: Vec<String>,
     /// Upstream branches this crate does not port; read by reports, never by the calc.
     pub unimplemented: Vec<String>,
+}
+
+/// :134-138 `legacyAlternateAscendancyIds`.
+const LEGACY_ALTERNATE_ASCENDANCY_IDS: [&str; 3] = ["Warden", "Warlock", "Primalist"];
+
+/// :141-147 -- the legacy ids the tree lists (`legacyAscMap`) and the rest (`filteredAlternateAscendancies`).
+#[allow(clippy::type_complexity)]
+fn split_alternate_ascendancies(json: &TreeJson) -> Result<(Vec<String>, Vec<(i64, Option<String>, String)>), TreeError> {
+    let mut legacy: Vec<String> = Vec::new();
+    let mut kept = Vec::new();
+    for (k, id, name) in json.alternate_ascendancy_list()? {
+        match id.as_deref() {
+            Some(i) if LEGACY_ALTERNATE_ASCENDANCY_IDS.contains(&i) => {
+                if !legacy.iter().any(|l| l == i) {
+                    legacy.push(i.to_owned());
+                }
+            }
+            _ => kept.push((k, id, name)),
+        }
+    }
+    Ok((legacy, kept))
+}
+
+/// `pairs(self.nodes)` (:521) keyed by `nodeMap[node.id]` (:543), ascending id (D13). The id is the migrated `node.id`
+/// (:525-528: `node.skill` on >= 3.10, the legacy `id` before) -- not the table key: 2_6 keeps `nodes` as an array. Without
+/// `root` (:510) and the nodes of the legacy alternate ascendancies (:158-163).
+fn raw_nodes_of(json: &'static TreeJson, version_num: f64, legacy: &[String]) -> Result<Vec<(u32, &'static RawNode)>, TreeError> {
+    let mut ids: Vec<(u32, &'static RawNode)> = Vec::with_capacity(json.nodes.len());
+    for (key, raw) in json.nodes.iter() {
+        // :510 `self.nodes.root = nil` (>= 3.10).
+        if version_num >= 3.1 && key == "root" {
+            continue;
+        }
+        // :159-160 `node.ascendancyName and legacyAscMap[node.ascendancyName]`
+        if raw.ascendancy_name.as_ref().is_some_and(|a| legacy.contains(a)) {
+            continue;
+        }
+        let id = if version_num >= 3.1 { raw.skill } else { raw.id }
+            .and_then(as_id)
+            .ok_or_else(|| TreeError(format!("PassiveTree: node '{key}' has no id")))?;
+        ids.push((id, raw));
+    }
+    ids.sort_by_key(|(id, _)| *id);
+    Ok(ids)
+}
+
+/// :157-166 -- the groups of the dropped nodes (`temp_groups[node.group]`).
+fn legacy_groups(json: &'static TreeJson, legacy: &[String]) -> Vec<i64> {
+    let mut out = Vec::new();
+    if legacy.is_empty() {
+        return out;
+    }
+    for (_, raw) in json.nodes.iter() {
+        if raw.ascendancy_name.as_ref().is_some_and(|a| legacy.contains(a))
+            && let Some(g) = raw.group.and_then(|g| (g.fract() == 0.0).then_some(g as i64))
+            && !out.contains(&g)
+        {
+            out.push(g);
+        }
+    }
+    out
+}
+
+/// The ids of the `Socket` nodes of tree `version` (`self.sockets`, :556-571: the type ladder up to `isJewelSocket`) without building
+/// the tree -- what ItemsTab makes its socket slots from (ItemsTab.lua:220-234, `build.latestTree.nodes`). Ascending; cached per version.
+pub fn socket_ids(version: &str) -> Result<Rc<Vec<u32>>, TreeError> {
+    thread_local! {
+        static SOCKETS: RefCell<HashMap<String, Rc<Vec<u32>>>> = RefCell::new(HashMap::new());
+    }
+    if let Some(s) = SOCKETS.with(|c| c.borrow().get(version).cloned()) {
+        return Ok(s);
+    }
+    let json = load_tree(version)?;
+    let version_num = tree_version_num(version)?;
+    let (legacy, _) = split_alternate_ascendancies(json)?;
+    let modern = version_num >= 3.1;
+    let mut out = Vec::new();
+    for (id, raw) in raw_nodes_of(json, version_num, &legacy)? {
+        let class_start = if modern {
+            raw.class_start_index
+        } else {
+            raw.spc.as_ref().and_then(|s| s.index(0).copied())
+        };
+        // the ladder of `classify_node`: ClassStart, AscendClassStart, Mastery, then Socket
+        if class_start.is_some()
+            || raw.is_ascendancy_start == Some(true)
+            || raw.m == Some(true)
+            || raw.is_mastery == Some(true)
+            || raw.is_jewel_socket != Some(true)
+        {
+            continue;
+        }
+        out.push(id);
+    }
+    let out = Rc::new(out);
+    SOCKETS.with(|c| c.borrow_mut().insert(version.to_owned(), out.clone()));
+    Ok(out)
 }
 
 const LEGACY_SKILLS_PER_ORBIT: [f64; 5] = [1.0, 6.0, 12.0, 12.0, 40.0];
@@ -433,6 +538,28 @@ impl PassiveTree {
             .clone()
             .unwrap_or_else(|| LEGACY_SKILLS_PER_ORBIT.to_vec());
         let orbit_radii = json.constants.orbit_radii.clone().unwrap_or_else(|| LEGACY_ORBIT_RADII.to_vec());
+        // :132-176 -- hide the legacy alternate ascendancies; :171-175 nil when none is left.
+        let (legacy_ascendancies, kept) = split_alternate_ascendancies(json)?;
+        let alternate_ascendancies = (!kept.is_empty()).then(|| {
+            kept.into_iter()
+                .map(|(k, id, name)| {
+                    (
+                        k,
+                        AscendClass {
+                            id,
+                            name,
+                            start_node_id: None,
+                        },
+                    )
+                })
+                .collect::<Vec<_>>()
+        });
+        // :208-225 -- `secondaryAscendNameMap[ascendClass.id]` (an alternate without an id would index nil: none has one).
+        let secondary_ascend_name_map = alternate_ascendancies.as_ref().map(|alt| {
+            alt.iter()
+                .filter_map(|(k, a)| a.id.clone().map(|id| (id, *k)))
+                .collect::<IndexMap<_, _>>()
+        });
         let mut t = PassiveTree {
             parse_mode: mode,
             tree_version: version.to_owned(),
@@ -459,9 +586,11 @@ impl PassiveTree {
             nodes_in_radius: HashMap::new(),
             legion: std::cell::OnceCell::new(),
             tattoo: std::cell::OnceCell::new(),
+            alternate_ascendancies,
+            secondary_ascend_name_map,
+            legacy_ascendancies,
             unimplemented: vec![
                 "PassiveTree.lua:79-80 legion and tattoo passives are built on first use (crate::timeless, crate::tattoo)".into(),
-                "PassiveTree.lua:131-172 alternate_ascendancies / secondaryAscendNameMap (P5)".into(),
                 "PassiveTree.lua:232-500 assets, sprites, node overlays (display only)".into(),
                 "PassiveTree.lua:623-640 connector polygons (display only)".into(),
                 "PassiveTree.lua:746-751, :771-783 legion/tattoo sprites and the tattoo idMap are display only".into(),
@@ -577,6 +706,10 @@ impl PassiveTree {
                 },
             );
         }
+        // :164-166 `self.groups[groupId] = nil` for the groups of the dropped legacy nodes.
+        for g in legacy_groups(json, &self.legacy_ascendancies) {
+            self.groups.remove(&g);
+        }
         for (id, raw) in self.raw_nodes()? {
             let mut node = self.migrate_node(id, raw);
             self.classify_node(&mut node, raw);
@@ -588,23 +721,18 @@ impl PassiveTree {
         Ok(())
     }
 
-    /// `pairs(self.nodes)` (:521) keyed by `nodeMap[node.id]` (:543), ascending id (D13). The id is the migrated `node.id`
-    /// (:525-528: `node.skill` on >= 3.10, the legacy `id` before) -- not the table key: 2_6 keeps `nodes` as an array.
+    /// The tree's nodes ([`raw_nodes_of`]).
     fn raw_nodes(&self) -> Result<Vec<(u32, &'static RawNode)>, TreeError> {
-        let json = self.json;
-        let mut ids: Vec<(u32, &'static RawNode)> = Vec::with_capacity(json.nodes.len());
-        for (key, raw) in json.nodes.iter() {
-            // :510 `self.nodes.root = nil` (>= 3.10).
-            if self.version_num >= 3.1 && key == "root" {
-                continue;
-            }
-            let id = if self.version_num >= 3.1 { raw.skill } else { raw.id }
-                .and_then(as_id)
-                .ok_or_else(|| TreeError(format!("PassiveTree: node '{key}' has no id")))?;
-            ids.push((id, raw));
-        }
-        ids.sort_by_key(|(id, _)| *id);
-        Ok(ids)
+        raw_nodes_of(self.json, self.version_num, &self.legacy_ascendancies)
+    }
+
+    /// `self.ascendNameMap[name]` of an alternate ascendancy (:214-224, set after the classes' entries, so it wins): its Lua key.
+    fn alternate_key(&self, name: &str) -> Option<i64> {
+        self.alternate_ascendancies
+            .as_ref()?
+            .iter()
+            .find(|(_, a)| a.id.as_deref() == Some(name))
+            .map(|(k, _)| *k)
     }
 
     /// :522-541 plus the `<= 3.09` passive-point stat line (:538-540).
@@ -677,8 +805,15 @@ impl PassiveTree {
         }
         if node.is_ascendancy_start {
             node.ty = NodeType::AscendClassStart;
-            // Lua indexes `ascendNameMap[...]` unguarded; an alternate ascendancy (3.22+) is not in our map (P5).
-            if let Some(e) = node.ascendancy_name.as_ref().and_then(|n| self.ascend_name_map.get(n)).copied() {
+            // :554-555 `self.ascendNameMap[node.ascendancyName].ascendClass.startNodeId` -- an alternate ascendancy's entry
+            // (:214-224) or a class's; Lua indexes it unguarded.
+            let name = node.ascendancy_name.as_deref().unwrap_or_default();
+            if let Some(k) = self.alternate_key(name) {
+                let alt = self.alternate_ascendancies.as_mut().expect("alternate_key found it");
+                if let Some((_, a)) = alt.iter_mut().find(|(key, _)| *key == k) {
+                    a.start_node_id = Some(node.id);
+                }
+            } else if let Some(e) = self.ascend_name_map.get(name).copied() {
                 self.classes[e.class_id].classes[e.ascend_class_id].start_node_id = Some(node.id);
             }
             return;
@@ -760,8 +895,12 @@ impl PassiveTree {
         }
     }
 
-    /// `self.ascendNameMap[name].class.name`; an unknown name (alternate ascendancies, P5) reads "" as in pob-ts.
+    /// `self.ascendNameMap[name].class.name`: "alternate_ascendancies" for an alternate ascendancy (:210-217); an unknown name reads
+    /// "" as in pob-ts.
     fn ascend_class_name(&self, asc: &str) -> String {
+        if self.alternate_key(asc).is_some() {
+            return "alternate_ascendancies".into();
+        }
         self.ascend_name_map
             .get(asc)
             .map(|e| self.classes[e.class_id].name.clone())

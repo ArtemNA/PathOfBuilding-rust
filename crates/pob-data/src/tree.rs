@@ -211,6 +211,32 @@ impl TreeJson {
             LuaTable::Object(m) => m.get(class_id.to_string().as_str()),
         }
     }
+
+    /// `pairs(tree.alternate_ascendancies)` as `(Lua key, id, name)` in ascending key order: a JSON array is a Lua sequence (key =
+    /// index + 1), an object has number keys. Empty when the tree has none (PassiveTree.lua:133).
+    pub fn alternate_ascendancy_list(&self) -> Result<Vec<(i64, Option<String>, String)>, DataError> {
+        let entry = |k: i64, v: &Json| {
+            let id = v.get("id").and_then(Json::as_str).map(str::to_owned);
+            let name = v.get("name").and_then(Json::as_str).unwrap_or_default().to_owned();
+            (k, id, name)
+        };
+        let mut out = Vec::new();
+        match self.alternate_ascendancies.as_ref() {
+            None | Some(Json::Null) => {}
+            Some(Json::Array(a)) => out.extend(a.iter().enumerate().map(|(i, v)| entry(i as i64 + 1, v))),
+            Some(Json::Object(o)) => {
+                for (k, v) in o {
+                    let k: i64 = k
+                        .parse()
+                        .map_err(|_| DataError(format!("pob-data: alternate_ascendancies key '{k}' is not a number")))?;
+                    out.push(entry(k, v));
+                }
+                out.sort_by_key(|e| e.0);
+            }
+            Some(v) => return Err(DataError(format!("pob-data: alternate_ascendancies is {v}"))),
+        }
+        Ok(out)
+    }
 }
 
 /// The trees committed under `data/tree/` (golden versions + latest); the other 37 live in `data/tree/_ondemand/`.
