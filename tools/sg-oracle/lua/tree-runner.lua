@@ -15,7 +15,7 @@ local base = GetScriptPath()
 local UPSTREAM = dofile(base .. "/upstream.lua") -- written by run.ps1 from tools/upstream.json
 local POB = UPSTREAM.root .. "src/"
 local POB_ROOT = UPSTREAM.root
-local BUILDS = "C:/pob-work/pob-rust/builds/pc/3.29/"
+local BUILDS = "../../../builds/pc/3.29/"
 local USER = base .. "/user"
 local OUT = base .. "/out/tree/"
 local shotDir = GetRuntimePath() .. "/SimpleGraphic/Screenshots/"
@@ -29,7 +29,8 @@ arg = { }
 for _, d in ipairs({ "out", "out/tree", "user", "user/Path of Building", "user/Path of Building/Builds" }) do
 	MakeDir(base .. "/" .. d)
 end
-local BUILD_FILES = { "build-a", "build-f", "build-g", "build-e", "build-d" }
+local LOCAL_BUILDS = dofile(base .. "/local-builds.lua") -- personal builds, not in git
+local BUILD_FILES = LOCAL_BUILDS.tree
 for _, b in ipairs(BUILD_FILES) do
 	writeAll(USER .. "/Path of Building/Builds/" .. b .. ".xml", readAll(BUILDS .. b .. ".xml"))
 end

@@ -22,7 +22,24 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::rc::Rc;
 
-const BUILDS: &str = "C:/pob-work/pob-rust/builds/pc/3.29/";
+const BUILDS: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../builds/pc/3.29/");
+
+/// A list of personal builds from the local `builds/local-builds.json` (not in git); empty without it.
+fn local_builds(key: &str) -> Vec<String> {
+    let p = concat!(env!("CARGO_MANIFEST_DIR"), "/../../builds/local-builds.json");
+    let v: Option<serde_json::Value> = std::fs::read_to_string(p).ok().and_then(|t| serde_json::from_str(&t).ok());
+    v.and_then(|v| v[key].as_array().map(|a| a.iter().filter_map(|x| x.as_str().map(str::to_owned)).collect()))
+        .unwrap_or_default()
+}
+
+/// The gates need the personal builds and the oracle's records of them (`fixtures/ui/`), neither is in git.
+fn skip(test: &str) -> bool {
+    let missing = local_builds("ui_root").is_empty() || !scene::oracle_dir().join("fixtures/ui").is_dir();
+    if missing {
+        eprintln!("SKIPPED {test}: no personal builds or fixtures/ui");
+    }
+    missing
+}
 
 fn norm(v: &Value) -> Value {
     match v {
@@ -46,10 +63,10 @@ impl Sandbox {
         let builds = root.join("Path of Building/Builds");
         std::fs::create_dir_all(builds.join("Merc")).expect("mkdir");
         std::fs::create_dir_all(builds.join("Empty")).expect("mkdir");
-        for b in ["build-g", "build-i", "build-d", "build-o", "build-h", "build-j"] {
+        for b in local_builds("ui_root") {
             std::fs::copy(format!("{BUILDS}{b}.xml"), builds.join(format!("{b}.xml"))).expect("copy build");
         }
-        for b in ["build-c", "build-a"] {
+        for b in local_builds("ui_merc") {
             std::fs::copy(format!("{BUILDS}{b}.xml"), builds.join(format!("Merc/{b}.xml"))).expect("copy build");
         }
         std::fs::copy(
@@ -344,6 +361,9 @@ fn scenario_names() -> Vec<String> {
 
 #[test]
 fn ui_states_equal_original() {
+    if skip("ui_states_equal_original") {
+        return;
+    }
     let mut failures = Vec::new();
     for name in scenario_names() {
         let rec = oracle_record(&name);
@@ -382,6 +402,9 @@ fn ui_states_equal_original() {
 /// The file-function probe of the oracle (MakeDir / RemoveDir / NewFileSearch) = `pob_gfx::fs`.
 #[test]
 fn fs_probe_equals_original() {
+    if skip("fs_probe_equals_original") {
+        return;
+    }
     let rec = oracle_record(&scenario_names()[0]);
     let p = &rec["probe"];
     let dir = std::env::temp_dir().join(format!("pob-ui-u2b-probe-{}", std::process::id()));
@@ -435,6 +458,9 @@ fn fs_probe_equals_original() {
 #[test]
 #[ignore = "needs a GPU adapter (or POB_GFX_WARP=1); run with --ignored"]
 fn ui_pixels_equal_original() {
+    if skip("ui_pixels_equal_original") {
+        return;
+    }
     let mut r = pob_gfx::Renderer::new_offscreen().expect("wgpu adapter");
     let mut failures = Vec::new();
     for name in scenario_names() {

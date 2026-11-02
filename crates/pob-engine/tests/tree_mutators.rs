@@ -7,6 +7,13 @@ use std::path::PathBuf;
 use pob_engine::engine::Engine;
 use pob_tree::NodeType;
 
+/// A list of personal builds from the local `builds/local-builds.json` (not in git); empty without it.
+fn local_builds(key: &str) -> Vec<String> {
+    let p = concat!(env!("CARGO_MANIFEST_DIR"), "/../../builds/local-builds.json");
+    let v: Option<serde_json::Value> = std::fs::read_to_string(p).ok().and_then(|t| serde_json::from_str(&t).ok());
+    v.and_then(|v| v[key].as_array().map(|a| a.iter().filter_map(|x| x.as_str().map(str::to_owned)).collect()))
+        .unwrap_or_default()
+}
 fn inputs() -> Vec<(String, String)> {
     let upstream: serde_json::Value = serde_json::from_str(
         &std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/../../tools/upstream.json")).expect("upstream"),
@@ -17,7 +24,7 @@ fn inputs() -> Vec<(String, String)> {
     let golden = format!("{root}/spec/TestBuilds/3.13/Generals Perforate Zerker.xml");
     out.push(("golden".to_string(), std::fs::read_to_string(golden).expect("golden")));
     let dir = PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/../../builds/pc/3.29"));
-    for name in ["build-a", "build-f", "build-g", "build-e"] {
+    for name in local_builds("mutators") {
         if let Ok(x) = std::fs::read_to_string(dir.join(format!("{name}.xml"))) {
             out.push((name.to_string(), x));
         }

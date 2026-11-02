@@ -11,6 +11,13 @@ use pob_calc::{CalculateOptions, StatValue};
 use pob_engine::save::save_tree_of;
 use serde_json::Value as Json;
 
+/// A list of personal builds from the local `builds/local-builds.json` (not in git); empty without it.
+fn local_builds(key: &str) -> Vec<String> {
+    let p = concat!(env!("CARGO_MANIFEST_DIR"), "/../../builds/local-builds.json");
+    let v: Option<serde_json::Value> = std::fs::read_to_string(p).ok().and_then(|t| serde_json::from_str(&t).ok());
+    v.and_then(|v| v[key].as_array().map(|a| a.iter().filter_map(|x| x.as_str().map(str::to_owned)).collect()))
+        .unwrap_or_default()
+}
 fn lines<'a>(fx: &'a Json, key: &str) -> Vec<&'a str> {
     fx[key]
         .as_array()
@@ -94,7 +101,7 @@ fn invalid_socket_items_match_luajit() {
 #[ignore = "perf"]
 fn legacy_load_perf() {
     let pc = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../builds/pc");
-    for name in ["build-k", "build-l", "build-m", "build-n"] {
+    for name in local_builds("legacy_perf") {
         let Ok(text) = pob_build::read_build_file(pc.join(format!("{name}.xml"))) else {
             println!("{name}: absent");
             continue;

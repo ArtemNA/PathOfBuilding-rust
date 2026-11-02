@@ -22,3 +22,29 @@
 /tools/sg-oracle/fixtures/build/*.xml
 # U3a: screenshots and states of personal builds (builds/pc): names, stats, passive trees; the tests skip without them
 /tools/sg-oracle/fixtures/tree/
+
+# Local only: everything the agents use (plan, rules, prompts, cards, notes) and everything personal
+/PLAN.md
+/PROMPT.md
+/UPDATE-PROMPT.md
+/CLAUDE.md
+/COMMITS.md
+/ORCHESTRATION.md
+/AGENT_TEMPLATE.md
+/tasks/
+/KNOWLEDGE/
+/reference/
+/builds/local-builds.json
+/tools/sg-oracle/lua/local-builds.lua
+/tools/sg-oracle/fixtures/build/
+/tools/sg-oracle/fixtures/ui/
+/tools/sg-oracle/scenes/build/edit.json
+/tools/sg-oracle/scenes/build/open.json
+/tools/sg-oracle/scenes/build/parts.json
+/tools/sg-oracle/scenes/build/saveas.json
+/tools/sg-oracle/scenes/tree/idle.json
+/tools/sg-oracle/scenes/tree/interact.json
+/tools/sg-oracle/scenes/tree/offscreen.json
+/tools/sg-oracle/scenes/tree/static.json
+/tools/sg-oracle/scenes/tree/tips.json
+/tools/sg-oracle/scenes/tree/usershots.json

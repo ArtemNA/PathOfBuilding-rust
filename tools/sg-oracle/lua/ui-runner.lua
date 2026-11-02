@@ -19,7 +19,7 @@ local base = GetScriptPath()
 local UPSTREAM = dofile(base .. "/upstream.lua") -- written by run.ps1 from tools/upstream.json
 local POB = UPSTREAM.root .. "src/"
 local POB_ROOT = UPSTREAM.root
-local BUILDS = "C:/pob-work/pob-rust/builds/pc/3.29/"
+local BUILDS = "../../../builds/pc/3.29/"
 local SRC = base .. "/src/"
 local USER = base .. "/user"
 local OUT = base .. "/out/ui/"
@@ -95,10 +95,11 @@ local stubs = {
 }
 for name, text in pairs(stubs) do writeAll(SRC .. name .. ".lua", text) end
 -- Test build folder: 6 builds at the root, 2 in "Merc", empty folder "Empty".
-for _, b in ipairs({ "build-g", "build-i", "build-d", "build-o", "build-h", "build-j" }) do
+local LOCAL_BUILDS = dofile(base .. "/local-builds.lua") -- personal builds, not in git
+for _, b in ipairs(LOCAL_BUILDS.ui_root) do
 	writeAll(USER .. "/Path of Building/Builds/" .. b .. ".xml", readAll(BUILDS .. b .. ".xml"))
 end
-for _, b in ipairs({ "build-c", "build-a" }) do
+for _, b in ipairs(LOCAL_BUILDS.ui_merc) do
 	writeAll(USER .. "/Path of Building/Builds/Merc/" .. b .. ".xml", readAll(BUILDS .. b .. ".xml"))
 end
 writeAll(USER .. "/Path of Building/Settings.xml", readAll(base .. "/scenes/ui/Settings.xml"))

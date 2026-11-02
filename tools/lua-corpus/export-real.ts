@@ -458,5 +458,5 @@ return { tree = text, composeError = err, loadNotes = LOAD.notes }
 
 if (process.argv[2] === 'tree-save') await treeSave(process.argv[3] ? new RegExp(process.argv[3]) : undefined)
 else if (process.argv[2] === 'perf') await perf(new RegExp(process.argv[3] ?? '^3\\.29/'))
-else if (process.argv[2] === 'perf-load') await perfLoad(new RegExp(process.argv[3] ?? '^3\\.29/build-c'))
+else if (process.argv[2] === 'perf-load') await perfLoad(new RegExp(process.argv[3] ?? '^3\\.29/'))
 else await fixtures(process.argv[2] ? new RegExp(process.argv[2]) : undefined)

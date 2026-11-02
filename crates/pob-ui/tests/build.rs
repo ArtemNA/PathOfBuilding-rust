@@ -23,8 +23,14 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::rc::Rc;
 
-const BUILDS: &str = "C:/pob-work/pob-rust/builds/pc/3.29/";
-const BUILD_FILES: [&str; 5] = ["build-a", "build-f", "build-p", "build-e", "build-d"];
+const BUILDS: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../builds/pc/3.29/");
+/// A list of personal builds from the local `builds/local-builds.json` (not in git); empty without it.
+fn local_builds(key: &str) -> Vec<String> {
+    let p = concat!(env!("CARGO_MANIFEST_DIR"), "/../../builds/local-builds.json");
+    let v: Option<serde_json::Value> = std::fs::read_to_string(p).ok().and_then(|t| serde_json::from_str(&t).ok());
+    v.and_then(|v| v[key].as_array().map(|a| a.iter().filter_map(|x| x.as_str().map(str::to_owned)).collect()))
+        .unwrap_or_default()
+}
 const GOLDEN: &str = "Generals Perforate Zerker";
 
 fn norm(v: &Value) -> Value {
@@ -54,7 +60,7 @@ impl Sandbox {
         let _ = std::fs::remove_dir_all(&root);
         let builds = root.join("Path of Building/Builds");
         std::fs::create_dir_all(&builds).expect("mkdir");
-        for b in BUILD_FILES {
+        for b in local_builds("build") {
             std::fs::copy(format!("{BUILDS}{b}.xml"), builds.join(format!("{b}.xml"))).expect("copy build");
         }
         std::fs::copy(
@@ -446,7 +452,10 @@ fn first_diff(a: &Value, b: &Value, path: &str) -> Option<String> {
 /// What the gates read that is not in git: the saved XML records of the oracle (`fixtures/build/*.xml`, `.gitignore`) and the personal builds.
 /// The reason to skip, else `None`.
 fn missing_inputs() -> Option<String> {
-    let b = format!("{BUILDS}{}.xml", BUILD_FILES[0]);
+    let Some(first) = local_builds("build").into_iter().next() else {
+        return Some("builds/local-builds.json is missing (personal builds)".to_owned());
+    };
+    let b = format!("{BUILDS}{first}.xml");
     if !std::path::Path::new(&b).exists() {
         return Some(format!("{b} is missing (personal builds)"));
     }
@@ -570,7 +579,7 @@ fn build_states_equal_original() {
 /// "New" in the build list (`main:SetMode("BUILD", false, "Unnamed build")`): an empty build opens (not oracle-gated: a smoke test).
 #[test]
 fn new_build_opens() {
-    if !std::path::Path::new(&format!("{BUILDS}{}.xml", BUILD_FILES[0])).exists() {
+    if local_builds("build").is_empty() {
         eprintln!("SKIPPED new_build_opens: no personal builds (its sandbox copies them)");
         return;
     }
