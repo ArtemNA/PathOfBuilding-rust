@@ -92,3 +92,49 @@ fn inflated_luts_equal_the_bins_luajit_read() {
         assert_eq!(sha256_hex(b), want["sha256"].as_str().unwrap(), "{stem} sha256");
     }
 }
+
+/// U3d: where the first Glorious Vanity read goes (`POB_LUT_MEASURE`-free, a measurement: run alone, in release). DataJewelFileLoader.lua only reads and inflates; this port also checks the sha256 of every part.
+#[test]
+#[ignore = "a measurement; run alone with --ignored --nocapture --release"]
+fn gv_first_read_measure() {
+    use std::io::Read;
+    let ms = |t: std::time::Instant| t.elapsed().as_secs_f64() * 1e3;
+    let dir = pob_data::timeless::lut_dir();
+    let t = std::time::Instant::now();
+    let parts: Vec<Vec<u8>> = (0..)
+        .map_while(|i| std::fs::read(dir.join(format!("GloriousVanity.zip.part{i}"))).ok())
+        .collect();
+    let read = ms(t);
+    let t = std::time::Instant::now();
+    let hashes: Vec<String> = parts.iter().map(|p| pob_data::sha256::sha256_hex(p)).collect();
+    let sha = ms(t);
+    let all = parts.concat();
+    let t = std::time::Instant::now();
+    let mut out = Vec::new();
+    flate2::read::ZlibDecoder::new(&all[..]).read_to_end(&mut out).expect("inflate");
+    let inflate = ms(t);
+    eprintln!(
+        "{} parts, {} MB -> {} MB: read {read:.1} ms, sha256 {sha:.1} ms ({}), inflate {inflate:.1} ms",
+        parts.len(),
+        all.len() / 1_000_000,
+        out.len() / 1_000_000,
+        hashes.len()
+    );
+    let t = std::time::Instant::now();
+    let id = *node_id_list().nodes.keys().next().expect("a node");
+    read_lut(100.0, id, 1).expect("first");
+    eprintln!("first read_lut of the process (the whole load): {:.1} ms", ms(t));
+    let t = std::time::Instant::now();
+    read_lut(100.0, id, 1).expect("again");
+    eprintln!("the node's next read: {:.4} ms", ms(t));
+    let other = *node_id_list().nodes.keys().nth(1).expect("a node");
+    let t = std::time::Instant::now();
+    read_lut(100.0, other, 1).expect("other");
+    eprintln!("first read of another node: {:.4} ms", ms(t));
+    let t = std::time::Instant::now();
+    let mut n = 0;
+    for seed in 100..=8000 {
+        n += read_lut(f64::from(seed), other, 1).expect("seed").len();
+    }
+    eprintln!("7901 seeds of one node: {:.3} ms ({n} values)", ms(t));
+}

@@ -295,6 +295,140 @@ click(550, 672, { perfClick: 'searchVaal2' });
 add({ ...off, ...d() });
 write('tab-timeless.json', steps);
 
+// tab-abyss (U3d): the Abyss jewels (types 7-11, DataAbyssJewelLookUpTableHelper.lua) on the converted golden.
+steps.length = 0;
+add({ open: 'Generals Perforate Zerker' });
+add({ waitAssets: true });
+add({ ...off, time: 10000 });
+click(971, 730);
+add({ waitAssets: true });
+add({ treeOrder: 'order-taba' });
+key('RETURN');
+add({ ...off, ...d() });
+click(690, 786, { shot: 'ab-open' });
+const pickJewel = (n) => {
+  click(742, JEWEL);
+  click(742, row(JEWEL - 8, n));
+};
+const pickNode = (n) => {
+  click(742, NODE);
+  click(742, row(NODE - 8, n));
+};
+const pickSocket = (n) => {
+  click(742, SOCKET);
+  click(742, row(SOCKET - 8, n));
+};
+pickJewel(7); // Festering Vengeance
+add({ ...off, ...d({ shot: 'ab-tecrod' }) });
+pickSocket(5);
+click(384, 550); // a node with two rolls, by hand: the first line of the desired list
+type('abyss_murderous_notable_18, 1, 2, 0');
+pickNode(2);
+pickNode(3);
+add({ ...off, ...d({ shot: 'ab-tecrod-nodes' }) });
+click(550, 672, { perfClick: 'searchAbyssFirst' });
+add({ ...off, ...d({ shot: 'ab-results' }) });
+click(550, 672, { perfClick: 'searchAbyss' });
+add({ ...off, ...d() });
+click(800, 470);
+add({ cursor: [800, 470] });
+add({ hold: ['LEFTBUTTON'], events: [['KeyDown', 'LEFTBUTTON', true]] });
+add({ release: ['LEFTBUTTON'], events: [['KeyUp', 'LEFTBUTTON']], ...d() });
+add({ ...off, ...d({ shot: 'ab-added' }) });
+click(650, 208); // Filter Nodes
+click(550, 672);
+add({ ...off, ...d({ shot: 'ab-filter' }) });
+click(650, 208);
+pickJewel(8); // Extinguishing Grasp
+click(384, 550);
+type('abyss_searching_notable_27, 2, 1, 1');
+pickNode(2);
+pickNode(10);
+click(550, 672);
+add({ ...off, ...d({ shot: 'ab-ulaman' }) });
+pickJewel(9); // Baleful Dominion
+pickNode(2);
+pickNode(10);
+click(550, 672);
+add({ ...off, ...d() });
+pickJewel(10); // Destructive Aspiration
+pickNode(2);
+pickNode(10);
+click(550, 672);
+add({ ...off, ...d() });
+pickJewel(11); // Reclaimed Malevolence
+add({ ...off, ...d({ shot: 'ab-zorath' }) });
+pickSocket(2); // an allocated socket: the path to the class start
+pickNode(2);
+pickNode(10);
+click(550, 672, { perfClick: 'searchZorath' });
+add({ ...off, ...d({ shot: 'ab-zorath-results' }) });
+click(230, 155); // the required ascendancy outcome
+click(230, row(147, 3));
+add({ ...off, ...d({ shot: 'ab-zorath-outcome' }) });
+click(550, 672);
+add({ ...off, ...d() });
+click(650, 208); // the protected nodes appear
+add({ ...off, ...d({ shot: 'ab-zorath-protect' }) });
+click(146, 220); // the first of them
+click(550, 672);
+add({ ...off, ...d() });
+click(650, 208);
+pickJewel(7);
+pickSocket(1); // All Sockets
+pickNode(2);
+pickNode(3);
+click(550, 672, { perfClick: 'searchAbyssAll' });
+add({ ...off, ...d({ shot: 'ab-all' }) });
+write('tab-abyss.json', steps);
+
+// tab-generate (U3d): the fallback weights, TreeTab.lua:1951-2117: fixed (types 2-6), variable with several stats (1), Abyss additions, the second Generate of the session.
+steps.length = 0;
+add({ open: 'Generals Perforate Zerker' });
+add({ waitAssets: true });
+add({ ...off, time: 10000 });
+click(971, 730);
+add({ waitAssets: true });
+add({ treeOrder: 'order-tabg' });
+key('RETURN');
+add({ ...off, ...d() });
+click(690, 786);
+const generate = (extra = {}) => click(880, 347, extra);
+const FALLBACK = [300, 434];
+pickSocket(5);
+pickJewel(2); // Lethal Pride
+generate({ perfClick: 'generateKarui' });
+add({ ...off, ...d({ shot: 'gen-karui' }) });
+click(...FALLBACK);
+add({ ...off, ...d({ shot: 'gen-karui-list' }) });
+click(550, 672);
+add({ ...off, ...d({ shot: 'gen-karui-results' }) });
+click(200, 434); // Desired Nodes
+pickJewel(4); // Militant Faith: Total Devotion
+generate();
+add({ ...off, ...d() });
+pickJewel(1); // Glorious Vanity
+generate({ perfClick: 'generateVaal' });
+click(...FALLBACK);
+add({ ...off, ...d({ shot: 'gen-vaal' }) });
+click(550, 672);
+add({ ...off, ...d() });
+generate();
+add({ ...off, ...d() });
+click(200, 434);
+pickJewel(7); // Festering Vengeance
+generate({ perfClick: 'generateAbyss' });
+click(...FALLBACK);
+add({ ...off, ...d({ shot: 'gen-abyss' }) });
+generate(); // `modListGenerated` of the additions: no divisor the second time
+add({ ...off, ...d({ shot: 'gen-abyss-2' }) });
+click(742, 347); // another stat
+add({ ...off, ...d({ shot: 'gen-modes' }) });
+click(742, row(339, 3));
+generate();
+add({ ...off, ...d() });
+write('tab-generate.json', steps);
+
 // tab-cover (U3c): what U3b wrote without the oracle: ConvertAll's popup, the tooltip of specSelect, compare-only nodes, the class drop-downs, Connect Path, a cluster socket by click, a poeplanner link.
 steps.length = 0;
 add({ open: 'Generals Perforate Zerker' });

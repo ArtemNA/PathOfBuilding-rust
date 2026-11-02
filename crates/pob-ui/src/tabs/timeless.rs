@@ -1,7 +1,6 @@
 //! `TreeTab:FindTimelessJewel` (TreeTab.lua:1169-2876), `TimelessJewelListControl`, `TimelessJewelSocketControl` (the socket viewer: `DropDownControl::post_draw`).
 //!
-//! `unimplemented` (a note, no crash): the trade URL and the league list (the network, U8), the fallback weights' `Generate` (`GetMiscCalculator` over legion mod lists), Abyss jewels
-//! (types 7-11, `DataAbyssJewelLookUpTableHelper.lua`, not in `pob-data`), what needs the items tab (`AddItemStatDifferences`, sockets: U6).
+//! `unimplemented` (a note, no crash): the trade URL and the league list (the network, U8), what needs the items tab (`AddItemStatDifferences`, sockets: U6).
 
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
@@ -252,6 +251,17 @@ thread_local! {
     static BUILDING: RefCell<IndexMap<String, ControlRef>> = RefCell::new(IndexMap::new());
     static POPUP: RefCell<Option<Rc<PopupDialog>>> = const { RefCell::new(None) };
     static LOCAL: RefCell<Local> = RefCell::new(Local::default());
+}
+
+thread_local! {
+    /// `pairs(nodesInRadius[3])` of each socket in a process of the original (R13: `pairs(self.nodes)` fills the table in another order in every process, tests/tree.rs), as `PassiveTreeView::set_order_sample`.
+    /// Without it: the order of this process, one of those the original can have. It decides the order the search adds non-integer weights in (`Generate`), and so the ties of the results.
+    static RADIUS_ORDER_SAMPLE: RefCell<Option<HashMap<u32, Vec<u32>>>> = const { RefCell::new(None) };
+}
+
+/// See [`RADIUS_ORDER_SAMPLE`].
+pub fn set_radius_order_sample(sample: HashMap<u32, Vec<u32>>) {
+    RADIUS_ORDER_SAMPLE.with_borrow_mut(|s| *s = Some(sample));
 }
 
 fn local<R>(f: impl FnOnce(&mut Local) -> R) -> R {
@@ -747,6 +757,27 @@ fn jewel_item_text(data: &ResultRow, shared: &Shared) -> String {
         .unwrap_or_else(|| "Unknown".into());
     let seed = ts(data.seed);
     let label = format!("[{seed}; {}; {socket_info}]\n", ts(data.total));
+    // :229-283
+    let abyss = |head: &str, base: &str, line: String| {
+        format!(
+            "{head} {label}{base} Eye Jewel\nLeague: Allflame\nLimited to: 1 Historic\nImplicits: 0\n{line}\nPassives affected are Conquered by the Abyssal\nHistoric\n"
+        )
+    };
+    let thrall = |name: &str| format!("Subjugating {seed} souls in the thrall of {name}");
+    match shared.jewel {
+        7 => return abyss("Festering Vengeance", "Murderous", thrall("Tecrod")),
+        8 => return abyss("Extinguishing Grasp", "Searching", thrall("Ulaman")),
+        9 => return abyss("Baleful Dominion", "Hypnotic", thrall("Kurgal")),
+        10 => return abyss("Destructive Aspiration", "Ghastly", thrall("Amanamu")),
+        11 => {
+            return abyss(
+                "Reclaimed Malevolence",
+                "Assembled",
+                format!("Binding {seed} souls to phylacteries to sustain Zorath"),
+            );
+        }
+        _ => {}
+    }
     let variant = if shared.conqueror == 1 {
         "1".to_string()
     } else {
@@ -837,72 +868,7 @@ struct SearchResult {
     desired: IndexMap<String, Desired>,
 }
 
-/// `data.readLUT` of one Glorious Vanity node over all its seeds: `pob_data::timeless::read_lut` sums the node's size bytes on every call (O(seeds)), and the search asks for every
-/// seed of every target. The same bytes and conversions (DataLegionLookUpTableHelper.lua:236-249); what is off the table goes back to `read_lut` and its errors.
-struct GvTarget {
-    raw: &'static [u8],
-    sizes: &'static [u8],
-    starts: Vec<usize>,
-    seed_min: f64,
-    node_index: usize,
-    seed_size: usize,
-}
-
-impl GvTarget {
-    fn new(target: u32) -> Option<GvTarget> {
-        let list = pob_data::timeless::node_id_list();
-        let (_, seed_min, seed_max) = pob_data::timeless::timeless_jewel_type(1)?;
-        let entry = list.nodes.get(&target)?;
-        let data = pob_data::timeless::lut_bytes(1).ok()?;
-        let seed_size = (seed_max - seed_min) as usize + 1;
-        let i = entry.index as usize;
-        let size_offset = list.size as usize * seed_size;
-        let mut from = size_offset;
-        from += list
-            .nodes
-            .values()
-            .filter(|e| (e.index as usize) < i)
-            .map(|e| e.size as usize)
-            .sum::<usize>();
-        let to = from + entry.size as usize;
-        let sizes = data.get(..=size_offset)?;
-        let raw = data.get(from..to)?;
-        let mut starts = Vec::with_capacity(seed_size + 1);
-        let mut off = 0;
-        for k in 0..=seed_size {
-            starts.push(off);
-            off += usize::from(*sizes.get(i * seed_size + k)?);
-        }
-        Some(GvTarget {
-            raw,
-            sizes,
-            starts,
-            seed_min,
-            node_index: i,
-            seed_size,
-        })
-    }
-
-    fn read(&self, seed: f64) -> Option<Vec<u32>> {
-        let offset = (seed - self.seed_min) as usize;
-        let length = usize::from(*self.sizes.get(self.node_index * self.seed_size + offset)?);
-        let start = *self.starts.get(offset)?;
-        let bytes = self.raw.get(start..start + length)?;
-        let conv = &pob_data::timeless::node_id_list().local_id_to_global_id[0];
-        let convert = |b: u8| conv.get(&u32::from(b)).copied().unwrap_or(u32::from(b));
-        let mut out: Vec<u32> = bytes.iter().map(|&b| u32::from(b)).collect();
-        if length == 2 || length == 3 {
-            out[0] = convert(bytes[0]);
-        } else if length == 6 || length == 8 {
-            for i in 0..length / 2 {
-                out[i] = convert(bytes[i]);
-            }
-        }
-        Some(out)
-    }
-}
-
-/// `searchSingleSocket(socketId, socketInfo)` (:2430-2717) for the jewel types 1-6.
+/// `searchSingleSocket(socketId, socketInfo)` (:2430-2717).
 #[allow(clippy::too_many_lines)]
 fn search_single_socket(g: &mut Gfx, socket_id: f64) -> Option<SearchResult> {
     let tree = legion();
@@ -911,15 +877,27 @@ fn search_single_socket(g: &mut Gfx, socket_id: f64) -> Option<SearchResult> {
         return None;
     }
     let jewel = jewel_id();
-    let radius_nodes: Vec<u32> = pob_tree::lj_table::pairs_order(
-        &tree
-            .nodes_in_radius(tn.id)
-            .map(|r| r[2].iter().map(|&i| f64::from(i)).collect::<Vec<_>>())
-            .unwrap_or_default(),
-    )
-    .into_iter()
-    .map(|i| i as u32)
-    .collect();
+    let is_abyss = jewel >= 7;
+    let spec = engine_read(pob_engine::engine::Engine::spec_rc);
+    // :2437-2440
+    let zorath_path = if jewel == 11 {
+        Some(spec.shortest_path_to_class_start(tn.id)?)
+    } else {
+        None
+    };
+    let radius_nodes: Vec<u32> = RADIUS_ORDER_SAMPLE
+        .with_borrow(|s| s.as_ref().and_then(|m| m.get(&tn.id).cloned()))
+        .unwrap_or_else(|| {
+            pob_tree::lj_table::pairs_order(
+                &tree
+                    .nodes_in_radius(tn.id)
+                    .map(|r| r[2].iter().map(|&i| f64::from(i)).collect::<Vec<_>>())
+                    .unwrap_or_default(),
+            )
+            .into_iter()
+            .map(|i| i as u32)
+            .collect()
+        });
     let leg = tree.legion().expect("legion");
     let (search, fallback, protected, protected_count, allocated_in_radius) = local(|l| {
         (
@@ -1033,11 +1011,10 @@ fn search_single_socket(g: &mut Gfx, socket_id: f64) -> Option<SearchResult> {
     }
     let root_nodes: Vec<u32> = tree.classes.iter().filter_map(|c| c.start_node_id).collect();
     let filter = ctl::<CheckBoxControl>("socketFilter").state.get();
-    let spec = engine_read(pob_engine::engine::Engine::spec_rc);
     let granted = engine_read(|e| e.granted_passives_rc());
     let mut allocated: HashMap<u32, bool> = HashMap::new();
     let mut unalloc_distance: HashMap<u32, f64> = HashMap::new();
-    if filter {
+    if filter && !is_abyss {
         let d = td(|t| t.socket_filter_distance);
         for &id in &radius_nodes {
             allocated.insert(id, granted.contains_key(&id) || spec.node(id).is_some_and(|n| n.alloc));
@@ -1049,7 +1026,7 @@ fn search_single_socket(g: &mut Gfx, socket_id: f64) -> Option<SearchResult> {
     let dist = td(|t| t.socket_filter_distance);
     let mut target_nodes: Vec<u32> = Vec::new();
     let (mut attribute_smalls, mut other_smalls) = (0.0, 0.0);
-    for &id in &radius_nodes {
+    for &id in radius_nodes.iter().filter(|_| !is_abyss) {
         let n = tree.node(id).expect("radius node");
         if !root_nodes.contains(&id)
             && !n.is_jewel_socket
@@ -1079,18 +1056,6 @@ fn search_single_socket(g: &mut Gfx, socket_id: f64) -> Option<SearchResult> {
     let mut table = pob_tree::lj_table::LjTable::new();
     let mut seeds: HashMap<u64, IndexMap<String, NodeResult>> = HashMap::new();
     let mut weights: HashMap<u64, f64> = HashMap::new();
-    // what the walk reads of a target node, once
-    let gv: Vec<Option<GvTarget>> = target_nodes
-        .iter()
-        .map(|&id| {
-            if jewel != 1 {
-                return None;
-            }
-            // the first read loads the table (`loadTimelessJewel`), with upstream's errors
-            pob_data::timeless::read_lut(seed_min, id, 1).unwrap_or_else(|e| panic!("{}", e.0));
-            GvTarget::new(id)
-        })
-        .collect();
     let targets: Vec<(u32, &str, bool)> = target_nodes
         .iter()
         .map(|&id| {
@@ -1113,11 +1078,58 @@ fn search_single_socket(g: &mut Gfx, socket_id: f64) -> Option<SearchResult> {
             e.names.push(name.to_string());
             *w += weight;
         };
-        for (k, &(target, name, is_protected)) in targets.iter().enumerate() {
-            let data = match gv[k].as_ref().and_then(|t| t.read(cur_seed)) {
-                Some(d) => d,
-                None => pob_data::timeless::read_lut(cur_seed, target, jewel).unwrap_or_else(|e| panic!("{}", e.0)),
-            };
+        if is_abyss {
+            // :2572-2609 Abyss files name the affected passives directly
+            let affected =
+                pob_data::timeless::read_abyss_jewel_lut(cur_seed, tn.id, jewel, zorath_path.as_deref(), Some(&spec.cur_ascend_class_name))
+                    .unwrap_or_else(|e| panic!("{}", e.0));
+            let keys: Vec<f64> = affected.keys().map(|&k| f64::from(k)).collect();
+            for target in pob_tree::lj_table::pairs_order(&keys) {
+                let target = target as u32;
+                let tree_node = tree.node(target);
+                let mut score =
+                    tree_node.is_some_and(|n| !root_nodes.contains(&target) && !n.is_jewel_socket && n.ty != pob_tree::NodeType::Keystone);
+                let Some(treen) = tree_node.filter(|_| score) else { continue };
+                if treen.ascendancy_name.is_some() && protected.get(&treen.dn).copied().unwrap_or(false) {
+                    res = None;
+                    break;
+                }
+                if filter && zorath_path.is_none() {
+                    let is_allocated = granted.contains_key(&target) || spec.alloc_nodes.contains_key(&target);
+                    let distance = spec
+                        .node(target)
+                        .unwrap_or_else(|| panic!("Classes/TreeTab.lua:2585: attempt to index a nil value (spec.nodes[{target}])"))
+                        .path_dist;
+                    score = is_allocated || (dist > 0.0 && distance <= dist);
+                }
+                if !score {
+                    continue;
+                }
+                let name = treen.name.as_deref().unwrap_or("");
+                for component in &affected[&target] {
+                    // :2590 `data.resolveAbyssJewelComponent(component, treeData.legion)`
+                    let changed: Option<(&str, &pob_data::wire::OrderedMap<pob_data::timeless::LegionStat>)> = match component.ty {
+                        1 => (component.id + 1)
+                            .checked_sub(additions + 1)
+                            .and_then(|i| leg.nodes.get(i as usize))
+                            .map(|n| (n.id.as_str(), n.stat_defs)),
+                        2 => leg.additions.get(component.id as usize).map(|a| (a.id.as_str(), a.stats)),
+                        _ => None,
+                    };
+                    let Some((changed_id, stats)) = changed else { continue };
+                    let Some(d) = desired.get(changed_id) else { continue };
+                    let (_, roll1) = pob_data::timeless::abyss_component_roll(component, stats, 1);
+                    let (stat2, roll2) = pob_data::timeless::abyss_component_roll(component, stats, 2);
+                    let mut weight = d.weight * roll1.unwrap_or(1.0);
+                    if stat2.is_some() {
+                        weight += d.weight2 * roll2.unwrap_or(1.0);
+                    }
+                    add(res.as_mut().expect("seed result"), changed_id, weight, name, &mut w);
+                }
+            }
+        }
+        for &(target, name, is_protected) in &targets {
+            let data = pob_data::timeless::read_lut(cur_seed, target, jewel).unwrap_or_else(|e| panic!("{}", e.0));
             if data.is_empty() {
                 g.con_printf(&format!("Missing LUT: {}", jewel_label(jewel)));
                 continue;
@@ -1320,13 +1332,6 @@ fn shared_of(socket: Option<JewelSocket>, desired: IndexMap<String, Desired>) ->
 
 /// The `Search` button (:2805-2870).
 fn on_search(g: &mut Gfx) {
-    if jewel_id() >= 7 {
-        not_ported(
-            g,
-            "TreeTab.lua:2575-2609 Abyss jewels (DataAbyssJewelLookUpTableHelper.lua: readAbyssJewelLUT is not in pob-data)",
-        );
-        return;
-    }
     let t = tab();
     let socket = td(|d| d.jewel_socket_id).unwrap_or(-1.0);
     let sockets = local(|l| l.sockets.clone());
@@ -1357,6 +1362,194 @@ fn on_search(g: &mut Gfx) {
             after_search();
         }
     }
+}
+
+// --- the fallback weights ----------------------------------------------------------------------------------------------------------------
+
+thread_local! {
+    /// `legionAddition.modListGenerated` of the variable-roll single-stat branch (:2089) by tree version and addition: the tree of a version lives as long as the process upstream. It decides `divisor` of
+    /// the next `Generate`: only the branch that makes the list sets it (:2077-2091).
+    static ADDITION_GENERATED: RefCell<std::collections::HashSet<(String, String)>> = RefCell::new(std::collections::HashSet::new());
+}
+
+/// `fallbackWeightsList` (:2119-2128).
+fn fallback_stats() -> Vec<pob_engine::tree_tab::PowerStat> {
+    let raw = pob_data::rules::rules().power_stat_list.as_array().expect("powerStatList");
+    raw.iter()
+        .zip(pob_engine::tree_tab::power_stat_list())
+        .filter(|(e, p)| e.get("ignoreForItems").and_then(serde_json::Value::as_bool) != Some(true) && p.label != "Name")
+        .map(|(_, p)| p)
+        .collect()
+}
+
+/// `replaceHelperFunc` (:1980-1997).
+fn replace_helper(stat_to_fix: &str, stat_key: &str, stat: &pob_data::timeless::LegionStat, mut value: f64) -> String {
+    if stat.fmt.as_deref() == Some("g") {
+        if stat_key.contains("per_minute") {
+            value = pob_lua::number::round(value / 60.0, Some(1.0));
+        } else if stat_key.contains("permyriad") {
+            value /= 100.0;
+        } else if stat_key.contains("_ms") {
+            value /= 1000.0;
+        }
+    }
+    let sub = |pattern: String| {
+        let out = pob_lua::gsub(
+            stat_to_fix.as_bytes(),
+            pattern.as_bytes(),
+            pob_lua::Repl::Str(ts(value).as_bytes()),
+            None,
+        )
+        .unwrap_or_else(|e| panic!("Classes/TreeTab.lua:1992: {e:?}"))
+        .0;
+        String::from_utf8_lossy(&out).into_owned()
+    };
+    if stat.min != stat.max {
+        sub(format!("%({}%-{}%)", ts(stat.min), ts(stat.max)))
+    } else if stat.min != value {
+        sub(ts(stat.min))
+    } else {
+        stat_to_fix.to_string()
+    }
+}
+
+/// `buildStatModLists(legionPassive)` (:1998-2010): one list per stat, from `data.describeStats({ [stat] = 100, others = 0 }, "stat_descriptions")[1]`.
+fn build_stat_mod_lists(tree: &pob_tree::PassiveTree, id: &str, sorted: &[String]) -> Vec<pob_engine::tree_tab::FallbackLine> {
+    sorted
+        .iter()
+        .map(|key| {
+            let line = pob_data::timeless::legion_stat_line(id, key)
+                .unwrap_or_else(|e| panic!("{}", e.0))
+                .unwrap_or_else(|| panic!("Classes/TreeTab.lua:2007: no description of {key} of {id}"));
+            pob_engine::tree_tab::FallbackLine {
+                mods: tree.parse_mod_list(line),
+                divisor: Some(100.0),
+            }
+        })
+        .collect()
+}
+
+/// `newNode.divisor = ...modList[1].value` (:2052, :2094).
+fn first_mod_value(mods: &[Rc<pob_mods::Mod>], line: u32) -> f64 {
+    match mods.first().map(|m| &m.value) {
+        Some(pob_mods::Value::Num(n)) => *n,
+        other => panic!("Classes/TreeTab.lua:{line}: modList[1].value is not a number: {other:?}"),
+    }
+}
+
+/// `setupFallbackWeights()` (:1978-2117).
+#[allow(clippy::too_many_lines)]
+fn setup_fallback_weights(g: &mut Gfx) {
+    use pob_engine::tree_tab::{FallbackLine, FallbackNode};
+    let tree = legion();
+    let leg = tree.legion().expect("legion");
+    let jewel = jewel_id();
+    let version = engine_read(|e| e.spec_rc().tree_version.clone());
+    let uses_variable_rolls = jewel == 1 || jewel >= 7;
+    let total_ids = |id: &str| -> &'static [&'static str] {
+        match id {
+            "total_strength" => &REVERSE_TOTAL_MOD_IDS[0..3],
+            "total_dexterity" => &REVERSE_TOTAL_MOD_IDS[3..6],
+            "total_devotion" => &REVERSE_TOTAL_MOD_IDS[6..9],
+            _ => &[],
+        }
+    };
+    let total_mod_entry = total_mod(jewel).map(|t| format!("total_{}", t.to_lowercase()));
+    let mods = local(|l| l.mods.clone());
+    let mut ids: Vec<String> = Vec::new();
+    let mut nodes: Vec<FallbackNode> = Vec::new();
+    for entry in &mods {
+        let Some(mod_id) = entry.id.as_deref() else { continue };
+        let is_total = total_mod_entry.as_deref() == Some(mod_id);
+        let matches = |id: &str| id == mod_id || total_ids(mod_id).contains(&id);
+        let mut new_node: Option<FallbackNode> = None;
+        if let Some(node) = leg.nodes.iter().find(|n| matches(&n.id)) {
+            let mut made = FallbackNode::default();
+            if uses_variable_rolls {
+                if node.sorted_stats.len() > 1 {
+                    made.lines = build_stat_mod_lists(&tree, &node.id, &node.sorted_stats);
+                } else {
+                    let original = &node.sd[0];
+                    let key = node.sorted_stats.first().unwrap_or_else(|| {
+                        panic!(
+                            "Classes/TreeTab.lua:1981: attempt to index local 'statMod' (a nil value), {}",
+                            node.id
+                        )
+                    });
+                    let line = replace_helper(original, key, node.stat_defs.get(key).expect("stat"), 100.0);
+                    let list = if line == *original && node.sd.len() > 1 {
+                        // Some fixed game stats represent several display lines; score the complete effect together.
+                        node.stats.mod_list.mods.clone()
+                    } else {
+                        tree.parse_mod_list(&line)
+                    };
+                    made.lines = vec![FallbackLine { mods: list, divisor: None }];
+                    made.divisor = Some(if line == *original { 1.0 } else { 100.0 });
+                }
+            } else {
+                made.lines = vec![FallbackLine {
+                    mods: node.stats.mod_list.mods.clone(),
+                    divisor: None,
+                }];
+                if is_total {
+                    made.divisor = Some(first_mod_value(&node.stats.mod_list.mods, 2052));
+                }
+            }
+            new_node = Some(made);
+        }
+        if new_node.is_none()
+            && let Some(addition) = leg.additions.iter().find(|a| matches(&a.id))
+        {
+            let mut made = FallbackNode::default();
+            if uses_variable_rolls && addition.sorted_stats.len() > 1 {
+                made.lines = build_stat_mod_lists(&tree, &addition.id, &addition.sorted_stats);
+            } else {
+                // `legionAddition.modListGenerated`: the list of the first time, no `divisor` the next times
+                let key = (version.clone(), addition.id.clone());
+                let generated = ADDITION_GENERATED.with_borrow(|m| m.contains(&key));
+                let original = &addition.sd[0];
+                let mut line = original.clone();
+                if uses_variable_rolls {
+                    for (k, stat) in addition.stats.iter() {
+                        line = replace_helper(&line, k, stat, 100.0);
+                    }
+                }
+                let list = tree.parse_mod_list(&line);
+                if !generated {
+                    ADDITION_GENERATED.with_borrow_mut(|m| m.insert(key));
+                    made.divisor = Some(if line == *original { 1.0 } else { 100.0 });
+                }
+                if !uses_variable_rolls && is_total {
+                    made.divisor = Some(first_mod_value(&list, 2094));
+                }
+                made.lines = vec![FallbackLine { mods: list, divisor: None }];
+            }
+            new_node = Some(made);
+        }
+        if let Some(n) = new_node {
+            ids.push(mod_id.to_string());
+            nodes.push(n);
+        }
+    }
+    let list = ctl::<DropDownControl>("fallbackWeightsList");
+    let stat = fallback_stats()
+        .into_iter()
+        .nth(list.sel_index.get().wrapping_sub(1))
+        .expect("the selected fallback mode");
+    let weights = engine_read(|e| e.fallback_weights(&nodes, &stat)).unwrap_or_else(|e| panic!("{e}"));
+    // :2106-2116
+    let round3 = |v: f64| ts(pob_lua::number::round(v * 100.0, Some(3.0)));
+    let mut new_list = String::new();
+    for (id, w) in ids.iter().zip(&weights) {
+        let (w1, w2) = (w[0], w.get(1).copied());
+        if w1 != 0.0 || w2.is_some_and(|v| v != 0.0) {
+            if !new_list.is_empty() {
+                new_list.push('\n');
+            }
+            new_list.push_str(&format!("{id}, {}, {}, 0", round3(w1), round3(w2.unwrap_or(0.0))));
+        }
+    }
+    update_search_list(g, &new_list, true);
 }
 
 // --- the popup ---------------------------------------------------------------------------------------------------------------------------
@@ -2067,16 +2260,7 @@ pub fn find_timeless_jewel(g: &mut Gfx) {
         "^7Search for Node:",
     );
     // :2119-2151 the fallback weights
-    let fallback_items: Vec<String> = pob_data::rules::rules()
-        .power_stat_list
-        .as_array()
-        .expect("powerStatList")
-        .iter()
-        .filter(|e| e.get("ignoreForItems").and_then(serde_json::Value::as_bool) != Some(true))
-        .filter_map(|e| e.get("label").and_then(serde_json::Value::as_str))
-        .filter(|l| *l != "Name")
-        .map(|l| format!("Sort by {l}"))
-        .collect();
+    let fallback_items: Vec<String> = fallback_stats().iter().map(|p| format!("Sort by {}", p.label)).collect();
     let fw = DropDownControl::new(
         g,
         anchor("TOPLEFT", &ns, "BOTTOMLEFT"),
@@ -2102,10 +2286,10 @@ pub fn find_timeless_jewel(g: &mut Gfx) {
         rect(5.0, 0.0, 66.0, 18.0),
         "Generate".to_string(),
         |g| {
-            not_ported(
-                g,
-                "TreeTab.lua:1951-2117 setupFallbackWeights (GetMiscCalculator over legion mod lists)",
-            );
+            setup_fallback_weights(g);
+            ctl::<ButtonControl>("searchListFallbackButton")
+                .label
+                .set("^4Fallback Nodes".to_string());
         },
     );
     fb.tip.set_tooltip_func(|tooltip: &mut Tooltip, g: &Gfx, ()| {

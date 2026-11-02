@@ -19,7 +19,7 @@ use std::sync::{Arc, Mutex};
 
 use indexmap::IndexMap;
 use pob_lua::number::max2;
-use pob_tree::{NodeType, PassiveSpec};
+use pob_tree::{LiveSpecPaths, NodeType, PassiveSpec};
 
 use crate::calculate::CalcError;
 use crate::env::{CalcOverride, OverrideNode};
@@ -497,6 +497,20 @@ impl PowerPlan {
         self.units.len()
     }
 
+    /// `nodeIndex` (:654, :699, :727) after `c` calls: at `[c]`, how many units of the walk, in order, have every call they need among the first `c` calls.
+    pub fn units_after_calls(&self) -> Vec<usize> {
+        let mut out = vec![0; self.jobs.len() + 1];
+        let mut upto = 0;
+        for u in 0..self.units.len() {
+            upto = self.unit_jobs(u).fold(upto, |m, j| m.max(j + 1));
+            out[upto] += 1;
+        }
+        for c in 1..out.len() {
+            out[c] += out[c - 1];
+        }
+        out
+    }
+
     /// The calls unit `u` needs.
     fn unit_jobs(&self, u: usize) -> impl Iterator<Item = usize> {
         let (a, b) = match &self.units[u] {
@@ -717,6 +731,44 @@ fn use_full_dps(mode: &PowerMode) -> Option<bool> {
 
 // --- one session per thread -----------------------------------------------------------------------------------------------------
 
+/// The counter of a walk on threads, what the coroutine's `nodeIndex` / `total` are (CalcsTab.lua:654-657). Readable from another thread while the walk runs.
+#[derive(Debug, Default)]
+pub struct PowerProgress {
+    node_index: AtomicUsize,
+    /// 0: the plan is not made yet.
+    total: AtomicUsize,
+}
+
+impl PowerProgress {
+    /// `nodeIndex` and `total` as they stand.
+    pub fn counts(&self) -> (usize, usize) {
+        (self.node_index.load(Ordering::Relaxed), self.total.load(Ordering::Relaxed))
+    }
+
+    /// `m_floor(nodeIndex/total*100)`, `None` before the plan is made (what the original never sees: its coroutine plans before it first yields).
+    pub fn percent(&self) -> Option<i64> {
+        let (index, total) = self.counts();
+        (total > 0).then(|| (index as f64 / total as f64 * 100.0).floor() as i64)
+    }
+
+    /// The counter at a given point of the walk.
+    pub fn set(&self, node_index: usize, total: usize) {
+        self.total.store(total, Ordering::Relaxed);
+        self.node_index.fetch_max(node_index, Ordering::Relaxed);
+    }
+}
+
+/// What [`build_power_walk`] takes besides the build and the stat.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct PowerWalk<'a> {
+    pub threads: usize,
+    /// Stops the walk (`Ok(None)`).
+    pub cancel: Option<&'a AtomicBool>,
+    /// `node.path` / `node.depends` / `node.pathDist` of the live `build.spec`: the sessions of the walk are fresh loads of the model, whose `allocNodes` table has another history (R32).
+    pub live_paths: Option<&'a LiveSpecPaths>,
+    pub progress: Option<&'a PowerProgress>,
+}
+
 /// A session in the state `CalcsTab:BuildOutput` leaves: `buildOutput(MAIN)`, then `getMiscCalculator`.
 fn ready_session(
     build: &pob_build::BuildModel,
@@ -740,10 +792,50 @@ pub fn build_power_threads(
     threads: usize,
     cancel: Option<&AtomicBool>,
 ) -> Result<Option<PowerResult>, String> {
+    build_power_walk(
+        build,
+        opts,
+        stat,
+        max_depth,
+        PowerWalk {
+            threads,
+            cancel,
+            ..PowerWalk::default()
+        },
+    )
+}
+
+/// [`build_power_threads`] with the live paths and the counter: the plan and the walk read the paths of `walk.live_paths`; the calls only take nodes by index, and the calculation does not read `path`.
+pub fn build_power_walk(
+    build: &pob_build::BuildModel,
+    opts: crate::calculate::CalculateOptions,
+    stat: Option<&PowerStat>,
+    max_depth: Option<f64>,
+    walk: PowerWalk<'_>,
+) -> Result<Option<PowerResult>, String> {
+    let PowerWalk {
+        threads,
+        cancel,
+        live_paths,
+        progress,
+    } = walk;
     let (calc, granted) = ready_session(build, opts)?;
     let spec = calc.session().shared().map_err(|e| e.to_string())?.spec.clone();
+    let plan_spec = match live_paths {
+        Some(live) => {
+            let mut s = (*spec).clone();
+            live.apply(&mut s);
+            Rc::new(s)
+        }
+        None => spec.clone(),
+    };
     let mode = PowerMode::of(stat);
-    let plan = PowerPlan::new(&spec, &granted, mode.clone(), max_depth);
+    let plan = PowerPlan::new(&plan_spec, &granted, mode.clone(), max_depth);
+    let units_after = plan.units_after_calls();
+    if let Some(p) = progress {
+        p.set(units_after[0], plan.total);
+    }
+    let finished = AtomicUsize::new(0);
     let base = Sample::of_run(&calc.base, &mode);
     let n_jobs = plan.jobs.len();
     let jobs = Arc::new(plan.jobs.clone());
@@ -766,6 +858,10 @@ pub fn build_power_threads(
                 Ok(run) => {
                     let s = Sample::of_run(&run, &mode);
                     results.lock().expect("results")[j] = Some(s);
+                    let c = finished.fetch_add(1, Ordering::Relaxed) + 1;
+                    if let Some(p) = progress {
+                        p.set(units_after[c], plan.total);
+                    }
                 }
                 Err(e) => {
                     *failed.lock().expect("failed") = Some(e.0);
@@ -809,7 +905,7 @@ pub fn build_power_threads(
         return Ok(None);
     }
     let samples = results.lock().expect("results").clone();
-    Ok(Some(plan.assemble(&spec, &base, &samples)))
+    Ok(Some(plan.assemble(&plan_spec, &base, &samples)))
 }
 
 // --- TreeTab:BuildPowerReportList -----------------------------------------------------------------------------------------------

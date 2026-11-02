@@ -29,7 +29,7 @@ fn signed(fmt: &str, v: f64) -> Result<String, String> {
 }
 
 impl Engine {
-    fn misc_calculator(&self) -> Result<std::cell::Ref<'_, MiscCalculator>, String> {
+    pub(crate) fn misc_calculator(&self) -> Result<std::cell::Ref<'_, MiscCalculator>, String> {
         if self.misc.borrow().is_none() {
             let sess = CalcSession::new(Rc::new(self.model().clone()), CalculateOptions::default());
             sess.build_output(CalcMode::Main).map_err(|e| e.0)?;
