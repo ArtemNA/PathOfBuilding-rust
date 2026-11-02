@@ -33,6 +33,7 @@ fn opts() -> CalculateOptions {
         parse_mode: pob_calc::ParseMode::CacheOnly,
         // R6.3: the "= pob-ts" gates run without the skill phase (pob-ts has none)
         skills: false,
+        live_alloc_pairs: None,
     }
 }
 
@@ -229,13 +230,14 @@ fn perf_defence() {
         parse_mode: pob_calc::ParseMode::CacheOnly,
         // R6.3: the "= pob-ts" gates run without the skill phase (pob-ts has none)
         skills: false,
+        live_alloc_pairs: None,
     };
     for g in GOLDEN_BUILDS {
-        let _ = run_with(g.name, o);
+        let _ = run_with(g.name, o.clone());
         DEF_MS.with(|v| v.borrow_mut().clear());
         let mut perf = Vec::new();
         for _ in 0..9 {
-            let r = run_with(g.name, o);
+            let r = run_with(g.name, o.clone());
             perf.push(r.timings.perform_ms);
         }
         let d = DEF_MS.with(|v| v.borrow().clone());

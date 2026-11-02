@@ -24,7 +24,7 @@ use crate::{EnvMeta, meta_of};
 /// What `calculate` plugs into perform's `calcs.defence` / `calcs.buildDefenceEstimations` call sites (CalcPerform.lua:
 /// 3792-3795). `None` records the call site in `unimplemented`. The default is the real `defence` (R4.3) and the real
 /// `buildDefenceEstimations` (R4.4b).
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 pub struct CalculateOptions {
     pub defence: Option<PhaseFn>,
     pub estimations: Option<PhaseFn>,
@@ -34,6 +34,8 @@ pub struct CalculateOptions {
     /// The skill phase of initEnv (R6.3, R6-ARCH §2 p. 5): `true` (default) = CalcSetup.lua's skills; `false` = the pre-R6 path (the
     /// "= pob-ts" gates pin it).
     pub skills: bool,
+    /// `pairs(build.spec.allocNodes)` of an edited live spec (R24): the order the run's `copyTable` walks instead of the fresh load's.
+    pub live_alloc_pairs: Option<Vec<f64>>,
 }
 
 impl Default for CalculateOptions {
@@ -43,6 +45,7 @@ impl Default for CalculateOptions {
             estimations: Some(crate::estimations::estimations),
             parse_mode: pob_parser::ParseMode::Full,
             skills: true,
+            live_alloc_pairs: None,
         }
     }
 }

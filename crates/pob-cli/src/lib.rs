@@ -121,7 +121,7 @@ pub fn bench(path: &Path, runs: usize, mode: ParseMode) -> Result<BenchRow, Stri
         parse_mode: mode,
         ..CalculateOptions::default()
     };
-    guarded("bench warm-up", || calculate_file(path, opts))?;
+    guarded("bench warm-up", || calculate_file(path, opts.clone()))?;
     let mut row = BenchRow {
         total: vec![],
         load: vec![],
@@ -134,7 +134,7 @@ pub fn bench(path: &Path, runs: usize, mode: ParseMode) -> Result<BenchRow, Stri
     };
     for _ in 0..runs {
         let t = Instant::now();
-        let res = guarded("bench", || calculate_file(path, opts))?;
+        let res = guarded("bench", || calculate_file(path, opts.clone()))?;
         row.total.push(t.elapsed().as_secs_f64() * 1000.0);
         let Timings {
             load_ms,

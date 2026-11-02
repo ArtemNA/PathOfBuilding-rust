@@ -175,6 +175,8 @@ pub struct Env {
 
     /// `env.allocNodes`: node id -> index into `spec.nodes`, insertion order (D13: pob-ts order, see init_env).
     pub alloc_nodes: IndexMap<u32, usize>,
+    /// The LuaJIT table behind `alloc_nodes` when its order is modelled (R24).
+    pub alloc_table: Option<pob_tree::lj_table::LjTable>,
     /// A ModList.
     pub initial_node_mod_db: StoreRef,
     pub keystones_added: IndexMap<String, bool>,

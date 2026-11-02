@@ -27,7 +27,7 @@ fn main() {
         let opts = CalculateOptions::default();
         let one = || {
             let t = Instant::now();
-            let s = CalcSession::new(model.clone(), opts);
+            let s = CalcSession::new(model.clone(), opts.clone());
             let out = s.build_output(CalcMode::Main).expect("buildOutput");
             let ms = t.elapsed().as_secs_f64() * 1000.0;
             let log = s.log();

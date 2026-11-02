@@ -189,6 +189,11 @@ impl PassiveTreeView {
     }
 
     /// `PassiveTreeView:Load` (:87-103) over what `SaveExtras` read.
+    /// `viewer.highlightRing`.
+    pub fn highlight_ring(&self) -> &ImageHandle {
+        &self.highlight_ring
+    }
+
     pub fn load(&mut self, st: &pob_engine::save::TreeViewState) {
         if let Some(z) = st.zoom_level {
             self.zoom_level = z;
@@ -1062,7 +1067,7 @@ impl PassiveTreeView {
         let no_popups = main().popups.borrow().is_empty();
         let mut draw_tooltip_for: Option<(usize, f64, f64)> = None;
         let jewel_radius = &pob_data::rules::rules().jewel_radii;
-        let radii = jewel_radius.get(latest_radius_key()).expect("jewelRadii");
+        let radii = jewel_radius.get(radius_key(&spec.tree.tree_version)).expect("jewelRadii");
 
         // :815-1110 the nodes
         for &i in &node_order {
@@ -1606,8 +1611,13 @@ fn split_personality_path(e: &Engine, spec: &PassiveSpec) -> Vec<bool> {
 }
 
 /// The key of `data.jewelRadii` of `data.jewelRadius` after Build.lua:606 (the latest tree: "3_16" table, Data.lua:583-601).
-fn latest_radius_key() -> &'static str {
-    "3_16"
+fn radius_key(tree_version: &str) -> &'static str {
+    // `data.jewelRadius` as `SetActiveSpec` leaves it: `data.setJewelRadiiGlobally(curSpec.treeVersion)` (TreeTab.lua:552, Data.lua:583-589)
+    let mut parts = tree_version.split('_').map(|p| p.parse::<u32>().unwrap_or(u32::MAX));
+    match (parts.next(), parts.next()) {
+        (Some(major), Some(minor)) if major <= 3 && minor <= 15 => "3_15",
+        _ => "3_16",
+    }
 }
 
 /// `spec.curSecondaryAscendClass.id`.

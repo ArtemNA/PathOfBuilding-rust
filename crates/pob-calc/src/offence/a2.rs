@@ -626,9 +626,18 @@ pub(super) fn skill_type_stats(off: &mut Off<'_>) {
     // :1926
     run_skill_func(off, "preDamageFunc");
 
-    // :1910-1913 `activeSkill.infoMessage` (display only); the `%d` of a nil count is still the Lua error
-    if off.has_type("Brand") && off.st.player.output.opt_num("AttachedBrandCount").is_none() {
-        panic!("{LUA}:1912: bad argument #2 to 'format' (number expected, got nil)");
+    // :1928-1931 `activeSkill.infoMessage` (display only); the `%d` of a nil count is the Lua error
+    if off.has_type("Brand") {
+        let Some(n) = off.st.player.output.opt_num("AttachedBrandCount") else {
+            panic!("{LUA}:1930: bad argument #2 to 'format' (number expected, got nil)");
+        };
+        let label = if off.sd_truthy("countsAttachedBrandsInDamage") {
+            "Average Damage"
+        } else {
+            "DPS"
+        };
+        let plural = if n == 1.0 { "" } else { "s" };
+        off.sk_mut().info_message = Some(format!("{label} for {} attached Brand{plural}", crate::sf!("%d", n)));
     }
 
     // :1916-1929 corpse and enemy explosions

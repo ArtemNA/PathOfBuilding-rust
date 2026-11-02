@@ -261,9 +261,20 @@ impl Engine {
 
     /// Build.lua:1618-1716 `RefreshSkillSelectControls(controls, self.mainSocketGroup, "")`.
     pub fn skill_select(&self) -> Result<SkillSelect, String> {
-        let res = self.result();
-        let main_group = self.main_socket_group();
-        let Some(st) = res.env.skills.as_ref() else {
+        self.skill_select_in(&self.result().env, self.main_socket_group(), false)
+    }
+
+    /// `RefreshSkillSelectControls(section.controls, self.input.skill_number, "Calcs")` (CalcsTab.lua:145): the `*Calcs` fields of the CALCS run.
+    pub fn skill_select_calcs(&self) -> Result<SkillSelect, String> {
+        let main_group = match self.calcs_input().get("skill_number") {
+            Some(pob_calc::pob_build::InputValue::Num(n)) => *n,
+            _ => 1.0,
+        };
+        self.skill_select_in(&self.calcs_run().env, main_group, true)
+    }
+
+    fn skill_select_in(&self, env: &pob_calc::Env, main_group: f64, calcs: bool) -> Result<SkillSelect, String> {
+        let Some(st) = env.skills.as_ref() else {
             return Ok(SkillSelect {
                 main_group,
                 groups: Vec::new(),
@@ -295,7 +306,12 @@ impl Engine {
             .display_skill_list
             .as_ref()
             .ok_or("Modules/Build.lua:1639: bad argument #1 to 'ipairs' (table expected, got nil)")?;
-        let main_active = group.main_active_skill.unwrap_or(1.0);
+        let main_active = if calcs {
+            group.main_active_skill_calcs
+        } else {
+            group.main_active_skill
+        }
+        .unwrap_or(1.0);
         let skills_data = &st.skills;
         let mut labels = Vec::new();
         for &si in display {
@@ -307,7 +323,7 @@ impl Engine {
                 .and_then(|gem| gem.explode_source.clone());
             labels.push(match explode {
                 Some(ExplodeSource::Node(id)) => {
-                    let n = res.env.spec.node(id).ok_or("explodeSource: unknown node")?;
+                    let n = env.spec.node(id).ok_or("explodeSource: unknown node")?;
                     let tn = n.tree_node();
                     SkillLabel::From(tn.name.clone().unwrap_or_else(|| tn.dn.clone()), None)
                 }
@@ -337,31 +353,40 @@ impl Engine {
             let multi_part = ge.parts.as_ref().is_some_and(|p| p.len() > 1);
             if let Some(parts) = ge.parts.as_ref().filter(|p| p.len() > 1) {
                 let src = src.ok_or_else(src_err)?;
-                let part_sel = src.skill_part.unwrap_or(1.0);
+                let part_sel = if calcs { src.skill_part_calcs } else { src.skill_part }.unwrap_or(1.0);
                 let part = (part_sel.fract() == 0.0 && part_sel >= 1.0 && part_sel as usize <= parts.len())
                     .then(|| &parts[part_sel as usize - 1])
                     .ok_or("Modules/Build.lua:1665: attempt to index field '?' (a nil value)")?;
                 if part.stages == Some(true) {
                     // `stagesMin` is not a field of any part in the data
                     sel.stage_count = Some(tostring(
-                        src.skill_stage_count
-                            .or_else(|| skill_data_num(&active.skill_data, "stagesMax"))
-                            .unwrap_or(1.0),
+                        (if calcs {
+                            src.skill_stage_count_calcs
+                        } else {
+                            src.skill_stage_count
+                        })
+                        .or_else(|| skill_data_num(&active.skill_data, "stagesMax"))
+                        .unwrap_or(1.0),
                     ));
                 }
                 sel.part = Some((parts.iter().map(|p| p.name.clone()).collect(), part_sel));
             }
             if flag("mine") {
                 let src = src.ok_or_else(src_err)?;
-                sel.mine_count = Some(src.skill_mine_count.map_or_else(String::new, tostring));
+                sel.mine_count =
+                    Some(if calcs { src.skill_mine_count_calcs } else { src.skill_mine_count }.map_or_else(String::new, tostring));
             }
             if flag("multiStage") && !multi_part {
                 let src = src.ok_or_else(src_err)?;
                 sel.stage_count = Some(tostring(
-                    src.skill_stage_count
-                        .or_else(|| skill_data_num(&active.skill_data, "stagesMax"))
-                        .or_else(|| skill_data_num(&active.skill_data, "stagesMin"))
-                        .unwrap_or(1.0),
+                    (if calcs {
+                        src.skill_stage_count_calcs
+                    } else {
+                        src.skill_stage_count
+                    })
+                    .or_else(|| skill_data_num(&active.skill_data, "stagesMax"))
+                    .or_else(|| skill_data_num(&active.skill_data, "stagesMin"))
+                    .unwrap_or(1.0),
                 ));
             }
             let skill_minion_list = active.minion_list.as_deref().unwrap_or(&[]);
@@ -377,7 +402,14 @@ impl Engine {
                             item_set_id: set.id,
                         });
                     }
-                    MinionSel::ItemSet(src.skill_minion_item_set.unwrap_or(1.0))
+                    MinionSel::ItemSet(
+                        if calcs {
+                            src.skill_minion_item_set_calcs
+                        } else {
+                            src.skill_minion_item_set
+                        }
+                        .unwrap_or(1.0),
+                    )
                 } else {
                     library_shown = ge.minion_list.as_ref().is_some_and(Vec::is_empty);
                     for id in skill_minion_list {
@@ -386,7 +418,11 @@ impl Engine {
                             minion_id: id.clone(),
                         });
                     }
-                    MinionSel::Minion(src.skill_minion.clone())
+                    MinionSel::Minion(if calcs {
+                        src.skill_minion_calcs.clone()
+                    } else {
+                        src.skill_minion.clone()
+                    })
                 };
                 let enabled = mlist.len() > 1;
                 let skills = match active.minion.as_deref() {
@@ -396,7 +432,12 @@ impl Engine {
                             .iter()
                             .map(|s| skills_data.effects[s.active_effect.borrow().granted_effect].name.clone())
                             .collect(),
-                        src.skill_minion_skill.unwrap_or(1.0),
+                        if calcs {
+                            src.skill_minion_skill_calcs
+                        } else {
+                            src.skill_minion_skill
+                        }
+                        .unwrap_or(1.0),
                     )),
                     None => {
                         mlist.push(MinionEntry::Text("<No spectres in build>".into()));

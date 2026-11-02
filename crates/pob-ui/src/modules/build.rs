@@ -19,12 +19,17 @@ use crate::host::{ControlHost, InputEvent, InputEvents};
 use crate::launch::launch;
 use crate::lua::{self, tostring_num};
 use crate::sg;
+use crate::tabs::calc_breakdown::{CalcBreakdownControl, SidebarData, Source};
+use crate::tabs::calcs::{CalcSection, CalcsTab};
 use crate::tooltip::Tooltip;
 use crate::tree_view::PassiveTreeView;
 use indexmap::IndexMap;
+use pob_engine::calcs::{Entry, sections};
+use pob_engine::calcs_tab::{BdEnv, BreakdownIndexEntry, ForceActor, breakdown_index};
+use pob_engine::display::BreakdownKey;
 use pob_engine::display::DisplaySettings;
 use pob_engine::engine::Engine;
-use pob_engine::shell::{MinionEntry, MinionSel, SkillLabel};
+use pob_engine::shell::{MinionEntry, MinionSel, SkillLabel, SkillSelect};
 use pob_gfx::{Frame, Gfx};
 use std::any::Any;
 use std::cell::{Cell, RefCell};
@@ -127,8 +132,38 @@ pub struct Controls {
     pub warnings: Rc<DrawControl>,
 }
 
+/// The controls `RefreshSkillSelectControls` fills (the side bar's and the Calcs tab's).
+pub struct SkillControls<'a> {
+    pub main_socket_group: &'a Rc<DropDownControl>,
+    pub main_skill: &'a Rc<DropDownControl>,
+    pub main_skill_part: &'a Rc<DropDownControl>,
+    pub main_skill_stage_count: &'a Rc<EditControl>,
+    pub main_skill_mine_count: &'a Rc<EditControl>,
+    pub main_skill_minion: &'a Rc<DropDownControl>,
+    pub main_skill_minion_library: &'a Rc<ButtonControl>,
+    pub main_skill_minion_skill: &'a Rc<DropDownControl>,
+}
+
+/// `self.breakdownInputs` (Build.lua:1378).
+#[derive(Clone, PartialEq)]
+struct BreakdownInputs {
+    data: SidebarData,
+    pin: bool,
+    actor: Option<ForceActor>,
+    source: Option<Rc<SidebarData>>,
+}
+
 pub struct BuildMode {
     pub host: ControlHost,
+    /// `self.calcsTab`.
+    pub calcs_tab: RefCell<Option<Rc<CalcsTab>>>,
+    /// `self.controls.breakdown`.
+    pub breakdown: RefCell<Option<Rc<CalcBreakdownControl>>>,
+    /// `self.overlayPanes`.
+    pub overlay_panes: RefCell<Vec<Rc<CalcSection>>>,
+    overlay_breakdown_control: RefCell<Option<ControlRef>>,
+    breakdown_inputs: RefCell<Option<BreakdownInputs>>,
+    breakdown_index: RefCell<Option<Rc<std::collections::HashMap<String, BreakdownIndexEntry>>>>,
     me: Weak<BuildMode>,
     pub engine: RefCell<Option<Engine>>,
     /// `treeTab.viewer` (`None` until the tab is first drawn; a new one per opened build).
@@ -165,6 +200,12 @@ impl BuildMode {
     pub fn new() -> Rc<Self> {
         Rc::new_cyclic(|me| Self {
             host: ControlHost::new(),
+            calcs_tab: RefCell::new(None),
+            breakdown: RefCell::new(None),
+            overlay_panes: RefCell::new(Vec::new()),
+            overlay_breakdown_control: RefCell::new(None),
+            breakdown_inputs: RefCell::new(None),
+            breakdown_index: RefCell::new(None),
             me: me.clone(),
             engine: RefCell::new(None),
             tree_view: RefCell::new(None),
@@ -201,7 +242,7 @@ impl BuildMode {
     }
 
     /// `main.showThousandsSeparators` & co. as the engine's display settings.
-    fn display_settings() -> DisplaySettings {
+    pub fn display_settings() -> DisplaySettings {
         let m = main();
         let s = m.s.borrow();
         DisplaySettings {
@@ -294,6 +335,9 @@ impl BuildMode {
         let action = self.action_on_save.borrow_mut().take();
         // `ResetModFlags` (:1100-1111): the tabs' flags are the engine's edits — one flag here
         self.mod_flag.set(false);
+        if let Some(t) = self.calcs_tab.borrow().as_ref() {
+            t.undo.mod_flag.set(false);
+        }
         match action.as_deref() {
             Some("LIST") => self.close_build(g),
             Some("EXIT") => g.exit(None),
@@ -519,94 +563,21 @@ impl BuildMode {
             let eng = self.engine.borrow();
             eng.as_ref().expect("engine").skill_select().unwrap_or_else(|e| panic!("{e}"))
         };
-        c.main_socket_group.sel_index.set(sel.main_group as usize);
-        *c.main_socket_group.list.borrow_mut() = sel.groups.iter().map(|l| DropItem::table(l)).collect();
-        c.main_socket_group.check_dropped_width(g, true);
         c.warnings.base.shown.set(!self.warning_lines.borrow().is_empty());
-        let Some(m) = sel.main else {
-            *c.main_socket_group.list.borrow_mut() = vec![DropItem::table("<No skills added yet>")];
-            for s in [&c.main_skill, &c.main_skill_part, &c.main_skill_minion, &c.main_skill_minion_skill] {
-                s.base.shown.set(false);
-            }
-            c.main_skill_mine_count.base.shown.set(false);
-            c.main_skill_stage_count.base.shown.set(false);
-            return;
-        };
-        *c.main_skill.list.borrow_mut() = m
-            .skills
-            .iter()
-            .map(|l| match l {
-                SkillLabel::Name(n) => DropItem::table(n),
-                SkillLabel::From(n, rarity) => {
-                    let col = crate::colors::color_code(rarity.as_deref().unwrap_or("NORMAL")).unwrap_or_default();
-                    DropItem::table(&format!("From {col}{n}"))
-                }
-            })
-            .collect();
-        c.main_skill.base.enabled.set(m.skills.len() > 1);
-        c.main_skill.sel_index.set(m.skill_sel as usize);
-        c.main_skill.base.shown.set(true);
-        c.main_skill_part.base.shown.set(false);
-        c.main_skill_mine_count.base.shown.set(false);
-        c.main_skill_stage_count.base.shown.set(false);
-        c.main_skill_minion.base.shown.set(false);
-        c.main_skill_minion_library.base.shown.set(false);
-        c.main_skill_minion_skill.base.shown.set(false);
-        if let Some((parts, ps)) = &m.part {
-            c.main_skill_part.base.shown.set(true);
-            *c.main_skill_part.list.borrow_mut() = parts.iter().map(|p| DropItem::table(p)).collect();
-            c.main_skill_part.sel_index.set(*ps as usize);
-        }
-        if let Some(buf) = &m.stage_count {
-            c.main_skill_stage_count.base.shown.set(true);
-            *c.main_skill_stage_count.buf.borrow_mut() = buf.clone();
-        }
-        if let Some(buf) = &m.mine_count {
-            c.main_skill_mine_count.base.shown.set(true);
-            *c.main_skill_mine_count.buf.borrow_mut() = buf.clone();
-        }
-        if let Some(ms) = &m.minion {
-            let mut list: Vec<DropItem> = Vec::new();
-            for e in &ms.list {
-                list.push(match e {
-                    MinionEntry::ItemSet { label, .. } | MinionEntry::Minion { label, .. } => item(label, e.clone()),
-                    MinionEntry::Text(t) => DropItem::str(t),
-                });
-            }
-            c.main_skill_minion_library.base.shown.set(ms.library_shown);
-            *c.main_skill_minion.list.borrow_mut() = list;
-            match &ms.sel {
-                MinionSel::ItemSet(id) => {
-                    let idx = ms
-                        .list
-                        .iter()
-                        .position(|e| matches!(e, MinionEntry::ItemSet { item_set_id, .. } if item_set_id == id));
-                    if let Some(i) = idx {
-                        c.main_skill_minion.sel_index.set(i + 1);
-                    }
-                }
-                MinionSel::Minion(Some(id)) => {
-                    let idx = ms
-                        .list
-                        .iter()
-                        .position(|e| matches!(e, MinionEntry::Minion { minion_id, .. } if minion_id == id));
-                    if let Some(i) = idx {
-                        c.main_skill_minion.sel_index.set(i + 1);
-                    }
-                }
-                MinionSel::Minion(None) => {}
-            }
-            c.main_skill_minion.base.enabled.set(ms.enabled);
-            c.main_skill_minion.base.shown.set(true);
-            if let Some((names, s)) = &ms.skills {
-                *c.main_skill_minion_skill.list.borrow_mut() = names.iter().map(|n| DropItem::str(n)).collect();
-                c.main_skill_minion_skill.sel_index.set(*s as usize);
-                c.main_skill_minion_skill.base.shown.set(true);
-                c.main_skill_minion_skill.base.enabled.set(names.len() > 1);
-            } else {
-                c.main_skill_minion_skill.list.borrow_mut().clear();
-            }
-        }
+        apply_skill_select(
+            g,
+            &SkillControls {
+                main_socket_group: &c.main_socket_group,
+                main_skill: &c.main_skill,
+                main_skill_part: &c.main_skill_part,
+                main_skill_stage_count: &c.main_skill_stage_count,
+                main_skill_mine_count: &c.main_skill_mine_count,
+                main_skill_minion: &c.main_skill_minion,
+                main_skill_minion_library: &c.main_skill_minion_library,
+                main_skill_minion_skill: &c.main_skill_minion_skill,
+            },
+            &sel,
+        );
     }
 
     /// `buildMode:UpdateSecondaryAscendancyDropdown()` + the class / ascendancy selections of `OnFrame` (Build.lua:1252-1256).
@@ -1164,7 +1135,8 @@ impl BuildMode {
             };
             crate::common::screen_size().1 - m.main_bar_height.get() - 4.0 - y - warn_height
         });
-        // `statBox.onClick` -> `SetDisplayStat(hoveredLine, true)` (the pinned breakdown): U4.
+        let b = bm.clone();
+        *stat_box.on_click.borrow_mut() = Some(Rc::new(move |g: &mut Gfx, hovered| b().set_display_stat(g, hovered, true)));
         let sb_r: ControlRef = stat_box.clone();
         let warnings = DrawControl::new(anchor_c("TOPLEFT", &sb_r, "BOTTOMLEFT"), rect(0.0, 0.0, 0.0, 18.0));
         let ww = Rc::downgrade(&warnings);
@@ -1271,6 +1243,104 @@ impl BuildMode {
         *c.class_drop.list.borrow_mut() = cs.classes.iter().map(|e| item(&e.label, e.class_id)).collect();
         let _ = g;
     }
+}
+
+/// Build.lua:1619-1716 `RefreshSkillSelectControls` over the engine's answer.
+pub fn apply_skill_select(g: &Gfx, c: &SkillControls<'_>, sel: &SkillSelect) {
+    c.main_socket_group.sel_index.set(sel.main_group as usize);
+    *c.main_socket_group.list.borrow_mut() = sel.groups.iter().map(|l| DropItem::table(l)).collect();
+    c.main_socket_group.check_dropped_width(g, true);
+    let Some(m) = &sel.main else {
+        *c.main_socket_group.list.borrow_mut() = vec![DropItem::table("<No skills added yet>")];
+        for s in [&c.main_skill, &c.main_skill_part, &c.main_skill_minion, &c.main_skill_minion_skill] {
+            s.base.shown.set(false);
+        }
+        c.main_skill_mine_count.base.shown.set(false);
+        c.main_skill_stage_count.base.shown.set(false);
+        return;
+    };
+    *c.main_skill.list.borrow_mut() = m
+        .skills
+        .iter()
+        .map(|l| match l {
+            SkillLabel::Name(n) => DropItem::table(n),
+            SkillLabel::From(n, rarity) => {
+                let col = crate::colors::color_code(rarity.as_deref().unwrap_or("NORMAL")).unwrap_or_default();
+                DropItem::table(&format!("From {col}{n}"))
+            }
+        })
+        .collect();
+    c.main_skill.base.enabled.set(m.skills.len() > 1);
+    c.main_skill.sel_index.set(m.skill_sel as usize);
+    c.main_skill.base.shown.set(true);
+    c.main_skill_part.base.shown.set(false);
+    c.main_skill_mine_count.base.shown.set(false);
+    c.main_skill_stage_count.base.shown.set(false);
+    c.main_skill_minion.base.shown.set(false);
+    c.main_skill_minion_library.base.shown.set(false);
+    c.main_skill_minion_skill.base.shown.set(false);
+    if let Some((parts, ps)) = &m.part {
+        c.main_skill_part.base.shown.set(true);
+        *c.main_skill_part.list.borrow_mut() = parts.iter().map(|p| DropItem::table(p)).collect();
+        c.main_skill_part.sel_index.set(*ps as usize);
+    }
+    if let Some(buf) = &m.stage_count {
+        c.main_skill_stage_count.base.shown.set(true);
+        *c.main_skill_stage_count.buf.borrow_mut() = buf.clone();
+    }
+    if let Some(buf) = &m.mine_count {
+        c.main_skill_mine_count.base.shown.set(true);
+        *c.main_skill_mine_count.buf.borrow_mut() = buf.clone();
+    }
+    if let Some(ms) = &m.minion {
+        let mut list: Vec<DropItem> = Vec::new();
+        for e in &ms.list {
+            list.push(match e {
+                MinionEntry::ItemSet { label, .. } | MinionEntry::Minion { label, .. } => item(label, e.clone()),
+                MinionEntry::Text(t) => DropItem::str(t),
+            });
+        }
+        c.main_skill_minion_library.base.shown.set(ms.library_shown);
+        *c.main_skill_minion.list.borrow_mut() = list;
+        match &ms.sel {
+            MinionSel::ItemSet(id) => {
+                let idx = ms
+                    .list
+                    .iter()
+                    .position(|e| matches!(e, MinionEntry::ItemSet { item_set_id, .. } if item_set_id == id));
+                if let Some(i) = idx {
+                    c.main_skill_minion.sel_index.set(i + 1);
+                }
+            }
+            MinionSel::Minion(Some(id)) => {
+                let idx = ms
+                    .list
+                    .iter()
+                    .position(|e| matches!(e, MinionEntry::Minion { minion_id, .. } if minion_id == id));
+                if let Some(i) = idx {
+                    c.main_skill_minion.sel_index.set(i + 1);
+                }
+            }
+            MinionSel::Minion(None) => {}
+        }
+        c.main_skill_minion.base.enabled.set(ms.enabled);
+        c.main_skill_minion.base.shown.set(true);
+        if let Some((names, s)) = &ms.skills {
+            *c.main_skill_minion_skill.list.borrow_mut() = names.iter().map(|n| DropItem::str(n)).collect();
+            c.main_skill_minion_skill.sel_index.set(*s as usize);
+            c.main_skill_minion_skill.base.shown.set(true);
+            c.main_skill_minion_skill.base.enabled.set(names.len() > 1);
+        } else {
+            c.main_skill_minion_skill.list.borrow_mut().clear();
+        }
+    }
+}
+
+/// `hexToRGB` of a colour code (`^xRRGGBB`).
+fn hex_to_rgb(code: &str) -> [f64; 3] {
+    let h = code.trim_start_matches("^x");
+    let p = |i: usize| f64::from(u8::from_str_radix(&h[i..i + 2], 16).expect("colour code")) / 255.0;
+    [p(0), p(2), p(4)]
 }
 
 /// `loadout == <the active sets' loadout>`: `Some(true)` when every set id `findSetId` finds is the active one (the selection is a
@@ -1502,6 +1572,22 @@ impl Mode for BuildMode {
         *self.secondary_list.borrow_mut() = None;
         let c = self.create_controls(g);
         *self.c.borrow_mut() = Some(c.clone());
+        // Build.lua:615-626
+        let tab = CalcsTab::new(g, self.me.clone());
+        let breakdown = CalcBreakdownControl::new(Rc::downgrade(&tab), BdEnv::Main);
+        breakdown
+            .pinned_colour
+            .set(hex_to_rgb(&crate::colors::color_code("CUSTOM").expect("CUSTOM")));
+        let w = self.me.clone();
+        *breakdown.clear_display_func.borrow_mut() =
+            Some(Rc::new(move |g: &mut Gfx| w.upgrade().expect("buildMode").clear_display_stat(g)));
+        self.host.add("breakdown", breakdown.clone());
+        *self.calcs_tab.borrow_mut() = Some(tab);
+        *self.breakdown.borrow_mut() = Some(breakdown);
+        self.overlay_panes.borrow_mut().clear();
+        *self.overlay_breakdown_control.borrow_mut() = None;
+        *self.breakdown_inputs.borrow_mut() = None;
+        *self.breakdown_index.borrow_mut() = None;
         // `UpdateClassDropdowns()`
         self.fill_class_drop(g);
         // the engine ran BuildOutput + RefreshStatList with the default formatting; RefreshStatList with main's settings
@@ -1607,7 +1693,7 @@ impl Mode for BuildMode {
                 }
             }
         }
-        // Build.lua:1211-1248 overlay panes / pinned breakdown: none without the Calcs tab (U4)
+        self.overlay_input(f, input_events);
         let vp = main().view_port.get();
         me.host.process_controls_input(f, input_events, &vp);
         self.update_class_dropdowns(f);
@@ -1629,6 +1715,17 @@ impl Mode for BuildMode {
             // CalcsTab:BuildOutput: `self.powerBuildFlag = true`
             if let Some(t) = self.tree_tab.borrow().as_ref() {
                 t.power_build_flag.set(true);
+            }
+            let tab = self.calcs_tab.borrow().clone().expect("calcsTab");
+            tab.after_build_output(f);
+            // :1267-1270
+            let inputs = self.breakdown_inputs.borrow().clone();
+            if let Some(i) = inputs {
+                let bd = self.breakdown.borrow().clone().expect("breakdown");
+                if bd.pinned.get() {
+                    bd.set_breakdown_data(f, None, false, None);
+                    bd.set_breakdown_data(f, i.source.clone().map(Source::Sidebar), i.pin, i.actor);
+                }
             }
             self.apply_stat_list(f);
         }
@@ -1652,6 +1749,15 @@ impl Mode for BuildMode {
         sg::set_draw_color(f, 1.0, 1.0, 1.0);
         if self.view_mode.borrow().as_str() == "TREE" {
             self.draw_tree_tab(f, side_bar_width, screen_w, screen_h, input_events);
+        } else if self.view_mode.borrow().as_str() == "CALCS" {
+            let tab = self.calcs_tab.borrow().clone().expect("calcsTab");
+            let view_port = Rect {
+                x: side_bar_width,
+                y: 32.0,
+                width: screen_w - side_bar_width,
+                height: screen_h - 32.0,
+            };
+            tab.draw(f, &view_port, input_events);
         } else {
             sg::draw_string(
                 f,
@@ -1663,7 +1769,15 @@ impl Mode for BuildMode {
                 &format!("^8The {} tab is not ported yet.", self.view_mode.borrow().to_lowercase()),
             );
         }
-        self.unsaved.set(self.mod_flag.get());
+        // :1321-1325
+        let panes = self.overlay_panes.borrow().clone();
+        for pane in panes {
+            if pane.is_overlay.get() {
+                pane.draw_overlay(f, &vp);
+            }
+        }
+        let calcs_mod = self.calcs_tab.borrow().as_ref().is_some_and(|t| t.undo.mod_flag.get());
+        self.unsaved.set(self.mod_flag.get() || calcs_mod);
         sg::set_draw_layer(f, Some(5), 0);
         sg::set_draw_color(f, 0.2, 0.2, 0.2);
         sg::draw_rect(f, 0.0, 0.0, screen_w, 28.0);
@@ -1674,12 +1788,228 @@ impl Mode for BuildMode {
         sg::draw_rect(f, 0.0, 32.0, side_bar_width - 4.0, screen_h - 32.0);
         sg::set_draw_color(f, 0.85, 0.85, 0.85);
         sg::draw_rect(f, side_bar_width - 4.0, 32.0, 4.0, screen_h - 32.0);
-        // `SetDisplayStat(statBox.hoveredLine)` (the hover breakdown): U4
+        let hovered = self.c().stat_box.hovered_line.get();
+        self.set_display_stat(f, hovered, false);
         me.host.draw_controls(f, &vp, None);
+        // :1348-1350
+        let bd = self.breakdown.borrow().clone().expect("breakdown");
+        if bd.pinned.get() && self.breakdown_inputs.borrow().is_some() && me.host.sel().is_none() {
+            me.host.select_control(f, Some(bd));
+        }
     }
 }
 
 impl BuildMode {
+    /// Build.lua:1211-1248: the mouse events of the overlay panes and of a pinned breakdown over one.
+    fn overlay_input(&self, f: &mut Frame<'_>, input_events: &mut InputEvents) {
+        let (cursor_x, cursor_y) = f.get_cursor_pos();
+        let tab = self.calcs_tab.borrow().clone().expect("calcsTab");
+        let breakdown = tab.breakdown.clone();
+        let overlay_breakdown = tab.display_pinned.get() && tab.display_data.borrow().is_some_and(|k| tab.sections[k.0].is_overlay.get());
+        for i in (0..input_events.len()).rev() {
+            let Some(event) = input_events[i].clone() else { break };
+            match event {
+                InputEvent::KeyDown { key, double_click } if key.contains("BUTTON") => {
+                    let panes = self.overlay_panes.borrow().clone();
+                    for pane in panes.iter().rev() {
+                        if pane.is_overlay.get() && pane.is_mouse_in_overlay(f, cursor_x, cursor_y) {
+                            pane.handle_overlay_click(f, &key, cursor_x, cursor_y);
+                            input_events[i] = None;
+                            break;
+                        }
+                    }
+                    if input_events[i].is_some() && overlay_breakdown && breakdown.is_mouse_over(f) == Some(true) {
+                        *self.overlay_breakdown_control.borrow_mut() = breakdown.clone().on_key_down(f, &key, double_click);
+                        input_events[i] = None;
+                    }
+                }
+                InputEvent::KeyUp { key } if key.contains("BUTTON") => {
+                    for pane in self.overlay_panes.borrow().iter() {
+                        if pane.is_overlay.get() {
+                            pane.handle_overlay_release(&key);
+                        }
+                    }
+                    let held = self.overlay_breakdown_control.borrow_mut().take();
+                    if let Some(c) = held {
+                        c.on_key_up(f, &key);
+                        input_events[i] = None;
+                    }
+                }
+                InputEvent::KeyUp { key }
+                    if overlay_breakdown
+                        && breakdown.is_mouse_over(f) == Some(true)
+                        && (crate::controls::scroll_bar::ScrollBarControl::is_scroll_down_key(&key)
+                            || crate::controls::scroll_bar::ScrollBarControl::is_scroll_up_key(&key)) =>
+                {
+                    breakdown.clone().on_key_up(f, &key);
+                    input_events[i] = None;
+                }
+                _ => {}
+            }
+        }
+    }
+
+    /// :1387-1391
+    pub fn clear_display_stat(&self, g: &mut Gfx) {
+        let bd = self.breakdown.borrow().clone().expect("breakdown");
+        bd.set_breakdown_data(g, None, false, None);
+        *self.breakdown_inputs.borrow_mut() = None;
+    }
+
+    /// :1816-1869 `GetSidebarBreakdown(key, modNames, ignoredSections, actorName)`.
+    fn get_sidebar_breakdown(
+        &self,
+        key: &str,
+        mod_names: Option<&'static [&'static str]>,
+        ignored: Option<&'static [&'static str]>,
+        actor: Option<&str>,
+    ) -> Vec<Entry> {
+        let source_key = self.engine.borrow().as_ref().expect("engine").breakdown_source(key, actor);
+        let index = self
+            .breakdown_index
+            .borrow_mut()
+            .get_or_insert_with(|| Rc::new(breakdown_index()))
+            .clone();
+        let plain = |k: &str| Entry {
+            breakdown: Some(k.to_string()),
+            ..Entry::default()
+        };
+        let Some(entry) = index.get(&source_key) else {
+            let mut out = vec![plain(key)];
+            if let Some(m) = mod_names {
+                out.push(Entry {
+                    mod_name: m.iter().map(ToString::to_string).collect(),
+                    mod_name_is_list: true,
+                    ..Entry::default()
+                });
+            }
+            return out;
+        };
+        let (s, ss, r, c) = entry.col;
+        let mut display: Vec<Entry> = Vec::new();
+        for cell in &sections()[s].sub_sections[ss].rows[r].cells[c].entries {
+            let mut d = cell.clone();
+            if d.breakdown.as_deref() == Some(source_key.as_str()) {
+                d.breakdown = Some(key.to_string());
+            }
+            display.push(d);
+        }
+        if let Some(m) = mod_names {
+            for k in m {
+                if let Some(list) = entry.mod_sections_by_name.get(*k) {
+                    display.extend(list.iter().cloned());
+                }
+            }
+        }
+        let mut visited: Vec<String> = Vec::new();
+        let mut i = display.len();
+        while i > 0 {
+            i -= 1;
+            if let Some(label) = display[i].label.clone() {
+                let seen = visited.contains(&label) || ignored.is_some_and(|x| x.contains(&label.as_str()));
+                if seen {
+                    display.remove(i);
+                }
+                visited.push(label);
+            }
+        }
+        if display.is_empty() {
+            return vec![plain(key)];
+        }
+        display
+    }
+
+    /// :1353-1385 `SetDisplayStat(hovered, pin)`.
+    pub fn set_display_stat(&self, g: &mut Gfx, hovered: Option<(usize, f64)>, pin: bool) {
+        let bd = self.breakdown.borrow().clone().expect("breakdown");
+        let pinned = bd.pinned.get();
+        let Some((line, y)) = hovered.filter(|_| pin || !pinned) else {
+            if !pinned {
+                self.clear_display_stat(g);
+            }
+            return;
+        };
+        let entry = {
+            let eng = self.engine.borrow();
+            eng.as_ref().expect("engine").stat_list().stat_box[line].clone()
+        };
+        let key = match &entry.breakdown {
+            Some(BreakdownKey::Key(k)) => Some(k.clone()),
+            _ => None,
+        };
+        if pin && pinned {
+            self.clear_display_stat(g);
+            return;
+        }
+        if pin && !pinned && key.is_none() {
+            return;
+        }
+        // a hovered line without a key: `GetSidebarBreakdown(nil, ...)` -> `{ { breakdown = nil } }`, no sections
+        let entries = match &key {
+            Some(k) => self.get_sidebar_breakdown(k, entry.mod_names, entry.ignored_sections, entry.actor_name),
+            None => {
+                let mut out = vec![Entry::default()];
+                if let Some(m) = entry.mod_names {
+                    out.push(Entry {
+                        mod_name: m.iter().map(ToString::to_string).collect(),
+                        mod_name_is_list: true,
+                        ..Entry::default()
+                    });
+                }
+                out
+            }
+        };
+        let c = self.c();
+        let (x, _) = c.stat_box.get_pos(g);
+        let (width, _) = c.stat_box.get_size(g);
+        let data = SidebarData {
+            entries,
+            x: x - 1.0,
+            y,
+            width,
+        };
+        if let Some(col) = entry.breakdown_colour {
+            bd.border_colour.set(col);
+        }
+        let actor = match entry.actor_name {
+            Some("player") => Some(ForceActor::Player),
+            Some("minion") => Some(ForceActor::Minion),
+            _ => None,
+        };
+        let mut inputs = BreakdownInputs {
+            data: data.clone(),
+            pin,
+            actor,
+            source: None,
+        };
+        // `tableDeepEquals(breakdownInputs, self.breakdownInputs)`
+        if let Some(old) = &*self.breakdown_inputs.borrow()
+            && old.data == inputs.data
+            && old.pin == pin
+            && old.actor == actor
+        {
+            return;
+        }
+        let rc = Rc::new(data);
+        inputs.source = Some(rc.clone());
+        *self.breakdown_inputs.borrow_mut() = Some(inputs);
+        bd.set_breakdown_data(g, Some(Source::Sidebar(rc)), pin, actor);
+    }
+
+    /// `cursorStat` of the gate: a stat box line whose text has this string.
+    pub fn debug_stat_pos(&self, g: &Gfx, text: &str) -> (f64, f64) {
+        let c = self.c();
+        let (x, y) = c.stat_box.get_pos(g);
+        let mut row_y = y - c.stat_box.scroll_bar.offset.get() + 2.0;
+        for l in c.stat_box.list.borrow().iter() {
+            if l.cols.first().and_then(Option::as_deref).is_some_and(|t| t.contains(text)) {
+                return (x + 100.0, row_y + 2.0);
+            }
+            row_y += l.height;
+        }
+        panic!("cursorStat {text}");
+    }
+
     /// `treeTab:Draw(tabViewPort, inputEvents)` (Build.lua:1320).
     fn draw_tree_tab(&self, f: &mut Frame<'_>, side_bar_width: f64, screen_w: f64, screen_h: f64, input_events: &mut InputEvents) {
         let view_port = Rect {

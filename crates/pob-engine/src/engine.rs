@@ -57,16 +57,21 @@ pub enum GemProp {
     Enabled(bool),
 }
 
-fn run(model: &BuildModel) -> Result<(CalculateResult, pob_calc::CalcRun), String> {
-    pob_calc::calculate::calculate_model(Rc::new(model.clone()), CalculateOptions::default()).map_err(|e| e.0)
+fn run(model: &BuildModel, live: Option<&pob_tree::PassiveSpec>) -> Result<(CalculateResult, pob_calc::CalcRun), String> {
+    let opts = CalculateOptions {
+        live_alloc_pairs: live.map(|l| l.alloc_table_pairs().into_iter().map(f64::from).collect()),
+        ..CalculateOptions::default()
+    };
+    pob_calc::calculate::calculate_model(Rc::new(model.clone()), opts).map_err(|e| e.0)
 }
 
 impl Engine {
     /// `engine_loadBuildXML` (boot.lua:120-130): `loadBuildFromXML` -- the tabs' `Load`, `BuildOutput`, `RefreshStatList`.
     pub fn load_xml(xml: &str) -> Result<Engine, String> {
-        let model = pob_build::load_build_xml(xml).map_err(|e| format!("XML: {e}"))?;
+        let mut model = pob_build::load_build_xml(xml).map_err(|e| format!("XML: {e}"))?;
+        crate::calcs_tab::with_default_input(&mut model);
         let extras = SaveExtras::from_xml(xml)?;
-        let (res, calcs) = run(&model)?;
+        let (res, calcs) = run(&model, None)?;
         let mut e = Engine {
             model,
             extras,
@@ -138,12 +143,26 @@ impl Engine {
         &mut self.model
     }
 
+    pub(crate) fn extras_mut(&mut self) -> &mut SaveExtras {
+        &mut self.extras
+    }
+
+    /// `calcsTab.input`: the model's copy and the one the CALCS run holds (`env.calcsInput`), one table upstream.
+    pub(crate) fn model_and_calcs_input(
+        &mut self,
+    ) -> (
+        &mut indexmap::IndexMap<String, InputValue>,
+        &mut indexmap::IndexMap<String, InputValue>,
+    ) {
+        (&mut self.model.calcs_input, &mut self.calcs.env.calcs_input)
+    }
+
     /// `engine_recalc` (boot.lua:132-150): `wipeGlobalCache()` + `calcsTab:BuildOutput()` (a fresh session over the model) -- no
     /// `RefreshStatList` (boot.lua does not run it): `SkillDPS` stays in output order, the character level stays.
     pub fn recalc(&mut self) -> Result<(), String> {
         *self.misc.borrow_mut() = None;
         self.output_revision += 1;
-        (self.res, self.calcs) = run(&self.model)?;
+        (self.res, self.calcs) = run(&self.model, self.live_spec.as_deref())?;
         if let Some(l) = &self.live_spec {
             self.res.env.spec = l.clone();
         }
@@ -200,7 +219,12 @@ impl Engine {
     /// The runtime state written back into the model: `SaveDB` + the tabs' `Load` (what upstream reads on the next load).
     pub fn materialize(&mut self) -> Result<(), String> {
         let xml = self.save_xml()?;
+        // The Lua keeps `spec.allocNodes` of the load: its `pairs` order (R24) and so the order of the tree's mods do not follow `SaveDB`'s sorted ids.
+        let old: Vec<_> = self.model.tree.specs.iter().map(|s| s.nodes.clone()).collect();
         self.model = pob_build::load_build_xml(&xml).map_err(|e| format!("XML: {e}"))?;
+        for (s, n) in self.model.tree.specs.iter_mut().zip(old) {
+            s.nodes = n;
+        }
         self.extras = SaveExtras::from_xml(&xml)?;
         Ok(())
     }

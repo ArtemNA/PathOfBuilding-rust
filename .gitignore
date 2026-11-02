@@ -22,6 +22,10 @@
 /tools/sg-oracle/fixtures/build/*.xml
 # U3a: screenshots and states of personal builds (builds/pc): names, stats, passive trees; the tests skip without them
 /tools/sg-oracle/fixtures/tree/
+# U4: the Calcs tab's oracle (screenshots and states; personal scenes local-<n>)
+/tools/sg-oracle/fixtures/calcs/
+/tools/sg-oracle/fixtures/audit/calcs-runner-*.json
+/tools/sg-oracle/scenes/calcs/local-*.json
 
 # Local only: everything the agents use (plan, rules, prompts, cards, notes) and everything personal
 /PLAN.md

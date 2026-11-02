@@ -36,6 +36,7 @@ fn stub_opts() -> CalculateOptions {
         parse_mode: pob_calc::ParseMode::CacheOnly,
         // R6.3: the "= pob-ts" gates run without the skill phase (pob-ts has none)
         skills: false,
+        live_alloc_pairs: None,
     }
 }
 
