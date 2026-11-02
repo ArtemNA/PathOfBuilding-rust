@@ -15,7 +15,7 @@ local base = GetScriptPath()
 local UPSTREAM = dofile(base .. "/upstream.lua") -- written by run.ps1 from tools/upstream.json
 local POB = UPSTREAM.root .. "src/"
 local POB_ROOT = UPSTREAM.root
-local BUILDS = "../../../builds/pc/3.29/"
+local BUILDS = "../../../../builds/pc/3.29/" -- cwd = runtime/sg
 local USER = base .. "/user"
 local OUT = base .. "/out/tree/"
 local shotDir = GetRuntimePath() .. "/SimpleGraphic/Screenshots/"
