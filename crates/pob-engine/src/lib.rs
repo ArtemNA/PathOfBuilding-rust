@@ -24,5 +24,6 @@ pub mod lua;
 pub mod save;
 pub mod shell;
 pub mod stats;
+pub mod tree_tab;
 pub mod tree_view;
 pub mod view;

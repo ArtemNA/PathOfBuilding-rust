@@ -41,6 +41,7 @@ struct Runner {
     app: App,
     secs: Option<f64>,
     start: Instant,
+    state_file: Option<String>,
 }
 
 impl MainObject for Runner {
@@ -57,6 +58,14 @@ impl MainObject for Runner {
     }
     fn on_frame(&mut self, frame: &mut Frame<'_>) {
         self.app.on_frame(frame);
+        // tools/sg-oracle/rust-input.ps1: the tree's state after each frame, for posted window messages
+        if let Some(p) = &self.state_file {
+            let s = pob_ui::tabs::tree::debug_input_state(frame);
+            let tmp = format!("{p}.tmp");
+            if std::fs::write(&tmp, s.to_string()).is_ok() {
+                let _ = std::fs::rename(&tmp, p);
+            }
+        }
         if let Some((sec, n)) = &mut self.fps_log {
             let now = self.start.elapsed().as_secs();
             if now != *sec {
@@ -120,6 +129,7 @@ fn main() {
         app: App::new(cfg),
         secs,
         start: Instant::now(),
+        state_file: arg(&args, "--state-file"),
     };
     let wcfg = WindowConfig {
         title: pob_ui::launch::APP_NAME.into(),

@@ -133,6 +133,8 @@ pub struct BuildMode {
     pub engine: RefCell<Option<Engine>>,
     /// `treeTab.viewer` (`None` until the tab is first drawn; a new one per opened build).
     pub tree_view: RefCell<Option<PassiveTreeView>>,
+    /// `build.treeTab` (made at the tab's first draw; a new one per opened build).
+    pub tree_tab: RefCell<Option<Rc<crate::tabs::tree::TreeTab>>>,
     pub db_file_name: RefCell<DbFile>,
     pub build_name: RefCell<Option<String>>,
     pub db_file_sub_path: RefCell<Option<String>>,
@@ -166,6 +168,7 @@ impl BuildMode {
             me: me.clone(),
             engine: RefCell::new(None),
             tree_view: RefCell::new(None),
+            tree_tab: RefCell::new(None),
             db_file_name: RefCell::new(DbFile::Nil),
             build_name: RefCell::new(None),
             db_file_sub_path: RefCell::new(None),
@@ -857,8 +860,8 @@ impl BuildMode {
             anchor("LEFT", &cl_r, "RIGHT"),
             rect(10.0, 0.0, 85.0, 20.0),
             Vec::new(),
-            Some(Rc::new(|_g: &mut Gfx, _i, _v: &DropItem| {
-                unimplemented!("Modules/Build.lua:259-282 class change (PassiveSpec:SelectClass / ConnectToClass) — U3")
+            Some(Rc::new(|g: &mut Gfx, _i, v: &DropItem| {
+                crate::tabs::tree::class_drop_selected(g, v)
             })),
             None,
             false,
@@ -869,8 +872,8 @@ impl BuildMode {
             anchor("LEFT", &cd_r, "RIGHT"),
             rect(4.0, 0.0, 120.0, 20.0),
             Vec::new(),
-            Some(Rc::new(|_g: &mut Gfx, _i, _v: &DropItem| {
-                unimplemented!("Modules/Build.lua:283-288 ascendancy change (PassiveSpec:SelectAscendClass) — U3")
+            Some(Rc::new(|g: &mut Gfx, _i, v: &DropItem| {
+                crate::tabs::tree::ascend_drop_selected(g, v)
             })),
             None,
             false,
@@ -881,8 +884,8 @@ impl BuildMode {
             anchor("LEFT", &ad_r, "RIGHT"),
             rect(4.0, 0.0, 160.0, 20.0),
             vec![item("None", 0.0f64)],
-            Some(Rc::new(|_g: &mut Gfx, _i, _v: &DropItem| {
-                unimplemented!("Modules/Build.lua:291-299 bloodline change (PassiveSpec:SelectSecondaryAscendClass, P5) — U3")
+            Some(Rc::new(|g: &mut Gfx, _i, v: &DropItem| {
+                crate::tabs::tree::secondary_drop_selected(g, v)
             })),
             None,
             false,
@@ -1444,6 +1447,7 @@ impl Mode for BuildMode {
         *self.view_mode.borrow_mut() = "TREE".into();
         *self.engine.borrow_mut() = None;
         *self.tree_view.borrow_mut() = None;
+        *self.tree_tab.borrow_mut() = None;
         self.initialised.set(false);
         // LoadDBFile / LoadDB (Build.lua:2222-2275): the XML into the engine (the tabs' Load + BuildOutput + RefreshStatList)
         let xml = match &db {
@@ -1461,7 +1465,7 @@ impl Mode for BuildMode {
             // a new build: no sections -- the tabs' defaults; TreeTab's is one empty spec of the latest tree
             // (`new("PassiveSpec"):PassiveSpec(build, latestTreeVersion)`, class 0), which the engine needs as a `<Spec>`
             _ => Some(format!(
-                "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<PathOfBuilding>\n\t<Build level=\"{}\" targetVersion=\"{LIVE_TARGET_VERSION}\" characterLevelAutoMode=\"{}\"/>\n\t<Tree activeSpec=\"1\">\n\t\t<Spec treeVersion=\"{}\" classId=\"0\" ascendClassId=\"0\" nodes=\"\"/>\n\t</Tree>\n</PathOfBuilding>",
+                "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<PathOfBuilding>\n\t<Build level=\"{}\" targetVersion=\"{LIVE_TARGET_VERSION}\" characterLevelAutoMode=\"{}\"/>\n\t<Tree activeSpec=\"1\">\n\t\t<Spec treeVersion=\"{}\" classId=\"0\" ascendClassId=\"0\" secondaryAscendClassId=\"nil\" nodes=\"\"/>\n\t</Tree>\n</PathOfBuilding>",
                 tostring_num(m.s.borrow().default_char_level.unwrap_or(1.0).clamp(1.0, 100.0)),
                 m.s.borrow().default_char_level.is_none_or(|l| l == 1.0),
                 pob_data::tree::tree_versions().expect("GameVersions").latest_tree_version
@@ -1614,6 +1618,10 @@ impl Mode for BuildMode {
             if level_moved {
                 self.build_flag.set(true);
             }
+            // CalcsTab:BuildOutput: `self.powerBuildFlag = true`
+            if let Some(t) = self.tree_tab.borrow().as_ref() {
+                t.power_build_flag.set(true);
+            }
             self.apply_stat_list(f);
         }
         let ds = Self::display_settings();
@@ -1664,7 +1672,7 @@ impl Mode for BuildMode {
 }
 
 impl BuildMode {
-    /// The part of `TreeTab:Draw` (TreeTab.lua:358-451) that places the view; the tab's controls are U3b (the widths below are theirs).
+    /// `treeTab:Draw(tabViewPort, inputEvents)` (Build.lua:1320).
     fn draw_tree_tab(&self, f: &mut Frame<'_>, side_bar_width: f64, screen_w: f64, screen_h: f64, input_events: &mut InputEvents) {
         let view_port = Rect {
             x: side_bar_width,
@@ -1672,37 +1680,54 @@ impl BuildMode {
             width: screen_w - side_bar_width,
             height: screen_h - 32.0,
         };
-        // :394-428 `linesHeight`: specSelect 190+8, compareCheck 20+74, reset 145+8, versionText w+8, versionSelect 100+8; treeSearch 300+8,
-        // findTimelessJewel 150+8, treeHeatMap 20+130, nodePowerMaxDepthSelect 55+8.
-        let version_w = sg::draw_string_width(f, 16.0, "VAR", "^7Version:");
-        let first = 190.0 + 8.0 + 20.0 + 74.0 + 145.0 + 8.0 + version_w + 8.0 + 100.0 + 8.0;
-        let second = 300.0 + 8.0 + 150.0 + 8.0 + 20.0 + 130.0 + 55.0 + 8.0;
-        let mut lines_height = 24.0;
-        if view_port.width >= first + second + 10.0 {
-            lines_height = 0.0;
-        }
-        if view_port.width < second + 10.0 {
-            lines_height *= 2.0;
-        }
-        // :572 `self.showConvert = not curSpec.treeVersion:match("^" .. latestTreeVersion)`
-        let show_convert = {
-            let eng = self.engine.borrow();
-            let spec_version = eng.as_ref().expect("engine").spec_rc().tree_version.clone();
-            let latest = &pob_data::tree::tree_versions().expect("GameVersions").latest_tree_version;
-            !spec_version.starts_with(latest.as_str())
+        let tab = self.tree_tab.borrow().clone();
+        let tab = match tab {
+            Some(t) => t,
+            None => {
+                let t = crate::tabs::tree::new_tree_tab(f);
+                *self.tree_tab.borrow_mut() = Some(t.clone());
+                t.sync_active_spec_quiet();
+                t
+            }
         };
-        let tree_view_port = Rect {
-            x: view_port.x,
-            y: view_port.y,
-            width: view_port.width,
-            height: view_port.height - (if show_convert { 64.0 } else { 32.0 } + lines_height),
-        };
+        tab.draw(f, &view_port, input_events);
+    }
+
+    /// `spec:SetWindowTitleWithBuildClass()`.
+    pub fn set_title_pub(&self, g: &mut Gfx) {
+        self.set_window_title_with_build_class(g);
+    }
+
+    /// `build:SyncLoadouts()` for the tab.
+    pub fn sync_loadouts_pub(&self, g: &mut Gfx) {
+        self.sync_loadouts(g);
+    }
+
+    /// What `SetActiveSpec` does on the build (TreeTab.lua:552-556, :583): the window title, the class drop-downs, the loadouts.
+    pub fn after_spec_change(&self, g: &mut Gfx) {
+        self.set_window_title_with_build_class(g);
+        self.fill_class_drop(g);
+        self.sync_loadouts(g);
+    }
+
+    /// The view's part of `TreeTab:Draw` (:450-451): `viewer.compareSpec`, `viewer:Draw(build, treeViewPort, inputEvents)`.
+    pub fn draw_tree_view(
+        &self,
+        f: &mut Frame<'_>,
+        tree_view_port: &Rect,
+        input_events: &mut InputEvents,
+        compare: Option<Rc<pob_tree::PassiveSpec>>,
+    ) {
         let root = launch().cfg.script_path.clone();
+        if let Some(v) = self.tree_view.borrow_mut().as_mut() {
+            v.compare_spec = compare.clone();
+        }
         self.tree_view
             .borrow_mut()
             .get_or_insert_with(|| {
                 let mut v = PassiveTreeView::new(&root);
                 v.load(&self.engine.borrow().as_ref().expect("engine").extras().tree_view);
+                v.compare_spec = compare;
                 v
             })
             .draw(
@@ -1711,7 +1736,7 @@ impl BuildMode {
                 &self.engine,
                 &self.build_flag,
                 &self.mod_flag,
-                &tree_view_port,
+                tree_view_port,
                 input_events,
             );
         // `PassiveTreeView:Save` (:105-114) reads the live view at `SaveDB`
