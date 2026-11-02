@@ -1,0 +1,22 @@
+{
+  "build": "list",
+  "steps": [
+    { "dump": true, "shot": "list-idle" },
+    { "cursor": [100, 87], "dump": true, "shot": "list-hover" },
+    { "hold": ["LEFTBUTTON"], "events": [["KeyDown", "LEFTBUTTON"]], "dump": true },
+    { "release": ["LEFTBUTTON"], "events": [["KeyUp", "LEFTBUTTON"]], "dump": true },
+    { "events": [["KeyDown", "DOWN"], ["KeyDown", "DOWN"], ["KeyDown", "DOWN"]], "dump": true },
+    { "events": [["KeyDown", "END"]], "dump": true, "shot": "list-end" },
+    { "events": [["KeyDown", "WHEELUP"], ["KeyUp", "WHEELUP"]], "dump": true },
+    { "events": [["KeyDown", "HOME"]], "dump": true },
+    { "cursor": [100, 69], "hold": ["LEFTBUTTON"], "events": [["KeyDown", "LEFTBUTTON"]], "dump": true },
+    { "cursor": [100, 129], "dump": true, "shot": "list-drag" },
+    { "release": ["LEFTBUTTON"], "events": [["KeyUp", "LEFTBUTTON"]], "dump": true },
+    { "events": [["KeyDown", "DELETE"]], "dump": true },
+    { "cursor": [100, 87], "events": [["KeyDown", "LEFTBUTTON"], ["KeyUp", "LEFTBUTTON"], ["KeyDown", "DELETE"]], "dump": true },
+    { "cursor": [400, 72], "events": [["KeyDown", "LEFTBUTTON"], ["KeyUp", "LEFTBUTTON"]], "dump": true, "shot": "list-sep" },
+    { "cursor": [650, 70], "events": [["KeyDown", "LEFTBUTTON"], ["KeyUp", "LEFTBUTTON"], ["KeyUp", "WHEELDOWN"]], "dump": true },
+    { "hold": ["SHIFT"], "events": [["KeyUp", "WHEELDOWN"]], "dump": true, "shot": "list-text" },
+    { "release": ["SHIFT"], "cursor": [100, 200], "events": [["KeyDown", "LEFTBUTTON"], ["KeyUp", "LEFTBUTTON"]], "dump": true, "shot": "list-final" }
+  ]
+}

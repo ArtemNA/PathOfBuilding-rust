@@ -1,0 +1,966 @@
+{
+  "name":"edit",
+  "dumps":[{
+      "step":1,
+      "state":{
+        "multiScroll":[0,0],
+        "num":{
+          "sel":"nil",
+          "caret":2,
+          "focus":false,
+          "buf":"5"
+        },
+        "sel":"nil",
+        "multi":{
+          "sel":"nil",
+          "caret":61,
+          "focus":false,
+          "buf":"line one\nline two is longer than the box is wide\n\tthird\nfour"
+        },
+        "last":"",
+        "changes":0,
+        "clear":{
+          "sel":"nil",
+          "caret":9,
+          "focus":false,
+          "buf":"clear me"
+        },
+        "plain":{
+          "sel":"nil",
+          "caret":12,
+          "focus":false,
+          "buf":"Hello world"
+        },
+        "clip":"nil",
+        "enter":"",
+        "prompt":{
+          "sel":"nil",
+          "caret":1,
+          "focus":false,
+          "buf":""
+        }
+      }
+    },{
+      "step":2,
+      "state":{
+        "multiScroll":[0,0],
+        "num":{
+          "sel":"nil",
+          "caret":2,
+          "focus":false,
+          "buf":"5"
+        },
+        "sel":"plain",
+        "multi":{
+          "sel":"nil",
+          "caret":61,
+          "focus":false,
+          "buf":"line one\nline two is longer than the box is wide\n\tthird\nfour"
+        },
+        "last":"",
+        "changes":0,
+        "clear":{
+          "sel":"nil",
+          "caret":9,
+          "focus":false,
+          "buf":"clear me"
+        },
+        "plain":{
+          "sel":10,
+          "caret":10,
+          "focus":true,
+          "buf":"Hello world"
+        },
+        "clip":"nil",
+        "enter":"",
+        "prompt":{
+          "sel":"nil",
+          "caret":1,
+          "focus":false,
+          "buf":""
+        }
+      }
+    },{
+      "step":3,
+      "state":{
+        "multiScroll":[0,0],
+        "num":{
+          "sel":"nil",
+          "caret":2,
+          "focus":false,
+          "buf":"5"
+        },
+        "sel":"plain",
+        "multi":{
+          "sel":"nil",
+          "caret":61,
+          "focus":false,
+          "buf":"line one\nline two is longer than the box is wide\n\tthird\nfour"
+        },
+        "last":"",
+        "changes":0,
+        "clear":{
+          "sel":"nil",
+          "caret":9,
+          "focus":false,
+          "buf":"clear me"
+        },
+        "plain":{
+          "sel":10,
+          "caret":10,
+          "focus":true,
+          "buf":"Hello world"
+        },
+        "clip":"nil",
+        "enter":"",
+        "prompt":{
+          "sel":"nil",
+          "caret":1,
+          "focus":false,
+          "buf":""
+        }
+      }
+    },{
+      "step":4,
+      "state":{
+        "multiScroll":[0,0],
+        "num":{
+          "sel":"nil",
+          "caret":2,
+          "focus":false,
+          "buf":"5"
+        },
+        "sel":"plain",
+        "multi":{
+          "sel":"nil",
+          "caret":61,
+          "focus":false,
+          "buf":"line one\nline two is longer than the box is wide\n\tthird\nfour"
+        },
+        "last":"Hello worXYld",
+        "changes":2,
+        "clear":{
+          "sel":"nil",
+          "caret":9,
+          "focus":false,
+          "buf":"clear me"
+        },
+        "plain":{
+          "sel":"nil",
+          "caret":12,
+          "focus":true,
+          "buf":"Hello worXYld"
+        },
+        "clip":"nil",
+        "enter":"",
+        "prompt":{
+          "sel":"nil",
+          "caret":1,
+          "focus":false,
+          "buf":""
+        }
+      }
+    },{
+      "step":5,
+      "state":{
+        "multiScroll":[0,0],
+        "num":{
+          "sel":"nil",
+          "caret":2,
+          "focus":false,
+          "buf":"5"
+        },
+        "sel":"plain",
+        "multi":{
+          "sel":"nil",
+          "caret":61,
+          "focus":false,
+          "buf":"line one\nline two is longer than the box is wide\n\tthird\nfour"
+        },
+        "last":"Hello worXYld",
+        "changes":2,
+        "clear":{
+          "sel":"nil",
+          "caret":9,
+          "focus":false,
+          "buf":"clear me"
+        },
+        "plain":{
+          "sel":12,
+          "caret":9,
+          "focus":true,
+          "buf":"Hello worXYld"
+        },
+        "clip":"nil",
+        "enter":"",
+        "prompt":{
+          "sel":"nil",
+          "caret":1,
+          "focus":false,
+          "buf":""
+        }
+      }
+    },{
+      "step":6,
+      "state":{
+        "multiScroll":[0,0],
+        "num":{
+          "sel":"nil",
+          "caret":2,
+          "focus":false,
+          "buf":"5"
+        },
+        "sel":"plain",
+        "multi":{
+          "sel":"nil",
+          "caret":61,
+          "focus":false,
+          "buf":"line one\nline two is longer than the box is wide\n\tthird\nfour"
+        },
+        "last":"Hello worXYldrXY",
+        "changes":3,
+        "clear":{
+          "sel":"nil",
+          "caret":9,
+          "focus":false,
+          "buf":"clear me"
+        },
+        "plain":{
+          "sel":"nil",
+          "caret":17,
+          "focus":true,
+          "buf":"Hello worXYldrXY"
+        },
+        "clip":"rXY",
+        "enter":"",
+        "prompt":{
+          "sel":"nil",
+          "caret":1,
+          "focus":false,
+          "buf":""
+        }
+      }
+    },{
+      "step":7,
+      "state":{
+        "multiScroll":[0,0],
+        "num":{
+          "sel":"nil",
+          "caret":2,
+          "focus":false,
+          "buf":"5"
+        },
+        "sel":"plain",
+        "multi":{
+          "sel":"nil",
+          "caret":61,
+          "focus":false,
+          "buf":"line one\nline two is longer than the box is wide\n\tthird\nfour"
+        },
+        "last":"Hello worXYld",
+        "changes":4,
+        "clear":{
+          "sel":"nil",
+          "caret":9,
+          "focus":false,
+          "buf":"clear me"
+        },
+        "plain":{
+          "sel":"nil",
+          "caret":14,
+          "focus":true,
+          "buf":"Hello worXYld"
+        },
+        "clip":"rXY",
+        "enter":"",
+        "prompt":{
+          "sel":"nil",
+          "caret":1,
+          "focus":false,
+          "buf":""
+        }
+      }
+    },{
+      "step":8,
+      "state":{
+        "multiScroll":[0,0],
+        "num":{
+          "sel":"nil",
+          "caret":2,
+          "focus":false,
+          "buf":"5"
+        },
+        "sel":"plain",
+        "multi":{
+          "sel":"nil",
+          "caret":61,
+          "focus":false,
+          "buf":"line one\nline two is longer than the box is wide\n\tthird\nfour"
+        },
+        "last":"Hello worXYld",
+        "changes":6,
+        "clear":{
+          "sel":"nil",
+          "caret":9,
+          "focus":false,
+          "buf":"clear me"
+        },
+        "plain":{
+          "sel":"nil",
+          "caret":14,
+          "focus":true,
+          "buf":"Hello worXYld"
+        },
+        "clip":"rXY",
+        "enter":"",
+        "prompt":{
+          "sel":"nil",
+          "caret":1,
+          "focus":false,
+          "buf":""
+        }
+      }
+    },{
+      "step":9,
+      "state":{
+        "multiScroll":[0,0],
+        "num":{
+          "sel":"nil",
+          "caret":2,
+          "focus":false,
+          "buf":"5"
+        },
+        "sel":"plain",
+        "multi":{
+          "sel":"nil",
+          "caret":61,
+          "focus":false,
+          "buf":"line one\nline two is longer than the box is wide\n\tthird\nfour"
+        },
+        "last":"Hello worXYld",
+        "changes":6,
+        "clear":{
+          "sel":"nil",
+          "caret":9,
+          "focus":false,
+          "buf":"clear me"
+        },
+        "plain":{
+          "sel":"nil",
+          "caret":14,
+          "focus":true,
+          "buf":"Hello worXYld"
+        },
+        "clip":"rXY",
+        "enter":"",
+        "prompt":{
+          "sel":"nil",
+          "caret":1,
+          "focus":false,
+          "buf":""
+        }
+      }
+    },{
+      "step":10,
+      "state":{
+        "multiScroll":[0,0],
+        "num":{
+          "sel":"nil",
+          "caret":2,
+          "focus":false,
+          "buf":"5"
+        },
+        "sel":"nil",
+        "multi":{
+          "sel":"nil",
+          "caret":61,
+          "focus":false,
+          "buf":"line one\nline two is longer than the box is wide\n\tthird\nfour"
+        },
+        "last":"Hello worXYldQ",
+        "changes":7,
+        "clear":{
+          "sel":"nil",
+          "caret":9,
+          "focus":false,
+          "buf":"clear me"
+        },
+        "plain":{
+          "sel":"nil",
+          "caret":15,
+          "focus":false,
+          "buf":"Hello worXYldQ"
+        },
+        "clip":"rXY",
+        "enter":"Hello worXYldQ",
+        "prompt":{
+          "sel":"nil",
+          "caret":1,
+          "focus":false,
+          "buf":""
+        }
+      }
+    },{
+      "step":11,
+      "state":{
+        "multiScroll":[0,0],
+        "num":{
+          "sel":"nil",
+          "caret":2,
+          "focus":false,
+          "buf":"5"
+        },
+        "sel":"multi",
+        "multi":{
+          "sel":20,
+          "caret":20,
+          "focus":true,
+          "buf":"line one\nline two is longer than the box is wide\n\tthird\nfour"
+        },
+        "last":"Hello worXYldQ",
+        "changes":7,
+        "clear":{
+          "sel":"nil",
+          "caret":9,
+          "focus":false,
+          "buf":"clear me"
+        },
+        "plain":{
+          "sel":"nil",
+          "caret":15,
+          "focus":false,
+          "buf":"Hello worXYldQ"
+        },
+        "clip":"rXY",
+        "enter":"Hello worXYldQ",
+        "prompt":{
+          "sel":"nil",
+          "caret":1,
+          "focus":false,
+          "buf":""
+        }
+      }
+    },{
+      "step":12,
+      "state":{
+        "multiScroll":[0,0],
+        "num":{
+          "sel":"nil",
+          "caret":2,
+          "focus":false,
+          "buf":"5"
+        },
+        "sel":"multi",
+        "multi":{
+          "sel":20,
+          "caret":20,
+          "focus":true,
+          "buf":"line one\nline two is longer than the box is wide\n\tthird\nfour"
+        },
+        "last":"Hello worXYldQ",
+        "changes":7,
+        "clear":{
+          "sel":"nil",
+          "caret":9,
+          "focus":false,
+          "buf":"clear me"
+        },
+        "plain":{
+          "sel":"nil",
+          "caret":15,
+          "focus":false,
+          "buf":"Hello worXYldQ"
+        },
+        "clip":"rXY",
+        "enter":"Hello worXYldQ",
+        "prompt":{
+          "sel":"nil",
+          "caret":1,
+          "focus":false,
+          "buf":""
+        }
+      }
+    },{
+      "step":13,
+      "state":{
+        "multiScroll":[0,0],
+        "num":{
+          "sel":"nil",
+          "caret":2,
+          "focus":false,
+          "buf":"5"
+        },
+        "sel":"multi",
+        "multi":{
+          "sel":"nil",
+          "caret":56,
+          "focus":true,
+          "buf":"line one\nline two is longer than the box is wide\n\tthird\nfour"
+        },
+        "last":"Hello worXYldQ",
+        "changes":7,
+        "clear":{
+          "sel":"nil",
+          "caret":9,
+          "focus":false,
+          "buf":"clear me"
+        },
+        "plain":{
+          "sel":"nil",
+          "caret":15,
+          "focus":false,
+          "buf":"Hello worXYldQ"
+        },
+        "clip":"rXY",
+        "enter":"Hello worXYldQ",
+        "prompt":{
+          "sel":"nil",
+          "caret":1,
+          "focus":false,
+          "buf":""
+        }
+      }
+    },{
+      "step":14,
+      "state":{
+        "multiScroll":[0,0],
+        "num":{
+          "sel":"nil",
+          "caret":2,
+          "focus":false,
+          "buf":"5"
+        },
+        "sel":"multi",
+        "multi":{
+          "sel":"nil",
+          "caret":51,
+          "focus":true,
+          "buf":"line one\nline two is longer than the box is wide\n\tthird\nfour"
+        },
+        "last":"Hello worXYldQ",
+        "changes":7,
+        "clear":{
+          "sel":"nil",
+          "caret":9,
+          "focus":false,
+          "buf":"clear me"
+        },
+        "plain":{
+          "sel":"nil",
+          "caret":15,
+          "focus":false,
+          "buf":"Hello worXYldQ"
+        },
+        "clip":"rXY",
+        "enter":"Hello worXYldQ",
+        "prompt":{
+          "sel":"nil",
+          "caret":1,
+          "focus":false,
+          "buf":""
+        }
+      }
+    },{
+      "step":15,
+      "state":{
+        "multiScroll":[0,24],
+        "num":{
+          "sel":"nil",
+          "caret":2,
+          "focus":false,
+          "buf":"5"
+        },
+        "sel":"multi",
+        "multi":{
+          "sel":"nil",
+          "caret":60,
+          "focus":true,
+          "buf":"line one\nline two is longer than the box is wide\n\t\nzthird\nfour"
+        },
+        "last":"Hello worXYldQ",
+        "changes":7,
+        "clear":{
+          "sel":"nil",
+          "caret":9,
+          "focus":false,
+          "buf":"clear me"
+        },
+        "plain":{
+          "sel":"nil",
+          "caret":15,
+          "focus":false,
+          "buf":"Hello worXYldQ"
+        },
+        "clip":"rXY",
+        "enter":"Hello worXYldQ",
+        "prompt":{
+          "sel":"nil",
+          "caret":1,
+          "focus":false,
+          "buf":""
+        }
+      }
+    },{
+      "step":16,
+      "state":{
+        "multiScroll":[0,24],
+        "num":{
+          "sel":"nil",
+          "caret":2,
+          "focus":false,
+          "buf":"5"
+        },
+        "sel":"multi",
+        "multi":{
+          "sel":"nil",
+          "caret":59,
+          "focus":true,
+          "buf":"line one\nline two is longer than the box is wide\n\t\nzthird\nour"
+        },
+        "last":"Hello worXYldQ",
+        "changes":7,
+        "clear":{
+          "sel":"nil",
+          "caret":9,
+          "focus":false,
+          "buf":"clear me"
+        },
+        "plain":{
+          "sel":"nil",
+          "caret":15,
+          "focus":false,
+          "buf":"Hello worXYldQ"
+        },
+        "clip":"rXY",
+        "enter":"Hello worXYldQ",
+        "prompt":{
+          "sel":"nil",
+          "caret":1,
+          "focus":false,
+          "buf":""
+        }
+      }
+    },{
+      "step":17,
+      "state":{
+        "multiScroll":[0,24],
+        "num":{
+          "sel":"nil",
+          "caret":2,
+          "focus":false,
+          "buf":"5"
+        },
+        "sel":"multi",
+        "multi":{
+          "sel":"nil",
+          "caret":59,
+          "focus":true,
+          "buf":"line one\nline two is longer than the box is wide\n\t\nzthird\nur"
+        },
+        "last":"Hello worXYldQ",
+        "changes":7,
+        "clear":{
+          "sel":"nil",
+          "caret":9,
+          "focus":false,
+          "buf":"clear me"
+        },
+        "plain":{
+          "sel":"nil",
+          "caret":15,
+          "focus":false,
+          "buf":"Hello worXYldQ"
+        },
+        "clip":"rXY",
+        "enter":"Hello worXYldQ",
+        "prompt":{
+          "sel":"nil",
+          "caret":1,
+          "focus":false,
+          "buf":""
+        }
+      }
+    },{
+      "step":18,
+      "state":{
+        "multiScroll":[0,24],
+        "num":{
+          "sel":2,
+          "caret":2,
+          "focus":true,
+          "buf":"5"
+        },
+        "sel":"num",
+        "multi":{
+          "sel":"nil",
+          "caret":59,
+          "focus":false,
+          "buf":"line one\nline two is longer than the box is wide\n\t\nzthird\nur"
+        },
+        "last":"Hello worXYldQ",
+        "changes":7,
+        "clear":{
+          "sel":"nil",
+          "caret":9,
+          "focus":false,
+          "buf":"clear me"
+        },
+        "plain":{
+          "sel":"nil",
+          "caret":15,
+          "focus":false,
+          "buf":"Hello worXYldQ"
+        },
+        "clip":"rXY",
+        "enter":"Hello worXYldQ",
+        "prompt":{
+          "sel":"nil",
+          "caret":1,
+          "focus":false,
+          "buf":""
+        }
+      }
+    },{
+      "step":19,
+      "state":{
+        "multiScroll":[0,24],
+        "num":{
+          "sel":"nil",
+          "caret":2,
+          "focus":true,
+          "buf":"6"
+        },
+        "sel":"num",
+        "multi":{
+          "sel":"nil",
+          "caret":59,
+          "focus":false,
+          "buf":"line one\nline two is longer than the box is wide\n\t\nzthird\nur"
+        },
+        "last":"Hello worXYldQ",
+        "changes":7,
+        "clear":{
+          "sel":"nil",
+          "caret":9,
+          "focus":false,
+          "buf":"clear me"
+        },
+        "plain":{
+          "sel":"nil",
+          "caret":15,
+          "focus":false,
+          "buf":"Hello worXYldQ"
+        },
+        "clip":"rXY",
+        "enter":"Hello worXYldQ",
+        "prompt":{
+          "sel":"nil",
+          "caret":1,
+          "focus":false,
+          "buf":""
+        }
+      }
+    },{
+      "step":20,
+      "state":{
+        "multiScroll":[0,24],
+        "num":{
+          "sel":"nil",
+          "caret":2,
+          "focus":true,
+          "buf":"7"
+        },
+        "sel":"num",
+        "multi":{
+          "sel":"nil",
+          "caret":59,
+          "focus":false,
+          "buf":"line one\nline two is longer than the box is wide\n\t\nzthird\nur"
+        },
+        "last":"Hello worXYldQ",
+        "changes":7,
+        "clear":{
+          "sel":"nil",
+          "caret":9,
+          "focus":false,
+          "buf":"clear me"
+        },
+        "plain":{
+          "sel":"nil",
+          "caret":15,
+          "focus":false,
+          "buf":"Hello worXYldQ"
+        },
+        "clip":"rXY",
+        "enter":"Hello worXYldQ",
+        "prompt":{
+          "sel":"nil",
+          "caret":1,
+          "focus":false,
+          "buf":""
+        }
+      }
+    },{
+      "step":21,
+      "state":{
+        "multiScroll":[0,24],
+        "num":{
+          "sel":"nil",
+          "caret":2,
+          "focus":false,
+          "buf":"7"
+        },
+        "sel":"clear",
+        "multi":{
+          "sel":"nil",
+          "caret":59,
+          "focus":false,
+          "buf":"line one\nline two is longer than the box is wide\n\t\nzthird\nur"
+        },
+        "last":"Hello worXYldQ",
+        "changes":7,
+        "clear":{
+          "sel":"nil",
+          "caret":1,
+          "focus":true,
+          "buf":""
+        },
+        "plain":{
+          "sel":"nil",
+          "caret":15,
+          "focus":false,
+          "buf":"Hello worXYldQ"
+        },
+        "clip":"rXY",
+        "enter":"Hello worXYldQ",
+        "prompt":{
+          "sel":"nil",
+          "caret":1,
+          "focus":false,
+          "buf":""
+        }
+      }
+    },{
+      "step":22,
+      "state":{
+        "multiScroll":[0,24],
+        "num":{
+          "sel":"nil",
+          "caret":2,
+          "focus":false,
+          "buf":"7"
+        },
+        "sel":"prompt",
+        "multi":{
+          "sel":"nil",
+          "caret":59,
+          "focus":false,
+          "buf":"line one\nline two is longer than the box is wide\n\t\nzthird\nur"
+        },
+        "last":"Hello worXYldQ",
+        "changes":7,
+        "clear":{
+          "sel":"nil",
+          "caret":1,
+          "focus":false,
+          "buf":""
+        },
+        "plain":{
+          "sel":"nil",
+          "caret":15,
+          "focus":false,
+          "buf":"Hello worXYldQ"
+        },
+        "clip":"rXY",
+        "enter":"Hello worXYldQ",
+        "prompt":{
+          "sel":"nil",
+          "caret":3,
+          "focus":true,
+          "buf":"ab"
+        }
+      }
+    },{
+      "step":23,
+      "state":{
+        "multiScroll":[0,24],
+        "num":{
+          "sel":"nil",
+          "caret":2,
+          "focus":false,
+          "buf":"7"
+        },
+        "sel":"prompt",
+        "multi":{
+          "sel":"nil",
+          "caret":59,
+          "focus":false,
+          "buf":"line one\nline two is longer than the box is wide\n\t\nzthird\nur"
+        },
+        "last":"Hello worXYldQ",
+        "changes":7,
+        "clear":{
+          "sel":"nil",
+          "caret":1,
+          "focus":false,
+          "buf":""
+        },
+        "plain":{
+          "sel":"nil",
+          "caret":15,
+          "focus":false,
+          "buf":"Hello worXYldQ"
+        },
+        "clip":"rXY",
+        "enter":"Hello worXYldQ",
+        "prompt":{
+          "sel":3,
+          "caret":1,
+          "focus":true,
+          "buf":"ab"
+        }
+      }
+    },{
+      "step":24,
+      "state":{
+        "multiScroll":[0,24],
+        "num":{
+          "sel":"nil",
+          "caret":2,
+          "focus":false,
+          "buf":"7"
+        },
+        "sel":"nil",
+        "multi":{
+          "sel":"nil",
+          "caret":59,
+          "focus":false,
+          "buf":"line one\nline two is longer than the box is wide\n\t\nzthird\nur"
+        },
+        "last":"Hello worXYldQ",
+        "changes":7,
+        "clear":{
+          "sel":"nil",
+          "caret":1,
+          "focus":false,
+          "buf":""
+        },
+        "plain":{
+          "sel":"nil",
+          "caret":15,
+          "focus":false,
+          "buf":"Hello worXYldQ"
+        },
+        "clip":"rXY",
+        "enter":"Hello worXYldQ",
+        "prompt":{
+          "sel":3,
+          "caret":1,
+          "focus":false,
+          "buf":"ab"
+        }
+      }
+    }],
+  "shots":["edit-idle","edit-typed","edit-sel","edit-replaced","edit-multi","edit-num","edit-final","edit-blur"],
+  "errors":[]
+}
