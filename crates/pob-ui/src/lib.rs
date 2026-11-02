@@ -14,10 +14,14 @@ pub mod controls;
 pub mod host;
 pub mod launch;
 pub mod lua;
+pub mod lua_data;
 pub mod modules;
 pub mod search;
 pub mod sg;
 pub mod tooltip;
+pub mod tree_art;
+pub mod tree_tooltip;
+pub mod tree_view;
 pub mod undo;
 
 pub use control::{Anchor, Control, ControlBase, ControlRef, Prop, PropCell, Rect, anchor, rect};

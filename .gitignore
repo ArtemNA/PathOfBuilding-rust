@@ -20,3 +20,5 @@
 /builds/corpus-fixtures/
 # personal build copies saved by the U2c oracle scenarios (local only)
 /tools/sg-oracle/fixtures/build/*.xml
+# U3a: screenshots and states of personal builds (builds/pc): names, stats, passive trees; the tests skip without them
+/tools/sg-oracle/fixtures/tree/

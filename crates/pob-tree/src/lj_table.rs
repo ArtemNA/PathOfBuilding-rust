@@ -106,6 +106,21 @@ impl LjTable {
         }
     }
 
+    /// A table constructor with `nhash` keyed fields and no positional item (`TNEW`/`TDUP` of `expr_table`, lj_parse.c): no array part,
+    /// `hsize2hbits(nhash)` hash bits. What `[1]= {...}, [2]= {...}` of `TreeData/*/tree.lua` builds (the UI's `pairs` orders).
+    pub fn with_constructor_size(nhash: usize) -> LjTable {
+        let hbits = match nhash {
+            0 => return LjTable::new(),
+            1 => 1,
+            n => 1 + fls((n - 1) as u32) as usize,
+        };
+        LjTable {
+            array: Vec::new(),
+            nodes: Some(vec![Node::default(); 1usize << hbits]),
+            freetop: 1usize << hbits,
+        }
+    }
+
     fn hmask(&self) -> usize {
         self.nodes.as_ref().map_or(0, |n| n.len() - 1)
     }

@@ -33,6 +33,12 @@ pub struct Engine {
     /// What the last `RefreshStatList` left: `controls.statBox.list` + `controls.warnings.lines` and the point display (U2c shell).
     stat_list: crate::display::StatList,
     points: crate::shell::PointDisplay,
+    /// `calcsTab:GetMiscCalculator(build)` of this `outputRevision` (U3a: the node tooltip), made on demand.
+    pub(crate) misc: std::cell::RefCell<Option<pob_calc::session::MiscCalculator>>,
+    /// `build.outputRevision` (Build.lua:1266): one per recalculation.
+    output_revision: u64,
+    /// `build.viewMode == "TREE"` (Calcs.lua:102).
+    pub view_mode_is_tree: std::cell::Cell<bool>,
 }
 
 /// The gem property `engine_setGem` edits (boot.lua:405-460).
@@ -62,6 +68,9 @@ impl Engine {
             settings: DisplaySettings::default(),
             stat_list: Default::default(),
             points: Default::default(),
+            misc: std::cell::RefCell::new(None),
+            output_revision: 1,
+            view_mode_is_tree: std::cell::Cell::new(true),
         };
         e.refresh_stat_list()?;
         Ok(e)
@@ -118,6 +127,8 @@ impl Engine {
     /// `engine_recalc` (boot.lua:132-150): `wipeGlobalCache()` + `calcsTab:BuildOutput()` (a fresh session over the model) -- no
     /// `RefreshStatList` (boot.lua does not run it): `SkillDPS` stays in output order, the character level stays.
     pub fn recalc(&mut self) -> Result<(), String> {
+        *self.misc.borrow_mut() = None;
+        self.output_revision += 1;
         (self.res, self.calcs) = run(&self.model)?;
         self.skill_dps = match self.res.perform.player.output.table("SkillDPS") {
             Some(OutTable::SkillDps(v)) => Some(v.clone()),
@@ -175,6 +186,59 @@ impl Engine {
         self.model = pob_build::load_build_xml(&xml).map_err(|e| format!("XML: {e}"))?;
         self.extras = SaveExtras::from_xml(&xml)?;
         Ok(())
+    }
+
+    // --- the tree view (U3a) ---------------------------------------------------------------------------------------------------------
+
+    /// `build.outputRevision`.
+    pub fn output_revision(&self) -> u64 {
+        self.output_revision
+    }
+
+    /// `build.spec`: the live spec of the MAIN result (a tree mutator below replaces it at once; the next [`Engine::refresh`] builds a
+    /// fresh one from the model, as a reload would).
+    pub fn spec_rc(&self) -> Rc<pob_tree::PassiveSpec> {
+        self.res.env.spec.clone()
+    }
+
+    /// The `nodes` / `masteryEffects` the live spec would save, into the model (PassiveSpec.lua:199-202, 3dbca4463 #10338: sorted ids).
+    fn write_spec_to_model(&mut self, spec: pob_tree::PassiveSpec) {
+        let sm = active_spec_mut(&mut self.model);
+        let mut ids = spec.alloc_table_pairs();
+        ids.sort_unstable();
+        sm.nodes = ids.into_iter().map(f64::from).collect();
+        let mut me = pob_build::NumMap::default();
+        for (m, e) in &spec.mastery_selections {
+            me.set(f64::from(*m), *e);
+        }
+        sm.mastery_effects = me;
+        self.res.env.spec = Rc::new(spec);
+    }
+
+    /// The tree view's left click on an unallocated node (PassiveTreeView.lua:514): `spec:AllocNode(node, altPath)` and `build.buildFlag =
+    /// true` (the caller's: the recalculation is the next frame's [`Engine::refresh`], Build.lua:1258-1271). The live spec is updated now:
+    /// the frame goes on with the new `alloc`/`path`. `alt_path`: the trace path's node ids (`tracePath`).
+    pub fn alloc_node(&mut self, id: u32, alt_path: Option<&[u32]>) -> Result<(), String> {
+        let mut spec = (*self.res.env.spec).clone();
+        let i = spec.node_idx(id).ok_or_else(|| format!("AllocNode: unknown node id {id}"))?;
+        let alt: Option<Vec<usize>> = alt_path.map(|p| p.iter().filter_map(|n| spec.node_idx(*n)).collect());
+        spec.alloc_node_path(i, alt.as_deref()).map_err(|e| e.0)?;
+        self.write_spec_to_model(spec);
+        Ok(())
+    }
+
+    /// The tree view's left click on an allocated node (PassiveTreeView.lua:396): `spec:DeallocNode(node)`, `build.buildFlag = true`.
+    pub fn dealloc_node(&mut self, id: u32) -> Result<(), String> {
+        let mut spec = (*self.res.env.spec).clone();
+        let i = spec.node_idx(id).ok_or_else(|| format!("DeallocNode: unknown node id {id}"))?;
+        spec.dealloc_node(i).map_err(|e| e.0)?;
+        self.write_spec_to_model(spec);
+        Ok(())
+    }
+
+    /// `PassiveTreeView:Save` (:105-114) -> `<TreeView>` of the next `SaveDB`.
+    pub fn set_tree_view_state(&mut self, st: crate::save::TreeViewState) {
+        self.extras.tree_view = st;
     }
 
     // --- mutators ----------------------------------------------------------------------------------------------------------------

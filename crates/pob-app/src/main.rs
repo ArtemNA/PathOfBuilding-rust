@@ -1,11 +1,13 @@
 //! Path of Building (Rust): opens the window and runs the ported `Launch.lua` / `Main.lua` (U2b: the build list; the
 //! build screen is U2c).
-//!   cargo run -p pob-app --release [-- --pob <PathOfBuilding checkout>] [--user-path <documents dir>] [--secs N]
+//!   cargo run -p pob-app --release [-- --pob <PathOfBuilding checkout>] [--user-path <documents dir>] [--secs N] [--open <build name>]
 //! - `--pob`: the PoB checkout whose `src/` (tree assets), `runtime/SimpleGraphic/Fonts`, `manifest.xml`,
 //!   `changelog.txt` and `help.txt` are read (read-only; default `POB_ROOT`, else `pobRoot` of `tools/upstream.json`, UI-ARCH §10 п. 7).
 //! - `--user-path`: replaces the "Documents" folder (`GetUserPath`); user data goes to
 //!   `<it>/Path of Building (Rust)/` (UI-ARCH §10 п. 2) — never into the original's `Documents\Path of Building`.
 //! - `--secs N`: closes the window after N seconds (smoke runs).
+//! - `--fps-log`: prints the `OnFrame` calls of every second to stderr (the idle measurement).
+//! - `--open <name>`: opens `<user data>/Builds/<name>.xml` at start (`main:SetMode("BUILD", ...)`, the idle measurement of the tree).
 
 use pob_gfx::window::{MainObject, WindowConfig};
 use pob_gfx::{Frame, Gfx};
@@ -34,6 +36,8 @@ fn default_pob_root() -> String {
 const USER_FOLDER: &str = "Path of Building (Rust)";
 
 struct Runner {
+    fps_log: Option<(u64, u32)>,
+    open: Option<String>,
     app: App,
     secs: Option<f64>,
     start: Instant,
@@ -42,9 +46,26 @@ struct Runner {
 impl MainObject for Runner {
     fn on_init(&mut self, gfx: &mut Gfx) {
         self.app.on_init(gfx);
+        if let Some(name) = self.open.take() {
+            let main = pob_ui::modules::main::main();
+            let path = format!("{}{name}.xml", main.build_path.borrow());
+            main.set_mode(
+                "BUILD",
+                vec![pob_ui::modules::main::ModeArg::Str(path), pob_ui::modules::main::ModeArg::Str(name)],
+            );
+        }
     }
     fn on_frame(&mut self, frame: &mut Frame<'_>) {
         self.app.on_frame(frame);
+        if let Some((sec, n)) = &mut self.fps_log {
+            let now = self.start.elapsed().as_secs();
+            if now != *sec {
+                eprintln!("fps t={sec} n={n}");
+                *sec = now;
+                *n = 0;
+            }
+            *n += 1;
+        }
         if self.secs.is_some_and(|s| self.start.elapsed().as_secs_f64() > s) {
             frame.exit(None);
         }
@@ -94,6 +115,8 @@ fn main() {
     };
     cfg.read_manifest(&format!("{pob}/manifest.xml"));
     let runner = Runner {
+        fps_log: args.iter().any(|a| a == "--fps-log").then_some((0, 0)),
+        open: arg(&args, "--open"),
         app: App::new(cfg),
         secs,
         start: Instant::now(),

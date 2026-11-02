@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<PathOfBuilding>
+	<Mode mode="LIST">
+		<Arg string=""/>
+		<Arg string=""/>
+	</Mode>
+	<Misc buildSortMode="NAME" showThousandsSeparators="true"/>
+</PathOfBuilding>
