@@ -18,6 +18,7 @@ pub mod lua_data;
 pub mod modules;
 pub mod search;
 pub mod sg;
+pub mod tabs;
 pub mod tooltip;
 pub mod tree_art;
 pub mod tree_tooltip;

@@ -1,7 +1,7 @@
 //! The node tooltip of `PassiveTreeView` (:1047-1109, `AddNodeName` :1412-1470, `AddNodeTooltip` :1476-1770).
 //!
 //! `unimplemented`: `build.itemsTab:AddItemTooltip` of a socketed jewel (:1501, U6), `gemTooltip.AddGemTooltip` of a node's granted skill
-//! (:1629-1643, `skillTooltip`, U5), the compare spec's sections (U3b), `launch.devModeAlt`.
+//! (:1629-1643, `skillTooltip`, U5), the compare spec's sections of `AddNodeTooltip` (:1482-1511, :1574-1594: the jewel sections need U6), `launch.devModeAlt`.
 
 use pob_engine::engine::Engine;
 use pob_gfx::{Frame, Gfx};
@@ -36,7 +36,7 @@ pub fn draw_node_tooltip(
     let size = (overlay_size(node.ty()).unwrap_or(0.0) * scale).floor();
     let params = (i, view.show_stat_differences, view.trace_path.clone(), e.output_revision());
     if view.tooltip.check_for_update(params) {
-        add_node_tooltip(view, f, e, art, spec, node, i);
+        add_node_tooltip(view, f, e, art, spec, node, i, None);
     }
     view.tooltip.center = true;
     let (tt_width, tt_height) = view.tooltip.get_dynamic_size(f, view_port);
@@ -90,6 +90,96 @@ pub fn draw_node_tooltip(
     } else {
         view.skill_tooltip.draw(f, tt_x + tt_width + 5.0, tt_y, None, view_port);
     }
+}
+
+/// `AddCompareNodeTooltip` (:1772-1830) + `AddCompareNodeName` (:1832-1856).
+pub fn add_compare_node_tooltip(view: &mut PassiveTreeView, g: &Gfx, _e: &Engine, art: &TreeArt, node: &SpecNode) {
+    let flavour = show_flavour_text();
+    let font_size_big = if flavour { 18.0 } else { 16.0 };
+    view.tooltip.center = true;
+    view.tooltip.max_width = Some(800.0);
+    let an = art.nodes.get(&node.id);
+    view.tooltip.recipe = an.filter(|n| !n.recipe.is_empty()).map(|n| n.recipe.clone());
+    view.tooltip.tooltip_header = Some(
+        match node.ty() {
+            NodeType::Mastery => "MASTERYALLOC",
+            NodeType::Notable | NodeType::Normal if node.ascendancy_name().is_some() => "ASCENDANCY",
+            NodeType::Normal => "PASSIVE",
+            NodeType::Notable => "NOTABLE",
+            NodeType::Socket => "JEWEL",
+            NodeType::Keystone => "KEYSTONE",
+            _ => "UNKNOWN",
+        }
+        .to_string(),
+    );
+    let name = if flavour {
+        format!("^xF8E6CA{}", node.dn())
+    } else {
+        node.dn().to_string()
+    };
+    line(view, g, 24.0, &name, Some("FONTIN"));
+    view.tooltip.center = false;
+    let only = format!("{}This node is only in the compared build", cc("DEXTERITY"));
+    if node.ty() == NodeType::Socket {
+        view.tooltip.add_separator(Some(14.0));
+        line(view, g, 14.0, &only, None);
+        return;
+    }
+    if !node.sd().is_empty() {
+        line(view, g, 16.0, "", None);
+        for (k, l) in node.sd().iter().enumerate() {
+            let unsupported = node
+                .mods()
+                .get(k)
+                .and_then(|m| m.as_ref())
+                .is_some_and(|m| l != " " && (m.extra.is_some() || m.list.is_none()));
+            let col = if unsupported { cc("UNSUPPORTED") } else { cc("MAGIC") };
+            line(view, g, font_size_big, &format!("{col}{l}"), Some("FONTIN"));
+        }
+    }
+    if let Some(rem) = node.reminder_text() {
+        view.tooltip.add_separator(Some(14.0));
+        for l in rem {
+            line(view, g, 14.0, &format!("^xA0A080{l}"), None);
+        }
+    }
+    if flavour
+        && let Some(n) = an
+        && !n.flavour_text.is_empty()
+    {
+        view.tooltip.add_separator(Some(14.0));
+        for l in &n.flavour_text {
+            line(view, g, font_size_big, &format!("{}{l}", cc("UNIQUE")), Some("FONTIN ITALIC"));
+        }
+    }
+    view.tooltip.add_separator(Some(14.0));
+    line(view, g, 14.0, &only, None);
+}
+
+/// `PassiveMasteryControl:AddValueTooltip` (PassiveMasteryControl.lua:50-56): the node's tooltip as if `effect` were chosen; drawn by the list.
+pub fn mastery_effect_tooltip(
+    view: &mut PassiveTreeView,
+    tooltip: &mut crate::tooltip::Tooltip,
+    g: &Gfx,
+    e: &Engine,
+    art: &TreeArt,
+    spec: &PassiveSpec,
+    node_id: u32,
+    effect: f64,
+) {
+    let Some(i) = spec.node_idx(node_id) else { return };
+    let mut node = spec.mastery_effect_node(i, effect as u64);
+    node.alloc = spec.nodes[i].alloc;
+    node.all_mastery_options = false;
+    node.path.clone_from(&spec.nodes[i].path);
+    node.path_dist = spec.nodes[i].path_dist;
+    node.depends.clone_from(&spec.nodes[i].depends);
+    node.linked.clone_from(&spec.nodes[i].linked);
+    let temp = std::rc::Rc::new(node.clone());
+    std::mem::swap(&mut view.tooltip, tooltip);
+    view.tooltip.clear(false);
+    add_node_tooltip(view, g, e, art, spec, &node, i, Some(temp));
+    std::mem::swap(&mut view.tooltip, tooltip);
 }
 
 /// `tooltip:AddLine(size, text, font)`.
@@ -185,9 +275,18 @@ fn add_mod_info(view: &mut PassiveTreeView, g: &Gfx, node: &SpecNode, i: usize, 
     }
 }
 
-/// `AddNodeTooltip` (:1476-1770), without `returnEarly` (the mastery popup's, U3b).
+/// `AddNodeTooltip` (:1476-1770), without `returnEarly`; `temp`: the mastery popup's node with the hovered effect.
 #[allow(clippy::too_many_lines)]
-fn add_node_tooltip(view: &mut PassiveTreeView, g: &Gfx, e: &Engine, art: &TreeArt, spec: &PassiveSpec, node: &SpecNode, i: usize) {
+fn add_node_tooltip(
+    view: &mut PassiveTreeView,
+    g: &Gfx,
+    e: &Engine,
+    art: &TreeArt,
+    spec: &PassiveSpec,
+    node: &SpecNode,
+    i: usize,
+    temp: Option<std::rc::Rc<SpecNode>>,
+) {
     let flavour = show_flavour_text();
     let font_size_big = if flavour { 18.0 } else { 16.0 };
     view.skill_tooltip.clear(false);
@@ -323,7 +422,7 @@ fn add_node_tooltip(view: &mut PassiveTreeView, g: &Gfx, e: &Engine, art: &TreeA
     let path_length = path_nodes.len();
     if view.show_stat_differences {
         view.tooltip.add_separator(Some(14.0));
-        match e.node_stat_compare(i, trace.as_deref()) {
+        match e.node_stat_compare(i, trace.as_deref(), temp) {
             Ok(c) => {
                 for l in &c.lines {
                     line(view, g, 14.0, l, None);

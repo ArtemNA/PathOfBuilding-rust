@@ -151,10 +151,30 @@ impl Engine {
 
     /// PassiveTreeView.lua:1684-1729 on spec node `i`: the differences of allocating / deallocating it and its path. `trace_path`:
     /// `self.tracePath` (indices into `spec.nodes`).
-    pub fn node_stat_compare(&self, i: usize, trace_path: Option<&[usize]>) -> Result<NodeCompare, String> {
+    pub fn node_stat_compare(
+        &self,
+        i: usize,
+        trace_path: Option<&[usize]>,
+        temp: Option<Rc<pob_tree::SpecNode>>,
+    ) -> Result<NodeCompare, String> {
         let calc = self.misc_calculator()?;
         let spec = self.spec_rc();
-        let node = &spec.nodes[i];
+        // `temp`: PassiveMasteryControl's node with the hovered effect (`node.sd` / `modList` replaced, PassiveMasteryControl.lua:52-54)
+        let node: &pob_tree::SpecNode = temp.as_deref().unwrap_or(&spec.nodes[i]);
+        // the session's spec is a fresh load of the model; the live one can hold nodes it has not (a stale subgraph, TreeTab.lua:137)
+        let sess_spec = calc.session().shared().map_err(|e| e.to_string())?.spec.clone();
+        let key = |k: usize| -> OverrideNode {
+            if k == i
+                && let Some(t) = &temp
+            {
+                return OverrideNode::Other(t.clone());
+            }
+            let n = &spec.nodes[k];
+            match sess_spec.node_idx(n.id) {
+                Some(s) => OverrideNode::Spec(s),
+                None => OverrideNode::Other(Rc::new(n.clone())),
+            }
+        };
         let view_tree = self.view_mode_is_tree.get();
         let path: Vec<usize> = if node.alloc {
             node.depends.clone()
@@ -168,13 +188,13 @@ impl Engine {
         let run = |ov: CalcOverride| -> Result<RunRef, String> { calc.calc(&Rc::new(ov), None, view_tree).map_err(|e| e.0) };
         let add = |nodes: Vec<usize>| {
             run(CalcOverride {
-                add_nodes: Some(nodes.into_iter().map(OverrideNode::Spec).collect()),
+                add_nodes: Some(nodes.into_iter().map(key).collect()),
                 ..CalcOverride::default()
             })
         };
         let remove = |nodes: Vec<usize>| {
             run(CalcOverride {
-                remove_nodes: Some(nodes),
+                remove_nodes: Some(nodes.into_iter().filter_map(|k| sess_spec.node_idx(spec.nodes[k].id)).collect()),
                 ..CalcOverride::default()
             })
         };
@@ -227,6 +247,15 @@ impl Engine {
         }
         out.count = count;
         Ok(out)
+    }
+
+    /// `calcFunc(override)` against `calcBase` as `AddStatComparesToTooltip` lines.
+    pub(crate) fn compare_override(&self, ov: CalcOverride, header: &str) -> Result<Vec<String>, String> {
+        let calc = self.misc_calculator()?;
+        let run = calc.calc(&Rc::new(ov), None, self.view_mode_is_tree.get()).map_err(|e| e.0)?;
+        let mut lines = Vec::new();
+        self.add_stat_compares(&mut lines, &calc.base, &run, header, None)?;
+        Ok(lines)
     }
 
     /// `specNode.finalModList:Sum("BASE", nil, attrib)` (PassiveTreeView.lua:1450).

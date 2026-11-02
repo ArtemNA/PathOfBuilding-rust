@@ -1,8 +1,7 @@
 //! `Classes/PassiveTreeView.lua` (upstream 3dbca4463): the passive tree viewer -- input, zoom/pan, hover/path, allocation, the artwork.
 //!
-//! Not ported here, each marked where the branch is (`UNIMPLEMENTED`, pushed once into [`PassiveTreeView::unimplemented`]): the compare
-//! spec (`self.compareSpec`, TreeTab's compare check, U3b), the heat map (`showHeatMap`, node power UI, U3b), the mastery / tattoo popups
-//! (TreeTab, U3b), the class switch through an ascendancy node (`SelectClass`, U3b), the jump to the items tab (U6), `launch.devModeAlt`.
+//! Not ported here, each marked where the branch is (`UNIMPLEMENTED`, pushed once into [`PassiveTreeView::unimplemented`]): the jump to the
+//! items tab (U6), `launch.devModeAlt`.
 
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -115,6 +114,10 @@ pub struct PassiveTreeView {
     pub dragging: bool,
     pub trace_mode: bool,
     pub trace_path: Option<Vec<usize>>,
+    /// `self.showHeatMap`.
+    pub show_heat_map: bool,
+    /// `self.compareSpec` (TreeTab.lua:450).
+    pub compare_spec: Option<Rc<PassiveSpec>>,
     cache: Option<SpecCache>,
     pub unimplemented: Vec<String>,
     /// Test harness only: a sample of the `pairs(tree.nodes)`-dependent orders of one oracle process (see [`Self::set_order_sample`]).
@@ -177,6 +180,8 @@ impl PassiveTreeView {
             dragging: false,
             trace_mode: false,
             trace_path: None,
+            show_heat_map: false,
+            compare_spec: None,
             cache: None,
             unimplemented: Vec::new(),
             order_sample: None,
@@ -340,6 +345,16 @@ impl PassiveTreeView {
         self.search_str_cached = String::from("\0");
     }
 
+    /// `PassiveTreeViewClass:Focus(x, y, viewPort, build)` (:1323-1332).
+    pub fn focus(&mut self, x: f64, y: f64, view_port: &Rect, tree: &pob_tree::PassiveTree) {
+        self.zoom_level = 12.0;
+        self.zoom = 1.2_f64.powf(self.zoom_level);
+        let size = ARTS.with_borrow(|a| a.get(&tree.tree_version).map(|t| t.size)).unwrap_or(1.0);
+        let scale = m_min(view_port.width, view_port.height) / size * self.zoom;
+        self.zoom_x = -x * scale;
+        self.zoom_y = -y * scale;
+    }
+
     /// `PassiveTreeViewClass:Zoom` (:1307-1320).
     pub fn do_zoom(&mut self, f: &Frame<'_>, level: f64, view_port: &Rect) {
         self.zoom_level = m_max(0.0, m_min(12.0, self.zoom_level + level));
@@ -386,7 +401,7 @@ impl PassiveTreeView {
                             self.drag = Some((cursor_x, cursor_y));
                         }
                     }
-                    "p" => self.note("PassiveTreeView.lua:215 showHeatMap (node power, U3b)"),
+                    "p" => self.show_heat_map = !self.show_heat_map,
                     "d" if sg::is_key_down(f, "CTRL") => self.show_stat_differences = !self.show_stat_differences,
                     "c" if sg::is_key_down(f, "CTRL") && self.hover_node.is_some_and(|h| spec.nodes[h].ty() != NodeType::Socket) => {
                         let n = &spec.nodes[self.hover_node.expect("checked")];
@@ -500,6 +515,28 @@ impl PassiveTreeView {
                 }
             }
         }
+        // :318-331 compare-only nodes
+        let compare = self.compare_spec.clone();
+        let mut hover_compare: Option<usize> = None;
+        if m_over
+            && hover_node.is_none()
+            && let Some(cs) = &compare
+        {
+            let cur_x = (cursor_x - offset_x) / scale;
+            let cur_y = (cursor_y - offset_y) / scale;
+            for (ci, c) in cs.nodes.iter().enumerate() {
+                if spec.node_idx(c.id).is_none() && c.alloc && !c.ty().is_start() {
+                    let t = c.tree_node();
+                    if let (Some(size), Some(x), Some(y)) = (overlay_size(c.ty()), t.x, t.y) {
+                        let (vx, vy) = (cur_x - x, cur_y - y);
+                        if vx * vx + vy * vy <= size * size {
+                            hover_compare = Some(ci);
+                            break;
+                        }
+                    }
+                }
+            }
+        }
         self.hover_node = hover_node;
 
         // :335-386 path / dependents of the hovered node
@@ -563,55 +600,136 @@ impl PassiveTreeView {
         if tree_click == Some("LEFT") {
             if let Some(h) = hover_node {
                 let id = spec.nodes[h].id;
+                let tab = main().build_mode.tree_tab.borrow().clone();
+                if let Some(t) = &tab {
+                    t.ensure_undo();
+                }
+                let add_undo = || {
+                    if let Some(t) = &tab {
+                        t.add_undo_state();
+                    }
+                };
                 if spec.nodes[h].alloc {
                     let res = engine.borrow_mut().as_mut().expect("engine").dealloc_node(id);
                     if let Err(e) = res {
                         self.note(&e);
                     } else {
+                        add_undo();
                         mod_flag.set(true);
                         build_flag.set(true);
                     }
                 } else {
-                    if let Some(asc) = spec.nodes[h].ascendancy_name() {
-                        let bloodline = spec.tree.secondary_ascend_name_map.as_ref().is_some_and(|m| m.contains_key(asc));
+                    let mut leave = false;
+                    if let Some(asc) = spec.nodes[h].ascendancy_name().map(str::to_owned) {
+                        let bloodline = spec
+                            .tree
+                            .secondary_ascend_name_map
+                            .as_ref()
+                            .is_some_and(|m| m.contains_key(asc.as_str()));
                         let cur_secondary_id = secondary_ascend_id(&spec);
                         let cur_secondary = cur_secondary_id.as_deref();
                         if bloodline {
-                            if cur_secondary != Some(asc) {
-                                self.note("PassiveTreeView.lua:408-422 SelectSecondaryAscendClass through a node (U3b)");
+                            // :408-422
+                            if cur_secondary != Some(asc.as_str()) {
+                                let k = engine.borrow().as_ref().expect("engine").find_bloodline(&asc);
+                                if let Some(k) = k {
+                                    let res = engine.borrow_mut().as_mut().expect("engine").select_secondary_ascend_class(k);
+                                    res.unwrap_or_else(|e| panic!("{e}"));
+                                    add_undo();
+                                    main().build_mode.set_title_pub(f);
+                                    build_flag.set(true);
+                                }
                             }
-                        } else if (spec.cur_ascend_class_id.unwrap_or(0) == 0 || Some(asc) != spec.cur_ascend_class_base_name.as_deref())
-                            && cur_secondary != Some(asc)
+                        } else if (spec.cur_ascend_class_id.unwrap_or(0) == 0
+                            || Some(asc.as_str()) != spec.cur_ascend_class_base_name.as_deref())
+                            && cur_secondary != Some(asc.as_str())
                         {
-                            self.note("PassiveTreeView.lua:432-505 SelectAscendClass / SelectClass through a node (U3b)");
+                            // :432-505
+                            let cur_class = spec.cur_class_id.expect("class");
+                            let same = spec.tree.classes[cur_class]
+                                .classes
+                                .iter()
+                                .position(|a| a.id.as_deref() == Some(asc.as_str()));
+                            if let Some(a) = same {
+                                let res = engine.borrow_mut().as_mut().expect("engine").select_ascend_class(a as f64);
+                                res.unwrap_or_else(|e| panic!("{e}"));
+                                add_undo();
+                                main().build_mode.set_title_pub(f);
+                                build_flag.set(true);
+                            } else {
+                                let found = engine.borrow().as_ref().expect("engine").find_ascendancy(&asc);
+                                if let Some((c, a, class_name)) = found {
+                                    let used = spec.count_alloc_nodes().used;
+                                    let connected = engine.borrow().as_ref().expect("engine").is_class_connected(c);
+                                    if used == 0 || connected {
+                                        crate::tabs::tree::switch_class(f, c, Some((a, id)));
+                                    } else {
+                                        crate::tabs::tree::confirm_class_change(f, c, &class_name, Some((a, id)));
+                                        leave = true;
+                                    }
+                                }
+                            }
                         }
                     }
-                    // :510-518 normal allocation
-                    if spec.nodes[h].path.is_some() && !spec.nodes[h].alloc {
-                        if spec.nodes[h].ty() == NodeType::Mastery && art.nodes.get(&id).is_some_and(|n| n.has_mastery_effects) {
-                            self.note("PassiveTreeView.lua:512 treeTab:OpenMasteryPopup (U3b)");
-                        } else {
+                    if !leave {
+                        spec = engine.borrow().as_ref().expect("engine").spec_rc();
+                        // :510-518 normal allocation
+                        if let Some(h2) = spec.node_idx(id)
+                            && spec.nodes[h2].path.is_some()
+                            && !spec.nodes[h2].alloc
+                        {
                             let alt: Option<Vec<u32>> = self
                                 .trace_path
                                 .as_ref()
                                 .filter(|tp| tp.last() == Some(&h))
                                 .map(|tp| tp.iter().map(|i| spec.nodes[*i].id).collect());
-                            let res = engine.borrow_mut().as_mut().expect("engine").alloc_node(id, alt.as_deref());
-                            if let Err(e) = res {
-                                self.note(&e);
+                            if spec.nodes[h2].ty() == NodeType::Mastery && art.nodes.get(&id).is_some_and(|n| n.has_mastery_effects) {
+                                crate::tabs::tree::open_mastery_popup(f, id, alt);
                             } else {
-                                mod_flag.set(true);
-                                build_flag.set(true);
+                                let res = engine.borrow_mut().as_mut().expect("engine").alloc_node(id, alt.as_deref());
+                                if let Err(e) = res {
+                                    self.note(&e);
+                                } else {
+                                    add_undo();
+                                    mod_flag.set(true);
+                                    build_flag.set(true);
+                                }
                             }
                         }
                     }
                 }
                 spec = engine.borrow().as_ref().expect("engine").spec_rc();
-                let cache = self.cache.as_mut().expect("synced");
-                cache.spec = spec.clone();
+                self.sync_cache(&spec, &art);
+                hover_node = spec.node_idx(id);
+                self.hover_node = hover_node;
+                // the node list may have changed (a cluster socket's graph, another class' tree): the frame's path tables go with it
+                if spec.nodes.len() != n_nodes {
+                    hover_path = None;
+                    hover_dep = None;
+                    self.trace_path = None;
+                    self.trace_mode = false;
+                }
             }
-        } else if tree_click == Some("RIGHT") && hover_node.is_some() {
-            self.note("PassiveTreeView.lua:522-543 right click: items tab / ModifyNodePopup / OpenMasteryPopup (U3b, U6)");
+        } else if tree_click == Some("RIGHT")
+            && let Some(h) = hover_node
+        {
+            // :522-543
+            let n = &spec.nodes[h];
+            let id = n.id;
+            let has_effects = art.nodes.get(&id).is_some_and(|x| x.has_mastery_effects);
+            let can_tattoo = engine.borrow().as_ref().expect("engine").node_can_tattoo(id);
+            if n.alloc && n.ty() == NodeType::Socket {
+                self.note("PassiveTreeView.lua:522-529 right click on a socket: the items tab (U6)");
+            } else if can_tattoo {
+                crate::tabs::tree::modify_node_popup(f, id);
+                build_flag.set(true);
+            } else if n.alloc && n.ty() == NodeType::Mastery && has_effects {
+                crate::tabs::tree::open_mastery_popup(f, id, None);
+                build_flag.set(true);
+            } else if !n.alloc && n.ty() == NodeType::Mastery && has_effects {
+                crate::tabs::tree::modify_node_popup(f, id);
+                build_flag.set(true);
+            }
         }
 
         // :546-555 the background
@@ -743,6 +861,21 @@ impl PassiveTreeView {
             }
             render_group(f, sg_art.x, sg_art.y, None, false, oo, true);
         }
+        // :658-667 compare-only subgraphs
+        if let Some(cs) = &compare {
+            for v in cs.sub_graph_views() {
+                if spec.sub_graph_views().iter().any(|o| o.id == v.id) {
+                    continue;
+                }
+                let mut oo = [false; 4];
+                if (0.0..4.0).contains(&v.node_orbit) {
+                    oo[v.node_orbit as usize] = true;
+                }
+                sg::set_draw_color_a(f, 0.0, 1.0, 0.0, 0.6);
+                render_group(f, v.x, v.y, None, false, oo, true);
+                sg::set_draw_color(f, 1.0, 1.0, 1.0);
+            }
+        }
 
         // :669-753 connectors
         let split_conn = {
@@ -761,6 +894,21 @@ impl PassiveTreeView {
                     state = 1;
                 }
             }
+            // :696-709 `baseState` over the compare spec's nodes
+            let mut compare_color: Option<(f64, f64, f64)> = None;
+            if let Some(cs) = &compare {
+                let base_active = match (cs.node(n1.id), cs.node(n2.id)) {
+                    (Some(c1), Some(c2)) => c1.alloc && c2.alloc,
+                    _ => state == 2,
+                };
+                if base_active && state != 2 {
+                    state = 2;
+                    compare_color = Some((0.0, 1.0, 0.0));
+                }
+                if !base_active && state == 2 {
+                    compare_color = Some((1.0, 0.0, 0.0));
+                }
+            }
             let vert = &connector.vert[state];
             let mut c = [0.0; 8];
             for k in 0..4 {
@@ -772,6 +920,8 @@ impl PassiveTreeView {
                 sg::set_draw_color(f, 1.0, 0.0, 0.0);
             } else if connector.ascendancy_name.is_some() && connector.ascendancy_name.as_deref() != cur_asc_ref {
                 sg::set_draw_color(f, 0.75, 0.75, 0.75);
+            } else if let Some((r, g, b)) = compare_color {
+                sg::set_draw_color(f, r, g, b);
             } else if split_conn[i1] && split_conn[i2] {
                 // `setConnectorColor(colorCodes.SPLITPERSONALITY)` -- an escape string in slot 1: `SetDrawColor(unpack{str, 1, 1})`
                 sg::set_draw_color_str(f, &color_code("SPLITPERSONALITY").unwrap_or_default());
@@ -815,6 +965,79 @@ impl PassiveTreeView {
                 render_connector(f, c, *i1, *i2);
             }
         }
+        // :755-781 connectors of compare-only subgraphs
+        if let Some(cs) = &compare {
+            let own: Vec<u32> = spec.sub_graph_views().iter().map(|v| v.id).collect();
+            for v in cs.sub_graph_views() {
+                if own.contains(&v.id) {
+                    continue;
+                }
+                let group_of = |i: usize| {
+                    let n = &cs.nodes[i];
+                    if n.is_subgraph_node() {
+                        (v.x, v.y)
+                    } else {
+                        n.tree_node()
+                            .group
+                            .and_then(|g| cs.tree.groups.get(&g))
+                            .map_or((0.0, 0.0), |g| (g.x, g.y))
+                    }
+                };
+                for (a, b) in &v.links {
+                    let mut out = Vec::new();
+                    art.build_connector(
+                        cs.nodes[*a].tree_node(),
+                        cs.nodes[*b].tree_node(),
+                        group_of(*a),
+                        group_of(*b),
+                        &mut out,
+                    );
+                    for c in out {
+                        let (Some(n1), Some(n2)) = (cs.node(c.node_id1), cs.node(c.node_id2)) else {
+                            continue;
+                        };
+                        if !(n1.alloc && n2.alloc) {
+                            continue;
+                        }
+                        let vert = &c.vert[2];
+                        let mut q = [0.0; 8];
+                        for k in 0..4 {
+                            let (x, y) = to_screen(vert[k * 2], vert[k * 2 + 1]);
+                            q[k * 2] = x;
+                            q[k * 2 + 1] = y;
+                        }
+                        sg::set_draw_color(f, 0.0, 1.0, 0.0);
+                        if let Some(asset) = art
+                            .assets
+                            .get(&format!("{}Active", c.ty))
+                            .or_else(|| art.assets.get(&format!("{}Normal", c.ty)))
+                        {
+                            // `unpack(connector.c)`: the tex coords of the connector as they are
+                            f.draw_image_quad(Some(&asset.handle), q, Some(c.tc))
+                                .unwrap_or_else(|e| panic!("{e}"));
+                        }
+                    }
+                }
+            }
+            sg::set_draw_color(f, 1.0, 1.0, 1.0);
+        }
+
+        // :783-787
+        let power = if self.show_heat_map {
+            main().build_mode.tree_tab.borrow().as_ref().and_then(|t| {
+                t.build_power(f);
+                t.power.borrow().clone()
+            })
+        } else {
+            None
+        };
+        let heat_stat_single = main()
+            .build_mode
+            .tree_tab
+            .borrow()
+            .as_ref()
+            .is_some_and(|t| t.power_stat.borrow().as_ref().is_some_and(|s| s.stat.is_some()));
+        let theme = main().s.borrow().node_power_theme.clone();
 
         let eng = engine.borrow();
         let e = eng.as_ref().expect("engine");
@@ -846,7 +1069,8 @@ impl PassiveTreeView {
             let id = node.id;
             let ty = node.ty();
             let tn = node.tree_node();
-            let is_alloc = node.alloc || granted.contains_key(&id);
+            let compare_node = compare.as_ref().and_then(|c| c.node(id));
+            let is_alloc = node.alloc || granted.contains_key(&id) || compare_node.is_some_and(|c| c.alloc);
             let node_default = split_path[i].then(|| color_code("SPLITPERSONALITY")).flatten();
             let art_node = art.nodes.get(&id);
             let mut base: Option<AssetRef> = None;
@@ -878,7 +1102,7 @@ impl PassiveTreeView {
                     overlay_asset = Some(o);
                 }
                 _ => {
-                    let state = if is_alloc || Some(i) == hover_node || trace_last {
+                    let state = if self.show_heat_map || is_alloc || Some(i) == hover_node || trace_last {
                         "alloc"
                     } else if hover_path.as_ref().is_some_and(|hp| hp[i]) {
                         "path"
@@ -982,10 +1206,57 @@ impl PassiveTreeView {
             let (Some(x), Some(y)) = (tn.x, tn.y) else { continue };
             let (scr_x, scr_y) = to_screen(x, y);
 
-            // :957-959 `SetDrawColor(nodeDefaultColor)`
-            match &node_default {
-                Some(c) => sg::set_draw_color_str(f, c),
-                None => sg::set_draw_color(f, 1.0, 1.0, 1.0),
+            // :917-959 heat map / `GetCompareNodeColor` (:175-194) / `nodeDefaultColor`
+            let cmp_colour: Option<(f64, f64, f64)> = compare_node.and_then(|c| {
+                if c.alloc && !node.alloc {
+                    Some((0.0, 1.0, 0.0))
+                } else if !c.alloc && node.alloc {
+                    Some((1.0, 0.0, 0.0))
+                } else if ty == NodeType::Mastery
+                    && c.alloc
+                    && node.alloc
+                    && (compare.as_ref().is_some_and(|cs| cs.tree_version != spec.tree_version)
+                        || compare.as_ref().and_then(|cs| cs.mastery_selections.get(&id)) != spec.mastery_selections.get(&id))
+                {
+                    Some((0.0, 0.0, 1.0))
+                } else {
+                    // :185-191: `GetCompareJewel` reads the active sockets: the same jewel
+                    None
+                }
+            });
+            if self.show_heat_map && !is_alloc && !ty.is_start() {
+                let p = power.as_ref();
+                let np = p.and_then(|r| r.nodes.get(i));
+                let mx = p.map(|r| r.power_max).unwrap_or_default();
+                if heat_stat_single {
+                    let stat = m_max(np.and_then(|n| n.single_stat).unwrap_or(0.0), 0.0);
+                    let col = (stat / mx.single_stat * 1.5).powf(0.5);
+                    match theme.as_str() {
+                        "RED/BLUE" => sg::set_draw_color(f, col, 0.0, 0.0),
+                        "RED/GREEN" => sg::set_draw_color(f, 0.0, col, 0.0),
+                        "GREEN/BLUE" => sg::set_draw_color(f, 0.0, 0.0, col),
+                        _ => {}
+                    }
+                } else {
+                    let offence = m_max(np.and_then(|n| n.offence).unwrap_or(0.0), 0.0);
+                    let defence = m_max(np.and_then(|n| n.defence).unwrap_or(0.0), 0.0);
+                    let dps = (offence / mx.offence * 1.5).powf(0.5);
+                    let def = (defence / mx.defence * 1.5).powf(0.5);
+                    let mix = (m_max(dps - 0.5, 0.0) + m_max(def - 0.5, 0.0)) / 2.0;
+                    match theme.as_str() {
+                        "RED/BLUE" => sg::set_draw_color(f, dps, mix, def),
+                        "RED/GREEN" => sg::set_draw_color(f, dps, def, mix),
+                        "GREEN/BLUE" => sg::set_draw_color(f, mix, dps, def),
+                        _ => {}
+                    }
+                }
+            } else if let Some((r, g, b)) = cmp_colour {
+                sg::set_draw_color(f, r, g, b);
+            } else {
+                match &node_default {
+                    Some(c) => sg::set_draw_color_str(f, c),
+                    None => sg::set_draw_color(f, 1.0, 1.0, 1.0),
+                }
             }
 
             if let Some(eff) = &effect {
@@ -1070,6 +1341,83 @@ impl PassiveTreeView {
         }
         sg::set_draw_color(f, 1.0, 1.0, 1.0);
 
+        // :1112-1165 compare-only nodes
+        if let Some(cs) = &compare {
+            sg::set_draw_layer(f, None, 25);
+            for (ci, c) in cs.nodes.iter().enumerate() {
+                let t = c.tree_node();
+                if spec.node_idx(c.id).is_some() || !c.alloc || c.ty().is_start() {
+                    continue;
+                }
+                let (Some(x), Some(y)) = (t.x, t.y) else { continue };
+                let (scr_x, scr_y) = to_screen(x, y);
+                sg::set_draw_color(f, 0.0, 1.0, 0.0);
+                let base: Option<AssetRef>;
+                let mut over: Option<String> = None;
+                match c.ty() {
+                    NodeType::Socket => {
+                        let key = if t.expansion_jewel.is_some() { "allocAlt" } else { "alloc" };
+                        let n = overlay(c.ty(), key, art.version_num).unwrap_or("JewelSocketActiveBlue");
+                        base = art.assets.get(n).cloned();
+                        if let Some(j) = socket_jewel(e, &spec, c.id) {
+                            over = jewel_socket_overlay(&j, t.expansion_jewel.is_some()).map(str::to_owned);
+                        }
+                    }
+                    NodeType::Mastery => {
+                        base = art
+                            .nodes
+                            .get(&c.id)
+                            .and_then(|an| an.active_icon.as_ref())
+                            .and_then(|ic| art.sprite_map.get(&**ic))
+                            .and_then(|m| m.get("masteryActiveSelected"))
+                            .cloned()
+                            .or_else(|| node_sprites(&art, c).and_then(|s| s.get("mastery")).cloned());
+                    }
+                    ty => {
+                        base = node_sprites(&art, c)
+                            .and_then(|s| s.get(&format!("{}Active", ty.as_str().to_lowercase())))
+                            .cloned();
+                        let key = format!(
+                            "alloc{}{}",
+                            if c.ascendancy_name().is_some() { "Ascend" } else { "" },
+                            if t.is_blighted { "Blighted" } else { "" }
+                        );
+                        over = overlay(ty, &key, art.version_num).map(str::to_owned);
+                    }
+                }
+                if let Some(b) = &base {
+                    draw_asset(f, Some(b), scr_x, scr_y, scale, false);
+                }
+                if let Some(o) = &over {
+                    draw_asset(f, art.assets.get(o), scr_x, scr_y, scale, false);
+                }
+                sg::set_draw_color(f, 1.0, 1.0, 1.0);
+                if hover_compare == Some(ci)
+                    && (c.ty() != NodeType::Mastery || art.nodes.get(&c.id).is_some_and(|n| n.has_mastery_effects))
+                    && !ctrl
+                    && no_popups
+                {
+                    sg::set_draw_layer(f, None, 100);
+                    let size = (overlay_size(c.ty()).unwrap_or(0.0) * scale).floor();
+                    if self
+                        .tooltip
+                        .check_for_update((c.id, false, None::<Vec<usize>>, e.output_revision()))
+                    {
+                        crate::tree_tooltip::add_compare_node_tooltip(self, f, e, &art, c);
+                    }
+                    self.tooltip.center = true;
+                    self.tooltip.draw(
+                        f,
+                        (scr_x - size).floor(),
+                        (scr_y - size).floor(),
+                        Some((size * 2.0, size * 2.0)),
+                        view_port,
+                    );
+                    sg::set_draw_layer(f, None, 25);
+                }
+            }
+        }
+
         // :1167-1258 ring overlays for the jewel sockets
         sg::set_draw_layer(f, None, 25);
         let t = f.get_time() as f64 * 0.00003;
@@ -1105,7 +1453,7 @@ impl PassiveTreeView {
                     }
                 }
             }
-            if node.alloc
+            if (node.alloc || compare.as_ref().and_then(|c| c.node(node.id)).is_some_and(|c| c.alloc))
                 && let Some(j) = &jewel
                 && let Some(ri) = j.jewel_radius_index
             {

@@ -39,6 +39,11 @@ pub struct Engine {
     output_revision: u64,
     /// `build.viewMode == "TREE"` (Calcs.lua:102).
     pub view_mode_is_tree: std::cell::Cell<bool>,
+    /// A tree-tab mutator already ran the model (`tree_tab.rs`): the next `refresh` does not run it again.
+    run_fresh: bool,
+    /// `build.spec` after a tree mutator: the Lua's object lives on over the recalculations (`ResetNodes` keeps the cluster subgraphs until the next
+    /// graph rebuild, TreeTab.lua:137-138), the run's own spec is a fresh load of the model. `None`: the run's is the live one.
+    live_spec: Option<Rc<pob_tree::PassiveSpec>>,
 }
 
 /// The gem property `engine_setGem` edits (boot.lua:405-460).
@@ -71,6 +76,8 @@ impl Engine {
             misc: std::cell::RefCell::new(None),
             output_revision: 1,
             view_mode_is_tree: std::cell::Cell::new(true),
+            run_fresh: false,
+            live_spec: None,
         };
         e.refresh_stat_list()?;
         Ok(e)
@@ -98,6 +105,9 @@ impl Engine {
     /// `RefreshStatList()`. `UpdateSocketGroups` runs over the CURRENT `socketGroupList` -- with the groups CalcSetup added for item-granted
     /// skills, which a fresh load does not have yet (see [`Engine::set_gem`]): the model is first rebuilt from `SaveDB`.
     pub fn refresh(&mut self) -> Result<(), String> {
+        if std::mem::take(&mut self.run_fresh) {
+            return self.refresh_stat_list();
+        }
         if self.model_has_runtime_groups() {
             self.materialize()?;
         }
@@ -130,6 +140,9 @@ impl Engine {
         *self.misc.borrow_mut() = None;
         self.output_revision += 1;
         (self.res, self.calcs) = run(&self.model)?;
+        if let Some(l) = &self.live_spec {
+            self.res.env.spec = l.clone();
+        }
         self.skill_dps = match self.res.perform.player.output.table("SkillDPS") {
             Some(OutTable::SkillDps(v)) => Some(v.clone()),
             _ => None,
@@ -201,8 +214,8 @@ impl Engine {
         self.res.env.spec.clone()
     }
 
-    /// The `nodes` / `masteryEffects` the live spec would save, into the model (PassiveSpec.lua:199-202, 3dbca4463 #10338: sorted ids).
-    fn write_spec_to_model(&mut self, spec: pob_tree::PassiveSpec) {
+    /// The `nodes` / `masteryEffects` / class / tattoos the live spec would save, into the model (PassiveSpec.lua:199-202, 3dbca4463 #10338: sorted ids).
+    pub(crate) fn write_spec_to_model(&mut self, spec: pob_tree::PassiveSpec) {
         let sm = active_spec_mut(&mut self.model);
         let mut ids = spec.alloc_table_pairs();
         ids.sort_unstable();
@@ -212,7 +225,40 @@ impl Engine {
             me.set(f64::from(*m), *e);
         }
         sm.mastery_effects = me;
-        self.res.env.spec = Rc::new(spec);
+        sm.class_id = spec.cur_class_id.map_or(0.0, |c| c as f64);
+        sm.ascend_class_id = spec.cur_ascend_class_id.map_or(0.0, |c| c as f64);
+        sm.secondary_ascend_class_id = spec.cur_secondary_ascend_class_id;
+        let keep: Vec<pob_build::SpecOverrideModel> = spec
+            .hash_overrides
+            .iter()
+            .map(|(id, t)| {
+                sm.overrides
+                    .iter()
+                    .find(|o| o.node_id == f64::from(*id) && o.dn.as_deref() == Some(t.dn.as_str()))
+                    .cloned()
+                    .unwrap_or_else(|| pob_build::SpecOverrideModel {
+                        node_id: f64::from(*id),
+                        icon: Some(t.icon.clone()),
+                        active_effect_image: Some(t.active_effect_image.clone()),
+                        dn: Some(t.dn.clone()),
+                        attrib: indexmap::IndexMap::new(),
+                    })
+            })
+            .collect();
+        sm.overrides = keep;
+        let spec = Rc::new(spec);
+        self.live_spec = Some(spec.clone());
+        self.res.env.spec = spec;
+    }
+
+    /// The run is of the current model: the next [`Engine::refresh`] (the `buildFlag` frame) keeps it and rebuilds the stat list.
+    pub(crate) fn mark_run_fresh(&mut self) {
+        self.run_fresh = true;
+    }
+
+    /// `build.spec` was replaced: the object the next run makes is the live one.
+    pub(crate) fn forget_live_spec(&mut self) {
+        self.live_spec = None;
     }
 
     /// The tree view's left click on an unallocated node (PassiveTreeView.lua:514): `spec:AllocNode(node, altPath)` and `build.buildFlag =
@@ -222,7 +268,9 @@ impl Engine {
         let mut spec = (*self.res.env.spec).clone();
         let i = spec.node_idx(id).ok_or_else(|| format!("AllocNode: unknown node id {id}"))?;
         let alt: Option<Vec<usize>> = alt_path.map(|p| p.iter().filter_map(|n| spec.node_idx(*n)).collect());
-        spec.alloc_node_path(i, alt.as_deref()).map_err(|e| e.0)?;
+        let items = self.res.env.items.clone();
+        let lookup = move |id: f64| crate::tree_tab::cluster_lookup(&items, id);
+        spec.alloc_node_full(i, alt.as_deref(), &lookup).map_err(|e| e.0)?;
         self.write_spec_to_model(spec);
         Ok(())
     }
@@ -231,7 +279,9 @@ impl Engine {
     pub fn dealloc_node(&mut self, id: u32) -> Result<(), String> {
         let mut spec = (*self.res.env.spec).clone();
         let i = spec.node_idx(id).ok_or_else(|| format!("DeallocNode: unknown node id {id}"))?;
-        spec.dealloc_node(i).map_err(|e| e.0)?;
+        let items = self.res.env.items.clone();
+        let lookup = move |id: f64| crate::tree_tab::cluster_lookup(&items, id);
+        spec.dealloc_node_full(i, &lookup).map_err(|e| e.0)?;
         self.write_spec_to_model(spec);
         Ok(())
     }
@@ -718,7 +768,7 @@ impl Engine {
 }
 
 /// The `<Spec>` [`pob_build::active_spec`] picks, mutable.
-fn active_spec_mut(m: &mut BuildModel) -> &mut pob_build::SpecModel {
+pub(crate) fn active_spec_mut(m: &mut BuildModel) -> &mut pob_build::SpecModel {
     let target: *const pob_build::SpecModel = pob_build::active_spec(m);
     m.tree
         .specs

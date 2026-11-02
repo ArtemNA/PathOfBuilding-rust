@@ -2,8 +2,8 @@
 //! port, on the same builds and scenarios (`tools/sg-oracle/scenes/tree/*.json`).
 //! - `tree_orders_equal_original` (no GPU): `pairs(tree.groups)`, `tree.connectors`, `pairs(spec.nodes)` = the oracle's records.
 //! - `tree_states_equal_original` (no GPU): every `dump` step = the oracle's (zoom, hover, allocNodes, trace path, the shell).
-//! - `tree_pixels_equal_original` (GPU/WARP, `#[ignore]`): every screenshot = the original's PNG over the tree view rectangle and the side
-//!   bar (the tab's controls under the view are U3b: masked). 0 pixels beyond 2/255.
+//! - `tree_pixels_equal_original` (GPU/WARP, `#[ignore]`): every screenshot = the original's PNG over the whole window, the tab's controls
+//!   included (U3b). 0 pixels beyond 2/255.
 //!   cargo test -p pob-ui --release --test tree -- --include-ignored --nocapture
 
 #[path = "../../pob-gfx/tests/scene/mod.rs"]
@@ -165,6 +165,9 @@ fn oracle_state(s: &Value) -> Value {
         }
         d.insert("tree".into(), t);
     }
+    if let Some(t) = s.get("tab") {
+        d.insert("tab".into(), t.clone());
+    }
     if let Some(t) = s.get("tooltip") {
         // dkjson writes an empty table as an object or an array
         d.insert("tooltip".into(), if t.as_array().is_some() { t.clone() } else { json!([]) });
@@ -175,8 +178,7 @@ fn oracle_state(s: &Value) -> Value {
 struct Shot {
     name: String,
     list: DrawList,
-    /// The bottom of the tree view rectangle.
-    view_bottom: f64,
+    mask: Option<[u32; 4]>,
 }
 
 struct Run {
@@ -266,6 +268,46 @@ fn run(name: &str) -> Run {
         if st["waitAssets"].as_bool() == Some(true) {
             main().build_mode.wait_tree_assets();
             frame(&mut gfx, &l);
+            continue;
+        }
+        if st["openNew"].as_bool() == Some(true) {
+            main().set_mode(
+                "BUILD",
+                vec![
+                    pob_ui::modules::main::ModeArg::Bool(false),
+                    pob_ui::modules::main::ModeArg::Str("Unnamed build".to_string()),
+                ],
+            );
+            frame(&mut gfx, &l);
+            continue;
+        }
+        if st["waitPower"].as_bool() == Some(true) {
+            let t0 = std::time::Instant::now();
+            frame(&mut gfx, &l);
+            pob_ui::tabs::tree::wait_power(&gfx);
+            frame(&mut gfx, &l);
+            out.perf.push(("power".into(), t0.elapsed().as_secs_f64() * 1e3));
+            continue;
+        }
+        if let Some(s) = st["perfPower"].as_str() {
+            let t = main().build_mode.tree_tab.borrow().clone().expect("tab");
+            let stat = pob_engine::tree_tab::power_stat_list()
+                .into_iter()
+                .find(|p| p.stat.as_deref() == Some(s));
+            t.set_power_calc(&gfx, stat);
+            let t0 = std::time::Instant::now();
+            frame(&mut gfx, &l);
+            pob_ui::tabs::tree::wait_power(&gfx);
+            out.perf.push(("powerFull".into(), t0.elapsed().as_secs_f64() * 1e3));
+            continue;
+        }
+        if let Some(s) = st["perfSpec"].as_u64() {
+            let t0 = std::time::Instant::now();
+            let t = main().build_mode.tree_tab.borrow().clone().expect("tab");
+            t.set_active_spec(&mut gfx, s as usize);
+            frame(&mut gfx, &l);
+            frame(&mut gfx, &l);
+            out.perf.push(("spec".into(), t0.elapsed().as_secs_f64() * 1e3));
             continue;
         }
         if let Some(n) = st["perf"].as_u64() {
@@ -395,20 +437,21 @@ fn run(name: &str) -> Run {
         }
         frame(&mut gfx, &l);
         if st["dump"].as_bool() == Some(true) {
-            out.dumps.push(((i + 1) as u64, dump()));
+            let mut d = dump();
+            if st["tab"].as_bool() == Some(true) {
+                d["tab"] = pob_ui::tabs::tree::debug_dump(&gfx);
+            }
+            out.dumps.push(((i + 1) as u64, d));
         }
         if let Some(shot) = st["shot"].as_str() {
             let list = frame(&mut gfx, &l);
-            let b = main().build_mode.clone();
-            let eng = b.engine.borrow();
-            let convert = !eng.as_ref().expect("engine").spec_rc().tree_version.starts_with("3_29");
-            // the separator of `TreeTab:Draw` (`viewPort.height - (34 + linesHeight)` / `(64 + linesHeight)`) starts the masked part
-            let view_bottom = scene::SCREEN.1 as f64 - if convert { 64.0 } else { 34.0 } - 24.0;
-            drop(eng);
             out.shots.push(Shot {
                 name: shot.to_string(),
                 list,
-                view_bottom,
+                mask: st["mask"].as_array().map(|m| {
+                    let v = |i: usize| m[i].as_u64().expect("mask") as u32;
+                    [v(0), v(1), v(2), v(3)]
+                }),
             });
         }
     }
@@ -621,21 +664,27 @@ fn tree_pixels_equal_original() {
         names = only.split(',').map(str::to_owned).collect();
     }
     for name in names {
-        for Shot {
-            name: shot,
-            list,
-            view_bottom,
-        } in run(&name).shots
-        {
+        for Shot { name: shot, list, mask } in run(&name).shots {
             let mut rgba = r.render_to_rgba(&list).expect("render");
+            // POB_TREE_SAVE_OURS=<dir>;<shot>,<shot>: this port's PNG of those shots
+            if let Ok(s) = std::env::var("POB_TREE_SAVE_OURS")
+                && let Some((dir, shots)) = s.split_once(';')
+                && shots.split(',').any(|x| x == shot)
+            {
+                std::fs::create_dir_all(dir).expect("mkdir");
+                scene::save(
+                    &scene::crop(&rgba, scene::SCREEN.0, scene::SCREEN.0, scene::SCREEN.1),
+                    &PathBuf::from(dir).join(format!("{shot}.png")),
+                );
+            }
             let p = scene::oracle_dir().join(format!("fixtures/tree/{shot}.png"));
             let mut oracle = image::open(&p).unwrap_or_else(|e| panic!("{}: {e}", p.display())).to_rgba8();
             assert_eq!(oracle.dimensions(), scene::SCREEN, "{shot}: oracle size");
             let (w, h) = scene::SCREEN;
-            for y in 0..h {
-                for x in 0..w {
-                    // the tab's controls under the view: U3b
-                    if x >= 312 && f64::from(y) >= view_bottom {
+            // a new scene's rows that follow LuaJIT's unstable sort over a per-process `pairs` (R13/L17): `report` of the state gate compares them as a set
+            if let Some([x0, y0, x1, y1]) = mask {
+                for y in y0..y1 {
+                    for x in x0..x1 {
                         let i = ((y * w + x) * 4) as usize;
                         rgba[i..i + 3].copy_from_slice(&[0, 0, 0]);
                         oracle.put_pixel(x, y, image::Rgba([0, 0, 0, 255]));

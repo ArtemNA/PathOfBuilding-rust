@@ -683,8 +683,38 @@ impl PassiveSpec {
 
     /// `PassiveSpec:AllocNode(node, altPath)` (:805-842): `altPath` (the tree view's trace path, indices into `nodes`) replaces `node.path`.
     pub fn alloc_node_path(&mut self, i: usize, alt_path: Option<&[usize]>) -> Result<(), TreeError> {
+        if self.alloc_node_marks(i, alt_path) {
+            return Err(TreeError(
+                "unimplemented: Classes/PassiveSpec.lua:813-814 AllocNode over a cluster jewel socket (BuildClusterJewelGraphs)".into(),
+            ));
+        }
+        self.build_all_depends_and_paths()
+    }
+
+    /// [`Self::alloc_node_path`] with the graph rebuild of :836-838 (`get_jewel`: `GetJewel` of the build's items).
+    pub fn alloc_node_full(&mut self, i: usize, alt_path: Option<&[usize]>, get_jewel: crate::cluster::JewelLookup<'_>) -> Result<(), TreeError> {
+        if self.alloc_node_marks(i, alt_path) {
+            self.build_cluster_jewel_graphs(get_jewel)
+        } else {
+            self.build_all_depends_and_paths()
+        }
+    }
+
+    /// [`Self::dealloc_node`] with the graph rebuild of :861-862.
+    pub fn dealloc_node_full(&mut self, i: usize, get_jewel: crate::cluster::JewelLookup<'_>) -> Result<(), TreeError> {
+        if self.dealloc_node_marks(i) {
+            self.build_cluster_jewel_graphs(get_jewel)
+        } else {
+            self.build_all_depends_and_paths()
+        }
+    }
+
+    /// :811-834; `true`: `rebuildClusterJewelGraphs`.
+    fn alloc_node_marks(&mut self, i: usize, alt_path: Option<&[usize]>) -> bool {
         // :782-785 no path: nothing happens
-        let Some(path) = self.nodes[i].path.clone() else { return Ok(()) };
+        let Some(path) = self.nodes[i].path.clone() else {
+            return false;
+        };
         let path = alt_path.map_or(path, <[usize]>::to_vec);
         let mut rebuild_cluster = false;
         if !self.nodes[i].intuitive_leap_likes_affecting.is_empty() {
@@ -706,27 +736,124 @@ impl PassiveSpec {
                 }
             }
         }
-        if rebuild_cluster {
-            return Err(TreeError(
-                "unimplemented: Classes/PassiveSpec.lua:813-814 AllocNode over a cluster jewel socket (BuildClusterJewelGraphs)".into(),
-            ));
-        }
-        self.build_all_depends_and_paths()
+        rebuild_cluster
     }
 
     /// `PassiveSpec:DeallocNode(node)` (:830-844) on spec node `i`: the node and everything that depends on it, then
     /// `BuildAllDependsAndPaths` (a cluster jewel socket among them -- :839-840 -- is an explicit error).
     pub fn dealloc_node(&mut self, i: usize) -> Result<(), TreeError> {
+        if self.dealloc_node_marks(i) {
+            return Err(TreeError(
+                "unimplemented: Classes/PassiveSpec.lua:839-840 DeallocNode of a cluster jewel socket (BuildClusterJewelGraphs)".into(),
+            ));
+        }
+        self.build_all_depends_and_paths()
+    }
+
+    /// :855-859; `true`: `rebuildClusterJewelGraphs`.
+    fn dealloc_node_marks(&mut self, i: usize) -> bool {
         let mut rebuild_cluster = false;
         for d in self.nodes[i].depends.clone() {
             rebuild_cluster = rebuild_cluster || (self.nodes[d].alloc && self.nodes[d].tree_node().expansion_jewel.is_some());
             self.dealloc_single_node(d);
         }
-        if rebuild_cluster {
-            return Err(TreeError(
-                "unimplemented: Classes/PassiveSpec.lua:839-840 DeallocNode of a cluster jewel socket (BuildClusterJewelGraphs)".into(),
-            ));
+        rebuild_cluster
+    }
+
+    /// :792-800 `ResetNodes` + `BuildAllDependsAndPaths` (TreeTab.lua:137-138).
+    pub fn reset_tree(&mut self) -> Result<(), TreeError> {
+        self.reset_nodes();
+        self.build_all_depends_and_paths()
+    }
+
+    /// :694-715 `IsClassConnected(classId)`.
+    pub fn is_class_connected(&mut self, class_id: usize) -> bool {
+        let Some(start) = self.tree.classes.get(class_id).and_then(|c| c.start_node_id).and_then(|id| self.node_idx(id)) else {
+            return false;
+        };
+        for other in self.nodes[start].linked.clone() {
+            if self.nodes[other].alloc {
+                self.nodes[other].visited = true;
+                let mut visited = Vec::new();
+                let found = self.find_start_from_node(other, &mut visited, true);
+                for n in visited {
+                    self.nodes[n].visited = false;
+                }
+                self.nodes[other].visited = false;
+                if found {
+                    return true;
+                }
+            }
         }
+        false
+    }
+
+    /// :718-789 `ConnectToClass(classId)`: the shortest path from the target class's start node to the allocated tree, allocated.
+    pub fn connect_to_class(&mut self, class_id: usize, get_jewel: crate::cluster::JewelLookup<'_>) -> Result<bool, TreeError> {
+        let Some(target) = self.tree.classes.get(class_id).and_then(|c| c.start_node_id).and_then(|id| self.node_idx(id)) else {
+            return Ok(false);
+        };
+        let is_main = |n: &SpecNode| !n.tree_node().is_proxy && n.ascendancy_name().is_none() && !n.ty().is_start();
+        let mut seen = vec![false; self.nodes.len()];
+        let mut prev: Vec<Option<usize>> = vec![None; self.nodes.len()];
+        let mut queue = vec![target];
+        seen[target] = true;
+        let mut head = 0;
+        let mut found = None;
+        while let Some(&node) = queue.get(head) {
+            head += 1;
+            let n = &self.nodes[node];
+            if node != target && n.alloc && n.connected_to_start && !n.ty().is_start() {
+                found = Some(node);
+                break;
+            }
+            for &l in &n.linked {
+                if is_main(&self.nodes[l]) && !seen[l] {
+                    seen[l] = true;
+                    prev[l] = Some(node);
+                    queue.push(l);
+                }
+            }
+        }
+        let Some(found) = found else { return Ok(false) };
+        let mut path_back = Vec::new();
+        let mut current = Some(found);
+        while let Some(c) = current {
+            path_back.push(c);
+            if c == target {
+                break;
+            }
+            current = prev[c];
+        }
+        if path_back.last() != Some(&target) {
+            return Ok(false);
+        }
+        // :779-786 `altPath` grows with the walk; each new node is allocated over it
+        let mut alt = vec![path_back[0]];
+        for &node in &path_back[1..path_back.len() - 1] {
+            alt.push(node);
+            if !self.nodes[node].alloc {
+                self.alloc_node_full(node, Some(&alt), get_jewel)?;
+            }
+        }
+        Ok(true)
+    }
+
+    /// TreeTab.lua:885-892 `addModifier`: `hashOverrides[node.id] = tattoo`, `ReplaceNode`, the mastery flag, `BuildAllDependsAndPaths`.
+    pub fn set_tattoo(&mut self, i: usize, t: &Rc<crate::tattoo::TattooNode>) -> Result<(), TreeError> {
+        self.hash_overrides.insert(self.nodes[i].id, t.clone());
+        self.replace_with_tattoo(i, t);
+        if self.nodes[i].ty() == NodeType::Mastery {
+            self.nodes[i].all_mastery_options = false;
+        }
+        self.build_all_depends_and_paths()
+    }
+
+    /// TreeTab.lua:350-356 `RemoveTattooFromNode`.
+    pub fn remove_tattoo(&mut self, i: usize) -> Result<(), TreeError> {
+        self.hash_overrides.shift_remove(&self.nodes[i].id);
+        self.replace_node(i);
+        self.nodes[i].all_mastery_options = false;
         self.build_all_depends_and_paths()
     }
 

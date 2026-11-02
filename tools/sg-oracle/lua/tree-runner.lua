@@ -161,6 +161,57 @@ local function buildDump(b)
 	d.rects = rects
 	return d
 end
+-- U3b: the tab's state, the steps with `tab: true` (same fields as pob_ui::tabs::tree::debug_dump).
+local function tabDump(b)
+	local t, s = b.treeTab, b.spec
+	local c = t.controls
+	local specs = { }
+	for i, v in ipairs(c.specSelect.list) do specs[i] = v end
+	local masteries, overrides = { }, { }
+	for id, e in pairs(s.masterySelections) do masteries[#masteries + 1] = id .. ":" .. e end
+	table.sort(masteries)
+	for id, o in pairs(s.hashOverrides) do overrides[#overrides + 1] = id .. ":" .. o.dn end
+	table.sort(overrides)
+	local rects = { }
+	for _, k in ipairs({ "specSelect", "compareCheck", "compareSelect", "reset", "versionText", "versionSelect", "treeSearch", "findTimelessJewel", "treeHeatMap", "nodePowerMaxDepthSelect", "treeHeatMapStatSelect", "powerReport", "powerReportList", "specConvertText", "specConvert", "specConvertAll" }) do
+		if c[k]:IsShown() then
+			local x, y = c[k]:GetPos()
+			local w, h = c[k]:GetSize()
+			rects[k] = string.format("%g,%g,%g,%g", x, y, w, h)
+		end
+	end
+	local d = { activeSpec = t.activeSpec, compareSpec = t.activeCompareSpec, isComparing = t.isComparing and true or false, showConvert = t.showConvert and true or false,
+		showHeatMap = t.viewer.showHeatMap and true or false, specs = specs, versionSel = c.versionSelect.selIndex, treeVersion = s.treeVersion, classId = s.curClassId,
+		ascendClassId = s.curAscendClassId, secondary = s.curSecondaryAscendClassId or "nil", masteries = masteries, overrides = overrides, undo = #s.undo, redo = #s.redo, rects = rects,
+		reportShown = c.powerReportList.shown and true or false, reportLabel = c.powerReportList.label or "nil" }
+	local rows = { }
+	for i, r in ipairs(c.powerReportList.list or { }) do rows[i] = tostring(r.type) .. "|" .. tostring(r.name) .. "|" .. tostring(r.powerStr) .. "|" .. tostring(r.pathDist) .. "|" .. tostring(r.pathPowerStr) end
+	table.sort(rows)
+	d.report = rows
+	local p = main.popups[1]
+	if p then
+		local q = { title = p.title, width = p.width, height = p.height }
+		local pc = p.controls
+		local list = pc[1] and pc[1].list and pc[1] or pc.effect
+		if list then
+			local r = { }
+			for i, v in ipairs(list.list) do r[i] = list:GetRowValue(1, i, v) end
+			q.rows = r
+		end
+		if pc.modSelect then
+			local r = { }
+			for i, v in ipairs(pc.modSelect.list) do r[i] = v.label end
+			q.mods = r
+			q.modSel = pc.modSelect.selIndex
+			q.tattooCount = pc.totalTattoos.label
+		end
+		if pc.edit then q.edit = pc.edit.buf end
+		if pc.msg then q.msg = pc.msg.label end
+		d.popup = q
+	end
+	return d
+end
+
 local function dump(st)
 	local d = { mode = main.mode or "nil", popups = #main.popups, prompt = launch.promptMsg or "nil", clipboard = clipboard or "nil" }
 	local p = main.popups[1]
@@ -193,6 +244,7 @@ local function dump(st)
 		d.tooltip = v.tooltip and { } or nil
 		if v.tooltip then for i, l in ipairs(v.tooltip.lines) do d.tooltip[i] = (l.text or "<sep>") end end
 	end
+	if st.tab and main.mode == "BUILD" then d.tab = tabDump(main.modes.BUILD) end
 	d.writesRefused = table.concat(writesRefused, ",")
 	if runner.bfTrace then d.bfTrace = runner.bfTrace runner.bfTrace = { } end
 	return d
@@ -283,6 +335,47 @@ function runner:Step()
 		-- every ASYNC tree image decoded (GetAsyncCount), then one frame
 		if GetAsyncCount() > 0 then sc.step = sc.step - 1 end
 		self:Frame()
+		return
+	end
+	if st.openNew then
+		-- U3b: a new build (BuildListControl's New: no file)
+		main:SetMode("BUILD", false, "Unnamed build")
+		self:Frame()
+		return
+	end
+	if st.waitPower then
+		-- U3b: the power coroutine ran out (CalcsTab:BuildPower), timed through the frames
+		local cc = main.modes.BUILD.calcsTab
+		sc.powerT0 = sc.powerT0 or os.clock()
+		self:Frame()
+		if cc.powerBuilder or cc.powerBuildFlag then
+			sc.step = sc.step - 1
+		else
+			sc.perf[#sc.perf + 1] = { what = "power", ms = (os.clock() - sc.powerT0) * 1000 }
+			sc.powerT0 = nil
+		end
+		return
+	end
+	if st.perfPower then
+		-- U3b: SetPowerCalc(stat) + the frames until the coroutine ran out (GetTime is frozen: one frame, no yield)
+		local b = main.modes.BUILD
+		local stat
+		for _, s in ipairs(b.treeTab.powerStatList) do if s.stat == st.perfPower then stat = s end end
+		b.treeTab:SetPowerCalc(stat)
+		local t0 = os.clock()
+		L:OnFrame()
+		while b.calcsTab.powerBuilder or b.calcsTab.powerBuildFlag do L:OnFrame() end
+		sc.perf[#sc.perf + 1] = { what = "powerFull", ms = (os.clock() - t0) * 1000 }
+		return
+	end
+	if st.perfSpec then
+		-- U3b: SetActiveSpec + the recalculation frame
+		local t = main.modes.BUILD.treeTab
+		local t0 = os.clock()
+		t:SetActiveSpec(st.perfSpec)
+		L:OnFrame()
+		L:OnFrame()
+		sc.perf[#sc.perf + 1] = { what = "spec", ms = (os.clock() - t0) * 1000 }
 		return
 	end
 	if st.search then
