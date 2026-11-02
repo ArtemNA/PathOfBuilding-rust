@@ -46,6 +46,8 @@ pub struct CalcOverride {
     pub spec: Option<Rc<PassiveSpec>>,
     /// `override.extraJewelFuncs` (:875, :905, :1425-1437) -- a ModList of `ExtraJewelFunc` mods.
     pub extra_jewel_funcs: Option<StoreRef>,
+    /// `override.extraJewelFuncs.actor = env.player` (:1444) -- the env of the first pass is gone, a store holds its actor only weakly.
+    pub extra_jewel_funcs_actor: Option<ActorRef>,
 }
 
 /// `env.player` / `env.enemy` (CALC-ARCH §7 `CalcActor`).

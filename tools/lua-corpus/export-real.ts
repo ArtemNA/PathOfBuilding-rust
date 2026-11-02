@@ -13,6 +13,8 @@
 //   node tools/lua-corpus/export-real.ts perf [re] -> builds/pc-fixtures/_perf-luajit.json: buildOutput(MAIN) ms (default: 3.29)
 //   node tools/lua-corpus/export-real.ts tree-save [re] -> <slug>.tree-save.json for every build of the set with tattoos (`<Override `): LuaJIT's
 //     `build.treeTab:Save` composed by xml.lua ComposeXML after the load (PassiveSpec.lua:197-265, R-tattoo; gate crates/pob-engine/tests/tattoo_save.rs)
+//   node tools/lua-corpus/export-real.ts perf-load [re] -> <out>/_perf-load-luajit.json: loadBuildFromXML and recalc ms, with and without <Party> (R-party)
+//   `--set party-synth`: the XMLs of gen-party-synth.ts, fixtures next to them (crates/pob-calc/tests/fixtures/party-synth)
 //   `--out <dir>` (any mode): write there instead of builds/<set>-fixtures (a re-take into a folder of one's own).
 // Sets (R-UP, builds/README.md): pc = builds/pc/**/*.xml -> builds/pc-fixtures; user = builds/user/*.{xml,txt} (txt = a build code) ->
 // builds/user-fixtures; corpus = builds/corpus/manifest.json -> builds/corpus-fixtures. All three fixture dirs are gitignored.
@@ -36,11 +38,12 @@ const SET = (() => {
   process.argv.splice(i, 2)
   return s
 })()
-if (!['pc', 'user', 'corpus'].includes(SET)) throw new Error(`--set ${SET}: expected pc | user | corpus`)
-const PC = SET === 'corpus' ? ROOT : resolve(ROOT, `builds/${SET}`)
+if (!['pc', 'user', 'corpus', 'party-synth'].includes(SET)) throw new Error(`--set ${SET}: expected pc | user | corpus | party-synth`)
+const SYNTH_DIR = resolve(ROOT, 'crates/pob-calc/tests/fixtures/party-synth') // R-party: XMLs of tools/lua-corpus/gen-party-synth.ts, fixtures next to them
+const PC = SET === 'corpus' ? ROOT : SET === 'party-synth' ? SYNTH_DIR : resolve(ROOT, `builds/${SET}`)
 const OUT = (() => {
   const i = process.argv.indexOf('--out')
-  if (i < 0) return resolve(ROOT, `builds/${SET}-fixtures`)
+  if (i < 0) return SET === 'party-synth' ? SYNTH_DIR : resolve(ROOT, `builds/${SET}-fixtures`)
   const d = resolve(process.argv[i + 1] ?? '')
   process.argv.splice(i, 2)
   return d
@@ -67,7 +70,7 @@ const CORPUS_SET = new Map<string, string>()
 const globRe = (glob: string): RegExp => new RegExp('^' + glob.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*') + '$')
 /** the build files of SET (absolute paths) */
 function listBuilds(): string[] {
-  if (SET === 'pc') return walk(PC)
+  if (SET === 'pc' || SET === 'party-synth') return walk(PC)
   if (SET === 'user') return readdirSync(PC).sort(byteOrder).filter((n) => /\.(xml|txt)$/i.test(n)).map((n) => resolve(PC, n))
   const m = JSON.parse(readFileSync(resolve(ROOT, 'builds/corpus/manifest.json'), 'utf8')) as { sets: { id: string; paths: string[] }[] }
   const out: string[] = []
@@ -89,7 +92,9 @@ function listBuilds(): string[] {
 }
 /** the fixture slug of a build file of SET */
 const slugFor = (f: string): string =>
-  SET === 'pc'
+  SET === 'party-synth'
+    ? relOf(f).replace(/\.xml$/, '')
+    : SET === 'pc'
     ? slugOf(relOf(f))
     : SET === 'user'
       ? `user__${relOf(f).replace(/\.(xml|txt)$/i, '')}`
@@ -330,7 +335,7 @@ async function fixtures(filter?: RegExp): Promise<void> {
   const jobs: Job[] = files.flatMap((f) => {
     const rel = relOf(f), slug = slugFor(f), xml = desktopBytes(f)
     const s = stripP5(xml)
-    return s.equals(xml) ? [{ rel, slug, xml }] : [{ rel, slug, xml }, { rel, slug: `${slug}.p5stripped`, xml: s, variant: 'p5stripped', xmlFile: `${slug}.p5stripped.xml` }]
+    return s.equals(xml) || SET === 'party-synth' ? [{ rel, slug, xml }] : [{ rel, slug, xml }, { rel, slug: `${slug}.p5stripped`, xml: s, variant: 'p5stripped', xmlFile: `${slug}.p5stripped.xml` }]
   })
   // one LuaJIT result per job; a build with an R13-ambiguous gem: repeated until the run that took Rust's order is seen (and, for the record,
   // another order -- max R13_TRIES runs); the fixture is the run of Rust's order, `r13` lists what the other orders change (export-offence-synth r13Eval)
@@ -389,6 +394,41 @@ async function perf(filter: RegExp): Promise<void> {
   writeFileSync(resolve(OUT, '_perf-luajit.json'), JSON.stringify(out, null, 1) + '\n')
 }
 
+/** R-party: `loadBuildFromXML` (which runs the calc) and a recalc (`wipeGlobalCache` + `buildOutput(MAIN)`) ms, in one warm process; also the build without its <Party>. */
+async function perfLoad(filter: RegExp): Promise<void> {
+  const RUNS = 9
+  const files = walk(PC).filter((f) => filter.test(relOf(f)))
+  await prepareLuts(files)
+  mkdirSync(OUT, { recursive: true })
+  const code = (xml: Buffer): string => String.raw`
+jit.on()
+local xml = ${luaBytes(xml)}
+local L, C = {}, {}
+for i = 0, ${RUNS} do
+  local t0 = os.clock()
+  loadBuildFromXML(xml, "perf")
+  local t1 = os.clock()
+  wipeGlobalCache()
+  local t2 = os.clock()
+  build.calcsTab.calcs.buildOutput(build, "MAIN")
+  local t3 = os.clock()
+  if i > 0 then L[i] = (t1 - t0) * 1000; C[i] = (t3 - t2) * 1000 end
+end
+return { load = L, recalc = C, jit = jit.version }
+`
+  const out: Rec = { runs: RUNS, note: 'LuaJIT docker jit.on(), os.clock CPU ms, median; run 0 = warm-up (dropped)', builds: {} }
+  for (const f of files) {
+    const xml = desktopBytes(f)
+    for (const [slug, x] of [[slugOf(relOf(f)), xml], [`${slugOf(relOf(f))}.noparty`, stripP5(xml)]] as [string, Buffer][]) {
+      const r = await ljEval(code(x))
+      if (r.timeout) throw new Error(`${slug}: ${r.timeout}`)
+      out.builds[slug] = { load: median(Object.values(r.load as Rec).map(Number)), recalc: median(Object.values(r.recalc as Rec).map(Number)) }
+      console.log(slug, JSON.stringify(out.builds[slug]))
+    }
+  }
+  writeFileSync(resolve(OUT, '_perf-load-luajit.json'), JSON.stringify(out, null, 1) + '\n')
+}
+
 /** R-tattoo: LuaJIT's `<Tree>` of SaveDB (TreeTab:Save -> every PassiveSpec:Save, PassiveSpec.lua:197-265) for the builds with tattoos, two runs. */
 async function treeSave(filter?: RegExp): Promise<void> {
   const files = listBuilds().filter((f) => (!filter || filter.test(relOf(f))) && desktopBytes(f).includes('<Override '))
@@ -418,4 +458,5 @@ return { tree = text, composeError = err, loadNotes = LOAD.notes }
 
 if (process.argv[2] === 'tree-save') await treeSave(process.argv[3] ? new RegExp(process.argv[3]) : undefined)
 else if (process.argv[2] === 'perf') await perf(new RegExp(process.argv[3] ?? '^3\\.29/'))
+else if (process.argv[2] === 'perf-load') await perfLoad(new RegExp(process.argv[3] ?? '^3\\.29/build-c'))
 else await fixtures(process.argv[2] ? new RegExp(process.argv[2]) : undefined)

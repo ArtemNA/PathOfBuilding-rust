@@ -419,16 +419,10 @@ fn boundary_notes(notes: &[String]) -> Vec<String> {
     v
 }
 
-/// Own `unimplemented` notes that mark a port boundary the build reaches (the port records the skipped upstream branch; reported, not gated):
-/// Split Personality's `distanceToClassStart` (P5 path machinery), `LinkedSupport` without `mod.sourceSlot`, the Energy Blade initEnv re-run /
-/// weapon data, `ExtraJewelFunc` (initEnv recursion).
-const BOUNDARY_NOTES: [&str; 5] = [
-    "CalcSetup.lua:1061 ",
-    "CalcSetup.lua:1595 ",
-    "CalcSetup.lua:1923 ",
-    "Modules/CalcOffence.lua:568-583 ",
-    "CalcSetup.lua:1434 ",
-];
+/// Own `unimplemented` notes that mark a port boundary the build reaches (the port records the skipped upstream branch; reported, not gated).
+/// None since R-party: Split Personality (CalcSetup.lua:1077), `LinkedSupport` (:1611), Energy Blade (:1134, :1946, CalcOffence.lua:568) and
+/// `ExtraJewelFunc` (:1441) are ported.
+const BOUNDARY_NOTES: [&str; 0] = [];
 
 /// Port boundaries read from the build file. None since R-tree-legacy: the legacy alternate ascendancies (`secondaryAscendClassId`
 /// 1-3) are dropped as PassiveTree.lua:132-176 does (pob-tree `tree.rs`), such builds are gated as they are.
@@ -438,11 +432,7 @@ fn boundary_inputs(_xml: &str) -> Vec<String> {
 
 /// Divergences measured to the root but outside this card's files, pinned by the build's sha256 prefix (no names in the repo) and the
 /// exact number of divergent (build, key) pairs: `(sha prefix, pairs, cause)`.
-const KNOWN: [(&str, usize, &str); 1] = [(
-    "6eee1e8401984f67",
-    1,
-    "ManaFlaskChargeGen 1-2 ulp (2.6666666666666701 vs ...696): root not measured",
-)];
+const KNOWN: [(&str, usize, &str); 0] = [];
 
 /// Per-build limit of the Rust gate (a broken build that loads for minutes is reported as a timeout, not waited for).
 const BUILD_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60);
@@ -543,9 +533,7 @@ fn real_builds_match_luajit() {
             _ => 4,
         }] += 1;
     }
-    println!(
-        "--- per league: builds / = LuaJIT / port boundary / known (pinned) / other divergence ---"
-    );
+    println!("--- per league: builds / = LuaJIT / port boundary / known (pinned) / other divergence ---");
     for (l, [n, eq, bd, kn, bad]) in &by_league {
         println!("{l:<24} {n:>3} {eq:>3} {bd:>3} {kn:>3} {bad:>3}");
     }

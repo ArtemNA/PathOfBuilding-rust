@@ -110,8 +110,15 @@ impl PartyTab {
             if !line.is_empty() {
                 // `line:gsub("Condition:", "Condition:Party:")` (no magic characters: a plain replace)
                 let name = line.replace("Condition:", "Condition:Party:");
-                self.enemy_mod_list
-                    .push(Rc::new(create_mod(&name, Some(ModType::Flag), Value::Bool(true), Some("Party"), 0, 0, vec![])));
+                self.enemy_mod_list.push(Rc::new(create_mod(
+                    &name,
+                    Some(ModType::Flag),
+                    Value::Bool(true),
+                    Some("Party"),
+                    0,
+                    0,
+                    vec![],
+                )));
             }
         }
     }
@@ -142,13 +149,15 @@ impl PartyTab {
             if line.contains('=') {
                 let caps = |p: &str| match_(lb, p.as_bytes(), None).map_err(|e| format!("{PT}: {e}"));
                 let cap = |c: &pob_lua::Captures, i: usize| -> Option<String> {
-                    c.get(i)
-                        .and_then(|x| x.bytes(lb))
-                        .map(|b| String::from_utf8_lossy(b).into_owned())
+                    c.get(i).and_then(|x| x.bytes(lb)).map(|b| String::from_utf8_lossy(b).into_owned())
                 };
                 if let Some(c) = caps("^([%w ]-%w+)%.([%w ]-%w+)=(.+)$")? {
                     // :772-776 `label[k1][k2] = tonumber(v)`
-                    let (k1, k2, v) = (cap(&c, 0).unwrap_or_default(), cap(&c, 1).unwrap_or_default(), cap(&c, 2).unwrap_or_default());
+                    let (k1, k2, v) = (
+                        cap(&c, 0).unwrap_or_default(),
+                        cap(&c, 1).unwrap_or_default(),
+                        cap(&c, 2).unwrap_or_default(),
+                    );
                     let t = self.output.entry(k1).or_insert_with(|| PartyOut::Table(IndexMap::new()));
                     if !matches!(t, PartyOut::Table(_)) {
                         *t = PartyOut::Table(IndexMap::new());
@@ -167,7 +176,11 @@ impl PartyTab {
                     let Some(c) = caps("([%w ]-%w+)|(.+)=(.+)")? else {
                         return Err(format!("{PT}:780: attempt to index local 'tags' (a nil value)"));
                     };
-                    let (k, tags, v) = (cap(&c, 0).unwrap_or_default(), cap(&c, 1).unwrap_or_default(), cap(&c, 2).unwrap_or_default());
+                    let (k, tags, v) = (
+                        cap(&c, 0).unwrap_or_default(),
+                        cap(&c, 1).unwrap_or_default(),
+                        cap(&c, 2).unwrap_or_default(),
+                    );
                     let mut v = pob_lua::tonumber(&v);
                     for tag in gmatch(tags.as_bytes(), b"([^|]*)|?") {
                         let tag = tag.map_err(|e| format!("{PT}: {e}"))?;
@@ -198,8 +211,15 @@ impl PartyTab {
                 }
             } else if !line.is_empty() {
                 // :793 `list:NewMod(line, "FLAG", true, "Party")`
-                self.member_mods
-                    .push(Rc::new(create_mod(line, Some(ModType::Flag), Value::Bool(true), Some("Party"), 0, 0, vec![])));
+                self.member_mods.push(Rc::new(create_mod(
+                    line,
+                    Some(ModType::Flag),
+                    Value::Bool(true),
+                    Some("Party"),
+                    0,
+                    0,
+                    vec![],
+                )));
             }
         }
         Ok(())
