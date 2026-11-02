@@ -364,10 +364,10 @@ impl Ctx<'_> {
         }
         if let Some(info) = &e.gem_property_info {
             let mut m = Map::new();
-            for (i, t) in info.iter().enumerate() {
+            for (i, (t, source_type)) in info.iter().enumerate() {
                 m.insert(
                     (i + 1).to_string(),
-                    json!({ "mod": format_source_mod(&t.mod_), "value": lua_value(&t.value) }),
+                    json!({ "mod": format_source_mod(&t.mod_), "sourceType": source_type, "value": lua_value(&t.value) }),
                 );
             }
             o.insert("gemPropertyInfo".into(), Json::Object(m));

@@ -7,6 +7,7 @@
 // Path: JSON keys are strings, array indices 0-based integers; mod-cache: [<line>, "mods", i, ...]; mod-parser: ["tables"|"aux", ...].
 // The mod JSON shape is pob-ts tools/convert/extract/mods.ts normalizeMod (tags = contiguous array part) + mod-parser.ts convertValue
 // (an array+hash Lua table keeps its array part under "list", MINEFIELD D3; a closure value is {fn, up}).
+import '../upstream.ts'
 import { createHash } from 'node:crypto'
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'

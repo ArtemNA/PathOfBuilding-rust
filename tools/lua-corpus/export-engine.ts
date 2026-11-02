@@ -10,6 +10,7 @@
 // Rust build code (bytes = Rust zlib; inflated by Node, HeadlessWrapper's Inflate is a stub) and loads the Rust SaveDB XML -> its output vs the base output.
 // Usage (Node 24, repo root): node tools/lua-corpus/export-engine.ts [name-filter]  -> crates/pob-engine/tests/fixtures/engine/<slug>.engine.json (2 passes, must be identical
 //                             apart from the perf block, which goes to tools/.scratch/perf-engine.json)
+import '../upstream.ts'
 import { execFile } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'

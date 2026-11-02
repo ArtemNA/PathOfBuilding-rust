@@ -246,20 +246,21 @@ pub fn calcs_tail(env: &Env, state: &mut PerformState, main_multipliers: &HashSe
             }
         }
     }
-    // :653 `env.player.mainSkill.baseSkillModList:Flag(nil, "Cruelty")`
+    // :672 `env.player.mainSkill.baseSkillModList:Flag(env.player.mainSkill.skillCfg, "Cruelty")` (3dbca4463 #10385)
     let st = env
         .skills
         .as_ref()
-        .unwrap_or_else(|| panic!("{CALCS}:653: attempt to index field 'mainSkill' (a nil value)"));
+        .unwrap_or_else(|| panic!("{CALCS}:672: attempt to index field 'mainSkill' (a nil value)"));
     let main = st
         .main_skill
-        .unwrap_or_else(|| panic!("{CALCS}:653: attempt to index field 'mainSkill' (a nil value)"));
+        .unwrap_or_else(|| panic!("{CALCS}:672: attempt to index field 'mainSkill' (a nil value)"));
     let base = st
         .skill(main)
         .skill_mod_list
         .clone()
-        .unwrap_or_else(|| panic!("{CALCS}:653: attempt to index field 'baseSkillModList' (a nil value)"));
-    if flag(&base, "Cruelty") {
+        .unwrap_or_else(|| panic!("{CALCS}:672: attempt to index field 'baseSkillModList' (a nil value)"));
+    let cfg = crate::perform::skill_cfg_of(st, st.skill(main));
+    if ok(base.borrow().flag(Some(&cfg), &["Cruelty"])) == Some(true) {
         combat_list.push("Cruelty".into());
     }
     for (f, label) in PLAYER_FLAGS {

@@ -597,11 +597,14 @@ fn exerts_and_pacts(off: &mut Off<'_>, pi: usize, exerted_double_damage: f64, ex
             let cast_time = 1.0 / min2(cast_rate, misc("ServerTickRate"));
             let count = vq.base(vc, &[&format!("{key}EmpoweredSpells")]);
             let stored = stored_uses(&vq, &vcfg, &vsd, 2910);
-            let speed = off.g_or("Speed", 0.0, 2911);
-            let mut uptime = if speed == 0.0 {
+            // :2938-2940 repeated spells keep the empowerment of the initial cast (3dbca4463 #10348)
+            let speed = num_at(off.gval("Speed"), "Speed", 2939);
+            let repeats = num_at(off.gval("Repeats"), "Repeats", 2939);
+            let empowered_use_rate = speed / repeats;
+            let mut uptime = if empowered_use_rate == 0.0 {
                 100.0
             } else {
-                min2((count / speed) / (cooldown + cast_time), 1.0) * 100.0
+                min2((count / empowered_use_rate) / (cooldown + cast_time), 1.0) * 100.0
             };
             uptime = min2(100.0, uptime * stored);
             let effect = if q.flag(None, &["Condition:PactMaxHit"]) { 100.0 } else { uptime };
@@ -614,7 +617,7 @@ fn exerts_and_pacts(off: &mut Off<'_>, pi: usize, exerted_double_damage: f64, ex
             if off.breakdown {
                 let t = BTable::lines([
                     sf!("(%.2f ^8(number of Empowered)", count),
-                    sf!("/ %.2f) ^8(casts per second)", speed),
+                    sf!("/ %.2f) ^8(non-repeated casts per second)", empowered_use_rate),
                     sf!("/ (%.2f ^8(pact cooldown)", cooldown),
                     sf!("+ %.2f) ^8(pact cast time)", cast_time),
                     sf!("* %.2f ^8(stored uses)", stored),
@@ -650,7 +653,8 @@ fn exerts_and_pacts(off: &mut Off<'_>, pi: usize, exerted_double_damage: f64, ex
                 }
                 if off.flag("chaining") && !off.flag("projectile") && !q.flag(sc, &["CannotChain"]) && !q.flag(sc, &["NoAdditionalChains"])
                 {
-                    let v = vq.base(vc, &["BeidatAdditionalBeamChains"]) * effect_mult;
+                    // :2974 `* skillModList:More(skillCfg, "ChainCountMax")` (3dbca4463)
+                    let v = vq.base(vc, &["BeidatAdditionalBeamChains"]) * effect_mult * q.more(sc, &["ChainCountMax"]);
                     off.gset("BeidatAdditionalBeamChains", v);
                     let cm = num_at(off.gval("ChainMax"), "ChainMax", 2946) + v;
                     off.gset("ChainMax", cm);

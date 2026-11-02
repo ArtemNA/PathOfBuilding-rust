@@ -378,8 +378,28 @@ pub(super) fn hit_damage(off: &mut Off<'_>, pi: usize, hit_rate: f64, quantity_m
                     es_leech_total += hit_avg * es_leech / 100.0;
                 }
             } else if off.breakdown {
-                // :3640-3646
-                off.pbd_put(pi, dt, BTable::lines([format!("You can't deal {dt} damage")]));
+                // :3669-3675 `{ "You can't deal X damage", modList = damageDisableMods[damageType] }` (3dbca4463 #10314)
+                let mut t = BTable::lines([format!("You can't deal {dt} damage")]);
+                if let Some(rows) = off.damage_disable_mods.get(dt) {
+                    let mut list = BTable::new();
+                    list.list = rows
+                        .iter()
+                        .map(|r| {
+                            let mut row = BTable::new();
+                            row.fields
+                                .insert("mod".into(), crate::breakdown::BVal::Mod(crate::breakdown::ModRef(r.mod_.clone())));
+                            let v = match &r.value {
+                                pob_mods::Value::Bool(b) => crate::breakdown::BVal::Bool(*b),
+                                pob_mods::Value::Num(n) => crate::breakdown::BVal::Num(*n),
+                                o => unimplemented!("Modules/CalcOffence.lua:1956 FLAG Tabulate value {}", o.type_name()),
+                            };
+                            row.fields.insert("value".into(), v);
+                            crate::breakdown::BVal::Table(row)
+                        })
+                        .collect();
+                    t.fields.insert("modList".into(), crate::breakdown::BVal::Table(list));
+                }
+                off.pbd_put(pi, dt, t);
             }
             if pass == 1 {
                 off.pset_num(pi, &format!("{dt}CritAverage"), hit_avg);

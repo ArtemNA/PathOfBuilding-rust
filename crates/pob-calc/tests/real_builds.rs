@@ -1,5 +1,10 @@
 //! R8-real: Rust = LuaJIT on the user's own PoB builds (`builds/pc/`, a local copy, gitignored).
 //!
+//! R-UP: three sets -- `builds/pc` (personal saves), `builds/user` (`*.xml` / `*.txt` build codes) and `builds/corpus` (manifest: the 6
+//! goldens + the R4/R7/s2 synthetic XMLs), truth in `builds/<set>-fixtures/` (`export-real.ts --set <set>`). Only fixtures taken on the
+//! upstream of `tools/upstream.json` (`producer.pobSha`) are gated; the others are listed (an update re-takes a sample: every build of the
+//! newest league of `builds/pc` -- asserted -- plus 2-3 per older league, UPDATE-PROMPT.md).
+//!
 //! Truth: `builds/pc-fixtures/<league>__<file>.luajit.json` (producer `tools/lua-corpus/export-real.ts`, gitignored too -- personal build
 //! data): the build as desktop reads it (text mode) -> `loadBuildFromXML` -> `wipeGlobalCache` -> `calcs.buildOutput(build, "MAIN")`; the
 //! player's output (`output.{nums,strs,bools}`, numbers `%.17g`) and the minion's (`minion`). A build LuaJIT could not load / calculate
@@ -25,6 +30,78 @@ fn root() -> PathBuf {
 
 fn fixtures_dir() -> PathBuf {
     root().join("pc-fixtures")
+}
+
+/// The build sets of the gate (R-UP, builds/README.md): `builds/<set>` -> LuaJIT truth `builds/<set>-fixtures` (export-real.ts `--set`).
+const SETS: [&str; 3] = ["pc", "user", "corpus"];
+
+/// The newest league folder of builds/pc (`<major>.<minor>`, numerically greatest), if the personal corpus is here.
+fn newest_league() -> Option<String> {
+    let key = |s: &str| -> Option<(u32, u32)> {
+        let (a, b) = s.split_once('.')?;
+        Some((a.parse().ok()?, b.parse().ok()?))
+    };
+    std::fs::read_dir(root().join("pc"))
+        .ok()?
+        .flatten()
+        .filter(|e| e.path().is_dir())
+        .filter_map(|e| e.file_name().into_string().ok())
+        .filter_map(|n| key(&n).map(|k| (k, n)))
+        .max()
+        .map(|(_, n)| n)
+}
+
+/// The fixture dir of a set.
+fn set_fixtures_dir(set: &str) -> PathBuf {
+    root().join(format!("{set}-fixtures"))
+}
+
+/// `pobSha` (9 hex) of tools/upstream.json: a fixture taken on another upstream is stale truth (not gated, listed).
+fn upstream_sha9() -> String {
+    pob_golden::registry::upstream_config()["pobSha"]
+        .as_str()
+        .expect("tools/upstream.json pobSha")
+        .chars()
+        .take(9)
+        .collect()
+}
+
+/// Fixtures whose `producer.pobSha` is not the target upstream (sampling: only some builds are re-taken on an update).
+fn stale_fixtures() -> Vec<String> {
+    let want = upstream_sha9();
+    all_fixtures()
+        .into_iter()
+        .filter(|(_, fx)| !fresh(fx, &want))
+        .map(|(s, _)| s)
+        .collect()
+}
+
+fn fresh(fx: &Json, want: &str) -> bool {
+    fx["producer"]["pobSha"]
+        .as_str()
+        .is_some_and(|s| s.starts_with(want) || want.starts_with(s))
+}
+
+/// Every fixture of every set (sorted by slug).
+fn all_fixtures() -> Vec<(String, Json)> {
+    let mut v = Vec::new();
+    for set in SETS {
+        let Ok(dir) = std::fs::read_dir(set_fixtures_dir(set)) else {
+            continue;
+        };
+        for e in dir.flatten() {
+            let Ok(name) = e.file_name().into_string() else { continue };
+            let Some(slug) = name.strip_suffix(".luajit.json") else { continue };
+            let text = std::fs::read_to_string(e.path()).expect("fixture");
+            let mut fx: Json = serde_json::from_str(&text).expect("fixture json");
+            if fx["set"].is_null() {
+                fx["set"] = Json::String("pc".into());
+            }
+            v.push((slug.to_owned(), fx));
+        }
+    }
+    v.sort_by(|a, b| a.0.cmp(&b.0));
+    v
 }
 
 fn lua_num(s: &str) -> Gv {
@@ -67,21 +144,11 @@ fn scalars(dump: &Json) -> BTreeMap<String, Gv> {
     m
 }
 
-/// `(slug, fixture)` of every fixture, sorted; `None` when the corpus is absent on this machine.
+/// `(slug, fixture)` of every fixture taken on the target upstream (tools/upstream.json), sorted; `None` when there is none on this machine
+/// (personal corpus, local only).
 fn corpus() -> Option<Vec<(String, Json)>> {
-    if !root().join("pc").is_dir() || !fixtures_dir().is_dir() {
-        return None;
-    }
-    let mut v: Vec<(String, Json)> = std::fs::read_dir(fixtures_dir())
-        .ok()?
-        .filter_map(|e| {
-            let name = e.ok()?.file_name().into_string().ok()?;
-            let slug = name.strip_suffix(".luajit.json")?.to_owned();
-            let text = std::fs::read_to_string(fixtures_dir().join(&name)).expect("fixture");
-            Some((slug, serde_json::from_str(&text).expect("fixture json")))
-        })
-        .collect();
-    v.sort_by(|a, b| a.0.cmp(&b.0));
+    let want = upstream_sha9();
+    let v: Vec<(String, Json)> = all_fixtures().into_iter().filter(|(_, fx)| fresh(fx, &want)).collect();
     (!v.is_empty()).then_some(v)
 }
 
@@ -203,12 +270,38 @@ fn compare(name: &str, prefix: &str, lua: &BTreeMap<String, Gv>, rust: &BTreeMap
     }
 }
 
-/// The build file a fixture was made from: the user's build, or (variant `p5stripped`) the probe's copy without the P5 inputs.
+/// The build file a fixture was made from: the build of its set, or (variant `p5stripped`) the probe's copy without the P5 inputs.
+/// Corpus paths are those of builds/corpus/manifest.json (`$POB/...`, `$ORACLE/...`, else repo-relative).
 fn build_path(fx: &Json) -> PathBuf {
+    let set = fx["set"].as_str().unwrap_or("pc");
+    let rel = fx["build"].as_str().expect("build");
     match fx["xmlFile"].as_str() {
-        Some(f) => fixtures_dir().join(f),
-        None => root().join("pc").join(fx["build"].as_str().expect("build")),
+        Some(f) => set_fixtures_dir(set).join(f),
+        None if set == "corpus" => {
+            if let Some(r) = rel.strip_prefix("$POB/") {
+                pob_golden::registry::pob_root().join(r)
+            } else if let Some(r) = rel.strip_prefix("$ORACLE/") {
+                pob_golden::registry::oracle_root().join(r)
+            } else {
+                root().join("..").join(rel)
+            }
+        }
+        None => root().join(set).join(rel),
     }
+}
+
+/// The XML of a build file: a `.txt` build code (builds/user, a note line allowed) decoded as ImportTab does, else the file.
+fn build_xml_bytes(path: &Path) -> Vec<u8> {
+    if path.extension().is_some_and(|e| e.eq_ignore_ascii_case("txt")) {
+        let text = std::fs::read_to_string(path).expect("build code file");
+        let code = text
+            .lines()
+            .map(str::trim)
+            .find(|l| l.len() >= 20 && l.bytes().all(|b| b.is_ascii_alphanumeric() || b"-_+/=".contains(&b)))
+            .unwrap_or_else(|| panic!("{}: no build code line", path.display()));
+        return pob_build::code::decode_build_code(code).unwrap_or_else(|| panic!("{}: bad build code", path.display()));
+    }
+    desktop_bytes(path)
 }
 
 /// The inputs of the two P5 modules pob-calc does not port that this build really uses (measured from its XML): tattoo `<Override>`s
@@ -245,7 +338,7 @@ fn run_build(slug: &str, fx: &Json) -> Row {
         slug: slug.to_owned(),
         ..Row::default()
     };
-    let bytes = desktop_bytes(&path);
+    let bytes = build_xml_bytes(&path);
     row.p5 = p5_inputs(&String::from_utf8_lossy(&bytes));
     row.boundary = boundary_inputs(&String::from_utf8_lossy(&bytes));
     let sha = sha256_hex(&bytes);
@@ -261,7 +354,14 @@ fn run_build(slug: &str, fx: &Json) -> Row {
         skills: true,
         ..CalculateOptions::default()
     };
-    let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| calculate_file(&path, opts)));
+    let is_code = path.extension().is_some_and(|e| e.eq_ignore_ascii_case("txt"));
+    let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        if is_code {
+            pob_calc::calculate_with(&String::from_utf8_lossy(&bytes), opts)
+        } else {
+            calculate_file(&path, opts)
+        }
+    }));
     let res = match outcome {
         Ok(Ok(r)) => r,
         Ok(Err(e)) => {
@@ -372,9 +472,31 @@ const BUILD_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60);
 #[test]
 fn real_builds_match_luajit() {
     let Some(corpus) = corpus() else {
-        println!("real_builds: builds/pc or builds/pc-fixtures absent -- skipped (personal corpus, local only)");
+        println!("real_builds: no fixture of the target upstream in builds/{{pc,user,corpus}}-fixtures -- skipped (local only)");
         return;
     };
+    // sampling (UPDATE-PROMPT.md): fixtures of an older upstream are not truth any more -- listed, not gated
+    let stale = stale_fixtures();
+    println!(
+        "--- {} fixtures of another upstream than {} (not re-taken -- sampling; not gated) ---",
+        stale.len(),
+        upstream_sha9()
+    );
+    // ... but every build of the newest league in builds/pc must have been re-taken
+    if let Some(league) = newest_league() {
+        let dir = root().join("pc").join(&league);
+        for e in std::fs::read_dir(&dir).expect("league dir").flatten() {
+            let name = e.file_name().into_string().expect("utf-8 name");
+            if let Some(stem) = name.strip_suffix(".xml") {
+                let slug = format!("{league}__{stem}");
+                assert!(
+                    corpus.iter().any(|(s, _)| *s == slug),
+                    "{slug}: a build of the newest league without a fixture of upstream {} -- node tools/lua-corpus/export-real.ts '^{league}/'",
+                    upstream_sha9()
+                );
+            }
+        }
+    }
     let mut not_loaded = Vec::new();
     let mut timeouts: Vec<String> = Vec::new();
     let mut rows = Vec::new();
@@ -489,11 +611,17 @@ fn real_builds_match_luajit() {
         );
     }
     assert!(timeouts.is_empty(), "builds over {BUILD_TIMEOUT:?} in Rust: {timeouts:?}");
-    assert_eq!(
-        n("known"),
-        KNOWN.len(),
-        "a pinned known divergence changed or vanished -- update KNOWN"
-    );
+    // every pinned build that is in the gated (re-taken) sample still diverges exactly as pinned (sampling: the others are not gated)
+    for (sha, n, why) in KNOWN {
+        if let Some(r) = rows.iter().find(|r| r.sha.starts_with(sha)) {
+            assert!(
+                class(r) == "known" || class(r) == "p5" || class(r) == "boundary",
+                "{}: pinned known divergence ({n} pairs, {why}) changed: {} pairs now -- update KNOWN",
+                r.slug,
+                r.bad.len()
+            );
+        }
+    }
     assert_eq!(
         pairs("bad"),
         0,
@@ -545,7 +673,7 @@ fn real_builds_perf() {
         if fx["loadError"].is_string() {
             continue;
         }
-        let path = root().join("pc").join(fx["build"].as_str().expect("build"));
+        let path = build_path(fx);
         let xml = pob_build::read_build_file(&path).expect("xml");
         let model = std::rc::Rc::new(pob_build::load_build_xml(&xml).expect("xml parses"));
         let opts = CalculateOptions {

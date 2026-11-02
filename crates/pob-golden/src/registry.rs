@@ -1,30 +1,58 @@
 //! Where the golden builds and their snapshots live (pob-ts `tools/oracle/paths.ts`). All roots are read-only.
+//!
+//! The upstream roots come from the ONE config `tools/upstream.json` (R-UP); env vars `POB_ROOT` / `POB_ORACLE` /
+//! `POB_TS_ROOT` / `POB_GOLDENS_DIR` override it.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+use std::sync::OnceLock;
 
 use crate::snapshot::{Snapshot, SnapshotError, parse_snapshot};
 
-pub const DEFAULT_POB_ROOT: &str = "C:/pob-work/project_15/PathOfBuilding";
-pub const DEFAULT_ORACLE_ROOT: &str = "C:/pob-work/project_15/pob-engine-wasm";
-pub const DEFAULT_POB_TS_ROOT: &str = "C:/pob-work/pob-ts";
-
-fn root(var: &str, default: &str) -> PathBuf {
-    std::env::var_os(var).map_or_else(|| PathBuf::from(default), PathBuf::from)
+/// Repo root of pob-rust (this crate is `crates/pob-golden`).
+pub fn repo_root() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")
 }
 
-/// Upstream PathOfBuilding checkout (`POB_ROOT`).
+/// `tools/upstream.json` -- which upstream PoB checkout (and sha) pob-rust targets.
+pub fn upstream_config() -> &'static serde_json::Value {
+    static CFG: OnceLock<serde_json::Value> = OnceLock::new();
+    CFG.get_or_init(|| {
+        let path = repo_root().join("tools/upstream.json");
+        let text = std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
+        serde_json::from_str(&text).unwrap_or_else(|e| panic!("{}: {e}", path.display()))
+    })
+}
+
+fn root(var: &str, key: &str) -> PathBuf {
+    if let Some(v) = std::env::var_os(var) {
+        return PathBuf::from(v);
+    }
+    let p = upstream_config()[key]
+        .as_str()
+        .unwrap_or_else(|| panic!("tools/upstream.json: missing \"{key}\""));
+    let p = PathBuf::from(p);
+    if p.is_absolute() { p } else { repo_root().join(p) }
+}
+
+/// Upstream PathOfBuilding checkout (`POB_ROOT`, else `pobRoot`).
 pub fn pob_root() -> PathBuf {
-    root("POB_ROOT", DEFAULT_POB_ROOT)
+    root("POB_ROOT", "pobRoot")
 }
 
-/// project_15 wasm oracle (`POB_ORACLE`, same variable as pob-ts).
+/// project_15 wasm oracle (`POB_ORACLE`, same variable as pob-ts; else `oracleRoot`).
 pub fn oracle_root() -> PathBuf {
-    root("POB_ORACLE", DEFAULT_ORACLE_ROOT)
+    root("POB_ORACLE", "oracleRoot")
 }
 
-/// pob-ts checkout (`POB_TS_ROOT`).
+/// pob-ts checkout (`POB_TS_ROOT`, else `pobTsRoot`).
 pub fn pob_ts_root() -> PathBuf {
-    root("POB_TS_ROOT", DEFAULT_POB_TS_ROOT)
+    root("POB_TS_ROOT", "pobTsRoot")
+}
+
+/// Oracle golden snapshots of the target upstream (`POB_GOLDENS_DIR`, else `goldensDir`; R-UP moved them out of
+/// pob-ts, whose `tools/oracle/goldens` stay at the sha pob-ts was built for).
+pub fn goldens_dir() -> PathBuf {
+    root("POB_GOLDENS_DIR", "goldensDir")
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -82,7 +110,7 @@ impl GoldenBuild {
     }
 
     pub fn snapshot_path(&self) -> PathBuf {
-        pob_ts_root().join("tools/oracle/goldens").join(format!("{}.json", self.name))
+        goldens_dir().join(format!("{}.json", self.name))
     }
 
     pub fn load_snapshot(&self) -> Result<Snapshot, SnapshotError> {

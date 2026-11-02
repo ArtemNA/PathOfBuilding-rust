@@ -129,7 +129,14 @@ pub(super) fn reservation_loop(env: &mut Env, output: &Output, acc: &mut Acc, mu
         let skills = st.skills.clone();
         let cfg = skill_cfg_of(st, &st.active_skill_list[i]);
         let sk = &mut st.active_skill_list[i];
-        // :1979
+        // :2005-2008 (3dbca4463 #10305) Mana-Infused Staff needs Mana to reserve
+        if sk.skill_data.get("requiresManaReservation").is_some_and(Value::truthy) && output.opt_num("Mana") == Some(0.0) {
+            sk.skill_flags.insert("disable".into(), true);
+            sk.disable_reason = Some("This skill requires reserving Mana".into());
+            sync_core(env, i);
+            continue;
+        }
+        // :2009
         let autoexertion = sk.skill_data.get("triggeredByAutoexertion").is_some_and(Value::truthy);
         if !((sk.skill_types.contains(&has_reservation) || autoexertion)
             && !sk.skill_types.contains(&reservation_becomes_cost)
@@ -193,8 +200,8 @@ pub(super) fn reservation_loop(env: &mut Env, output: &Output, acc: &mut Acc, mu
             1993,
             "lifeReservationPercent",
         );
-        // :1994-2004 BloodMagicReserved
-        if sml.flag(&["BloodMagicReserved"]) && !sk.skill_data.get("ManaReservationPercentForced").is_some_and(Value::truthy) {
+        // :2024-2034 BloodMagicReserved (3dbca4463: exempts `requiresManaReservation`, no longer `ManaReservationPercentForced`)
+        if sml.flag(&["BloodMagicReserved"]) && !sk.skill_data.get("requiresManaReservation").is_some_and(Value::truthy) {
             life.base_flat += mana.base_flat;
             mana.base_flat = 0.0;
             let v = sk.skill_data.get("ManaReservationFlatForced").cloned();
@@ -325,13 +332,7 @@ pub(super) fn reservation_loop(env: &mut Env, output: &Output, acc: &mut Acc, mu
                 *acc_unc += reserved_percent;
             }
         }
-        // :2088-2091
-        if sk.skill_data.get("ManaReservationPercentForced").is_some_and(Value::truthy)
-            && sk.skill_data.get("ManaReservedBase").and_then(Value::as_num) == Some(0.0)
-        {
-            sk.skill_flags.insert("disable".into(), true);
-            sk.disable_reason = Some("This skill requires reserving Mana".into());
-        }
+        // (the old :2084-2087 "requires reserving Mana" check moved to :2005-2008 above in 3dbca4463)
         sync_core(env, i);
     }
 }

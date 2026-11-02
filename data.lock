@@ -1,11 +1,18 @@
 {
-  "pobSha": "ed354c2f8c42e148bc904c7508dbe851fb2cf952",
+  "pobSha": "3dbca4463c0a59079d9f7f032d8240cf868e09da",
   "converterVersion": "0.1.0",
   "latestTreeVersion": "3_29",
-  "manifestSha256": "994fbd41821a85e3474c371f578eed91986e624e1266077f41433b56403fbf59",
+  "manifestSha256": "c81bb4388fd5c4ea2ab9332f035e8af94e49e44055e95b3171913c8ee94136a5",
   "files": 90,
-  "bytes": 128855806,
-  "source": "pob-ts/data",
+  "bytes": 128857422,
+  "source": "pob-ts converter @ 70911c1 (tools/sync-data.ps1 -Convert) on tools/upstream.json pobRoot",
+  "wireFixups": [
+    {
+      "id": "itemBaseLists.searchFilter",
+      "upstream": "Modules/Data.lua:1261-1279 (3dbca4463, #10318 \"Search for items by modifier in craft item menu\")",
+      "why": "UI-only search string (name + implicit + enchant + flask/tincture buff lines, all already in itemBases); the item-bases extractor emits only {label,name} per entry and rejects unknown keys -- dropping it leaves its output identical."
+    }
+  ],
   "timelessLuts": {
     "source": "PathOfBuilding/src/Data/TimelessJewelData",
     "bytes": 177487738,

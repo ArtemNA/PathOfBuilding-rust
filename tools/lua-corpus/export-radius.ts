@@ -7,6 +7,7 @@
 //                                             + crates/pob-tree/tests/fixtures/radius-tree-<treeVersion>.json (every socket/keystone of each tree once)
 // Numbers: ids as JSON numbers, coordinates as `%.17g` strings (the raw lj_strfmt, as export-env.ts). Docker = Alpine/musl libm
 // (MINEFIELD-RUST R2): a coordinate difference is checked against the desktop LuaJIT before it is called a porting bug.
+import '../upstream.ts'
 import { execFileSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'

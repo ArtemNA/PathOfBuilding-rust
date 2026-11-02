@@ -12,6 +12,7 @@
 //   (3) D13: the `pairs` order of 4 000 integer-keyed tables filled like `additions` (PassiveSpec.lua:1302-1314) -- the corpus of
 //       pob-tree's LuaJIT table model (`lj_table.rs`).
 //   node tools/lua-corpus/export-timeless.ts -> crates/pob-tree/tests/fixtures/timeless-lut.json, timeless-pairs.json, timeless-builds.json
+import '../upstream.ts'
 import { execFileSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'

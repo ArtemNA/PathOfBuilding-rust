@@ -1,5 +1,6 @@
 // R1.5: deterministic grammar generator for the Lua-pattern fuzz corpus (fixture B) and the bit.* corpus (fixture C).
 // Strings are "byte strings" (every char code < 256). mulberry32 seed 0x1a7e5e11 (fuzz) / 0x1a7e5e12 (bit).
+import '../upstream.ts'
 import { mulberry32 } from 'file:///C:/pob-work/pob-ts/tools/oracle/fuzz.ts'
 
 export type Op = 'find' | 'findp' | 'match' | 'gmatch' | 'gsub_s' | 'gsub_t' | 'gsub_f'

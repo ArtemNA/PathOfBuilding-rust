@@ -15,3 +15,6 @@
 /tools/sg-oracle/runtime/
 # LuaJIT truth for builds/pc (tools/lua-corpus/export-real.ts; carries the personal build data)
 /builds/pc-fixtures/
+# LuaJIT truth for builds/user and builds/corpus (export-real.ts --set user|corpus; re-taken on every upstream update)
+/builds/user-fixtures/
+/builds/corpus-fixtures/

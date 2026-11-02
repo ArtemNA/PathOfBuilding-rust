@@ -10,6 +10,7 @@
 // Truth = docker LuaJIT (PoB HeadlessWrapper; no CRT math in these bodies). Two runs must be byte-identical.
 // Usage (PowerShell, Node 24, from pob-rust root): node tools/lua-corpus/export-config-apply.ts [--no-selfcheck]
 //   -> crates/pob-build/tests/fixtures/config-apply.json
+import { POB as UPSTREAM_POB } from '../upstream.ts'
 import { execFile } from 'node:child_process'
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -19,7 +20,7 @@ import { promisify } from 'node:util'
 const run = promisify(execFile)
 type Rec = Record<string, any> // eslint-disable-line
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
-const POB = process.env.POB_ROOT ?? 'C:/pob-work/project_15/PathOfBuilding'
+const POB = UPSTREAM_POB
 const POBTS = 'C:/pob-work/pob-ts'
 const OUT = join(ROOT, 'crates/pob-build/tests/fixtures/config-apply.json')
 const IMAGE = 'ghcr.io/pathofbuildingcommunity/pathofbuilding-tests:latest'

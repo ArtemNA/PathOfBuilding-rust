@@ -10,11 +10,12 @@ fn tables_and_fns_count_as_upstream() {
     let d = mod_parser();
     let want = [
         ("formList", 85),
-        ("modNameList", 724),
+        // 3dbca4463 (R-UP, from the ModParser.lua diff): modNameList +2, specialModList +5 (2 of them closures)
+        ("modNameList", 726),
         ("modFlagList", 181),
         ("preFlagList", 190),
         ("modTagList", 665),
-        ("specialModList", 3_112),
+        ("specialModList", 3_117),
         ("jewelFuncList", 142),
         ("clusterJewelSkills", 362),
         ("unsupportedModList", 3),
@@ -33,15 +34,15 @@ fn tables_and_fns_count_as_upstream() {
     for (name, n) in want {
         assert_eq!(d.table(name).len(), n, "{name}");
     }
-    assert_eq!(d.fns.len(), 1_263);
+    assert_eq!(d.fns.len(), 1_265);
     // direct closure values per table (R5.1b §2): special 1 688, modTag 136, preFlag 7, jewel 142 (`{func = fn, type}`)
     let fn_values = |name: &str| d.table(name).vals.iter().filter(|v| matches!(v, PVal::Fn(_))).count();
-    assert_eq!(fn_values("specialModList"), 1_688);
+    assert_eq!(fn_values("specialModList"), 1_690);
     assert_eq!(fn_values("modTagList"), 136);
     assert_eq!(fn_values("preFlagList"), 7);
     let jewel = d.table("jewelFuncList");
     assert!(jewel.vals.iter().all(|v| v.field("func").is_some_and(|f| matches!(f, PVal::Fn(_)))));
-    assert_eq!(d.fn_refs, 1_973);
+    assert_eq!(d.fn_refs, 1_975);
     // everything else is static
     for name in pob_data::mod_parser::TABLE_NAMES {
         if !matches!(name, "specialModList" | "modTagList" | "preFlagList" | "jewelFuncList") {

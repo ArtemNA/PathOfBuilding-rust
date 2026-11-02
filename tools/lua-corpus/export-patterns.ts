@@ -3,6 +3,7 @@
 // (Alpine/musl) evaluates the SAME chunks only for a desktop <-> docker diff (printed, not stored). Truth = LuaJIT, never JS.
 // Usage (PowerShell, Node 24), from the pob-rust root:  node tools/lua-corpus/export-patterns.ts [--perf]
 //   --perf also measures speed on both engines -> tools/.scratch/perf-patterns.json
+import { POB as UPSTREAM_POB } from '../upstream.ts'
 import { execFileSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
@@ -16,7 +17,7 @@ import { resolveRoots } from 'file:///C:/pob-work/pob-ts/tools/oracle/paths.ts'
 import { BIT_OPS, BIT_UNARY, genBitInputs, genFuzzCases } from './patterns-fuzz.ts'
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
-const POB_RUNTIME = resolve(process.env.POB_ROOT ?? 'C:/pob-work/project_15/PathOfBuilding', 'runtime')
+const POB_RUNTIME = resolve(UPSTREAM_POB, 'runtime')
 const FX = join(ROOT, 'crates/pob-lua/tests/fixtures')
 const TOOL = join(ROOT, 'tools/luajit-win')
 const MAX_BYTES = 1.5 * 1024 * 1024

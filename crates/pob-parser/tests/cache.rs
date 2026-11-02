@@ -60,16 +60,18 @@ fn every_cache_line_hits_with_an_equal_copy() {
         }
     }
     let s = parse_mod_stats();
-    assert_eq!((s.hits, s.misses), (23_207, 0));
-    assert_eq!(mods, 23_324);
+    // 3dbca4463 (R-UP): 23 201 records, 23 334 mods (data/mod-cache.json counted by node; pob-data tests/loaders.rs)
+    assert_eq!((s.hits, s.misses), (23_201, 0));
+    assert_eq!(mods, 23_334);
 }
 
 #[test]
 fn extra_survives_a_nil_mod_list() {
     // W16: `unpack(copyTable({nil, extra}))` -- LuaJIT keeps extra.
-    let p = parse_mod_line(" Wolf Alpha Talisman", false, ParseMode::CacheOnly);
+    // " Wolf Alpha Talisman" left ModCache.lua in 3dbca4463; another `{nil, extra}` record (ModCache.lua:4)
+    let p = parse_mod_line("(10-15)% increased Energy Shield Recharge Rate", false, ParseMode::CacheOnly);
     assert!(p.hit && p.mod_list.is_none());
-    assert_eq!(p.extra.as_deref(), Some(" Wolf Alpha Talisman "));
+    assert_eq!(p.extra.as_deref(), Some("(10-15)% increased Energy Shield Recharge Rate "));
 }
 
 #[test]

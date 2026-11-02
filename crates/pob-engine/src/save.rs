@@ -3,12 +3,10 @@
 //! TreeTab/PassiveSpec, SkillsTab, ItemsTab, ConfigTab, CalcsTab, NotesTab, ImportTab, PartyTab, PassiveTreeView -- composed with
 //! `xml.lua` `ComposeXML` (`pob_build::compose_xml`).
 //!
-//! R13 (LuaJIT string-hash `pairs`): the section order (:2288), the attribute order (xml.lua:120), ConfigTab `Input`/`Placeholder`
-//! (:970/:983), CalcsTab `Input` (:204), ItemsTab `Slot` (:1387) differ between LuaJIT processes; here they are written in one fixed
-//! order (sections alphabetically after `Build`, attributes in constructor order, tables in insertion order) -- one of LuaJIT's
-//! possible outputs. `pairs` over integer keys (`nodes`/`masteryEffects`/`Sockets` of a spec, PassiveSpec.lua:199/:203/:226) is
-//! deterministic in LuaJIT: the spec's `nodes` and its URL (`EncodeURL` :537) follow the mirrored `allocNodes` table (R8.7);
-//! `masterySelections` and `jewels` are written in insertion order (not modelled -- the R8.1 canonical form sorts them).
+//! Order: upstream 3dbca4463 (#10337/#10338/#10339/#10340) made SaveDB deterministic -- sections `pairsSortByKey` (Build.lua:2288),
+//! attributes sorted by key (xml.lua:120-140, `pob_build::compose_xml`), ConfigTab `Input`/`Placeholder` (:970/:983) and CalcsTab
+//! `Input` (:204) `pairsSortByKey`, ItemsTab `Slot` in `orderedSlots` order (:1439), a spec's `nodes`, `masteryEffects`, `Sockets`,
+//! `Overrides` and URL sorted by node id (PassiveSpec.lua:198-260, :555). Before that these were LuaJIT `pairs` orders (R13/R11).
 //!
 //! The state that `pob_build::BuildModel` does not keep (Notes, Party, Import, TreeView, the Calcs collapse states, the items tab's
 //! `showStatDifferences`) is read from the XML by [`SaveExtras::from_xml`] -- the `Load` of those tabs.
@@ -542,6 +540,8 @@ fn save_calcs(inp: &SaveInput<'_>) -> XmlElement {
             input.insert(k.clone(), v.clone());
         }
     }
+    // CalcsTab.lua:204 `pairsSortByKey(self.input)` (3dbca4463 #10338)
+    input.sort_by(|a, _, b, _| a.as_bytes().cmp(b.as_bytes()));
     for (k, v) in input {
         push(&mut c, input_attr(with(elem("Input"), &[("name", Some(k))]), &v, false));
     }
@@ -663,12 +663,17 @@ fn save_config_set(
     active_placeholder: &IndexMap<String, InputValue>,
 ) -> Result<XmlElement, String> {
     let mut child = with(elem("ConfigSet"), &[("id", Some(ts(set.id))), ("title", set.title.clone())]);
-    for (k, v) in &st.input {
+    // ConfigTab.lua:970/:983 `pairsSortByKey` (3dbca4463 #10338)
+    let mut inputs: Vec<_> = st.input.iter().collect();
+    inputs.sort_by(|a, b| a.0.as_bytes().cmp(b.0.as_bytes()));
+    let mut placeholders: Vec<_> = st.placeholder.iter().collect();
+    placeholders.sort_by(|a, b| a.0.as_bytes().cmp(b.0.as_bytes()));
+    for (k, v) in inputs {
         if *v != get_default_state(active_placeholder, k, v) {
             push(&mut child, input_attr(with(elem("Input"), &[("name", Some(k.clone()))]), v, false));
         }
     }
-    for (k, v) in &st.placeholder {
+    for (k, v) in placeholders {
         // :983-990 -- a boolean placeholder goes to `string`
         push(
             &mut child,
@@ -997,11 +1002,15 @@ fn save_tree(inp: &SaveInput<'_>) -> Result<XmlElement, String> {
 }
 
 fn save_spec(sm: &SpecModel, spec: &PassiveSpec) -> Result<XmlElement, String> {
-    let ids = spec.alloc_table_pairs();
+    // :198-202 `table.sort(allocNodeIdList)` (3dbca4463 #10338; was `pairs(self.allocNodes)`)
+    let mut ids = spec.alloc_table_pairs();
+    ids.sort_unstable();
     let nodes: Vec<String> = ids.iter().map(u32::to_string).collect();
-    let masteries: Vec<String> = spec
-        .mastery_selections
-        .iter()
+    // :203-211 masteries sorted by node id
+    let mut mastery_ids: Vec<_> = spec.mastery_selections.iter().collect();
+    mastery_ids.sort_by_key(|(m, _)| **m);
+    let masteries: Vec<String> = mastery_ids
+        .into_iter()
         .map(|(mastery, effect)| format!("{mastery},{}", ts(*effect)))
         .map(|s| format!("{{{s}}}"))
         .collect();
@@ -1028,7 +1037,10 @@ fn save_spec(sm: &SpecModel, spec: &PassiveSpec) -> Result<XmlElement, String> {
     );
     push(&mut x, url);
     let mut sockets = elem("Sockets");
-    for (node_id, item_id) in &spec.jewels.0 {
+    // :232-237 sockets sorted by node id
+    let mut jewels: Vec<_> = spec.jewels.0.iter().collect();
+    jewels.sort_by(|a, b| a.0.total_cmp(&b.0));
+    for (node_id, item_id) in jewels {
         if *item_id > 0.0 {
             push(
                 &mut sockets,
@@ -1044,7 +1056,7 @@ fn save_spec(sm: &SpecModel, spec: &PassiveSpec) -> Result<XmlElement, String> {
     Ok(x)
 }
 
-/// `PassiveSpec:EncodeURL(prefix)` (PassiveSpec.lua:527-570) over `ids` = `pairs(self.allocNodes)`.
+/// `PassiveSpec:EncodeURL(prefix)` (PassiveSpec.lua:545-595) over `ids` = the sorted `allocNodes` ids (:555-561, 3dbca4463 #10338).
 pub fn encode_url(spec: &PassiveSpec, ids: &[u32], prefix: &str) -> Result<String, String> {
     let class = spec.cur_class_id.ok_or("PassiveSpec.lua:528 curClassId is nil")? as u64;
     let asc = spec.cur_ascend_class_id.unwrap_or(0) as u64;

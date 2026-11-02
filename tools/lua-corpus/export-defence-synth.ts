@@ -6,6 +6,7 @@
 //   node tools/lua-corpus/export-defence-synth.ts             -> crates/pob-calc/tests/fixtures/defence-synth/<scenario>.{xml,luajit.json}; 2 runs, must be identical
 //   node tools/lua-corpus/export-defence-synth.ts coverage    -> tools/.scratch/defence-synth-coverage.json + table (debug.sethook line counter)
 //   node tools/lua-corpus/export-defence-synth.ts parse <f>   -> which lines of file <f> modLib.parseMod accepts (authoring aid)
+import { POB as UPSTREAM_POB, ORACLE as UPSTREAM_ORACLE } from '../upstream.ts'
 import { execFile } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
@@ -18,12 +19,12 @@ type Rec = Record<string, any> // eslint-disable-line
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
 const FIX = resolve(ROOT, 'crates/pob-calc/tests/fixtures/defence-synth')
 const SCRATCH = resolve(ROOT, 'tools/.scratch')
-const POB = 'C:/pob-work/project_15/PathOfBuilding'
+const POB = UPSTREAM_POB
 const IMAGE = 'ghcr.io/pathofbuildingcommunity/pathofbuilding-tests:latest'
 const MAX_BYTES = 1_500_000
 const BASE_XML = `${POB}/spec/TestBuilds/3.13/Dual Savior.xml`
 const DEFENCE_LUA = `${POB}/src/Modules/CalcDefence.lua`
-const ORACLE = 'C:/pob-work/project_15/pob-engine-wasm'
+const ORACLE = UPSTREAM_ORACLE
 const BASE = 'Dual Savior'
 const CONCURRENCY = 4
 const byteOrder = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0)

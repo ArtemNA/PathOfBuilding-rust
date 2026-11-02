@@ -159,6 +159,11 @@ pub struct ModLine {
     /// `modLine.order` (Item.lua:1374): the ItemExclusive stat order of a unique's explicit line, read by
     /// `sortCraftedModLines` (:72).
     pub order: Option<f64>,
+    /// `modLine.rangeFromValue` (Item.lua:1188, 3dbca4463 #10374): the range came from a `value(min-max)` line, so a saved
+    /// `<ModRange>` does not overwrite it (ItemsTab.lua:1307-1309).
+    pub range_from_value: bool,
+    /// `modLine.addedFromBase` (Item.lua:1643): an enchant line added from `base.enchant`, not in the saved text (ItemsTab.lua:1255).
+    pub added_from_base: bool,
     /// `lineFlags`, indexed like `LINE_FLAGS`.
     pub flags: [bool; 17],
 }
@@ -600,7 +605,26 @@ impl Item {
             }
         }
         item.parse_raw(raw, None, false);
+        // ItemsTab.lua:1253-1256 `countSavedModLines`: enchants added from the base data were not in the saved text, so saved
+        // ModRange ids skip the whole list (3dbca4463 #10374/#10376).
+        let saved = |list: &[ModLine]| {
+            if list.first().is_some_and(|m| m.added_from_base) {
+                0
+            } else {
+                list.len()
+            }
+        };
+        // :1283-1296 more ModRange entries than saved mod lines -> the ids no longer match their lines: keep the `{range:}` tags
+        let ignore_mod_ranges = opts.mod_ranges.len()
+            > saved(&item.enchant_mod_lines)
+                + item.scourge_mod_lines.len()
+                + item.implicit_mod_lines.len()
+                + item.explicit_mod_lines.len()
+                + item.crucible_mod_lines.len();
         for &(id, range) in &opts.mod_ranges {
+            if ignore_mod_ranges {
+                break;
+            }
             let mut id = id;
             let lists: [&mut Vec<ModLine>; 6] = [
                 &mut item.buff_mod_lines,
@@ -611,15 +635,20 @@ impl Item {
                 &mut item.crucible_mod_lines,
             ];
             for list in lists {
-                if id <= list.len() as f64 {
-                    // `list[id].range = range` -- a non-positive or fractional id indexes nil (L18).
+                let saved_line_count = saved(list) as f64;
+                if id <= saved_line_count {
+                    // `list[id]` -- a non-positive or fractional id indexes nil (L18).
                     if id < 1.0 || id.fract() != 0.0 {
-                        panic!("Classes/ItemsTab.lua:1247: attempt to index a nil value (field '?')");
+                        panic!("Classes/ItemsTab.lua:1307: attempt to index a nil value (field '?')");
                     }
-                    list[id as usize - 1].range = Some(range);
+                    // :1306-1309 versions that could not parse "value(min-max)" lines saved them as is with a default ModRange
+                    let ml = &mut list[id as usize - 1];
+                    if !ml.range_from_value {
+                        ml.range = Some(range);
+                    }
                     break;
                 }
-                id -= list.len() as f64;
+                id -= saved_line_count;
             }
         }
         if item.base.is_some() {
@@ -953,6 +982,9 @@ impl Item {
         self.explicit_mod_lines = Vec::new();
         self.crucible_mod_lines = Vec::new();
         self.advanced_copy = false;
+        // Item.lua:504-506 (3dbca4463 #10374): only in-game advanced copy text (with "{ ... }" modifier headers) is re-sorted into
+        // stat order; text written by PoB keeps its line order, which the ModRange entries of saved builds refer to.
+        let mut has_modifier_headers = false;
         self.mod_magnitude_mods = Vec::new();
         let mut implicit_lines = 0.0;
         self.variant_list = None;
@@ -1027,7 +1059,10 @@ impl Item {
                 // In-game flask state and base properties aren't modifier lines.
             } else if matches(&line, "^{ ") {
                 // Item.lua:574-631: the in-game advanced copy format needs the affix database (data.itemMods) -- P5.
-                self.unimplemented.push(format!("{ITEM}:574 advanced copy line skipped: {line}"));
+                // :578-580 the flags are set before the line is parsed
+                self.advanced_copy = true;
+                has_modifier_headers = true;
+                self.unimplemented.push(format!("{ITEM}:577 advanced copy line skipped: {line}"));
             } else {
                 line = format!("{line_prefix}{line}{line_postfix}");
                 if self.check_section {
@@ -1383,7 +1418,7 @@ impl Item {
             l += 1;
         }
 
-        if self.advanced_copy && (self.rarity == "UNIQUE" || self.rarity == "RELIC") {
+        if has_modifier_headers && (self.rarity == "UNIQUE" || self.rarity == "RELIC") {
             // Item.lua:1360-1377 `modLine.order` from data.itemMods.ItemExclusive statOrder.
             let (exact, normalised) = unique_mod_stat_order();
             for ml in &mut self.explicit_mod_lines {
@@ -1429,7 +1464,7 @@ impl Item {
         if self.advanced_copy || self.crafted {
             self.apply_mod_magnitude();
         }
-        if self.advanced_copy && self.explicit_mod_lines.len() > 1 {
+        if has_modifier_headers && self.explicit_mod_lines.len() > 1 {
             sort_crafted_mod_lines(&mut self.explicit_mod_lines);
         }
         // Item.lua:1474-1520 `affixLimit` and the prefix/suffix slots (written back by BuildRaw).
@@ -1557,8 +1592,18 @@ impl Item {
             && self.enchant_mod_lines.is_empty()
         {
             let base = self.base.expect("checked");
+            // :1626-1632 items saved before their base gained this enchant carry it as an implicit (Black Maw Talisman)
+            let active_implicit_lines: std::collections::HashSet<String> = self
+                .implicit_mod_lines
+                .iter()
+                .filter(|ml| self.check_mod_line_variant(ml))
+                .map(|ml| ml.line.clone())
+                .collect();
             for (idx, c) in gmatch(enchant, "[^\n]+").into_iter().enumerate() {
                 let line = c[0].clone();
+                if active_implicit_lines.contains(&line) {
+                    continue;
+                }
                 let p = pob_parser::parse_mod_line(&line, false, self.parse_mode);
                 let mut ml = ModLine {
                     line,
@@ -1574,6 +1619,7 @@ impl Item {
                 ml.set_flag("crafted");
                 ml.set_flag("implicit");
                 ml.set_flag("enchant");
+                ml.added_from_base = true;
                 self.enchant_mod_lines.push(ml);
             }
         }
@@ -2926,6 +2972,8 @@ fn resolve_advanced_copy_ranges(line: &str, ml: &mut ModLine) -> String {
         line = gsub(&advanced_copy_line, "(%-?%d+%.?%d*)%(%-?%d+%.?%d*%-%-?%d+%.?%d*%)", "%1", None);
     } else if (0.0..=1.0).contains(&best_range) {
         ml.range = Some(best_range);
+        // Item.lua:1188 (3dbca4463 #10374)
+        ml.range_from_value = true;
     }
     line
 }

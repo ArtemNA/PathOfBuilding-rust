@@ -547,7 +547,18 @@ pub(super) fn speed_accuracy(off: &mut Off<'_>) -> BTable {
         if ct == Some(0.0) && !off.sd_truthy("castTimeOverride") && !off.sd_truthy("triggered") {
             off.pset_num(pi, "Time", 0.0);
             off.pset_num(pi, "Speed", 0.0);
-        } else if let Some(t) = off.sd_num("timeOverride", 2276) {
+        } else if let Some(t) = off.sd_num("timeOverride", 2299) {
+            // :2300-2304 traps/mines respect the spell cooldown (3dbca4463 #10335): `globalOutput.TrapCooldown or globalOutput.Cooldown`
+            let cooldown = [off.gval("TrapCooldown"), off.gval("Cooldown")]
+                .into_iter()
+                .flatten()
+                .find(|v| !matches!(v, crate::output::OutValue::Bool(false)))
+                .cloned();
+            let t = match cooldown {
+                Some(crate::output::OutValue::Num(cd)) => pob_lua::number::max2(t, cd),
+                Some(o) => panic!("{LUA}:2303: bad argument #2 to 'max' (number expected, got {o:?})"),
+                None => t,
+            };
             off.pset_num(pi, "Time", t);
             off.pset_num(pi, "Speed", 1.0 / t);
         } else if off.sd_truthy("fixedCastTime") {

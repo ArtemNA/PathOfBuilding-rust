@@ -196,6 +196,9 @@ pub struct Env {
     pub tinctures: Vec<Rc<Item>>,
     /// `env.flaskSlotMap[item] = n`, keyed by the slot name the flask sits in.
     pub flask_slot_map: IndexMap<String, f64>,
+    /// `env.itemSlotIndex[item] = tonumber(slotName:match("%d+")) or 0` (CalcSetup.lua:1034-1043, 3dbca4463 #10339) -- keyed by the
+    /// item table (pointer), the last slot wins; orders `pairs(flasks)` / `pairs(tinctures)` (CalcPerform.lua:1773-1786, :1918-1931).
+    pub item_slot_index: Vec<(Rc<Item>, f64)>,
     pub flask_slot_occupied: IndexMap<String, bool>,
     pub requirements_table_items: Vec<ReqEntry>,
     pub requirements_table_gems: Vec<ReqEntry>,

@@ -1,4 +1,4 @@
-{"format":1,"producer":{"luajit":"LuaJIT 2.1.1784580905","pobSha":"ed354c2f8c42e148bc904c7508dbe851fb2cf952","source":"GameVersions.lua","tool":"tools/lua-corpus/export-tree-versions.ts"},"manifestSha256":"994fbd41821a85e3474c371f578eed91986e624e1266077f41433b56403fbf59","pobSha":"ed354c2f8c42e148bc904c7508dbe851fb2cf952","latestTreeVersion":"3_29","defaultTreeVersion":"3_6",
+{"format":1,"producer":{"luajit":"LuaJIT 2.1.1784580905","pobSha":"3dbca4463c0a59079d9f7f032d8240cf868e09da","source":"GameVersions.lua","tool":"tools/lua-corpus/export-tree-versions.ts"},"manifestSha256":"c81bb4388fd5c4ea2ab9332f035e8af94e49e44055e95b3171913c8ee94136a5","pobSha":"3dbca4463c0a59079d9f7f032d8240cf868e09da","latestTreeVersion":"3_29","defaultTreeVersion":"3_6",
 "treeVersions":[
 {"display":"2.6","num":2.06,"ver":"2_6"},
 {"display":"3.6","num":3.06,"ver":"3_6"},

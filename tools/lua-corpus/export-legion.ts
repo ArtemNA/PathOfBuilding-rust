@@ -6,6 +6,7 @@
 // Shape: a Lua table whose keys are exactly 1..n -> JSON array; string keys only -> JSON object (keys sorted); an empty table -> [];
 // sparse integer keys only -> object keyed by the decimal integer; anything else (mixed keys, non-integral number keys) is an error. Numbers travel as `%.17g` strings (the raw lj_strfmt) and are
 // written as the shortest JS repr (exact round trip, serde_json float_roundtrip); inf/nan/-0 are an error (none expected).
+import '../upstream.ts'
 import { createHash } from 'node:crypto'
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'

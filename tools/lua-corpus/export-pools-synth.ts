@@ -4,6 +4,7 @@
 // {output = copy of mainEnv.player.output + overrides, modDB = fresh ModDB with "Synth" mods, damageShiftTable = copy (+ row overrides)}.
 // Output: crates/pob-calc/tests/fixtures/pools-synth.luajit.json  { scenarios: [ { name, covers, inputs, results, actorReads } ] }
 // Run from the pob-rust root (Node 24):  node tools/lua-corpus/export-pools-synth.ts
+import { POB as UPSTREAM_POB } from '../upstream.ts'
 import { execFileSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
@@ -297,7 +298,7 @@ async function main(): Promise<void> {
     console.error(`${s.name}: ${exact}/${total}`)
   })
   const obj: Rec = { build: BUILD, format: 1, xmlSha256: createHash('sha256').update(xmlBuf).digest('hex'),
-    producer: { generator: `pob-ts ${git('C:/pob-work/pob-ts')}`, image: digest || LUAJIT_IMAGE, luajit: 'desktop LuaJIT docker', pobSha: git('C:/pob-work/project_15/PathOfBuilding'),
+    producer: { generator: `pob-ts ${git('C:/pob-work/pob-ts')}`, image: digest || LUAJIT_IMAGE, luajit: 'desktop LuaJIT docker', pobSha: git(UPSTREAM_POB),
       probe: 'R4.1 pools PROBE (export-r4.ts) on a synthetic actor { output = copy(mainEnv.player.output)+overrides, modDB = new("ModDB")+Synth mods, damageShiftTable = copy+rows }; one docker run, build loaded once' },
     columns: { pool: POOL_COLUMNS, taken: TAKEN_COLUMNS, reads: READS, flags: FLAGS, sums: SUMS.map(([kind, n]) => `${kind}:${n}`), types: DMG, allyKeys: ALLY_KEYS }, scenarios }
   const text = `{\n${Object.keys(obj).sort(byteOrder).map((k) => `${JSON.stringify(k)}:${ser(obj[k])}`).join(',\n')}\n}\n`

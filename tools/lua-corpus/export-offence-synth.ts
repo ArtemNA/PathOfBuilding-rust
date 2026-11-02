@@ -5,6 +5,7 @@
 //   node tools/lua-corpus/export-offence-synth.ts coverage   -> tools/.scratch/offence-synth-coverage.json (line hook, jit.off; goldens + scenarios) + table
 //   node tools/lua-corpus/export-offence-synth.ts            -> crates/pob-calc/tests/fixtures/offence-synth/<scenario>.{xml,luajit.json}; 2 runs, must be identical
 //   node tools/lua-corpus/export-offence-synth.ts parse [f]  -> which mod lines modLib.parseMod accepts (authoring aid)
+import { POB as UPSTREAM_POB, ORACLE as UPSTREAM_ORACLE } from '../upstream.ts'
 import { execFile } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
@@ -17,9 +18,9 @@ type Rec = Record<string, any> // eslint-disable-line
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
 const FIX = resolve(ROOT, 'crates/pob-calc/tests/fixtures/offence-synth')
 const SCRATCH = resolve(ROOT, 'tools/.scratch')
-const POB = 'C:/pob-work/project_15/PathOfBuilding'
+const POB = UPSTREAM_POB
 const POBTS = 'C:/pob-work/pob-ts'
-const ORACLE = 'C:/pob-work/project_15/pob-engine-wasm'
+const ORACLE = UPSTREAM_ORACLE
 const IMAGE = 'ghcr.io/pathofbuildingcommunity/pathofbuilding-tests:latest'
 const MAX_BYTES = 1_500_000
 const CONCURRENCY = Number(process.env.SYNTH_JOBS ?? 5)
@@ -305,7 +306,8 @@ function coverInfo(sc: Scenario, xml: Buffer, cache: Rec): { covers: string[]; f
     const f = FILES[letter]
     if (!f || c[1] !== ':') throw new Error(`${sc.name}: bad cover ${c}`)
     const exec = new Set<number>(cache.exec[f]), hit = new Set<number>(e.hits[f])
-    // R7-synth-2: "@<line>" names one line exactly (one-line config bodies of CalcTriggers.lua repeat word for word)
+    // R7-synth-2: "@<line>" names one line exactly (one-line config bodies of CalcTriggers.lua repeat word for word). These are lines of the
+    // upstream of tools/upstream.json (3dbca4463: +7 against ed354c2f8) -- re-derive on every update (UPDATE-PROMPT.md)
     const all = needle.startsWith('@') ? [Number(needle.slice(1))].filter((n) => exec.has(n)) : srcLines[letter]!.flatMap((l, i) => (l.includes(needle) && exec.has(i + 1) ? [i + 1] : []))
     if (!all.length) throw new Error(`${sc.name}: needle matches no executable ${f} line: ${needle}`)
     const lines = all.filter((n) => hit.has(n))
@@ -533,15 +535,15 @@ s2('s2-enemy-explode-avg', 'occ', [g([{ g: '@EnemyExplode', lvl: 1, part: 3 }])]
 s2('s2-enemy-explode-avg-2types', 'occ', [g([{ g: '@EnemyExplode', lvl: 1, part: 3 }])], ['F:skills.EnemyExplode.preDamageFunc'], { mods: [EXPLODE(20, 'a tenth', 'Physical'), EXPLODE(30, 'a quarter', 'Fire')],
   r13: { place: 'other.lua:6230 pairs(typeAmountChances) (string keys: ExplodeMod types)', probe: '(function() local t = {} t.Physical = {} t.Fire = {} for k in pairs(t) do return k end end)()', want: 'Physical' } })
 // configTable entries (CalcTriggers.lua:902-1600)
-s2('s2-doom-blast', 'occ', [g(['Despair', 'Impending Doom'], { active: 2 })], ['T:@1394'])
+s2('s2-doom-blast', 'occ', [g(['Despair', 'Impending Doom'], { active: 2 })], ['T:@1401'])
 s2('s2-doom-blast-replacement', 'occ', [g(['Despair', 'Impending Doom'], { active: 2 })], ['T:env.player.modDB:NewMod("UsesCurseOverlaps"'], { inputs: { doomBlastSource: 'replacement' } })
 s2('s2-snipe-standalone', 'mir', [g(['Snipe'])], ['T:env.player.mainSkill.skillData.hitTimeMultiplier = m_max(1, snipeStages) - 0.5'], { inputs: { configSnipeStages: 3 } })
 s2('s2-snipe-source', 'mir', [g(['Snipe', 'Ice Shot'])], ['T:"DealNoLightning"'], { inputs: { configSnipeStages: 3 } })
 s2('s2-snipe-triggered', 'mir', [g(['Snipe', 'Ice Shot'], { active: 2 })], ['T:skill.skillData.hitTimeMultiplier = snipeStages - 0.5'], { inputs: { configSnipeStages: 3 } })
 s2('s2-snipe-not-enough', 'mir', [g(['Snipe', 'Ice Shot'], { active: 2 })], ['T:"Not enough Snipe stages to trigger this skill"'])
-s2('s2-manaforged', 'mir', [g(['Tornado Shot', 'Manaforged Arrows']), g(['Rain of Arrows'])], ['T:@1386'])
+s2('s2-manaforged', 'mir', [g(['Tornado Shot', 'Manaforged Arrows']), g(['Rain of Arrows'])], ['T:@1393'])
 s2('s2-battlemage', 'gen', [g(["Battlemage's Cry", 'Arc'], { active: 2 }), g(['Double Strike'])], ["T:grantedEffect.name ~= \"Battlemage's Cry\""])
-s2('s2-kitava', 'occ', [g(['Arc'], { slot: 'Helmet' }), g(['Fireball'])], ['T:cachedManaCost or 0) >= requiredManaCost'], { gear: { Helmet: ITEM('Zealot Helmet', '50% chance to Trigger Socketed Spells when you Spend at least 0 Mana on an Upfront Cost to Use or Trigger a Skill, with a 0.1 second Cooldown') } })
+s2('s2-kitava', 'occ', [g(['Arc'], { slot: 'Helmet' }), g(['Fireball'])], ['T:(cachedData[minimumCost.stat] or 0) >= minimumCost.minimum'] /* 3dbca4463: the Kitava comparer became minimumCostPerUse (CalcTriggers.lua:97) */, { gear: { Helmet: ITEM('Zealot Helmet', '50% chance to Trigger Socketed Spells when you Spend at least 0 Mana on an Upfront Cost to Use or Trigger a Skill, with a 0.1 second Cooldown') } })
 s2('s2-kitava-100', 'occ', [g(['Arc'], { slot: 'Helmet' }), g(['Fireball'])], ['T:"KitavaRequiredManaCost"'], { gear: { Helmet: ITEM('Zealot Helmet', '50% chance to Trigger Socketed Spells when you Spend at least 100 Mana on an Upfront Cost to Use or Trigger a Skill, with a 0.1 second Cooldown') } })
 s2('s2-focus', 'occ', [g(['Arc'], { slot: 'Helmet' })], ['T:local icdrFocus = calcLib.mod'], { gear: { Helmet: ITEM('Zealot Helmet', 'Trigger Socketed Spells when you Focus, with a 0.25 second Cooldown') } })
 s2('s2-shattershard', 'occ', [g(['Arc'])], ['T:"Shattershard uses duration as pseudo cooldown"'], { main: 2, gear: { 'Weapon 2': 'Rarity: UNIQUE\nShattershard\nCrimson Round Shield\nImplicits: 0\nTrigger Level 20 Shield Shatter when you Block' } })
@@ -549,16 +551,16 @@ s2('s2-trigger-craft', 'occ', [g(['Arc'], { slot: 'Helmet' }), g(['Fireball'])],
 s2('s2-automation', 'occ', [g(['Automation', 'Arc'], { active: 2 })], ['T:grantedEffect.name == "Automation"'])
 s2('s2-autoexertion', 'gen', [g(['Autoexertion', 'Intimidating Cry'], { active: 2 })], ['T:grantedEffect.name == "Autoexertion"'])
 s2('s2-combust', 'gen', [g(['Infernal Cry'], { active: 2 }), g(['Double Strike'])], ['T:output.InfernalUpTimeRatio'])
-s2('s2-prismatic-burst', 'gen', [g(['Double Strike', 'Prismatic Burst'], { active: 2 })], ['T:@1361'])
-s2('s2-voidstorm', 'mir', [g(['Rain of Arrows', 'Voidstorm'], { active: 2 })], ['T:@1364'])
-s2('s2-shockwave', 'cos', [g(['Double Strike', 'Shockwave'], { active: 2 })], ['T:@1367'], { gear: CLUB })
-s2('s2-void-shockwave', 'cos', [g(['Double Strike', 'Void Shockwave'], { active: 2 })], ['T:@1370'], { gear: CLUB })
-s2('s2-fissure', 'cos', [g(['Ground Slam', 'Fissure'], { active: 2 })], ['T:@1278'], { gear: CLUB })
-s2('s2-call-the-pyre', 'gen', [g(['Double Strike', 'Pyre'], { active: 2 })], ['T:@1377'], { inputs: { conditionEnemyIgnited: true } })
-s2('s2-mark-on-hit', 'mir', [g(['Tornado Shot', 'Mark On Hit', "Sniper's Mark"], { active: 2 })], ['T:@1281'])
-s2('s2-cast-on-ward-break', 'occ', [g(['Cast on Ward Break', 'Arc'])], ['T:@1201'])
+s2('s2-prismatic-burst', 'gen', [g(['Double Strike', 'Prismatic Burst'], { active: 2 })], ['T:@1368'])
+s2('s2-voidstorm', 'mir', [g(['Rain of Arrows', 'Voidstorm'], { active: 2 })], ['T:@1371'])
+s2('s2-shockwave', 'cos', [g(['Double Strike', 'Shockwave'], { active: 2 })], ['T:@1374'], { gear: CLUB })
+s2('s2-void-shockwave', 'cos', [g(['Double Strike', 'Void Shockwave'], { active: 2 })], ['T:@1377'], { gear: CLUB })
+s2('s2-fissure', 'cos', [g(['Ground Slam', 'Fissure'], { active: 2 })], ['T:@1285'], { gear: CLUB })
+s2('s2-call-the-pyre', 'gen', [g(['Double Strike', 'Pyre'], { active: 2 })], ['T:@1384'], { inputs: { conditionEnemyIgnited: true } })
+s2('s2-mark-on-hit', 'mir', [g(['Tornado Shot', 'Mark On Hit', "Sniper's Mark"], { active: 2 })], ['T:@1288'])
+s2('s2-cast-on-ward-break', 'occ', [g(['Cast on Ward Break', 'Arc'])], ['T:@1208'])
 s2('s2-intuitive-link', 'occ', [g(['Intuitive Link', 'Arc'], { active: 2 })], ['T:grantedEffect.name == "Intuitive Link" then'])
-s2('s2-tempest-shield', 'occ', [g(['Tempest Shield'])], ['T:@1296'])
+s2('s2-tempest-shield', 'occ', [g(['Tempest Shield'])], ['T:@1303'])
 const DLINK: Partial<Scenario> = { mods: ['Link Skills can target Damageable Minions'], inputs: { linkedToMinion: true } }
 // a minion skill under a mirage: General's Cry copies Dominating Blow (copyActiveSkill of a skill with a minion, CalcActiveSkill.lua:185-190); + Destructive Link
 s2('s2-generals-cry-dominating-blow', 'gen', [g(["General's Cry", 'Dominating Blow'])], ['O:breakdown.WarcryEffectMod = {'])

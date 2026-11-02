@@ -9,7 +9,12 @@ use pob_data::*;
 fn lock_matches_the_synced_data() {
     let dir = data_dir();
     let info = verify_lock(&dir, &lock_path(&dir)).expect("data.lock matches data/manifest.json");
-    assert_eq!(info.pob_sha, "ed354c2f8c42e148bc904c7508dbe851fb2cf952");
+    // the upstream of tools/upstream.json (R-UP)
+    let cfg: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tools/upstream.json")).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(info.pob_sha, cfg["pobSha"].as_str().unwrap());
     assert!(ensure_data().is_ok());
 }
 
@@ -59,9 +64,10 @@ fn mod_cache_counts() {
             (None, None) => empty += 1,
         }
     }
-    assert_eq!(c.len(), 23_207);
-    assert_eq!((both, mods_only, extra_only, empty), (1101, 19_292, 2793, 21));
-    assert_eq!(mods_total, 23_324);
+    // 3dbca4463 (R-UP): 23 207 -> 23 201 entries (grep -c '^c["' Data/ModCache.lua; the categories counted from data/mod-cache.json by node)
+    assert_eq!(c.len(), 23_201);
+    assert_eq!((both, mods_only, extra_only, empty), (1096, 19_299, 2785, 21));
+    assert_eq!(mods_total, 23_334);
     assert_eq!(c.malformed_dropped, 0);
     let orphan_records = c.entries.iter().filter(|e| !e.orphan_tags.is_empty()).count();
     assert_eq!(orphan_records, 3);
@@ -73,9 +79,10 @@ fn mod_cache_counts() {
     assert_eq!(e.orphan_tags[0].0, 0);
     assert_eq!(e.orphan_tags[0].1.index, 2);
     assert_eq!(e.orphan_tags[0].1.tag.get("var").as_str(), Some("SacrificialZeal"));
-    let w = c.get(" Wolf Alpha Talisman").unwrap();
+    // " Wolf Alpha Talisman" left Data/ModCache.lua in 3dbca4463; another `{nil, extra}` record (ModCache.lua:4)
+    let w = c.get("(10-15)% increased Energy Shield Recharge Rate").unwrap();
     assert!(w.mods.is_none());
-    assert_eq!(w.extra.as_deref(), Some(" Wolf Alpha Talisman "));
+    assert_eq!(w.extra.as_deref(), Some("(10-15)% increased Energy Shield Recharge Rate "));
 }
 
 #[test]

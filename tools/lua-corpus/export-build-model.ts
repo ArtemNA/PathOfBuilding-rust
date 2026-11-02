@@ -3,6 +3,7 @@
 // Run from the pob-rust root (Node 24):  node tools/lua-corpus/export-build-model.ts
 // Canonical JSON: object keys sorted (UTF-16 order, = byte order for these ASCII keys), `undefined` dropped (as JSON.stringify),
 // one-space indent, trailing newline -- two runs are byte-identical.
+import '../upstream.ts'
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'

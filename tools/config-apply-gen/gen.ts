@@ -21,13 +21,14 @@
 //   * `and`/`or`/`not`/`if` use Lua truthiness (L4); every table constructor is a fresh table (R4);
 //   * NewMod/createMod: vararg decoded as ModTools.lua:33-67 (a string 1st = source; tables = tags); order of mods = order
 //     of the calls.
+import { POB } from '../upstream.ts'
 import { createHash } from 'node:crypto'
 import { readFileSync, writeFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
-const UP = 'C:/pob-work/project_15/PathOfBuilding/src/'
+const UP = `${POB}/src/` // tools/upstream.json (R-UP)
 const OUT_RS = `${ROOT}/crates/pob-build/src/config/apply_gen.rs`
 const J = JSON.parse(readFileSync(`${ROOT}/data/config-options.json`, 'utf8'))
 const HAND_RS = readFileSync(`${ROOT}/crates/pob-build/src/config/apply.rs`, 'utf8')

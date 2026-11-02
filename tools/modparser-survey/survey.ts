@@ -1,12 +1,13 @@
 // R5.1b: survey of the 1263 closure bodies in data/mod-parser.json `fns` (static text analysis, no Lua parser).
 // Run from the pob-rust root (Node 24):  node tools/modparser-survey/survey.ts
 // Reads the upstream Lua (READ-ONLY) and writes KNOWLEDGE/drafts/R5-closure-survey.md.
+import { POB } from '../upstream.ts'
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
-const UP = 'C:/pob-work/project_15/PathOfBuilding/src/'
+const UP = `${POB}/src/` // tools/upstream.json (R-UP)
 const J = JSON.parse(readFileSync(`${ROOT}/data/mod-parser.json`, 'utf8'))
 const fns = J.fns
 const files = {}

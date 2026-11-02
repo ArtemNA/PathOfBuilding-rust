@@ -19,6 +19,7 @@
 // Run from the pob-rust root (Node 24):
 //   node tools/lua-corpus/export-gemdata.ts -> crates/pob-data/tests/fixtures/gemdata-{gems,skills-1,skills-2,helpers,groups}.json
 //   (full canonical texts of the hashed parts -> tools/.scratch/gemdata-full.json, raw processes -> tools/.scratch/gemdata-runs.json)
+import '../upstream.ts'
 import { execFile, execFileSync } from 'node:child_process'
 import { promisify } from 'node:util'
 import { createHash } from 'node:crypto'

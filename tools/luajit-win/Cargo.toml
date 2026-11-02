@@ -1,7 +1,7 @@
 # Desktop-LuaJIT oracle: runs a Lua chunk inside PoB's own runtime/lua51.dll (MSVC build, UCRT libm) -- the
 # Windows desktop truth for CRT-dependent math (MINEFIELD-RUST R2). Not a workspace member: it needs `unsafe` FFI.
 # Run with PoB's runtime dir on PATH (the DLL is loaded from there, never copied):
-#   $env:Path = "C:\pob-work\project_15\PathOfBuilding\runtime;" + $env:Path
+#   $env:Path = "<pobRoot of tools/upstream.json>\runtime;" + $env:Path   (now C:\pob-work\pob-upstream\PathOfBuilding)
 #   cargo run --release --manifest-path tools/luajit-win/Cargo.toml -- <chunk.lua>
 [package]
 name = "luajit-win"

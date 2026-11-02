@@ -3,6 +3,7 @@
 // Reads data/mod-parser.json `fns` + the upstream Lua (READ-ONLY checkout), parses each closure body with a Lua SUBSET
 // grammar (README.md) and writes crates/pob-parser/src/closures_gen.rs (formatted with rustfmt) and
 // KNOWLEDGE/drafts/R5-manual-closures.md (every body outside the grammar, with the reason -- never an approximate port).
+import { POB } from '../upstream.ts'
 import { createHash } from 'node:crypto'
 import { execFileSync } from 'node:child_process'
 import { readFileSync, writeFileSync } from 'node:fs'
@@ -10,19 +11,38 @@ import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
-const UP = 'C:/pob-work/project_15/PathOfBuilding/src/'
+const UP = `${POB}/src/` // tools/upstream.json (R-UP)
 const OUT_RS = `${ROOT}/crates/pob-parser/src/closures_gen.rs`
-const OUT_MD = `${ROOT}/KNOWLEDGE/drafts/R5-manual-closures.md`
+// The manual list lives next to the generator (R-UP: was KNOWLEDGE/drafts/R5-manual-closures.md, which update agents do not write);
+// tests/generated.rs reads it. MODPARSER_GEN_MD redirects it.
+const OUT_MD = process.env.MODPARSER_GEN_MD ?? `${ROOT}/tools/modparser-gen/manual-closures.md`
 const J = JSON.parse(readFileSync(`${ROOT}/data/mod-parser.json`, 'utf8'))
 const GLOBALS = JSON.parse(readFileSync(`${ROOT}/data/globals.json`, 'utf8'))
 const FNS: Record<string, { src: string; from: number; to: number; sha: string }> = J.fns
 
-// Hand-ported in helpers.rs and registered in closures.rs HELPERS (never generated).
-const HAND = new Set([
-  'Modules/ModTools.lua:33', 'Modules/ModParser.lua:13', 'Modules/ModParser.lua:18', 'Modules/ModParser.lua:19',
-  'Modules/ModParser.lua:2012', 'Modules/ModParser.lua:2018', 'Modules/ModParser.lua:2047', 'Modules/ModParser.lua:2055',
-  'Modules/ModParser.lua:2073', 'Modules/ModParser.lua:6455', 'Modules/ModParser.lua:6457',
-])
+// Hand-ported in helpers.rs and registered in closures.rs HELPERS (never generated). Keyed by the sha256 of the Lua body, not by
+// line: an upstream update shifts ModParser.lua lines (R-UP: +2..+15) without touching these bodies -- the key is looked up in `fns`.
+const HAND_SHA: Record<string, string> = {
+  mod: 'c124b50cba30a13b0b1cb30bd8f470e8791f654e8a6362485dbda4199e72ae11', // ModTools.lua modLib.createMod
+  firstToUpper: 'a2bf19d5b84c50c606e67d4ad5c5e72fca1a491bfbb36d5a9efcfc18da0e4855',
+  getSimpleConv: '160fdfa53239eaa0f181147368f87c0d57a8943f83fa9ded1f699c6451d13af3',
+  getSimpleConvJewel: '7eb893c0fe0803de8d1fbd4a498e6edafb54dc8f1a7181e1778181d8debcf645',
+  flag: '4d8c99ad0c14e471890242e289ff5c13fdb433840814b51028322710e631cca7',
+  dealNoNonDamageType: '93a041b1086e8f9c7aa47fc29fb8f4230ba0973a212025b8c2d0b092a323dc0e',
+  grantedExtraSkill: '0e3a65919d593f121be96bf036e137a07ff496acd8f68c8f489c577b31b46d68',
+  triggerExtraSkill: '5dd9ab49807140368fdcb38c59bec860300949422078746320d1e3bc55412777',
+  extraSupport: 'e4fdd01db275e22ce28edcea8ff00ec42ec0ea0d22f7bf6683342305ba52bf57',
+  getThreshold: '9bf5eac1e794f8113dbe6a2cd2f7fd000496422dea1111de249c2f1b436042fa',
+  getThresholdJewel: '9e666b35d09cddfe4a399416fc23eea81ae4e104cbca716a1a6aed77037459cd',
+}
+const HK: Record<string, string> = Object.fromEntries(
+  Object.entries(HAND_SHA).map(([name, sha]) => {
+    const ks = Object.entries(FNS).filter(([, v]) => v.sha === sha).map(([k]) => k)
+    if (ks.length !== 1) throw new Error(`hand helper ${name}: ${ks.length} fns with sha ${sha} (body changed upstream? re-port it)`)
+    return [name, ks[0] as string]
+  }),
+)
+const HAND = new Set(Object.values(HK))
 
 class Reject extends Error {}
 const reject = (why: string): never => { throw new Reject(why) }
@@ -334,13 +354,13 @@ class Parser {
 // ---------------------------------------------------------------------------------------------------------------
 // 4. code generation (every Lua value is a pob_mods::Value; errors are ParseError via `?`)
 // ---------------------------------------------------------------------------------------------------------------
-const MOD = 'fn:Modules/ModTools.lua:33'
+const MOD = `fn:${HK.mod}`
 const HELPER_CALLS: Record<string, { rust: string; arity: number; d: boolean }> = {
-  'fn:Modules/ModParser.lua:13': { rust: 'first_to_upper_v', arity: 1, d: false },
-  'fn:Modules/ModParser.lua:2018': { rust: 'deal_no_non_damage_type', arity: 2, d: false },
-  'fn:Modules/ModParser.lua:2047': { rust: 'granted_extra_skill', arity: 3, d: true },
-  'fn:Modules/ModParser.lua:2055': { rust: 'trigger_extra_skill', arity: 3, d: true },
-  'fn:Modules/ModParser.lua:2073': { rust: 'extra_support', arity: 4, d: true },
+  [`fn:${HK.firstToUpper}`]: { rust: 'first_to_upper_v', arity: 1, d: false },
+  [`fn:${HK.dealNoNonDamageType}`]: { rust: 'deal_no_non_damage_type', arity: 2, d: false },
+  [`fn:${HK.grantedExtraSkill}`]: { rust: 'granted_extra_skill', arity: 3, d: true },
+  [`fn:${HK.triggerExtraSkill}`]: { rust: 'trigger_extra_skill', arity: 3, d: true },
+  [`fn:${HK.extraSupport}`]: { rust: 'extra_support', arity: 4, d: true },
 }
 const NAMED: Record<string, string> = { gemIdLookup: 'gem_id_lookup', conquerorList: 'conqueror_list', dmgTypes: 'dmg_types' }
 const FLAG_GLOBALS: Record<string, string> = { ModFlag: 'mod_flag', KeywordFlag: 'keyword_flag', SkillType: 'skill_type' }
@@ -568,7 +588,7 @@ function call(g: Gen, e: Ex & { t: 'call' }): string {
   if (f.t === 'name' && !lookupVar(g, f.n)) {
     const b = g.ups.get(f.n)
     if (b === MOD) { holeCheck(g, e.args.slice(3)); return `call_mod(${list(g, e.args)})?` }
-    if (b === 'fn:Modules/ModParser.lua:2012') { holeCheck(g, e.args.slice(1)); return `call_flag(${list(g, e.args)})?` }
+    if (b === `fn:${HK.flag}`) { holeCheck(g, e.args.slice(1)); return `call_flag(${list(g, e.args)})?` }
     if (b && HELPER_CALLS[b]) {
       const h = HELPER_CALLS[b]
       if (h.d) g.usesD = true

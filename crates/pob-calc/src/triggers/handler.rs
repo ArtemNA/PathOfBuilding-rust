@@ -401,6 +401,7 @@ pub(super) fn default_trigger_handler(env: &mut Env, st: &mut PerformState, mut 
                         uuid: uuid.clone(),
                     },
                     config.comparer.as_ref(),
+                    config.minimum_cost_per_use,
                 )?;
                 source = f.source;
                 trig_rate = f.rate;
@@ -783,7 +784,7 @@ pub(super) fn default_trigger_handler(env: &mut Env, st: &mut PerformState, mut 
         let mut hex = Found::default();
         for i in 0..skill_count(env) {
             if name_of(env, i) == "Hexblast" && !is_triggered(env, i) && i != m {
-                hex = find_trigger_skill(env, i, &hex, None)?;
+                hex = find_trigger_skill(env, i, &hex, None, None)?;
                 uuid.clone_from(&hex.uuid);
             }
         }

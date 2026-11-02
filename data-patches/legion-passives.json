@@ -1,4 +1,4 @@
-{"format":1,"producer":{"luajit":"LuaJIT 2.1.1784580905","pobSha":"ed354c2f8c42e148bc904c7508dbe851fb2cf952","source":"Data/TimelessJewelData/LegionPassives.lua","tool":"tools/lua-corpus/export-legion.ts"},"manifestSha256":"994fbd41821a85e3474c371f578eed91986e624e1266077f41433b56403fbf59","pobSha":"ed354c2f8c42e148bc904c7508dbe851fb2cf952",
+{"format":1,"producer":{"luajit":"LuaJIT 2.1.1784580905","pobSha":"3dbca4463c0a59079d9f7f032d8240cf868e09da","source":"Data/TimelessJewelData/LegionPassives.lua","tool":"tools/lua-corpus/export-legion.ts"},"manifestSha256":"c81bb4388fd5c4ea2ab9332f035e8af94e49e44055e95b3171913c8ee94136a5","pobSha":"3dbca4463c0a59079d9f7f032d8240cf868e09da",
 "additions":[
 {"dn":"Fire Damage","id":"vaal_small_fire_damage","sd":["(7-12)% increased Fire Damage"],"sortedStats":["fire_damage_+%"],"stats":{"fire_damage_+%":{"fmt":"d","index":1,"max":12,"min":7,"statOrder":1385}}},
 {"dn":"Cold Damage","id":"vaal_small_cold_damage","sd":["(7-12)% increased Cold Damage"],"sortedStats":["cold_damage_+%"],"stats":{"cold_damage_+%":{"fmt":"d","index":1,"max":12,"min":7,"statOrder":1394}}},

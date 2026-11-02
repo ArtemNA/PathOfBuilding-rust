@@ -2,6 +2,7 @@
 // via tools/luajit-win -> crates/pob-lua/tests/fixtures/desktop-libm.json. CRT-dependent math (sin/cos/tan/pow) differs between
 // the docker image (Alpine/musl) and the desktop; the desktop is the user's truth (MINEFIELD-RUST R2).
 // Usage (PowerShell, Node 24): node tools/lua-corpus/export-libm-desktop.ts
+import { POB as UPSTREAM_POB } from '../upstream.ts'
 import { execFileSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
@@ -10,7 +11,7 @@ import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
-const POB_RUNTIME = resolve(process.env.POB_ROOT ?? 'C:/pob-work/project_15/PathOfBuilding', 'runtime')
+const POB_RUNTIME = resolve(UPSTREAM_POB, 'runtime')
 const FIXTURE_IN = join(ROOT, 'crates/pob-lua/tests/fixtures/luajit-numeric.json')
 const FIXTURE_OUT = join(ROOT, 'crates/pob-lua/tests/fixtures/desktop-libm.json')
 const TOOL = join(ROOT, 'tools/luajit-win')

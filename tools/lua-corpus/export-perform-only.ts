@@ -5,6 +5,7 @@
 //   node tools/lua-corpus/export-perform-only.ts   -> crates/pob-calc/tests/fixtures/<build>.perform-pobts.json
 // Numbers go through `formatG(v, 17)` (`%.17g`, exact; `-0` stays "-0" and is also listed in `negZero`), so the Rust side
 // compares bits, never the 14-digit channel (MINEFIELD O2). Two runs must be byte-identical (`git diff` / `cmp`).
+import '../upstream.ts'
 import { readFileSync, writeFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'

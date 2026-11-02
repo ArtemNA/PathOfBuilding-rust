@@ -11,6 +11,7 @@
 // R13: the same normalisation as export-breakdown.ts on the breakdown; 2 passes must be byte-identical.
 // Usage (Node 24, repo root):  node tools/lua-corpus/export-calcs.ts [name-filter]  -> crates/pob-engine/tests/fixtures/calcs/<slug>.json
 //                              node tools/lua-corpus/export-calcs.ts perf           -> tools/.scratch/perf-calcs.json
+import '../upstream.ts'
 import { execFile } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'

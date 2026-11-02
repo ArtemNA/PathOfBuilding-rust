@@ -6,6 +6,7 @@
 // Run from the pob-rust root (Node 24):  node tools/lua-corpus/export-modparser.ts [perf]
 //   -> crates/pob-parser/tests/fixtures/modparser-NN.json  /  tools/.scratch/perf-modparser.json
 // Strings are BYTE strings (JS chars < 256 = UTF-8 bytes), escaped \u00XX when non-ASCII. Numbers are {"n":"%.17g"} (flags: plain ints).
+import { POB as UPSTREAM_POB } from '../upstream.ts'
 import { execFileSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
@@ -362,7 +363,7 @@ if (a.jit !== b.jit) throw new Error('LuaJIT versions differ')
 let digest = ''
 try { digest = execFileSync('docker', ['image', 'inspect', '--format', '{{index .RepoDigests 0}}', LUAJIT_IMAGE], { encoding: 'utf8' }).trim() } catch { /* tag only */ }
 const lock = JSON.parse(readFileSync(resolve(ROOT, 'data.lock'), 'utf8')) as { manifestSha256: string }
-const producer = { image: digest || LUAJIT_IMAGE, luajit: a.jit, pobSha: git('C:/pob-work/project_15/PathOfBuilding'), dataManifestSha256: lock.manifestSha256 }
+const producer = { image: digest || LUAJIT_IMAGE, luajit: a.jit, pobSha: git(UPSTREAM_POB), dataManifestSha256: lock.manifestSha256 }
 const rows = luaLines.map((line, i) => {
   const r = a.res[i]!
   return ser({ line: bytesOf(line), sources: ['cache', 'tree', 'item'].filter((s) => sources.get(line)!.has(s as Src)), inner1: cvSide(r.i1, true), wrapped: cvSide(r.w, false), cacheEq: r.ceq === undefined ? undefined : r.ceq })

@@ -889,15 +889,10 @@ pub(crate) fn build_skill(
     };
     add_mod(&ml, "GemLevel", ModType::Base, gem_level, "Max Level");
     add_mod(&ml, "GemQuality", ModType::Base, gem_quality, "Max Quality");
-    // `srcInstance and srcInstance.matchesSocket or activeEffect.matchesSocket` (the effect never has one)
-    if src_gem.as_ref().is_some_and(|g| g.matches_socket == Some(true)) {
-        add_mod(
-            &ml,
-            "GemSocketQuality",
-            ModType::Base,
-            Value::Num(crate::setup::misc("MatchingSocketQualityBonus")),
-            "Socket Quality",
-        );
+    // :554-557 matching socket bonus: `if (activeEffect.socketQuality or 0) > 0` (3dbca4463, #10396)
+    let socket_quality = ae.borrow().socket_quality.unwrap_or(0.0);
+    if socket_quality > 0.0 {
+        add_mod(&ml, "GemSocketQuality", ModType::Base, Value::Num(socket_quality), "Socket Quality");
     }
     // :559-569 SupportedGemProperty
     guard(&malformed, &["SupportedGemProperty"])?;
@@ -919,8 +914,11 @@ pub(crate) fn build_skill(
                 .ok_or_else(|| format!("{CAS}:566: attempt to perform arithmetic on field 'value'"))?;
             {
                 let mut e = ae.borrow_mut();
+                // :562-567 save level and quality increases for use in tooltips
                 if key == "quality" {
                     e.support_quality = Some(e.support_quality.unwrap_or(0.0) + v);
+                } else if key == "level" {
+                    *e.other.entry("supportLevel".to_owned()).or_insert(0.0) += v;
                 }
                 let arith = || format!("{CAS}:566: attempt to perform arithmetic on field '{key}' (a nil value)");
                 let slot = match key.as_str() {
@@ -955,15 +953,15 @@ pub(crate) fn build_skill(
             ));
         }
     }
-    // :571-574 gem item properties
+    // :572-575 gem properties: `"Gem" .. gemProperty.sourceType .. Key` (GemItem* / GemGlobal*)
     let info = ae.borrow().gem_property_info.clone().unwrap_or_default();
-    for gp in &info {
+    for (gp, source_type) in &info {
         let key = gp.value.get("key");
         let key = key
             .as_str()
-            .unwrap_or_else(|| unimplemented!("{CAS}:573 GemProperty with a non-string key"));
+            .unwrap_or_else(|| unimplemented!("{CAS}:574 GemProperty with a non-string key"));
         ml.borrow_mut().new_mod(new_mod_tagged(
-            &format!("GemItem{}", upper_first(key)),
+            &format!("Gem{source_type}{}", upper_first(key)),
             gp.value.get("value"),
             gp.mod_.source.as_deref(),
             gp.mod_.tags.first(),

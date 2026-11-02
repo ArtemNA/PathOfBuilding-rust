@@ -1,4 +1,4 @@
-{"format":1,"producer":{"tool":"tools/lua-corpus/export-data-patch.ts","luajit":"LuaJIT 2.1.1784580905","pobSha":"ed354c2f8c42e148bc904c7508dbe851fb2cf952"},"manifestSha256":"994fbd41821a85e3474c371f578eed91986e624e1266077f41433b56403fbf59","patches":[
+{"format":1,"producer":{"tool":"tools/lua-corpus/export-data-patch.ts","luajit":"LuaJIT 2.1.1784580905","pobSha":"3dbca4463c0a59079d9f7f032d8240cf868e09da"},"manifestSha256":"c81bb4388fd5c4ea2ab9332f035e8af94e49e44055e95b3171913c8ee94136a5","patches":[
 {"file":"mod-cache.json","path":["0% reduced Area of Effect for Attacks","mods",0,"value"],"value":"-0"},
 {"file":"mod-cache.json","path":["0% reduced Attack Speed","mods",0,"value"],"value":"-0"},
 {"file":"mod-cache.json","path":["0% reduced Charges per use","mods",0,"value"],"value":"-0"},

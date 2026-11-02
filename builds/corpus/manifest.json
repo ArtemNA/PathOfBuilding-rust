@@ -1,0 +1,32 @@
+{
+  "_comment": "builds/corpus -- the builds every upstream update runs Rust = LuaJIT on (builds/README.md, UPDATE-PROMPT.md). Not copies: each set names where its XMLs already live. `$POB` = pobRoot, `$ORACLE` = oracleRoot of tools/upstream.json; other paths are repo-relative globs. LuaJIT truth: `node tools/lua-corpus/export-real.ts --set corpus` -> builds/corpus-fixtures/ (gitignored, re-taken on every update); gate: crates/pob-calc/tests/real_builds.rs. Oracle goldens of the 6 golden builds: builds/corpus/goldens/*.json (tools/make-goldens.ts).",
+  "sets": [
+    {
+      "id": "golden",
+      "what": "the 6 golden builds (upstream spec/TestBuilds/3.13 + the Lethal Pride fixture of pob-engine-wasm); oracle snapshots in goldens/",
+      "paths": [
+        "$POB/spec/TestBuilds/3.13/Dual Savior.xml",
+        "$POB/spec/TestBuilds/3.13/Dual Wield Cospris CoC.xml",
+        "$ORACLE/test/fixtures/Dual Wield Cospris CoC - Lethal Pride.xml",
+        "$POB/spec/TestBuilds/3.13/Generals Perforate Zerker.xml",
+        "$POB/spec/TestBuilds/3.13/Mirage Archer Toxic Rain.xml",
+        "$POB/spec/TestBuilds/3.13/OccVortex.xml"
+      ]
+    },
+    {
+      "id": "r4",
+      "what": "R4 synthetic defence scenarios (tools/lua-corpus/export-defence-synth.ts)",
+      "paths": ["crates/pob-calc/tests/fixtures/defence-synth/*.xml"]
+    },
+    {
+      "id": "r4b",
+      "what": "R4-synth-2 perform/defence scenarios (tools/lua-corpus/export-defence-synth2.ts)",
+      "paths": ["crates/pob-calc/tests/fixtures/defence-synth2/*.xml"]
+    },
+    {
+      "id": "r7",
+      "what": "R7 synthetic offence scenarios + R7-synth-2 (`s2-*`; R8 scenarios reuse these and the goldens) (tools/lua-corpus/export-offence-synth.ts)",
+      "paths": ["crates/pob-calc/tests/fixtures/offence-synth/*.xml"]
+    }
+  ]
+}

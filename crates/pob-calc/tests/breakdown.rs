@@ -73,8 +73,33 @@ pub fn ser(v: &BVal) -> Json {
             let e: Map<String, Json> = b.entries().map(|(k, v)| (k.clone(), ser(v))).collect();
             json!({ "$bd": e })
         }
-        // R8.6: only the CALCS tail (`SkillBuffs` / `SkillDebuffs` rows, class `Calcs` here) holds mods -- never compared by this gate
-        BVal::Mod(m) => json!({ "$mod": m.0.name.as_ref() }),
+        // export-breakdown.ts `SMod`: `{"$mod": {name, type, source, value, flags, keywordFlags, tags}}` -- the CALCS tail (`SkillBuffs` /
+        // `SkillDebuffs`, class `Calcs`, not compared here) and, since 3dbca4463 (#10314), the `modList` of "You can't deal X damage"
+        BVal::Mod(m) => {
+            let m = &m.0;
+            let mut o = Map::new();
+            o.insert("name".into(), Json::String(m.name.to_string()));
+            if let Some(t) = m.ty {
+                o.insert("type".into(), Json::String(t.as_str().to_owned()));
+            }
+            if let Some(s) = &m.source {
+                o.insert("source".into(), Json::String(s.to_string()));
+            }
+            let value = match &m.value {
+                pob_mods::Value::Num(n) => ser(&BVal::Num(*n)),
+                pob_mods::Value::Bool(b) => Json::Bool(*b),
+                pob_mods::Value::Str(s) => Json::String(s.to_string()),
+                other => json!({ "$unported-mod-value": other.type_name() }),
+            };
+            o.insert("value".into(), value);
+            o.insert("flags".into(), Json::String(format_g(f64::from(m.flags), 17)));
+            o.insert("keywordFlags".into(), Json::String(format_g(f64::from(m.keyword_flags), 17)));
+            if !m.tags.is_empty() {
+                // tag tables are not serialized here (no breakdown row compared by this gate carries one) -- a mismatch, not a pass
+                o.insert("tags".into(), json!({ "$unported-tags": m.tags.len() }));
+            }
+            json!({ "$mod": o })
+        }
     }
 }
 

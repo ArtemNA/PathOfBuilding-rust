@@ -4,6 +4,7 @@
 //           desktop LuaJIT (docker) on build.calcsTab.mainEnv.player after loadBuildFromXML; inputs + actor reads stored for a Rust replay.
 //   (perf)  `perf` mode -> tools/.scratch/perf-r4.json: LuaJIT calcs.buildOutput(build,"MAIN") x N in docker (pob-ts/wasm: `npm run bench`).
 // Run from the pob-rust root (Node 24):  node tools/lua-corpus/export-r4.ts [perf]
+import { POB as UPSTREAM_POB } from '../upstream.ts'
 import { execFileSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
@@ -231,7 +232,7 @@ async function fixtures(): Promise<void> {
     TAKEN.forEach((c, i) => chk(`takenHit[${c.name}]`, TAKEN_COLUMNS, raw.taken[i], takenRow(actor, c)))
     const readDiffs = READS.filter((k, i) => fmt(env.player.output[k]) !== canon(raw.reads[i]))
     const f2 = writeFix(slug, 'pools.luajit', { ...head,
-      producer: { generator, image: digest || LUAJIT_IMAGE, luajit: 'desktop LuaJIT docker', pobSha: git('C:/pob-work/project_15/PathOfBuilding'),
+      producer: { generator, image: digest || LUAJIT_IMAGE, luajit: 'desktop LuaJIT docker', pobSha: git(UPSTREAM_POB),
         probe: 'pob-ts test/calc/estimations-ehp-oracle.test.ts:27-118 (Lua PROBE verbatim; actor = build.calcsTab.mainEnv.player)' },
       inputs: { cases: CASES.map((c) => ({ name: c.name, pool: c.pool, damage: c.damage })), taken: TAKEN.map((c) => ({ name: c.name, raw: String(c.raw), type: c.type })),
         poolColumns: POOL_COLUMNS, takenColumns: TAKEN_COLUMNS, reads: READS, flags: FLAGS, sums: SUMS.map(([kind, n]) => `${kind}:${n}`), types: DMG },

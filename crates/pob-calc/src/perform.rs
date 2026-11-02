@@ -1305,11 +1305,11 @@ fn do_actor_misc(env: &mut Env, who: Who, st: &mut ActorState, party: &PartyStub
     let fl = |name: &str| flag(&db, &[name]);
 
     if env.mode_combat {
-        // :646 `env.player.mainSkill.baseSkillModList:Flag(nil, "Cruelty")` (the stub has no baseSkillModList; its empty
-        // skillModList answers the same "no").
+        // :646 `env.player.mainSkill.baseSkillModList:Flag(env.player.mainSkill.skillCfg, "Cruelty")` (3dbca4463 #10385: the
+        // Cruelty flag is now SkillType-tagged; the stub has no baseSkillModList; its empty skillModList answers the same "no").
         let player_ms = player_main_skill(env, 646);
         player_ms.guard(&["Cruelty"]);
-        if flag(&player_ms.base, &["Cruelty"]) {
+        if flag_cfg(&player_ms.base, Some(&player_ms.cfg), &["Cruelty"]) {
             let v = or_override(override_(&db, &["Cruelty"]), 40.0, "Modules/CalcPerform.lua:647");
             set_mult(&db, "Cruelty", v);
         }
@@ -1361,13 +1361,11 @@ fn do_actor_misc(env: &mut Env, who: Who, st: &mut ActorState, party: &PartyStub
                 },
                 max_stacks,
             );
+            // :664 `m_min(modDB:Override(nil, "FortificationStacks") or maxStacks, maxStacks)` (3dbca4463 #10357: no longer
+            // defaults to the minimum stacks)
             let stack_override = override_(&db, &["FortificationStacks"]);
             let stacks = min2(
-                or_override(
-                    stack_override.clone(),
-                    if min_stacks > 0.0 { min_stacks } else { max_stacks },
-                    "Modules/CalcPerform.lua:664",
-                ),
+                or_override(stack_override.clone(), max_stacks, "Modules/CalcPerform.lua:664"),
                 max_stacks,
             );
             let increased_duration = sum(&skill_mod_list, Inc, None, &["FortifyDuration"]);
@@ -3209,40 +3207,61 @@ fn gem_level_quality(env: &Env, state: &mut PerformState) {
     };
     let output = &mut state.player.output;
     let bd = &mut state.player.breakdown;
+    // :3976-3980 / :3998-4005 `{ total, label }` rows, written when non-zero with an explicit sign (3dbca4463 #10366)
+    let source_rows = |t: &mut crate::breakdown::BTable, what: &str, rows: &[(f64, &str)]| {
+        for &(v, label) in rows {
+            if v != 0.0 {
+                let sign = if v > 0.0 { "+" } else { "-" };
+                t.push(crate::sf!(&format!("%s %d ^8({what} from %s)"), sign, v.abs(), label));
+            }
+        }
+    };
     if level {
-        let (base, item, support) = (s("GemLevel"), s("GemItemLevel"), s("GemSupportLevel"));
+        let (base, item, global, support) = (s("GemLevel"), s("GemItemLevel"), s("GemGlobalLevel"), s("GemSupportLevel"));
         output.set_bool("GemHasLevel", true);
-        output.set_num("GemLevel", base + support + item);
-        // :3948-3958
+        // :3973 `output.GemLevel = mainSkill.activeEffect.level`
+        let gem_level = st.skill(i).active_effect.borrow().level.expect("checked");
+        output.set_num("GemLevel", gem_level);
+        // :3975-3987
         if let Some(bd) = bd.as_mut() {
             let mut t = crate::breakdown::BTable::lines([crate::sf!("%d ^8(level from gem)", base)]);
-            if support > 0.0 {
-                t.push(crate::sf!("+ %d ^8(level from support)", support));
+            source_rows(
+                &mut t,
+                "level",
+                &[(item, "items"), (global, "global modifiers"), (support, "support")],
+            );
+            if gem_level != base + item + global + support {
+                t.push(crate::sf!("^8Limited to Level %d", gem_level));
             }
-            if item > 0.0 {
-                t.push(crate::sf!("+ %d ^8(level from items)", item));
-            }
-            t.push(crate::sf!("= %d", base + support + item));
+            t.push(crate::sf!("= %d", gem_level));
             bd.put("GemLevel", t);
         }
     }
     if quality {
-        let (base, item, support, socket) = (s("GemQuality"), s("GemItemQuality"), s("GemSupportQuality"), s("GemSocketQuality"));
+        let (base, item, global, support, socket) = (
+            s("GemQuality"),
+            s("GemItemQuality"),
+            s("GemGlobalQuality"),
+            s("GemSupportQuality"),
+            s("GemSocketQuality"),
+        );
         output.set_bool("GemHasQuality", true);
-        output.set_num("GemQuality", base + support + item + socket);
-        // :3971-3984
+        let total = base + support + item + global + socket;
+        output.set_num("GemQuality", total);
+        // :3999-4010
         if let Some(bd) = bd.as_mut() {
             let mut t = crate::breakdown::BTable::lines([crate::sf!("%d ^8(quality from gem)", base)]);
-            if support > 0.0 {
-                t.push(crate::sf!("+ %d ^8(quality from support)", support));
-            }
-            if item > 0.0 {
-                t.push(crate::sf!("+ %d ^8(quality from items)", item));
-            }
-            if socket > 0.0 {
-                t.push(crate::sf!("+ %d ^8(quality from socket)", socket));
-            }
-            t.push(crate::sf!("= %d", base + support + item + socket));
+            source_rows(
+                &mut t,
+                "quality",
+                &[
+                    (item, "items"),
+                    (global, "global modifiers"),
+                    (support, "support"),
+                    (socket, "socket colour"),
+                ],
+            );
+            t.push(crate::sf!("= %d", total));
             bd.put("GemQuality", t);
         }
     }

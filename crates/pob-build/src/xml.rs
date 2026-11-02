@@ -295,13 +295,16 @@ fn push_tabs(out: &mut String, lvl: usize) {
     out.extend(std::iter::repeat_n('\t', lvl));
 }
 
-/// xml.lua:112-158 `composeNode`. Attributes in `attrib` order (Lua: `pairs`, R13 -- the caller fixes the order); a nil/false
-/// attribute is simply absent from `attrib`. `node[1]` absent -> `/>` (the `empty` flag is not consulted, as in Lua).
+/// xml.lua:112-165 `composeNode`. Attributes in sorted key order (xml.lua:120-140, 3dbca4463 #10337: `table.sort(attribKeys)`, byte
+/// order -- was `pairs`, R13); a nil/false attribute is simply absent from `attrib`. `node[1]` absent -> `/>` (the `empty` flag is not
+/// consulted, as in Lua).
 fn compose_node(out: &mut String, node: &XmlElement, lvl: usize) {
     push_tabs(out, lvl);
     out.push('<');
     out.push_str(&node.name);
-    for (key, val) in &node.attrib {
+    let mut attrib: Vec<(&String, &String)> = node.attrib.iter().collect();
+    attrib.sort_by(|a, b| a.0.as_bytes().cmp(b.0.as_bytes()));
+    for (key, val) in attrib {
         out.push(' ');
         out.push_str(key);
         out.push_str("=\"");

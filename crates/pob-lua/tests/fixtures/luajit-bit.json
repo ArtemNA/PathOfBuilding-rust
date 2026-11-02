@@ -1,6 +1,6 @@
 {
 "format": 1,
-"producer": {"runtime":"PathOfBuilding/runtime/lua51.dll","lua51Sha256":"2e4e58e4cc6f6cb01d119ff3715253108041f6c59f9a6a464a62b2f70623bca6","luajit":"LuaJIT 2.1.1784580905","pobSha":"ed354c2f8c42e148bc904c7508dbe851fb2cf952","dataManifestSha256":"994fbd41821a85e3474c371f578eed91986e624e1266077f41433b56403fbf59"},
+"producer": {"runtime":"PathOfBuilding/runtime/lua51.dll","lua51Sha256":"89244909c375fa3daf43f2d26d64e551ccf699e9d4b59d2f4ec39a6f844dcf0b","luajit":"LuaJIT 2.1.1784580905","pobSha":"3dbca4463c0a59079d9f7f032d8240cf868e09da","dataManifestSha256":"c81bb4388fd5c4ea2ab9332f035e8af94e49e44055e95b3171913c8ee94136a5"},
 "encoding": "byte strings as tokens: \"s\"+ASCII text or \"x\"+hex of the bytes; numbers as JSON numbers (positions) or \"n\"+%.17g in fuzz results; null = nil; indexes are 0-based, start/end are Lua 1-based",
 "cases": 12800,
 "inputs": 1600,

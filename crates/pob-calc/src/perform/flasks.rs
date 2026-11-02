@@ -7,10 +7,8 @@
 //!   ([`FlaskCtx`]), and `mergeTinctures` decrements its `tinctureLimit` upvalue ([`TinctureCtx`]).
 //! * `env.minion` (R7.10): `flasksApplyToMinion` / `quickSilverAppliesToAllies` / `nonUniqueFlasksApplyToMinion` (:1607-1609) and the
 //!   minion half of `mergeFlasks` (:1829-1853) are ported.
-//! * Hash-order walks (MINEFIELD-RUST R13/D13): `pairs(flasks)` / `pairs(tinctures)` (:1798, :1909) are keyed by item TABLES (address
-//!   order); Rust walks the slot order (`env.flasks`). The order decides (a) which of two flasks with the same `mergeBuff` key and an EQUAL
-//!   value keeps its mod (the first; only the source can differ), and (b) which tinctures fit under `TinctureLimit` -- neither happens on the
-//!   goldens. `pairs(appliedFlaskBuffs)` / `pairs(tinctureBuffs)` / the condition tables are keyed by strings: their order only decides the
+//! * `pairs(flasks)` / `pairs(tinctures)` were hash-order walks over item tables (R13/D13) until 3dbca4463 (#10339): now
+//!   :1773-1786 / :1918-1931 sort them by `env.itemSlotIndex` then `item.id` ([`slot_ordered`]). `pairs(appliedFlaskBuffs)` / `pairs(tinctureBuffs)` / the condition tables are keyed by strings: their order only decides the
 //!   insertion order into modDB (a multiset at the checkpoints).
 
 use std::rc::Rc;
@@ -131,6 +129,22 @@ pub(super) fn conversions(env: &mut Env) {
             }
         }
     }
+}
+
+/// CalcPerform.lua:1773-1786 / :1918-1931: `table.sort(ordered, function(a, b) ... end)` by `slotIndex[item] or 0`, then `item.id or 0`.
+/// The keys are distinct for distinct equipped items (slot number, id), so the unstable Lua sort has one result; a stable sort over the
+/// set's insertion order is used for the theoretical tie.
+fn slot_ordered(env: &Env, set: &[Rc<Item>]) -> Vec<Rc<Item>> {
+    let pos = |it: &Rc<Item>| env.item_slot_index.iter().find(|(i, _)| Rc::ptr_eq(i, it)).map_or(0.0, |e| e.1);
+    let mut v = set.to_vec();
+    v.sort_by(|a, b| {
+        let (pa, pb) = (pos(a), pos(b));
+        if pa != pb {
+            return pa.partial_cmp(&pb).expect("slot index");
+        }
+        a.id.unwrap_or(0.0).partial_cmp(&b.id.unwrap_or(0.0)).expect("item id")
+    });
+    v
 }
 
 /// `env.flasks[item] = true` -- a set keyed by the item table.
@@ -480,7 +494,8 @@ fn calc_flask_mods(
 pub(super) fn merge_flasks(env: &Env, cx: &FlaskCtx, only_recovery: bool, check_non_recovery: bool) {
     let db = env.mod_db.clone();
     let mut t = FlaskTables::default();
-    for item in &env.flasks {
+    // :1773-1786 flasks in slot order (`env.itemSlotIndex`, then `item.id`) -- 3dbca4463 #10339
+    for item in &slot_ordered(env, &env.flasks) {
         let bn = base_name(item, 1799).to_owned();
         t.per_base.entry(bn.clone()).or_default();
         t.per_base_non_player.entry(bn.clone()).or_default();
@@ -630,7 +645,8 @@ pub(super) fn merge_tinctures(env: &Env, cx: &mut TinctureCtx, output: &Output) 
     let mut buffs: Buffs = IndexMap::new();
     let mut conditions: IndexMap<String, bool> = IndexMap::new();
     let mut per_base: IndexMap<String, Buffs> = IndexMap::new();
-    for item in &env.tinctures {
+    // :1918-1931 tinctures in slot order (`env.itemSlotIndex`, then `item.id`)
+    for item in &slot_ordered(env, &env.tinctures) {
         if cx.tincture_limit <= 0.0 {
             break;
         }

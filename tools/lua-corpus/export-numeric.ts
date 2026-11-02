@@ -3,6 +3,7 @@
 // Run from the pob-rust root:  node tools/lua-corpus/export-numeric.ts
 // Corpus generators/encoders are imported from pob-ts; the Lua bodies below are copied VERBATIM from
 // pob-ts test/lua/corpus.ts (line refs in comments) because they are not exported there.
+import '../upstream.ts'
 import { execFileSync } from 'node:child_process'
 import { mkdirSync, statSync, writeFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'

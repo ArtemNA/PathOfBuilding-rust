@@ -35,6 +35,8 @@ pub(crate) struct Config {
     pub trig_rate: Option<f64>,
     pub source: Option<usize>,
     pub comparer: Option<Comparer>,
+    /// `minimumCostPerUse = { stat, minimum }` (3dbca4463 #10386; Kitava's Thirst).
+    pub minimum_cost_per_use: Option<(&'static str, f64)>,
     pub trigger_on_use: bool,
     pub source_weapon: bool,
     pub ignore_source_rate: bool,
@@ -338,7 +340,7 @@ pub(crate) fn config_table(
                     && !super::from_item(env, ge_of(env, s))
                     && !is_triggered(env, s)
                 {
-                    found = find_trigger_skill(env, s, &found, None)?;
+                    found = find_trigger_skill(env, s, &found, None, None)?;
                     let sk = skill(env, s);
                     let ge = ge_of(env, s);
                     if ["totem", "golem", "banner", "ballista"].iter().any(|f| sk.flag(f))
@@ -364,23 +366,20 @@ pub(crate) fn config_table(
                 ..Config::default()
             }
         }
-        // :1086-1113
+        // :1101-1121 (3dbca4463 #10386: the default comparer + `minimumCostPerUse`, "paid by a single use")
         "kitava's thirst" | "foulborn kitava's thirst" => {
             let foulborn = key.starts_with("foulborn");
-            let (req_name, chance_name, cost_life) = if foulborn {
-                ("FoulbornKitavaRequiredLifeCost", "FoulbornKitavaTriggerChance", true)
+            let (chance_name, stat, req_name) = if foulborn {
+                ("FoulbornKitavaTriggerChance", "LifeCost", "FoulbornKitavaRequiredLifeCost")
             } else {
-                ("KitavaRequiredManaCost", "KitavaTriggerChance", false)
+                ("KitavaTriggerChance", "ManaCost", "KitavaRequiredManaCost")
             };
-            let required = player_db(env).base(None, &[req_name]);
             let chance = player_db(env).base(None, &[chance_name]);
+            let required = player_db(env).base(None, &[req_name]);
             Config {
                 trigger_chance: Some(chance),
                 trigger_name: Some(if foulborn { "Foulborn Kitava's Thirst" } else { "Kitava's Thirst" }.into()),
-                comparer: Some(Box::new(move |c, source, rate| {
-                    let cost = if cost_life { c.life_cost } else { c.mana_cost };
-                    default_comparer(c, source, rate) && cost.unwrap_or(0.0) >= required
-                })),
+                minimum_cost_per_use: Some((stat, required)),
                 trigger_skill_cond: cond(|_, _| true),
                 ..Config::default()
             }

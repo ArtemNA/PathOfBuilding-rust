@@ -9,8 +9,12 @@
 // run until the process that took Rust's order is seen (`r13` in the fixture). Two passes; a job whose passes differ is reported, no fixture.
 // Fixtures: builds/pc-fixtures/<league>__<file>[.p5stripped].luajit.json (gitignored -- they carry the user's build data).
 // Run from the pob-rust root (Node 24, docker):
-//   node tools/lua-corpus/export-real.ts [regex]   -> fixtures for every build whose relative path matches (default: all)
+//   node tools/lua-corpus/export-real.ts [--set pc|user|corpus] [regex]  -> fixtures for every build of the set whose relative path matches
 //   node tools/lua-corpus/export-real.ts perf [re] -> builds/pc-fixtures/_perf-luajit.json: buildOutput(MAIN) ms (default: 3.29)
+// Sets (R-UP, builds/README.md): pc = builds/pc/**/*.xml -> builds/pc-fixtures; user = builds/user/*.{xml,txt} (txt = a build code) ->
+// builds/user-fixtures; corpus = builds/corpus/manifest.json -> builds/corpus-fixtures. All three fixture dirs are gitignored.
+// Sampling rule for an update (UPDATE-PROMPT.md): pc -- every build of the newest league + 2-3 per older league/folder.
+import { POB as UPSTREAM_POB, ORACLE as UPSTREAM_ORACLE } from '../upstream.ts'
 import { execFile } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
@@ -18,14 +22,23 @@ import { tmpdir } from 'node:os'
 import { dirname, relative, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { promisify } from 'node:util'
+import { inflateSync } from 'node:zlib'
 const run = promisify(execFile)
 type Rec = Record<string, any> // eslint-disable-line
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
-const PC = resolve(ROOT, 'builds/pc')
-const OUT = resolve(ROOT, 'builds/pc-fixtures')
-const POB = 'C:/pob-work/project_15/PathOfBuilding'
+const SET = (() => {
+  const i = process.argv.indexOf('--set')
+  if (i < 0) return 'pc'
+  const s = process.argv[i + 1] ?? ''
+  process.argv.splice(i, 2)
+  return s
+})()
+if (!['pc', 'user', 'corpus'].includes(SET)) throw new Error(`--set ${SET}: expected pc | user | corpus`)
+const PC = SET === 'corpus' ? ROOT : resolve(ROOT, `builds/${SET}`)
+const OUT = resolve(ROOT, `builds/${SET}-fixtures`)
+const POB = UPSTREAM_POB
 const POBTS = 'C:/pob-work/pob-ts'
-const ORACLE = 'C:/pob-work/project_15/pob-engine-wasm'
+const ORACLE = UPSTREAM_ORACLE
 const IMAGE = 'ghcr.io/pathofbuildingcommunity/pathofbuilding-tests:latest'
 const JOBS = Number(process.env.REAL_JOBS ?? 5)
 const TIMEOUT_MS = Number(process.env.REAL_TIMEOUT_S ?? 60) * 1000 // per docker run: a broken build that loads for minutes is reported as 	imeout, not waited for
@@ -38,11 +51,52 @@ const median = (xs: number[]): number => { const s = [...xs].sort((x, y) => x - 
 function walk(dir: string): string[] {
   return readdirSync(dir).sort(byteOrder).flatMap((n) => { const p = resolve(dir, n); return statSync(p).isDirectory() ? walk(p) : n.endsWith('.xml') ? [p] : [] })
 }
-const relOf = (p: string): string => relative(PC, p).replace(/\\/g, '/')
+const relOf = (p: string): string => CORPUS_REL.get(p) ?? relative(PC, p).replace(/\\/g, '/')
+/** corpus: absolute path -> its manifest path (`$POB/...`, `$ORACLE/...` or repo-relative) and set id */
+const CORPUS_REL = new Map<string, string>()
+const CORPUS_SET = new Map<string, string>()
+const globRe = (glob: string): RegExp => new RegExp('^' + glob.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*') + '$')
+/** the build files of SET (absolute paths) */
+function listBuilds(): string[] {
+  if (SET === 'pc') return walk(PC)
+  if (SET === 'user') return readdirSync(PC).sort(byteOrder).filter((n) => /\.(xml|txt)$/i.test(n)).map((n) => resolve(PC, n))
+  const m = JSON.parse(readFileSync(resolve(ROOT, 'builds/corpus/manifest.json'), 'utf8')) as { sets: { id: string; paths: string[] }[] }
+  const out: string[] = []
+  for (const s of m.sets) {
+    for (const pat of s.paths) {
+      const exp = pat.replace(/^\$POB\//, `${POB}/`).replace(/^\$ORACLE\//, `${ORACLE}/`)
+      const abs = resolve(ROOT, exp)
+      const dir = dirname(abs)
+      const base = abs.slice(dir.length + 1)
+      const files = base.includes('*') ? readdirSync(dir).sort(byteOrder).filter((n) => globRe(base).test(n)).map((n) => resolve(dir, n)) : [abs]
+      for (const f of files) {
+        CORPUS_REL.set(f, base.includes('*') ? pat.slice(0, pat.lastIndexOf('/') + 1) + f.slice(dir.length + 1) : pat)
+        CORPUS_SET.set(f, s.id)
+        out.push(f)
+      }
+    }
+  }
+  return out
+}
+/** the fixture slug of a build file of SET */
+const slugFor = (f: string): string =>
+  SET === 'pc'
+    ? slugOf(relOf(f))
+    : SET === 'user'
+      ? `user__${relOf(f).replace(/\.(xml|txt)$/i, '')}`
+      : `${CORPUS_SET.get(f)}__${relOf(f).replace(/^.*\//, '').replace(/\.xml$/, '')}`
 /** fixture slug: `<league>__<file stem>`; the top-level files of builds/pc are the `Builds` folder of PoB. */
 export const slugOf = (rel: string): string => (rel.includes('/') ? rel : `Builds/${rel}`).replace(/\.xml$/, '').replace(/\//g, '__')
 /** desktop text mode (Build.lua:2267 io.open(path, "r")): CRLF -> LF, bytes kept */
-const desktopBytes = (p: string): Buffer => Buffer.from(readFileSync(p).toString('latin1').replace(/\r\n/g, '\n'), 'latin1')
+const desktopBytes = (p: string): Buffer =>
+  /\.txt$/i.test(p) ? decodeCode(p) : Buffer.from(readFileSync(p).toString('latin1').replace(/\r\n/g, '\n'), 'latin1')
+/** a build code (pobb.in / "Generate"; ImportTab.lua: base64 with `-_`, zlib) -> the XML ImportTab hands to loadBuildFromXML; a first line
+ *  that is not a code (a note, builds/README.md) is skipped */
+function decodeCode(p: string): Buffer {
+  const code = readFileSync(p, 'utf8').split(/\r?\n/).map((l) => l.trim()).find((l) => /^[A-Za-z0-9_\-+/=]{20,}$/.test(l))
+  if (!code) throw new Error(`${p}: no build code line`)
+  return inflateSync(Buffer.from(code.replace(/-/g, '+').replace(/_/g, '/'), 'base64'))
+}
 // R13 (MINEFIELD-RUST R13): SkillsTab.lua:472-479 resolves an old-format <Gem> (gemId + skillId, no variantId) by `pairs(possibleVariants)` --
 // string keys, the order differs per process. Rust takes the data order (gems.json = insertion order, base variant first). `rustR13Key` = the
 // ids Rust resolves for the gems of the build whose gameId has > 1 variant granting the same effect (the Lua probe `r13Key` in DUMP).
@@ -110,7 +164,7 @@ async function prepareLuts(files: string[]): Promise<void> {
   mkdirSync(LUTS, { recursive: true })
   const { findRequiredJewelLuts } = await import(pathToFileURL(resolve(ORACLE, 'src/timelessJewelLuts.mjs')).href)
   const { unpackJewelData } = await import(pathToFileURL(resolve(ORACLE, 'src/nodeJewelData.mjs')).href)
-  const stems = new Set<string>(files.flatMap((f) => findRequiredJewelLuts(readFileSync(f, 'utf8')).map((x: Rec) => x.fileStem as string)))
+  const stems = new Set<string>(files.flatMap((f) => findRequiredJewelLuts(desktopBytes(f).toString('utf8')).map((x: Rec) => x.fileStem as string)))
   for (const s of stems) if (!existsSync(resolve(LUTS, `${s}.bin`))) writeFileSync(resolve(LUTS, `${s}.bin`), unpackJewelData(POB, s).bytes)
   console.error(`LUTs (${LUTS}): ${[...stems].sort(byteOrder).join(', ') || 'none'}`)
 }
@@ -254,8 +308,8 @@ function diffKeys(a: Rec, b: Rec): string[] {
 }
 
 async function fixtures(filter?: RegExp): Promise<void> {
-  const files = walk(PC).filter((f) => !filter || filter.test(relOf(f)))
-  if (!files.length) throw new Error(`no builds under ${PC} match ${filter}`)
+  const files = listBuilds().filter((f) => !filter || filter.test(relOf(f)))
+  if (!files.length) throw new Error(`no builds of set ${SET} match ${filter}`)
   await prepareLuts(files)
   mkdirSync(OUT, { recursive: true })
   const image = (await run('docker', ['image', 'inspect', '--format', '{{index .RepoDigests 0}}', IMAGE]).catch(() => ({ stdout: IMAGE }))).stdout.trim()
@@ -265,7 +319,7 @@ async function fixtures(filter?: RegExp): Promise<void> {
   // everything else the build exercises.
   type Job = { rel: string; slug: string; xml: Buffer; variant?: string; xmlFile?: string }
   const jobs: Job[] = files.flatMap((f) => {
-    const rel = relOf(f), slug = slugOf(rel), xml = desktopBytes(f)
+    const rel = relOf(f), slug = slugFor(f), xml = desktopBytes(f)
     const s = stripP5(xml)
     return s.equals(xml) ? [{ rel, slug, xml }] : [{ rel, slug, xml }, { rel, slug: `${slug}.p5stripped`, xml: s, variant: 'p5stripped', xmlFile: `${slug}.p5stripped.xml` }]
   })
@@ -303,7 +357,7 @@ async function fixtures(filter?: RegExp): Promise<void> {
     if (d.length) { console.log(`DIFFERS between passes: ${row.rel}: ${d.slice(0, 20).join(', ')}${d.length > 20 ? ' ...' : ''}`); writeFileSync(resolve(OUT, `${slug}.pass2-differs.txt`), d.join('\n') + '\n'); return }
     if (o.r13Error) { console.log(`R13 STOP: ${row.rel}: ${o.r13Error}`); return }
     if (j.xmlFile) writeFileSync(resolve(OUT, j.xmlFile), xml)
-    const text = norm(ser({ build: rel, slug, variant: j.variant, xmlFile: j.xmlFile, xmlSha256: sha(xml), ...o, producer: { image, luajit: 'desktop-path LuaJIT docker (Alpine/musl libm, MINEFIELD-RUST R2), desktop text mode -> loadBuildFromXML -> wipeGlobalCache -> calcs.buildOutput(build,"MAIN")', pobSha, generator: 'tools/lua-corpus/export-real.ts' } })) + '\n'
+    const text = norm(ser({ build: rel, set: SET, slug, variant: j.variant, xmlFile: j.xmlFile, xmlSha256: sha(xml), ...o, producer: { image, luajit: 'desktop-path LuaJIT docker (Alpine/musl libm, MINEFIELD-RUST R2), desktop text mode -> loadBuildFromXML -> wipeGlobalCache -> calcs.buildOutput(build,"MAIN")', pobSha, generator: 'tools/lua-corpus/export-real.ts' } })) + '\n'
     writeFileSync(resolve(OUT, `${slug}.luajit.json`), text)
   })
   for (const r of rows) console.log(`${r.status}\t${r.passesDiffer ? 'DIFF ' + r.passesDiffer : 'same'}\tkeys ${r.keys}\tminion ${r.minionKeys}\tnotes ${r.notes}\t${r.rel}\t${r.main}`)

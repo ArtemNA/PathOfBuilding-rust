@@ -1,6 +1,6 @@
 {
   "format": 1,
-  "producer": {"image":"ghcr.io/pathofbuildingcommunity/pathofbuilding-tests:latest","luajit":"LuaJIT 2.1.1784580905","pobSha":"ed354c2f8c42e148bc904c7508dbe851fb2cf952","generator":"pob-ts test/lua/corpus.ts @ 70911c1"},
+  "producer": {"image":"ghcr.io/pathofbuildingcommunity/pathofbuilding-tests:latest","luajit":"LuaJIT 2.1.1784580905","pobSha":"3dbca4463c0a59079d9f7f032d8240cf868e09da","generator":"pob-ts test/lua/corpus.ts @ 70911c1"},
   "tostring": [
     ["0","0"],
     ["-0.0","-0"],

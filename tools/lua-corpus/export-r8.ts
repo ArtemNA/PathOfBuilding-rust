@@ -9,6 +9,7 @@
 //             encode + the `+/`->`-_` swap and the decode, both checked against Node.
 // Usage (Node 24, repo root):  node tools/lua-corpus/export-r8.ts [name-filter]   -> crates/pob-engine/tests/fixtures/r8/<slug>.{display.json,save.json,save.xml} (2 passes in memory, must be identical)
 //                              node tools/lua-corpus/export-r8.ts perf            -> tools/.scratch/perf-r8.json (needs fixtures)
+import '../upstream.ts'
 import { execFile, execFileSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync, existsSync, readdirSync } from 'node:fs'

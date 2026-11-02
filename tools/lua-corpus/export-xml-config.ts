@@ -6,6 +6,7 @@
 // Strings are BYTE strings: bytes >= 0x7f or < 0x20 (besides \n \r \t) are written as \u00XX (one escape per byte), UTF-8 is NOT decoded.
 // Numbers in config answers are {"num":"<%.17g>"}. Attribs are [key,value] pairs sorted by key (Lua order is undefined).
 // Usage (PowerShell, Node 24, from pob-rust root): node tools/lua-corpus/export-xml-config.ts [--no-selfcheck]
+import { POB as UPSTREAM_POB } from '../upstream.ts'
 import { execFile, execFileSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
@@ -16,7 +17,7 @@ import { promisify } from 'node:util'
 const run = promisify(execFile)
 type Rec = Record<string, any> // eslint-disable-line
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
-const POB = process.env.POB_ROOT ?? 'C:/pob-work/project_15/PathOfBuilding'
+const POB = UPSTREAM_POB
 const POBTS = 'C:/pob-work/pob-ts'
 const FIX = join(ROOT, 'crates/pob-build/tests/fixtures')
 const IMAGE = 'ghcr.io/pathofbuildingcommunity/pathofbuilding-tests:latest'

@@ -489,6 +489,14 @@ pub fn item_options(im: &pob_build::ItemModel, mode: pob_parser::ParseMode) -> I
 // --- the item-phase helpers -------------------------------------------------------------------------------------------
 
 /// `tonumber(slotName:match("Flask (%d+)"))`: the first "Flask " followed by a digit run.
+/// `tonumber(s:match("%d+"))` -- the first run of digits.
+fn first_digits(s: &str) -> Option<f64> {
+    let b = s.as_bytes();
+    let start = b.iter().position(|c| c.is_ascii_digit())?;
+    let len = b[start..].iter().take_while(|c| c.is_ascii_digit()).count();
+    pob_lua::tonumber(&s[start..start + len])
+}
+
 fn flask_num(slot_name: &str) -> Option<f64> {
     let b = slot_name.as_bytes();
     let mut from = 0;
@@ -985,6 +993,7 @@ fn init_env_core(
         flasks: Vec::new(),
         tinctures: Vec::new(),
         flask_slot_map: IndexMap::new(),
+        item_slot_index: Vec::new(),
         flask_slot_occupied: IndexMap::new(),
         requirements_table_items: Vec::new(),
         requirements_table_gems: Vec::new(),
@@ -1654,6 +1663,14 @@ fn init_env_core(
     for slot in &slots {
         let slot_name = slot.slot_name.clone();
         let mut item = items.get(&slot_name).cloned();
+        // :1041-1043 `env.itemSlotIndex[item] = tonumber(slotName:match("%d+")) or 0`
+        if let Some(it) = &item {
+            let idx = first_digits(&slot_name).unwrap_or(0.0);
+            match env.item_slot_index.iter_mut().find(|(i, _)| Rc::ptr_eq(i, it)) {
+                Some(e) => e.1 = idx,
+                None => env.item_slot_index.push((it.clone(), idx)),
+            }
+        }
         if let Some(it) = item.clone()
             && it.ty.as_deref() == Some("Flask")
         {

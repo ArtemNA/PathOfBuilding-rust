@@ -310,13 +310,25 @@ impl PassiveSpec {
         for &(socket_id, item_id) in &self.jewels.0 {
             let Some(jewel) = self.jewel_item(item_id).cloned() else { continue };
             let allocated = crate::tree::as_id(socket_id).is_some_and(|s| self.alloc_nodes.contains_key(&s));
+            // :1140 `not (self.nodes[socketId].expansionJewel and self.nodes[socketId].expansionJewel.parent)` -- no abyss conquest
+            // from a cluster socket (3dbca4463 #10347)
+            let in_cluster_socket = || {
+                crate::tree::as_id(socket_id).and_then(|s| self.node_idx(s)).is_some_and(|i| {
+                    self.nodes[i]
+                        .tree_node()
+                        .expansion_jewel
+                        .as_ref()
+                        .is_some_and(|e| e.parent.is_some())
+                })
+            };
             if let Some(cb) = &jewel.conquered_by
                 && jewel_type_by_conqueror(&cb.conqueror_type).is_some_and(|t| t >= 7)
                 && allocated
+                && !in_cluster_socket()
                 && !jewel.limit_disabled
             {
                 return Err(TreeError(format!(
-                    "unimplemented: {SPEC}:1110-1127 abyss conquest ({} jewel in socket {socket_id}; data.readAbyssJewelLUT)",
+                    "unimplemented: {SPEC}:1134-1151 abyss conquest ({} jewel in socket {socket_id}; data.readAbyssJewelLUT)",
                     cb.conqueror_type
                 )));
             }

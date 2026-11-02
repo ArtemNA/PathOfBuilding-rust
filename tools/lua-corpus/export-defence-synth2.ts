@@ -8,6 +8,7 @@
 //   node tools/lua-corpus/export-defence-synth2.ts coverage   -> tools/.scratch/defence-synth2-coverage.json + table (debug.sethook line counter, CalcPerform.lua)
 //   node tools/lua-corpus/export-defence-synth2.ts gaps       -> CalcPerform.lua :1286-3790 executable lines no golden executes (authoring aid)
 //   node tools/lua-corpus/export-defence-synth2.ts parse [f]  -> which mod lines modLib.parseMod accepts (authoring aid)
+import { POB as UPSTREAM_POB, ORACLE as UPSTREAM_ORACLE } from '../upstream.ts'
 import { execFile } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
@@ -20,9 +21,9 @@ type Rec = Record<string, any> // eslint-disable-line
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
 const FIX = resolve(ROOT, 'crates/pob-calc/tests/fixtures/defence-synth2')
 const SCRATCH = resolve(ROOT, 'tools/.scratch')
-const POB = 'C:/pob-work/project_15/PathOfBuilding'
+const POB = UPSTREAM_POB
 const POBTS = 'C:/pob-work/pob-ts'
-const ORACLE = 'C:/pob-work/project_15/pob-engine-wasm'
+const ORACLE = UPSTREAM_ORACLE
 const IMAGE = 'ghcr.io/pathofbuildingcommunity/pathofbuilding-tests:latest'
 const MAX_BYTES = 1_500_000
 const BASE_XML = `${POB}/spec/TestBuilds/3.13/Dual Savior.xml`

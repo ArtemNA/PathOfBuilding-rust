@@ -7,6 +7,7 @@
 // Per item the sequence is b1 = BuildRaw(); BuildAndParseRaw(); b2 = BuildRaw(); BuildAndParseRaw(); b3 = BuildRaw()  (b2/b3 stored only when they differ from the previous one).
 // Usage (Node 24, repo root):  node tools/lua-corpus/export-buildraw.ts        -> crates/pob-items/tests/fixtures/buildraw.json (2 docker passes, must be byte-identical)
 //                              node tools/lua-corpus/export-buildraw.ts perf   -> tools/.scratch/perf-buildraw.json (LuaJIT ns per item)
+import '../upstream.ts'
 import { execFile } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'

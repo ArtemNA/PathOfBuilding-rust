@@ -9,6 +9,7 @@
 // result of calling the real `jewelFuncList[key].func(node, out, data)` on a synthetic scenario (goldens for the Rust test).
 // Run from the pob-rust root (Node 24):  node tools/lua-corpus/export-jewel-upvalues.ts  -> data-patches/mod-parser-upvalues.json
 // Path/shape conventions are those of export-data-patch.ts (array indices 0-based, D3 `list`, hex-escaped non-ASCII keys).
+import '../upstream.ts'
 import { createHash } from 'node:crypto'
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
@@ -27,7 +28,7 @@ if (!dockerAvailable()) throw new Error('docker is not available (infrastructure
 const roots = resolveRoots()
 
 const LUA = String.raw`
-local PATCH_LINES = { [19] = true, [6457] = true }
+local PATCH_LINES = { [19] = true, [6472] = true } -- getSimpleConv / getThreshold visitors; @ ed354c2f8 :6457 (re-derive with grep -n on update)
 local AUX_NAMES = { gemIdLookup = true, conquerorList = true }
 local function up(fn, name) local i = 1 while true do local n, v = debug.getupvalue(fn, i) if not n then return nil end if n == name then return v end i = i + 1 end end
 local inner = assert(up(modLib.parseMod, "parseMod"), "inner parseMod upvalue not found")

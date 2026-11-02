@@ -486,34 +486,51 @@ fn apply_gem_mods(effect: &EffectRef, gem_data: &GemEntry, mod_list: &[TabEntry]
             .as_num()
             .unwrap_or_else(|| panic!("Modules/CalcSetup.lua:411: attempt to perform arithmetic on field 'value'"));
         let mut eff = effect.borrow_mut();
-        if key.is_str("quality") {
-            let socketed = e.mod_.tags.iter().any(|t| t.get("type").is_str("SocketedIn"));
-            if socketed {
-                eff.item_quality = Some(eff.item_quality.unwrap_or(0.0) + v);
-            } else {
-                eff.global_quality = Some(eff.global_quality.unwrap_or(0.0) + v);
-            }
-        }
+        // :412-418 sourceType -- "Item" for a SocketedIn-tagged mod, else "Global"
+        let source_type = if e.mod_.tags.iter().any(|t| t.get("type").is_str("SocketedIn")) {
+            "Item"
+        } else {
+            "Global"
+        };
         let k = key
             .as_str()
-            .unwrap_or_else(|| panic!("Modules/CalcSetup.lua:411: GemProperty key is not a string"));
-        let slot = match k {
-            "level" => &mut eff.level,
-            "quality" => &mut eff.quality,
-            "req" => &mut eff.req,
-            "globalQuality" => &mut eff.global_quality,
-            "itemQuality" => &mut eff.item_quality,
-            "supportQuality" => &mut eff.support_quality,
-            "socketQuality" => &mut eff.socket_quality,
-            other => {
-                let x = eff.other.entry(other.to_owned()).or_insert(0.0);
-                *x += v;
-                eff.gem_property_info.get_or_insert_with(Vec::new).push(e.clone());
-                continue;
-            }
-        };
-        *slot = Some(slot.unwrap_or(0.0) + v);
-        eff.gem_property_info.get_or_insert_with(Vec::new).push(e.clone());
+            .unwrap_or_else(|| panic!("Modules/CalcSetup.lua:421: GemProperty key is not a string"));
+        // :419-423 separate totals for the gem tooltip and source categories for Calcs
+        if k == "level" || k == "quality" {
+            let property = format!("{}{}", source_type.to_ascii_lowercase(), upper_first_ascii(k));
+            add_effect_key(&mut eff, &property, v);
+        }
+        // :424 `effect[value.key] = (effect[value.key] or 0) + value.value`
+        add_effect_key(&mut eff, k, v);
+        eff.gem_property_info.get_or_insert_with(Vec::new).push((e.clone(), source_type));
+    }
+}
+
+/// `effect[key] = (effect[key] or 0) + v` over the named fields of [`SkillEffect`] and its `other` map.
+fn add_effect_key(eff: &mut SkillEffect, key: &str, v: f64) {
+    let slot = match key {
+        "level" => &mut eff.level,
+        "quality" => &mut eff.quality,
+        "req" => &mut eff.req,
+        "globalQuality" => &mut eff.global_quality,
+        "itemQuality" => &mut eff.item_quality,
+        "supportQuality" => &mut eff.support_quality,
+        "socketQuality" => &mut eff.socket_quality,
+        other => {
+            *eff.other.entry(other.to_owned()).or_insert(0.0) += v;
+            return;
+        }
+    };
+    *slot = Some(slot.unwrap_or(0.0) + v);
+}
+
+/// `s:gsub("^%l", string.upper)` for an ASCII key.
+fn upper_first_ascii(s: &str) -> String {
+    let mut c = s.chars();
+    match c.next() {
+        Some(f) if f.is_ascii_lowercase() => f.to_ascii_uppercase().to_string() + c.as_str(),
+        Some(f) => f.to_string() + c.as_str(),
+        None => String::new(),
     }
 }
 
@@ -590,6 +607,32 @@ pub fn setup_skills(st: &mut SkillsState, inp: &SetupInputs<'_>) -> Result<Setup
         group: cfg.clone(),
         socket_color,
         socket_num: (gem_index + 1) as f64,
+    };
+
+    // :1619-1629 socketIndexByGem -- 1-based socket of each gem over ALL groups with a slot (granted groups appended at
+    // :1497/:1535 included), keyed by `group.slot` with " Swap" kept.
+    let socket_index_by_gem: Vec<Vec<Option<usize>>> = {
+        let mut slot_socketed_counts: IndexMap<String, usize> = IndexMap::new();
+        st.tab
+            .socket_group_list()
+            .iter()
+            .map(|g| match &g.slot {
+                Some(slot) => {
+                    let offset = slot_socketed_counts.get(slot).copied().unwrap_or(0);
+                    slot_socketed_counts.insert(slot.clone(), offset + g.gem_list.len());
+                    (0..g.gem_list.len()).map(|i| Some(offset + i + 1)).collect()
+                }
+                None => vec![None; g.gem_list.len()],
+            })
+            .collect()
+    };
+    // `gemInstance.grantedEffect or (gemInstance.gemData and gemInstance.gemData.grantedEffect)` -> `.color`
+    let gem_colour = |gi: &GemInstance| -> Option<f64> {
+        match (&gi.granted_effect, &gi.gem_data) {
+            (Some(id), _) => sk.index.get(id).and_then(|&i| sk.effects[i].color),
+            (None, Some(g)) => sk.index.get(&gem(g).granted_effect_id).and_then(|&i| sk.effects[i].color),
+            (None, None) => None,
+        }
     };
 
     // --- :1603-1732 process support gems adding them to applicable support lists ------------------------------------------
@@ -723,13 +766,14 @@ pub fn setup_skills(st: &mut SkillsState, inp: &SetupInputs<'_>) -> Result<Setup
                     continue;
                 }
                 let gi = &st.tab.socket_group_list()[index].gem_list[gem_index];
-                let socket_quality = if gi.matches_socket == Some(true) {
-                    pob_data_misc_matching_socket_quality_bonus()
-                } else {
-                    0.0
-                };
+                // :1707-1708
+                let socket_quality = matching_socket_quality(
+                    item_in(&group_cfg[index].as_ref().expect("set").slot_name),
+                    gem_colour(gi),
+                    socket_index_by_gem[index].get(gem_index).copied().flatten(),
+                );
                 let quality = gi.quality.ok_or_else(|| {
-                    "Modules/CalcSetup.lua:1680: attempt to perform arithmetic on field 'quality' (a nil value)".to_owned()
+                    "Modules/CalcSetup.lua:1708: attempt to perform arithmetic on field 'quality' (a nil value)".to_owned()
                 })? + socket_quality;
                 let se = EffectRef::new(SkillEffect {
                     granted_effect: ge_idx,
@@ -848,13 +892,14 @@ pub fn setup_skills(st: &mut SkillsState, inp: &SetupInputs<'_>) -> Result<Setup
                     continue;
                 }
                 slot_has_active_skill = true;
-                let socket_quality = if gi_snapshot.matches_socket == Some(true) {
-                    pob_data_misc_matching_socket_quality_bonus()
-                } else {
-                    0.0
-                };
+                // :1785-1786
+                let socket_quality = matching_socket_quality(
+                    item_in(&group_cfg[index].as_ref().expect("set").slot_name),
+                    gem_colour(&gi_snapshot),
+                    socket_index_by_gem[index].get(gem_index).copied().flatten(),
+                );
                 let quality = gi_snapshot.quality.ok_or_else(|| {
-                    "Modules/CalcSetup.lua:1757: attempt to perform arithmetic on field 'quality' (a nil value)".to_owned()
+                    "Modules/CalcSetup.lua:1786: attempt to perform arithmetic on field 'quality' (a nil value)".to_owned()
                 })? + socket_quality;
                 let ae = EffectRef::new(SkillEffect {
                     granted_effect: ge_idx,
@@ -1098,6 +1143,28 @@ fn bump_gem_counts(cfg: &mut GroupCfg, gd: &GemEntry) {
 /// `data.misc.MatchingSocketQualityBonus` (Data.lua:303).
 fn pob_data_misc_matching_socket_quality_bonus() -> f64 {
     crate::setup::misc("MatchingSocketQualityBonus")
+}
+
+/// CalcSetup.lua:17-31 `getMatchingSocketQuality(env, groupCfg, gemInstance, socketIndex)` (3dbca4463, #10396): the item is
+/// `env.player.itemList[groupCfg.slotName]` (slot name without " Swap", :1637), the gem colour that of
+/// `gemInstance.grantedEffect or gemInstance.gemData.grantedEffect`.
+fn matching_socket_quality(item: Option<&Rc<Item>>, ge_color: Option<f64>, socket_index: Option<usize>) -> f64 {
+    let Some(item) = item else { return 0.0 };
+    if item.sockets_colour_always_matches {
+        return pob_data_misc_matching_socket_quality_bonus();
+    }
+    // :16 `gemSocketColours = { "R", "G", "B" }`; `gemSocketColours[color]`
+    let gem_colour = match ge_color {
+        Some(1.0) => Some("R"),
+        Some(2.0) => Some("G"),
+        Some(3.0) => Some("B"),
+        _ => None,
+    };
+    let socket = socket_index.and_then(|i| i.checked_sub(1)).and_then(|i| item.sockets.get(i));
+    match (gem_colour, socket) {
+        (Some(c), Some(s)) if s.color == c => pob_data_misc_matching_socket_quality_bonus(),
+        _ => 0.0,
+    }
 }
 
 /// The main socket group (:1587-1590): `build.mainSocketGroup = m_min(m_max(#socketGroupList, 1), build.mainSocketGroup or 1)`.

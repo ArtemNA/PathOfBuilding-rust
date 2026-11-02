@@ -42,8 +42,8 @@ fn a_tampered_generated_sha_is_red() {
 #[test]
 fn fns_are_helpers_generated_or_manual() {
     let d = mod_parser();
-    let md = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/../../KNOWLEDGE/drafts/R5-manual-closures.md"))
-        .expect("KNOWLEDGE/drafts/R5-manual-closures.md (node tools/modparser-gen/gen.ts)");
+    let md = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/../../tools/modparser-gen/manual-closures.md"))
+        .expect("tools/modparser-gen/manual-closures.md (node tools/modparser-gen/gen.ts)");
     let manual: HashSet<&str> = md.lines().filter_map(|l| l.strip_prefix("| `")?.split('`').next()).collect();
     // R5.4: the manual list is exactly the hand-ported `closures_manual::MANUAL`
     assert_eq!(manual, MANUAL.iter().map(|e| e.id).collect::<HashSet<_>>());

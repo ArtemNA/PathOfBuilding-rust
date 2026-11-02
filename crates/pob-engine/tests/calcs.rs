@@ -54,8 +54,9 @@ fn ser(v: &LVal) -> Json {
 
 #[test]
 fn vendored_calc_sections_matches_upstream() {
-    let upstream = Path::new(r"C:\pob-work\project_15\PathOfBuilding\src\Modules\CalcSections.lua");
-    let Ok(text) = std::fs::read_to_string(upstream) else {
+    // the upstream of tools/upstream.json (R-UP)
+    let upstream = pob_golden::registry::pob_root().join("src/Modules/CalcSections.lua");
+    let Ok(text) = std::fs::read_to_string(&upstream) else {
         eprintln!("upstream checkout absent, skipping");
         return;
     };

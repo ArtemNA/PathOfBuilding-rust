@@ -1,6 +1,7 @@
 // R1.1: speed of the same numeric operations on the same inputs in LuaJIT (docker, jit.on, os.clock inside the
 // chunk -- docker boot excluded) and in pob-ts (node, performance.now). Output: tools/.scratch/perf-numeric.json.
 // Run from the pob-rust root:  node tools/lua-corpus/perf-numeric.ts
+import '../upstream.ts'
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'

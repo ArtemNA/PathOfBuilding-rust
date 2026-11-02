@@ -5,6 +5,7 @@
 //   node tools/lua-corpus/export-defence-only.ts   -> crates/pob-calc/tests/fixtures/<build>.defence-pobts.json
 // Same encoding as export-perform-only.ts: numbers through `formatG(v, 17)` (`%.17g`, exact; `-0` stays "-0" and is also
 // listed in `negZero`), strings as `{ s }`, booleans as is. Two runs must be byte-identical (`git diff` / `cmp`).
+import '../upstream.ts'
 import { readFileSync, writeFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'

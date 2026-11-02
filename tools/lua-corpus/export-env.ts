@@ -6,6 +6,7 @@
 //   node tools/lua-corpus/export-env.ts perf     -> tools/.scratch/perf-env.json
 // Lua probes are the pob-ts test strings VERBATIM (file:line next to each), wrapped in a function; TS halves are the tests' TS code.
 // Only normalisation: `function: 0x<heap address>` (a JewelFunc mod) -> `function: <addr>` on BOTH sides (initEnv-oracle.test.ts:178).
+import { POB as UPSTREAM_POB } from '../upstream.ts'
 import { execFileSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
@@ -887,7 +888,7 @@ async function fixtures(): Promise<void> {
     const head = { build: b.name, format: 1, xmlSha256: createHash('sha256').update(xmlBuf).digest('hex') }
     const slug = b.name.replace(/ /g, '-')
     const files = [
-      ...writeFixture(slug, 'luajit', { ...head, producer: { generator, image: digest || LUAJIT_IMAGE, luajit: raw.jit, pobSha: git('C:/pob-work/project_15/PathOfBuilding'), probes: 'pob-ts test/{tree/spec,items/oracle,config/oracle,calc/initEnv-oracle}.test.ts, Lua verbatim' } },
+      ...writeFixture(slug, 'luajit', { ...head, producer: { generator, image: digest || LUAJIT_IMAGE, luajit: raw.jit, pobSha: git(UPSTREAM_POB), probes: 'pob-ts test/{tree/spec,items/oracle,config/oracle,calc/initEnv-oracle}.test.ts, Lua verbatim' } },
         { tree: lj.tree, items: lj.items, applyRange: rangeLj, config: lj.config, env: lj.env }),
       ...writeFixture(slug, 'pobts', { ...head, producer: { generator, probes: 'TS halves of the same tests' } },
         normDeep({ tree: treeTs, items: itemsTs, applyRange: { cases, results: rangeTs }, config: configTs, env: envTs })),

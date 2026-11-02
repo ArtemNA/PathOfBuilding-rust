@@ -426,8 +426,17 @@ pub(super) struct Found {
     pub uuid: Option<String>,
 }
 
-/// :75-87 `findTriggerSkill(env, skill, source, triggerRate, comparer)`.
-pub(super) fn find_trigger_skill(env: &Env, i: usize, cur: &Found, comparer: Option<&Comparer>) -> Result<Found, String> {
+/// :75-101 `findTriggerSkill(env, skill, source, triggerRate, comparer, minimumCost, sourceCache)`.
+/// `minimum_cost` = `config.minimumCostPerUse` (3dbca4463 #10386: `{ stat, minimum }`, checked against the cached candidate at :97).
+/// The CALCULATOR-only `sourceCache` / rejected cost probes of the same commit (:75-95, Calcs.lua:102-108/:151/:364-397,
+/// CalcOffence.lua:1899-1902, CalcPerform.lua:3824-3826) reuse or cut short candidate calculations without changing any value: not ported.
+pub(super) fn find_trigger_skill(
+    env: &Env,
+    i: usize,
+    cur: &Found,
+    comparer: Option<&Comparer>,
+    minimum_cost: Option<(&str, f64)>,
+) -> Result<Found, String> {
     let uuid = cache_skill_uuid(env, i);
     // :79-81
     ensure_cached(env, i, &uuid, &[], true, 80)?;
@@ -437,7 +446,16 @@ pub(super) fn find_trigger_skill(env: &Env, i: usize, cur: &Found, comparer: Opt
             Some(f) => f(c, source_set, cur.rate),
             None => default_comparer(c, source_set, cur.rate),
         };
-        (pass, c.hit_speed.or(c.speed))
+        // :97 `(not minimumCost or (cachedData[minimumCost.stat] or 0) >= minimumCost.minimum)`
+        let pays = minimum_cost.is_none_or(|(stat, minimum)| {
+            let v = match stat {
+                "ManaCost" => c.mana_cost,
+                "LifeCost" => c.life_cost,
+                other => unimplemented!("Modules/CalcTriggers.lua:97 minimumCostPerUse.stat {other}"),
+            };
+            v.unwrap_or(0.0) >= minimum
+        });
+        (pass && pays, c.hit_speed.or(c.speed))
     })?;
     if let Some((true, rate)) = hit {
         let sk = skill(env, i);

@@ -256,13 +256,14 @@ fn upvalue_patch_visitors_equal_luajit() {
 
 #[test]
 fn every_patched_closure_becomes_a_runnable_visitor() {
-    // the 11 getSimpleConv visitors (:19) and the 2 thresholds (:6457) inside :6582 carry their upvalues now
+    // the 11 getSimpleConv visitors (:19) and the 2 thresholds (:6472 @ 3dbca4463, :6457 @ ed354c2f8) inside :6597 carry their upvalues now
     let patches = pob_data::patches::upvalue_patches().unwrap();
     let n19 = patches.iter().filter(|p| p.fn_id == "Modules/ModParser.lua:19").count();
-    let n6457 = patches.iter().filter(|p| p.fn_id == "Modules/ModParser.lua:6457").count();
+    let n6457 = patches.iter().filter(|p| p.fn_id == "Modules/ModParser.lua:6472").count();
     assert_eq!((n19, n6457, patches.len()), (11, 2, 13));
     let d = pob_data::mod_parser::mod_parser();
-    assert_eq!(d.fn_refs, 1_973, "fn_refs counts what the converter wrote");
+    // 3dbca4463: 1 975 (= LuaJIT "level 1: 1975" of export-jewel-upvalues.ts; the 2 new Follow Through specials)
+    assert_eq!(d.fn_refs, 1_975, "fn_refs counts what the converter wrote");
 }
 
 #[test]
@@ -309,4 +310,15 @@ fn jewel_func_list_has_no_unrepresentable_visitor() {
     }
     assert!(bad.is_empty(), "{} of {checked} visits: {bad:#?}", bad.len());
     assert!(checked >= 2 * t.len());
+}
+
+/// R-UP: `jewel::def_line` recognises the definitions it dispatches on by the sha256 of their Lua body; every one must be in `fns`
+/// exactly once (an upstream edit of such a body = a re-port, not a silent "unrepresentable").
+#[test]
+fn canon_definitions_are_in_the_data() {
+    let data = pob_data::mod_parser::mod_parser();
+    for (line, sha) in pob_parser::jewel::CANON {
+        let n = data.fns.values().filter(|d| d.sha == sha).count();
+        assert_eq!(n, 1, "CANON :{line} (sha {sha}) found {n} times in mod-parser.json fns");
+    }
 }

@@ -17,6 +17,7 @@
 // Serialization: string -> itself; number -> {"$n":"%.17g"}; boolean -> itself; table -> object: "[]" = the 1..n run (ipairs), other keys by
 // tostring (number keys "#<k>"); a mod -> {"$mod":{name,type,value,source,flags,keywordFlags,tags}}; an item -> {"$item":<name>}; function -> {"$fn":1}.
 // Usage (Node 24, repo root):  node tools/lua-corpus/export-breakdown.ts [name-filter]  -> crates/pob-calc/tests/fixtures/breakdown/<slug>.json (2 passes, must be identical)
+import '../upstream.ts'
 import { execFile } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync, readdirSync } from 'node:fs'

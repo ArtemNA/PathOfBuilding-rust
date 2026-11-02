@@ -6,12 +6,15 @@
 //   B. the same with jit.off()+jit.flush()+debug.sethook(line) -> OC1..OC6 (first hit of the line inside calcs.offence with env==top MAIN env, actor==env.player);
 //      B's final output must equal A's (reported);
 //   C. wipeGlobalCache + build.calcsTab:BuildOutput() (MAIN+CALCS, the oracle's config path) -> mainOutput, compared with A.
-// OC lines (CalcOffence.lua @ ed354c2f8; marker -> first executable line, all at function-body level): OC1 1056->1057, OC2 1937->1938, OC3 2606 (the `for` itself),
-// OC4 4155->4156, OC5 5771->5772, OC6 = line 6263 (`end` of calcs.offence: all statements done, hook fires before RET0).
+// OC lines (CalcOffence.lua @ 3dbca4463 -- @ ed354c2f8 they were 1057/1938+1987/2606/4156/5772/6263; marker -> first executable line,
+// all at function-body level): OC1 1056->1057, OC2 1960->1961 (+ 2010, `end` of buildConversionTable), OC3 2633 (the `for` itself),
+// OC4 4185->4186, OC5 5801->5802, OC6 = line 6293 (`end` of calcs.offence: all statements done, hook fires before RET0). Re-derive
+// these with `grep -n` on every upstream update (UPDATE-PROMPT.md).
 // Run from the pob-rust root (Node 24):  node tools/lua-corpus/export-offence.ts  -> crates/pob-calc/tests/fixtures/<build>.offence.json (+ -<n> parts if > 1.45 MB)
 //                                        node tools/lua-corpus/export-offence.ts perf -> tools/.scratch/perf-offence.json
 // Encoding as export-skills.ts: Lua numbers = `%.17g` strings, strings = strings (a string that LOOKS like a number is prefixed `$str:`), booleans, tables = objects keyed by
 // tostring(key). Only normalisation: `function|table: 0x<addr>` -> `<addr>`; mod/pairs-order sets sorted (R13).
+import '../upstream.ts'
 import { execFileSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync, readdirSync } from 'node:fs'
@@ -164,7 +167,7 @@ local function chainCounts(ml) -- own mods of a ModList and of every parent up t
   return t
 end
 
-local TARGET = { [1057] = "OC1", [1938] = "OC2", [1987] = "OC2", [2606] = "OC3", [4156] = "OC4", [5772] = "OC5", [6263] = "OC6" }
+local TARGET = { [1057] = "OC1", [1961] = "OC2", [2010] = "OC2", [2633] = "OC3", [4186] = "OC4", [5802] = "OC5", [6293] = "OC6" }
 local function snap(line, env, actor, sk)
   local s, out = obj(), actor.output
   s.line, s.output, s.skillFlags = N(line), D(out, 0, {}), D(sk.skillFlags, 0, {})
@@ -436,7 +439,7 @@ async function fixtures(): Promise<void> {
   try { digest = execFileSync('docker', ['image', 'inspect', '--format', '{{index .RepoDigests 0}}', LUAJIT_IMAGE], { encoding: 'utf8' }).trim() } catch { /* tag only */ }
   const lutSha = sha(Buffer.concat(readdirSync(luts).sort().map((f) => Buffer.concat([Buffer.from(f), readFileSync(resolve(luts, f))]))))
   const producer = { generator: 'tools/lua-corpus/export-offence.ts', image: digest || LUAJIT_IMAGE, pobSha: git(roots.pobRoot), dataManifestSha256: sha(readFileSync(resolve(ROOT, 'data/manifest.json'))),
-    lutSha, libm: 'docker = Alpine/musl (MINEFIELD-RUST R2)', ocLines: 'CalcOffence.lua OC1=1057 OC2=1938 OC3=2606 OC4=4156 OC5=5772 OC6=6263 (end of calcs.offence)' }
+    lutSha, libm: 'docker = Alpine/musl (MINEFIELD-RUST R2)', ocLines: 'CalcOffence.lua OC1=1057 OC2=1961 OC3=2633 OC4=4186 OC5=5802 OC6=6293 (end of calcs.offence)' }
   mkdirSync(FIX, { recursive: true })
   const report: Rec = {}
   for (const b of GOLDEN_BUILDS) {
@@ -546,7 +549,7 @@ async function runsMode(): Promise<void> {
       ;(cur[run.seq] ??= {})[k] = v
     }
     const head = { format: 1, producer: { generator: 'tools/lua-corpus/export-offence.ts runs', image: LUAJIT_IMAGE, pobSha: git(roots.pobRoot), dataManifestSha256: sha(readFileSync(resolve(ROOT, 'data/manifest.json'))),
-      libm: 'docker = Alpine/musl (MINEFIELD-RUST R2)', ocLines: 'CalcOffence.lua OC1=1057 OC2=1938 OC3=2606 OC4=4156 OC5=5772 OC6=6263' }, build: b.name, xmlSha256: sha(xml) }
+      libm: 'docker = Alpine/musl (MINEFIELD-RUST R2)', ocLines: 'CalcOffence.lua OC1=1057 OC2=1961 OC3=2633 OC4=4186 OC5=5802 OC6=6293' }, build: b.name, xmlSha256: sha(xml) }
     const headers = runs.map((x) => { const { oc, ...h } = x; return { ...h, ocPresent: OCS.filter((k) => oc[k]) } })
     const names = parts.map((_, i) => `${slug}.offence-runs-${i + 1}.json`)
     const files: { file: string; bytes: number }[] = []

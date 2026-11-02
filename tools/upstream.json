@@ -1,0 +1,10 @@
+{
+  "_comment": "The ONE place that says which upstream PoB pob-rust targets (R-UP). Read by tools/upstream.ts (probes), tools/sync-data.ps1, tools/upstream-mirror.ps1 and pob-golden (Rust tests). Env vars POB_ROOT / POB_ORACLE / POB_TS_ROOT / POB_WASM_ROOT still override. Paths: absolute, or relative to the repo root.",
+  "pobRoot": "C:/pob-work/pob-upstream/PathOfBuilding",
+  "pobSha": "3dbca4463c0a59079d9f7f032d8240cf868e09da",
+  "pobVersion": "2.67.2",
+  "wasmMirror": "tools/.scratch/pob-wasm-mirror",
+  "oracleRoot": "C:/pob-work/project_15/pob-engine-wasm",
+  "pobTsRoot": "C:/pob-work/pob-ts",
+  "goldensDir": "builds/corpus/goldens"
+}

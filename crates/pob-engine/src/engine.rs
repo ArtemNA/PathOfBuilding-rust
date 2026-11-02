@@ -164,7 +164,10 @@ impl Engine {
             spec.dealloc_node(i).map_err(|e| e.0)?;
         }
         let sm = active_spec_mut(&mut self.model);
-        sm.nodes = spec.alloc_table_pairs().into_iter().map(f64::from).collect();
+        // the `nodes` SaveDB would write: sorted ids (PassiveSpec.lua:199-202, 3dbca4463 #10338)
+        let mut ids = spec.alloc_table_pairs();
+        ids.sort_unstable();
+        sm.nodes = ids.into_iter().map(f64::from).collect();
         let mut me = pob_build::NumMap::default();
         for (m, e) in &spec.mastery_selections {
             me.set(f64::from(*m), *e);

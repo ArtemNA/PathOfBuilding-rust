@@ -5,6 +5,7 @@
 //   node tools/lua-corpus/export-modstore.ts perf     -> tools/.scratch/perf-modstore.json
 // The Lua half is pob-ts tools/oracle/lua/modstore-oracle.lua read VERBATIM, except its RAWF line: the wasm oracle fetches the
 // unshimmed printf from compat54's `s_format` upvalue; desktop LuaJIT has no such upvalue and string.format IS the raw printf.
+import { POB as UPSTREAM_POB } from '../upstream.ts'
 import { execFileSync } from 'node:child_process'
 import { mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
@@ -228,7 +229,7 @@ if (process.argv[2] === 'perf') {
   try { digest = execFileSync('docker', ['image', 'inspect', '--format', '{{index .RepoDigests 0}}', LUAJIT_IMAGE], { encoding: 'utf8' }).trim() } catch { /* tag only */ }
   const producer: Json = {
     generator: `pob-ts ${git(POB_TS)}`, image: digest || LUAJIT_IMAGE, luajit: [...jits][0]!,
-    pobSha: git('C:/pob-work/project_15/PathOfBuilding'),
+    pobSha: git(UPSTREAM_POB),
   }
   const report: Record<string, unknown> = {}
   const emit = (name: string, base: string, rows: Row[]): void => {

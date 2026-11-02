@@ -3,6 +3,7 @@
 // `num` decides migration branches (`>= 3.10`, PassiveTree.lua / PassiveSpec.lua), so it is data, never a parse of the version name.
 // Run from the pob-rust root (Node 24):  node tools/lua-corpus/export-tree-versions.ts   -> data-patches/tree-versions.json (deterministic)
 // Numbers travel as `%.17g` strings (the raw lj_strfmt) and are written as the shortest JS repr (exact round trip).
+import '../upstream.ts'
 import { createHash } from 'node:crypto'
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'

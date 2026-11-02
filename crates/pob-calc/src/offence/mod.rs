@@ -84,6 +84,9 @@ pub(crate) struct Off<'e> {
     pub is_attack: bool,
     /// `canDeal` (:1932-1935), `dmgTypeList` order.
     pub can_deal: IndexMap<&'static str, bool>,
+    /// `damageDisableMods[damageType]` (:1951-1958, 3dbca4463 #10314; only with a breakdown) -- `Tabulate("FLAG", skillCfg,
+    /// "DealNo"..damageType, "DealNoDamage")` of a disabled type, the `modList` of `breakdown[damageType]` (:3672).
+    pub damage_disable_mods: IndexMap<&'static str, Vec<pob_mods::TabEntry>>,
     /// `activeSkill.conversionTable` (:1989).
     pub conversion_table: ConversionTable,
     /// `activeSkill.weapon1Cfg.conversionTable` / `weapon2Cfg.conversionTable` (:1990-1995; nil without the weapon cfg).
@@ -414,6 +417,7 @@ fn offence_of(env: &mut Env, st: &mut PerformState, mut hook: Hook<'_, '_>, who:
         radius_tertiary_occurrences: None,
         is_attack: false,
         can_deal: IndexMap::new(),
+        damage_disable_mods: IndexMap::new(),
         conversion_table: ConversionTable::new(),
         weapon_conversion: [None, None],
         hands: None,

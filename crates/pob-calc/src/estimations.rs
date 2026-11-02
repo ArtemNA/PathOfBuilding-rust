@@ -479,22 +479,23 @@ fn number_of_hits_to_die(d: &mut DamageIn, out: &mut Output, db: &StoreRef, shif
                 ));
             }
         }
-        // :2705-2710
-        if let Some(m) = d.missing_life_before_enemy_hit
+        // :2707-2712 `(DamageIn.MissingLifeBeforeEnemyHit or 0) ~= 0 and poolTable.Life > 0` (3dbca4463 #10382: a zero no longer
+        // clamps the pool to LifeRecoverable)
+        if let Some(m) = d.missing_life_before_enemy_hit.filter(|&m| m != 0.0)
             && life(&pool) > 0.0
         {
             let l = life(&pool);
             pool.life = Some(min2(
-                l + m * (or0(out, "LifeUnreserved", 2706) - l) / 100.0,
-                or0(out, "LifeRecoverable", 2706),
+                l + m * (or0(out, "LifeUnreserved", 2708) - l) / 100.0,
+                or0(out, "LifeRecoverable", 2708),
             ));
         }
-        if let Some(m) = d.missing_mana_before_enemy_hit {
-            let mana = need(pool.mana, 2708, "poolTable.Mana");
+        if let Some(m) = d.missing_mana_before_enemy_hit.filter(|&m| m != 0.0) {
+            let mana = need(pool.mana, 2710, "poolTable.Mana");
             if mana > 0.0 {
                 pool.mana = Some(min2(
-                    mana + m * (or0(out, "ManaUnreserved", 2709) - mana) / 100.0,
-                    or0(out, "ManaUnreserved", 2709),
+                    mana + m * (or0(out, "ManaUnreserved", 2711) - mana) / 100.0,
+                    or0(out, "ManaUnreserved", 2711),
                 ));
             }
         }

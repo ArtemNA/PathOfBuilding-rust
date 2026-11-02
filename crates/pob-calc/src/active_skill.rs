@@ -84,8 +84,9 @@ pub struct SkillEffect {
     pub enabled: Option<bool>,
     /// `effect.req` (`applyGemMods` key "req").
     pub req: Option<f64>,
-    /// `effect.gemPropertyInfo` -- the `GemProperty` entries that matched.
-    pub gem_property_info: Option<Vec<TabEntry>>,
+    /// `effect.gemPropertyInfo` -- `{ mod = mod.mod, value = value, sourceType = sourceType }` per matched `GemProperty`
+    /// (CalcSetup.lua:426); the entry keeps the tabulated mod + value, `.1` is `sourceType` ("Global" / "Item").
+    pub gem_property_info: Option<Vec<(TabEntry, &'static str)>>,
     /// Any other `applyGemMods` key (`effect[value.key]`), in insertion order.
     pub other: IndexMap<String, f64>,
     /// `effect.grantedEffectLevel = grantedEffect.levels[effect.level]` (CalcActiveSkill.lua:514/:579) -- the level key.

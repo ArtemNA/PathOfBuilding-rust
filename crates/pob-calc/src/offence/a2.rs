@@ -270,7 +270,12 @@ pub(super) fn skill_type_stats(off: &mut Off<'_>) {
             off.out().set_num("StrikeTargets", v);
         }
     }
-    // :1184-1186
+    // :1184-1186 (3dbca4463 #10301: written before the area calc, so `PerStat ActiveTotemLimit` sees it)
+    if off.flag("totem") {
+        let limit = q.base(c, &["ActiveTotemLimit", "ActiveBallistaLimit"]);
+        off.out().set_num("ActiveTotemLimit", limit);
+    }
+    // :1187-1189
     if off.flag("area") || off.sd_truthy("radius") || (off.flag("mine") && off.has_type("Aura")) {
         calc_area_of_effect(off, &q, &cfg);
     }
@@ -433,12 +438,12 @@ pub(super) fn skill_type_stats(off: &mut Off<'_>) {
             };
         let action = off.out_num("ActionSpeedMod", 1420);
         let speed = base_speed * q.calc_mod(c, &["TotemPlacementSpeed"]) * action;
-        let limit = q.base(c, &["ActiveTotemLimit", "ActiveBallistaLimit"]);
-        let summoned = or_override(&off.env_db, "TotemsSummoned", limit, 1434);
+        // :1436 `env.modDB:Override(nil, "TotemsSummoned") or output.ActiveTotemLimit` (set at :1184-1186)
+        let limit = off.out_num("ActiveTotemLimit", 1436);
+        let summoned = or_override(&off.env_db, "TotemsSummoned", limit, 1436);
         let o = off.out();
         o.set_num("TotemPlacementSpeed", speed);
         o.set_num("TotemPlacementTime", 1.0 / speed);
-        o.set_num("ActiveTotemLimit", limit);
         o.set_num("TotemsSummoned", summoned);
         // :1422-1441
         if off.breakdown {
@@ -602,8 +607,23 @@ pub(super) fn skill_type_stats(off: &mut Off<'_>) {
         q.nm("PhysicalMin", ModType::Base, v, "Sacrificial Zeal", spell, 0, vec![]);
         q.nm("PhysicalMax", ModType::Base, v, "Sacrificial Zeal", spell, 0, vec![]);
     }
+    // :1914-1924 Sacrifice Support (3dbca4463 #10363: the totem's life for totems; was a PercentStat mod in the skill data)
+    if off.sd_truthy("sacrificeLifePercent") {
+        let life = if off.flag("totem") {
+            off.out_num("TotemLife", 1921)
+        } else {
+            off.out_num("LifeUnreserved", 1921)
+        };
+        let pct = off.sd_num("sacrificeLifePercent", 1921).expect("truthy");
+        let as_chaos = off
+            .sd_num("sacrificeLifeAsChaos", 1921)
+            .unwrap_or_else(|| panic!("{LUA}:1921: attempt to perform arithmetic on field 'sacrificeLifeAsChaos' (a nil value)"));
+        let add = (life * pct / 100.0 * (as_chaos / 100.0)).floor();
+        q.nm("ChaosMin", ModType::Base, add, "Sacrifice Support", 0, 0, vec![]);
+        q.nm("ChaosMax", ModType::Base, add, "Sacrifice Support", 0, 0, vec![]);
+    }
 
-    // :1908
+    // :1926
     run_skill_func(off, "preDamageFunc");
 
     // :1910-1913 `activeSkill.infoMessage` (display only); the `%d` of a nil count is still the Lua error
@@ -638,10 +658,16 @@ pub(super) fn skill_type_stats(off: &mut Off<'_>) {
             off.set_sd(&format!("{dt}Max"), Value::Num(base));
         }
     }
-    // :1932-1935 `canDeal` (read by the damage passes, R7.5)
+    // :1949-1958 `canDeal` (read by the damage passes, R7.5) and, with a breakdown, `damageDisableMods`
     for dt in DMG_TYPE_LIST {
-        let v = !q.flag(c, &[&format!("DealNo{dt}"), "DealNoDamage"]);
-        off.can_deal.insert(dt, v);
+        let names = [format!("DealNo{dt}"), "DealNoDamage".to_owned()];
+        let names: [&str; 2] = [&names[0], &names[1]];
+        let disabled = q.flag(c, &names);
+        off.can_deal.insert(dt, !disabled);
+        if off.breakdown && disabled {
+            let rows = ok(q.list.borrow().tabulate(Some(ModType::Flag), c, &names));
+            off.damage_disable_mods.insert(dt, rows);
+        }
     }
 }
 
@@ -932,7 +958,11 @@ fn trap(off: &mut Off<'_>, q: &Q, cfg: &ModCfg) {
     }
     if base_cooldown.is_some() || q.base(c, &["CooldownRecovery"]) != 0.0 {
         let cd = match base_cooldown {
-            Some(b) => to_tick(b / q.calc_mod(c, &["CooldownRecovery"])),
+            // :1299 `skillModList:Override(skillCfg, "CooldownRecovery") or baseCooldown / calcLib.mod(...)` (3dbca4463 #10335)
+            Some(b) => to_tick(
+                q.override_num(c, &["CooldownRecovery"], "Modules/CalcOffence.lua:1300")
+                    .unwrap_or_else(|| b / q.calc_mod(c, &["CooldownRecovery"])),
+            ),
             None => calc_skill_cooldown(q, cfg, &off.sk().skill_data).0,
         };
         off.out().set_num("TrapCooldown", cd);

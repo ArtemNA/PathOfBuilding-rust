@@ -9,6 +9,7 @@
 //   node tools/lua-corpus/export-power.ts run [golden name ...]  -> tools/.scratch/power-raw/<build>.json (one docker run per golden)
 //   node tools/lua-corpus/export-power.ts pack                   -> crates/pob-calc/tests/fixtures/power/<build>.json (<= 1.5 MB)
 // Encoding: numbers = `%.17g` strings ("nan"/"-nan"/"inf" as LuaJIT prints them), node ids = numbers, strings = strings.
+import '../upstream.ts'
 import { execFileSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs'

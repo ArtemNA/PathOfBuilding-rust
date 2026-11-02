@@ -510,22 +510,30 @@ pub fn defence(env: &mut Env, state: &mut PerformState, who: Who) {
     // --- :662-676 action speed, resistances, minion branches ------------------------------------------------------
     actor_state.output.set_num("ActionSpeedMod", action_speed_mod(&db));
     resistances(&db, &mut actor_state.output, actor_state.breakdown.as_mut());
-    // :666-671 `ResistanceAddedToMinions` -- the actor's final resistances into `env.minion.modDB`
+    // :666-673 `ResistanceAddedToMinions` -- the actor's final resistances into `env.minion.modDB`, one mod per source mod
+    // (3dbca4463 #10350: `Tabulate` keeps each source)
     if let Some(m) = env.minion.clone() {
         let added = base(&db, &["ResistanceAddedToMinions"]);
         if added > 0.0 {
             let mdb = m.borrow().mod_db.clone();
-            for elem in ["Fire", "Cold", "Lightning", "Chaos"] {
-                let fin = actor_state.output.num(&format!("{elem}Resist"));
-                mdb.borrow_mut().new_mod(pob_mods::create_mod(
-                    &format!("{elem}Resist"),
-                    Some(ModType::Base),
-                    pob_mods::Value::Num((fin * added / 100.0).floor()),
-                    Some("Player"),
-                    0,
-                    0,
-                    Vec::new(),
-                ));
+            let rows = ok(db.borrow().tabulate(Some(ModType::Base), None, &["ResistanceAddedToMinions"]));
+            for row in rows {
+                let v = row
+                    .value
+                    .as_num()
+                    .unwrap_or_else(|| panic!("Modules/CalcDefence.lua:670: attempt to perform arithmetic on field 'value'"));
+                for elem in ["Fire", "Cold", "Lightning", "Chaos"] {
+                    let fin = actor_state.output.num(&format!("{elem}Resist"));
+                    mdb.borrow_mut().new_mod(pob_mods::create_mod(
+                        &format!("{elem}Resist"),
+                        Some(ModType::Base),
+                        pob_mods::Value::Num((fin * v / 100.0).floor()),
+                        row.mod_.source.as_deref(),
+                        0,
+                        0,
+                        Vec::new(),
+                    ));
+                }
             }
         }
     }

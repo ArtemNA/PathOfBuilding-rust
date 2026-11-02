@@ -10,6 +10,7 @@
 // Encoding: Lua numbers are `%.17g` strings (the raw lj_strfmt, as export-env.ts), Lua strings are strings, booleans are booleans; tables are
 // objects keyed by tostring(key) (empty = {}), mods are `modLib.formatSourceMod` strings, gem instances/skills are referenced as "<group>:<gem>" /
 // 1-based indices. Only normalisation: `function|table: 0x<addr>` -> `<addr>`. Docker libm = Alpine/musl (MINEFIELD-RUST R2).
+import '../upstream.ts'
 import { execFileSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs'
