@@ -17,7 +17,7 @@
 {"release":["CTRL"],"dump":true,"tab":true},
 {"hold":["CTRL"],"events":[["KeyDown","y"],["KeyUp","y"]]},
 {"release":["CTRL"],"dump":true,"tab":true},
-{"cursor":[-100,-100],"dump":true,"tab":true},
+{"cursor":[-100,-100],"dump":true,"tab":true,"shot":"tab-tattoo-redo"},
 {"cursor":[680,762]},
 {"hold":["LEFTBUTTON"],"events":[["KeyDown","LEFTBUTTON"]]},
 {"release":["LEFTBUTTON"],"events":[["KeyUp","LEFTBUTTON"]],"dump":true,"tab":true},

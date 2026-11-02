@@ -74,7 +74,7 @@ fn overrides_of(spec: &PassiveSpec) -> Vec<SpecOverrideModel> {
         .collect()
 }
 
-/// The `common.base64.decode` of the links: `None` on anything outside the alphabet.
+/// `common.base64.decode` (runtime/lua/base64.lua:27): what is outside the alphabet is stripped, not an error.
 fn base64_decode(s: &str) -> Option<Vec<u8>> {
     let mut out = Vec::with_capacity(s.len() * 3 / 4);
     let (mut acc, mut bits) = (0u32, 0u32);
@@ -85,8 +85,7 @@ fn base64_decode(s: &str) -> Option<Vec<u8>> {
             b'0'..=b'9' => c - b'0' + 52,
             b'+' => 62,
             b'/' => 63,
-            b'=' => continue,
-            _ => return None,
+            _ => continue,
         };
         acc = (acc << 6) | u32::from(v);
         bits += 6;
@@ -125,6 +124,9 @@ impl Engine {
 
     /// `self.specList[i]` (1-based) with its `PostLoad`: what `calcFunc({ spec = spec })`, the compare overlay and the lists read.
     pub fn load_spec(&self, i: usize) -> Result<PassiveSpec, String> {
+        if let Some(Some(o)) = self.spec_objects.get(i - 1) {
+            return Ok((**o).clone());
+        }
         let sm = &self.model().tree.specs[i - 1];
         let items = &self.result().env.items;
         let jewels = spec_jewels_of(&sm.jewels, items).map_err(|e| e.0)?;
@@ -183,22 +185,38 @@ impl Engine {
             .collect()
     }
 
-    /// `build.spec` changed: the new live spec and its run now (the Lua reads `build.spec` in this very frame); the `buildFlag` frame then
-    /// only rebuilds the stat list ([`Engine::refresh`]).
-    fn adopt_model(&mut self) -> Result<(), String> {
-        self.forget_live_spec();
-        self.recalc()?;
-        self.mark_run_fresh();
-        Ok(())
-    }
-
     /// TreeTab.lua:548-584 `SetActiveSpec(specId)`: `prevSpec.jewels` / `curSpec.jewels` are per `<Spec>` in the model already.
     pub fn set_active_spec(&mut self, spec_id: usize) -> Result<(), String> {
+        self.keep_active_object();
+        self.activate_spec(spec_id)
+    }
+
+    fn sync_spec_objects(&mut self) {
+        let n = self.spec_count();
+        self.spec_objects.resize(n, None);
+    }
+
+    /// The object of the active spec stays in `specList` when `build.spec` moves on.
+    fn keep_active_object(&mut self) {
+        self.sync_spec_objects();
+        let a = self.active_spec();
+        self.spec_objects[a - 1] = Some(self.result().env.spec.clone());
+    }
+
+    /// `build.spec = specList[specId]`: the kept object, else a load of the model; its run now (the Lua reads `build.spec` in this very frame), the `buildFlag` frame then only
+    /// rebuilds the stat list ([`Engine::refresh`]).
+    fn activate_spec(&mut self, spec_id: usize) -> Result<(), String> {
+        self.sync_spec_objects();
         self.model_mut().tree.active_spec = spec_id as f64;
         let n = self.spec_count() as f64;
         let m = self.model_mut();
         m.tree.active_spec = pob_lua::number::min2(m.tree.active_spec, n);
-        self.adopt_model()
+        let a = self.active_spec();
+        let kept = self.spec_objects[a - 1].clone();
+        self.set_live_spec(kept);
+        self.recalc()?;
+        self.mark_run_fresh();
+        Ok(())
     }
 
     /// `self.specList[i].title = title`.
@@ -206,9 +224,29 @@ impl Engine {
         self.model_mut().tree.specs[i - 1].title = Some(title.to_string());
     }
 
+    /// `t_insert(self.specList, newSpec)` of a decoded link: the object as the decode left it (`PassiveSpec::apply_decoded`), kept for `SetActiveSpec`. The run reads the model.
+    pub fn push_decoded_spec(&mut self, spec: SpecModel) -> Result<(), String> {
+        let tree = pob_tree::tree::load_passive_tree_mode(&spec.tree_version, ParseMode::Full).map_err(|e| e.0)?;
+        let mut object = PassiveSpec::new(tree).map_err(|e| e.0)?;
+        object
+            .apply_decoded(
+                spec.class_id,
+                spec.ascend_class_id,
+                spec.secondary_ascend_class_id,
+                &spec.nodes,
+                &spec.mastery_effects,
+            )
+            .map_err(|e| e.0)?;
+        self.model_mut().tree.specs.push(spec);
+        self.sync_spec_objects();
+        *self.spec_objects.last_mut().expect("just pushed") = Some(Rc::new(object));
+        Ok(())
+    }
+
     /// `t_insert(self.list, spec)`: `spec` at the end.
     pub fn push_spec(&mut self, spec: SpecModel) {
         self.model_mut().tree.specs.push(spec);
+        self.sync_spec_objects();
     }
 
     /// PassiveSpecListControl.lua:17-21 `Copy`: `specList[i]` as a new spec (not in the list yet).
@@ -220,9 +258,8 @@ impl Engine {
         };
         let sm = &self.model().tree.specs[i - 1];
         let mut out = sm.clone();
-        let mut ids = spec.alloc_table_pairs();
-        ids.sort_unstable();
-        out.nodes = ids.into_iter().map(f64::from).collect();
+        // `CreateUndoState`: `hashList` in `pairs(allocNodes)` order, what `ImportFromNodeList` of the copy walks (the paths over equal lengths follow it)
+        out.nodes = spec.alloc_table_pairs().into_iter().map(f64::from).collect();
         out.class_id = spec.cur_class_id.map_or(0.0, |c| c as f64);
         out.ascend_class_id = spec.cur_ascend_class_id.map_or(0.0, |c| c as f64);
         // `CreateUndoState`'s nil secondary (see `SpecUndoState`)
@@ -258,9 +295,11 @@ impl Engine {
     /// `t_remove(self.list, index)`; the active index follows `build.spec` (PassiveSpecListControl.lua:102-109). `true`: the active spec went.
     pub fn delete_spec(&mut self, index: usize) -> Result<bool, String> {
         let active = self.active_spec();
+        self.sync_spec_objects();
+        self.spec_objects.remove(index - 1);
         self.model_mut().tree.specs.remove(index - 1);
         if index == active {
-            self.set_active_spec(usize::max(1, index - 1))?;
+            self.activate_spec(usize::max(1, index - 1))?;
             Ok(true)
         } else {
             if index < active {
@@ -273,6 +312,9 @@ impl Engine {
     /// `OnOrderChange` (PassiveSpecListControl.lua:86-91): the row moved; `activeSpec` follows `build.spec`.
     pub fn move_spec(&mut self, old_index: usize, new_index: usize) {
         let active = self.active_spec();
+        self.sync_spec_objects();
+        let o = self.spec_objects.remove(old_index - 1);
+        self.spec_objects.insert(new_index - 1, o);
         let m = self.model_mut();
         let s = m.tree.specs.remove(old_index - 1);
         m.tree.specs.insert(new_index - 1, s);
@@ -313,13 +355,16 @@ impl Engine {
         }
         let mut new_spec = self.copy_spec_model(active)?;
         new_spec.tree_version.clone_from(&version);
+        self.keep_active_object();
+        self.spec_objects.insert(active, None);
         let m = self.model_mut();
         m.tree.specs.insert(active, new_spec);
         if remove {
             m.tree.specs.remove(active - 1);
-            self.set_active_spec(active)?;
+            self.spec_objects.remove(active - 1);
+            self.activate_spec(active)?;
         } else {
-            self.set_active_spec(active + 1)?;
+            self.activate_spec(active + 1)?;
         }
         Ok(version)
     }
@@ -361,15 +406,28 @@ impl Engine {
 
     /// `RestoreUndoState(state)` (PassiveSpec.lua:2383-2386) of the active spec.
     pub fn restore_undo_state(&mut self, st: &SpecUndoState) -> Result<(), String> {
+        // `ImportFromNodeList` on the same object: its `allocNodes` table keeps its history (the paths over equal lengths follow it)
+        let overrides: Vec<pob_tree::tattoo::OverrideInput> = st
+            .overrides
+            .iter()
+            .map(|o| pob_tree::tattoo::OverrideInput {
+                node_id: Some(o.node_id),
+                dn: o.dn.clone(),
+                icon: o.icon.clone(),
+                active_effect_image: o.active_effect_image.clone(),
+            })
+            .collect();
+        self.edit_spec(|s, _| {
+            s.hash_overrides.clear();
+            s.load_overrides(&overrides)?;
+            s.import_from_node_list(st.class_id, st.ascend_class_id, None, &st.hash_list, &st.mastery_effects)
+        })?;
         let sm = crate::engine::active_spec_mut(self.model_mut());
-        sm.class_id = st.class_id;
-        sm.ascend_class_id = st.ascend_class_id;
-        sm.secondary_ascend_class_id = None;
-        sm.nodes.clone_from(&st.hash_list);
         sm.overrides.clone_from(&st.overrides);
-        sm.mastery_effects = st.mastery_effects.clone();
         sm.tree_version.clone_from(&st.tree_version);
-        self.adopt_model()
+        self.recalc()?;
+        self.mark_run_fresh();
+        Ok(())
     }
 
     /// `spec:SelectClass(classId)`.
@@ -635,6 +693,100 @@ impl Engine {
         }))
     }
 
+    /// `url:gsub("^.+/",""):gsub("-","+"):gsub("_","/")` + the check of `DecodePoePlannerURL` (PassiveSpec.lua:404-407).
+    fn poe_planner_bytes(url: &str) -> Option<Vec<u8>> {
+        let tail = match url.rfind('/') {
+            Some(p) if p > 0 => &url[p + 1..],
+            _ => url,
+        };
+        base64_decode(&tail.replace('-', "+").replace('_', "/")).filter(|b| b.len() >= 15)
+    }
+
+    /// `DecodePoePlannerURL(url, true)` (PassiveSpec.lua:395-451): the tree version or the error text; `versions`: `poePlannerVersions` (GameVersions.lua:229).
+    pub fn poe_planner_version(url: &str, versions: &dyn Fn(u32) -> Option<String>) -> Result<String, String> {
+        let Some(b) = Self::poe_planner_bytes(url) else {
+            return Err("Invalid tree link (unrecognised format).".into());
+        };
+        // byteToInt(b, 7): little endian, 1-based
+        versions(u32::from(b[6]) + u32::from(b[7]) * 256).ok_or_else(|| "Invalid tree version found in link.".to_string())
+    }
+
+    /// `DecodePoePlannerURL(url, false)` (PassiveSpec.lua:453-495) on a new `PassiveSpec(build, version)`. The link was proven by [`Self::poe_planner_version`]. What
+    /// reads past the end, or a class the tree does not have, is a Lua error upstream: `Err` here.
+    pub fn decode_poe_planner_url(url: &str, version: &str, title: &str) -> Result<SpecModel, String> {
+        let tree = pob_tree::tree::load_passive_tree_mode(version, ParseMode::Full).map_err(|e| e.0)?;
+        let blank = PassiveSpec::new(tree.clone()).map_err(|e| e.0)?;
+        let b = Self::poe_planner_bytes(url).ok_or("Invalid tree link (unrecognised format).")?;
+        let arith = || "attempt to perform arithmetic on a nil value".to_string();
+        // `byteToInt(bytes, start)`, 1-based
+        let int_at = |start: usize| -> Result<usize, String> {
+            let lo = *b.get(start - 1).ok_or_else(arith)?;
+            let hi = *b.get(start).ok_or_else(arith)?;
+            Ok(usize::from(lo) + usize::from(hi) * 256)
+        };
+        // `b:sub(a, e)`, 1-based and clamped
+        let sub = |a: usize, e: usize| -> &[u8] {
+            let e = e.min(b.len());
+            if a > e { &[] } else { &b[a - 1..e] }
+        };
+        let class_id = usize::from(b[8]);
+        let ascend_class_id = f64::from(b[9]);
+        if class_id >= tree.classes.len() {
+            return Err("attempt to index local 'class' (a nil value)".to_string());
+        }
+        let mut nodes: Vec<f64> = Vec::new();
+        let mut alloc = |list: &[u8], cluster: bool| {
+            for p in list.as_chunks::<2>().0 {
+                let id = u32::from(p[0]) + u32::from(p[1]) * 256 + if cluster { 65536 } else { 0 };
+                if blank.node_idx(id).is_some() && !nodes.contains(&f64::from(id)) {
+                    nodes.push(f64::from(id));
+                }
+            }
+        };
+        let idx = 12;
+        let nodes_end = idx + 2 + int_at(idx)? * 2;
+        alloc(sub(idx + 2, nodes_end - 1), false);
+        let idx = nodes_end;
+        let cluster_end = idx + 2 + int_at(idx)? * 2;
+        alloc(sub(idx + 2, cluster_end - 1), true);
+        let idx = cluster_end;
+        let ascendancy_end = idx + 2 + int_at(idx)? * 2;
+        alloc(sub(idx + 2, ascendancy_end - 1), false);
+        let idx = ascendancy_end;
+        let mastery_end = idx + 2 + int_at(idx)? * 4;
+        // AllocateMasteryEffects(masteryEffects, "little") (:351-391): poeplanner swaps effectId and id
+        let mut masteries = NumMap::default();
+        for p in sub(idx + 2, mastery_end - 1).as_chunks::<4>().0 {
+            let id = u32::from(p[0]) + u32::from(p[1]) * 256;
+            let effect = u32::from(p[2]) + u32::from(p[3]) * 256;
+            if blank.node_idx(id).is_none() {
+                return Err("attempt to index a nil value".to_string());
+            }
+            if tree.mastery_effects.contains_key(&u64::from(effect)) {
+                if !nodes.contains(&f64::from(id)) {
+                    nodes.push(f64::from(id));
+                }
+                masteries.set(f64::from(id), f64::from(effect));
+            } else {
+                // :387-389 no effect on this tree: not allocated
+                nodes.retain(|n| *n != f64::from(id));
+            }
+        }
+        Ok(SpecModel {
+            title: Some(title.to_string()),
+            tree_version: version.to_string(),
+            cluster_hash_format_version: 2.0,
+            class_id: class_id as f64,
+            ascend_class_id,
+            secondary_ascend_class_id: None,
+            nodes,
+            mastery_effects: masteries,
+            jewels: NumMap::default(),
+            url: None,
+            overrides: Vec::new(),
+        })
+    }
+
     /// The node-type predicate of `PassiveTreeView.lua:530-534`: right click opens `ModifyNodePopup`.
     pub fn node_can_tattoo(&self, node_id: u32) -> bool {
         let spec = &self.result().env.spec;
@@ -741,9 +893,145 @@ impl Engine {
 /// The background part of the power walk: over a clone of the model, on its own thread.
 pub fn power_thread(
     model: &pob_build::BuildModel,
+    live: &pob_tree::LiveSpecPaths,
     stat: Option<&PowerStat>,
     max_depth: Option<f64>,
     threads: usize,
 ) -> Result<Option<PowerResult>, String> {
-    pob_calc::power::build_power_threads(model, pob_calc::CalculateOptions::default(), stat, max_depth, threads, None)
+    pob_tree::spec::with_live_paths(live, || {
+        pob_calc::power::build_power_threads(model, pob_calc::CalculateOptions::default(), stat, max_depth, threads, None)
+    })
+}
+
+impl Engine {
+    /// `BuildPowerReportList`'s `t_sort` (TreeTab.lua:1156-1164) over the input it really has: `pairs(spec.nodes)`, then `pairs(tree.clusterNodeMap)` (`order`: the sample of a process of
+    /// the original, R13/R27; without it: spec order and map order, one of the orders the original can have), each mastery's effects in `ipairs` order. `report` comes sorted stably
+    /// (pob-calc), so ties are re-derived here with LuaJIT's unstable sort (L17).
+    pub fn order_power_report(&self, report: &mut Vec<ReportEntry>, stat: Option<&PowerStat>, order: Option<&(Vec<u32>, Vec<String>)>) {
+        let spec = &self.result().env.spec;
+        let tree = &spec.tree;
+        let node_rank: std::collections::HashMap<u32, usize> = match order {
+            Some((nodes, _)) => nodes.iter().enumerate().map(|(i, id)| (*id, i)).collect(),
+            None => spec.nodes.iter().enumerate().map(|(i, n)| (n.id, i)).collect(),
+        };
+        let cluster_rank: std::collections::HashMap<&str, usize> = match order {
+            Some((_, names)) => names.iter().enumerate().map(|(i, n)| (n.as_str(), i)).collect(),
+            None => tree.cluster_node_map.keys().enumerate().map(|(i, n)| (n.as_str(), i)).collect(),
+        };
+        let cluster_dn: std::collections::HashMap<u32, &str> = tree
+            .cluster_node_map
+            .iter()
+            .map(|(name, &ti)| (tree.nodes[ti].id, name.as_str()))
+            .collect();
+        let n_nodes = node_rank.len();
+        let effect_rank = |r: &ReportEntry| -> usize {
+            if r.ty != NodeType::Mastery {
+                return 0;
+            }
+            let Some(node) = spec.node(r.id) else { return 0 };
+            node.tree_node()
+                .mastery_effect_ids
+                .iter()
+                .position(|e| {
+                    pob_tree::tree::as_id(*e)
+                        .and_then(|e| tree.mastery_effects.get(&u64::from(e)))
+                        .is_some_and(|me| r.name.ends_with(&me.sd.join(" / ")))
+                })
+                .unwrap_or(usize::MAX)
+        };
+        let mut keyed: Vec<((usize, usize), ReportEntry)> = report
+            .drain(..)
+            .map(|r| {
+                let k = match &r.path_dist {
+                    pob_calc::power::ReportDist::Str("Cluster") => {
+                        let rank = cluster_dn
+                            .get(&r.id)
+                            .and_then(|n| cluster_rank.get(n))
+                            .copied()
+                            .unwrap_or(usize::MAX);
+                        (n_nodes + rank.min(usize::MAX - n_nodes), 0)
+                    }
+                    _ => (node_rank.get(&r.id).copied().unwrap_or(n_nodes), effect_rank(&r)),
+                };
+                (k, r)
+            })
+            .collect();
+        keyed.sort_by_key(|(k, _)| *k);
+        let mut input: Vec<ReportEntry> = keyed.into_iter().map(|(_, r)| r).collect();
+        let lower = stat
+            .and_then(|p| p.stat.as_deref())
+            .and_then(|st| crate::stats::DISPLAY_STATS.iter().find(|d| d.stat == Some(st)))
+            .is_some_and(|d| d.lower_is_better);
+        crate::lua::lua_sort(&mut input, &mut |a: &ReportEntry, b: &ReportEntry| {
+            if lower { a.power < b.power } else { a.power > b.power }
+        });
+        *report = input;
+    }
+
+    /// `itemsTab:AddItem(new("Item")(text), true)` (ItemsTab.lua:1686-1699) with no slot: the first free id, `itemOrderList`, what `ItemsTab:Save` writes.
+    pub fn add_item_unequipped(&mut self, text: &str) -> Result<f64, String> {
+        let raw = pob_build::sanitise_text(text);
+        let mut item = pob_items::Item::parse(
+            &raw,
+            &pob_items::ItemOptions {
+                parse_mode: ParseMode::Full,
+                ..Default::default()
+            },
+        );
+        if item.base.is_none() {
+            return Err(format!("Classes/Item.lua: the item text is invalid: {text}"));
+        }
+        item.normalise_quality();
+        let mut id = 1.0;
+        while self.result().env.item(id).is_some() {
+            id += 1.0;
+        }
+        let raw = item.build_raw();
+        let mod_ranges = crate::save::mod_ranges(&item)
+            .into_iter()
+            .map(|(n, range)| pob_build::ModRangeModel { id: n as f64, range })
+            .collect();
+        let m = self.model_mut();
+        m.items.push(pob_build::ItemModel {
+            id,
+            variant: item.variant,
+            variant_alt: item.variant_alt[0],
+            variant_alt2: item.variant_alt[1],
+            variant_alt3: item.variant_alt[2],
+            variant_alt4: item.variant_alt[3],
+            variant_alt5: item.variant_alt[4],
+            raw,
+            mod_ranges,
+        });
+        m.item_order.push(id);
+        self.recalc()?;
+        Ok(id)
+    }
+
+    /// `build.timelessData`'s saved fields (Build.lua:81 defaults on first need).
+    pub fn timeless_mut(&mut self) -> &mut pob_build::TimelessDataModel {
+        self.model_mut().timeless_data.get_or_insert_with(|| pob_build::TimelessDataModel {
+            jewel_type_id: None,
+            conqueror_type_id: None,
+            devotion_variant1: 1.0,
+            devotion_variant2: 1.0,
+            jewel_socket_id: None,
+            fallback_weight_mode_idx: None,
+            socket_filter: false,
+            socket_allocate: false,
+            socket_filter_distance: 0.0,
+            search_list: Some(String::new()),
+            search_list_fallback: Some(String::new()),
+        })
+    }
+
+    /// `calcsTab.mainEnv.grantedPassives`.
+    pub fn granted_passives_rc(&self) -> indexmap::IndexMap<u32, bool> {
+        self.result().env.granted_passives.clone()
+    }
+
+    /// What [`power_thread`] must not rebuild from the model: `node.path` / `node.depends` / `node.pathDist` of the live `build.spec`.
+    pub fn live_spec_paths(&self) -> pob_tree::LiveSpecPaths {
+        pob_tree::LiveSpecPaths::of(&self.result().env.spec)
+    }
 }

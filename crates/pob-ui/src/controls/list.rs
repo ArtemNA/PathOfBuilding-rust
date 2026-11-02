@@ -81,7 +81,7 @@ pub trait ListHooks<V>: 'static {
     fn set_highlight_color(&self, list: &ListControl<V>, f: &mut Frame<'_>, index: usize, value: &V) -> bool {
         false
     }
-    fn override_select_index(&self, list: &ListControl<V>, index: usize) -> bool {
+    fn override_select_index(&self, list: &ListControl<V>, g: &Gfx, index: usize) -> bool {
         false
     }
     fn has_re_sort(&self) -> bool {
@@ -274,7 +274,7 @@ impl<V: Clone + PartialEq + 'static> ListControl<V> {
         let value = index.and_then(|i| self.value_at(i));
         *self.sel_value.borrow_mut() = value.clone();
         let (Some(index), Some(value)) = (index, value) else { return false };
-        if self.hooks.override_select_index(self, index) {
+        if self.hooks.override_select_index(self, g, index) {
             return false;
         }
         self.sel_index.set(Some(index));

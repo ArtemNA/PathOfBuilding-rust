@@ -42,6 +42,8 @@ struct Runner {
     secs: Option<f64>,
     start: Instant,
     state_file: Option<String>,
+    /// With `--state-file`: the key events the window delivered (rust-input.ps1).
+    events: Vec<String>,
 }
 
 impl MainObject for Runner {
@@ -60,7 +62,8 @@ impl MainObject for Runner {
         self.app.on_frame(frame);
         // tools/sg-oracle/rust-input.ps1: the tree's state after each frame, for posted window messages
         if let Some(p) = &self.state_file {
-            let s = pob_ui::tabs::tree::debug_input_state(frame);
+            let mut s = pob_ui::tabs::tree::debug_input_state(frame);
+            s["events"] = serde_json::json!(self.events);
             let tmp = format!("{p}.tmp");
             if std::fs::write(&tmp, s.to_string()).is_ok() {
                 let _ = std::fs::rename(&tmp, p);
@@ -80,12 +83,21 @@ impl MainObject for Runner {
         }
     }
     fn on_key_down(&mut self, gfx: &mut Gfx, key: &str, double_click: bool) {
+        if self.state_file.is_some() {
+            self.events.push(format!("down {key}{}", if double_click { " double" } else { "" }));
+        }
         self.app.on_key_down(gfx, key, double_click);
     }
     fn on_key_up(&mut self, gfx: &mut Gfx, key: &str) {
+        if self.state_file.is_some() {
+            self.events.push(format!("up {key}"));
+        }
         self.app.on_key_up(gfx, key);
     }
     fn on_char(&mut self, gfx: &mut Gfx, ch: &str) {
+        if self.state_file.is_some() {
+            self.events.push(format!("char {ch}"));
+        }
         self.app.on_char(gfx, ch);
     }
     fn can_exit(&mut self, gfx: &mut Gfx) -> bool {
@@ -130,6 +142,7 @@ fn main() {
         secs,
         start: Instant::now(),
         state_file: arg(&args, "--state-file"),
+        events: Vec::new(),
     };
     let wcfg = WindowConfig {
         title: pob_ui::launch::APP_NAME.into(),

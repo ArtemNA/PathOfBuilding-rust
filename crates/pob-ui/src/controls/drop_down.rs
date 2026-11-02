@@ -70,6 +70,9 @@ pub struct DropDownControl {
     pub border_func: RefCell<Option<Rc<dyn Fn() -> (f64, f64, f64)>>>,
     pub other_drag_source: Cell<bool>,
     pub imbued_select: Cell<bool>,
+    /// What a subclass draws after `DropDownControl.Draw` (TimelessJewelSocketControl.lua:25-58).
+    #[allow(clippy::type_complexity)]
+    pub post_draw: RefCell<Option<Rc<dyn Fn(&mut Frame<'_>, &Rect, bool)>>>,
 }
 
 impl DropDownControl {
@@ -148,6 +151,7 @@ impl DropDownControl {
                 border_func: RefCell::new(None),
                 other_drag_source: Cell::new(false),
                 imbued_select: Cell::new(false),
+                post_draw: RefCell::new(None),
             };
             d.set_list(g, Some(list));
             d.sel_index.set(1);
@@ -600,6 +604,10 @@ impl Control for DropDownControl {
             }
             sg::set_viewport(f, None);
             sg::set_draw_layer(f, None, 0);
+        }
+        let post = self.post_draw.borrow().clone();
+        if let Some(post) = post {
+            post(f, view_port, no_tooltip);
         }
     }
 

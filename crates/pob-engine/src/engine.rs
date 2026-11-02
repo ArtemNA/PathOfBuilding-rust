@@ -44,6 +44,9 @@ pub struct Engine {
     /// `build.spec` after a tree mutator: the Lua's object lives on over the recalculations (`ResetNodes` keeps the cluster subgraphs until the next
     /// graph rebuild, TreeTab.lua:137-138), the run's own spec is a fresh load of the model. `None`: the run's is the live one.
     live_spec: Option<Rc<pob_tree::PassiveSpec>>,
+    /// `specList[i]` of the specs left in this session (parallel to `model.tree.specs`, grown on need): the Lua keeps the objects, and which of the equal shortest
+    /// paths a node has follows the history of the object's `allocNodes` table.
+    pub(crate) spec_objects: Vec<Option<Rc<pob_tree::PassiveSpec>>>,
 }
 
 /// The gem property `engine_setGem` edits (boot.lua:405-460).
@@ -78,6 +81,7 @@ impl Engine {
             view_mode_is_tree: std::cell::Cell::new(true),
             run_fresh: false,
             live_spec: None,
+            spec_objects: Vec::new(),
         };
         e.refresh_stat_list()?;
         Ok(e)
@@ -256,9 +260,9 @@ impl Engine {
         self.run_fresh = true;
     }
 
-    /// `build.spec` was replaced: the object the next run makes is the live one.
-    pub(crate) fn forget_live_spec(&mut self) {
-        self.live_spec = None;
+    /// `build.spec` is the kept object `spec`: the next run keeps it.
+    pub(crate) fn set_live_spec(&mut self, spec: Option<Rc<pob_tree::PassiveSpec>>) {
+        self.live_spec = spec;
     }
 
     /// The tree view's left click on an unallocated node (PassiveTreeView.lua:514): `spec:AllocNode(node, altPath)` and `build.buildFlag =

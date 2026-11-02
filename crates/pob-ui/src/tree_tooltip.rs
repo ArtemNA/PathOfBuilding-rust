@@ -157,6 +157,23 @@ pub fn add_compare_node_tooltip(view: &mut PassiveTreeView, g: &Gfx, _e: &Engine
 }
 
 /// `PassiveMasteryControl:AddValueTooltip` (PassiveMasteryControl.lua:50-56): the node's tooltip as if `effect` were chosen; drawn by the list.
+/// `self.viewer:AddNodeTooltip(tooltip, node, build)` of a node of the spec, into `tooltip`.
+pub fn plain_node_tooltip(
+    view: &mut PassiveTreeView,
+    tooltip: &mut crate::tooltip::Tooltip,
+    g: &Gfx,
+    e: &Engine,
+    art: &TreeArt,
+    spec: &PassiveSpec,
+    node_id: u32,
+) {
+    let Some(i) = spec.node_idx(node_id) else { return };
+    std::mem::swap(&mut view.tooltip, tooltip);
+    view.tooltip.clear(false);
+    add_node_tooltip(view, g, e, art, spec, &spec.nodes[i], i, None);
+    std::mem::swap(&mut view.tooltip, tooltip);
+}
+
 pub fn mastery_effect_tooltip(
     view: &mut PassiveTreeView,
     tooltip: &mut crate::tooltip::Tooltip,

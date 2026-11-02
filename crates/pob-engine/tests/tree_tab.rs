@@ -202,3 +202,43 @@ fn tree_url_round_trip() {
             .is_err()
     );
 }
+
+/// `DecodePoePlannerURL` (PassiveSpec.lua:395-495): little endian; the version table decides; the screen gate is `tab-cover` of tests/tree.rs.
+#[test]
+fn poe_planner_url_decodes() {
+    let u16le = |v: u16| v.to_le_bytes();
+    let mut b: Vec<u8> = vec![0; 6];
+    b.extend(u16le(51));
+    b.extend([1, 2, 0]);
+    b.extend(u16le(2));
+    b.extend(u16le(476));
+    b.extend(u16le(31961));
+    b.extend(u16le(0));
+    b.extend(u16le(0));
+    b.extend(u16le(1));
+    b.extend(u16le(292));
+    b.extend(u16le(31822));
+    const A: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+    let mut text = String::new();
+    for c in b.chunks(3) {
+        let n = (u32::from(c[0]) << 16) | (u32::from(*c.get(1).unwrap_or(&0)) << 8) | u32::from(*c.get(2).unwrap_or(&0));
+        for i in 0..=c.len() {
+            text.push(A[((n >> (18 - 6 * i)) & 63) as usize] as char);
+        }
+    }
+    let url = format!("https://poeplanner.com/{text}");
+    let versions = |v: u32| (v == 51).then(|| "3_29".to_string());
+    assert_eq!(Engine::poe_planner_version(&url, &versions).as_deref(), Ok("3_29"));
+    assert!(
+        Engine::poe_planner_version("https://poeplanner.com/AAAA", &versions)
+            .expect_err("short")
+            .contains("unrecognised")
+    );
+    let m = Engine::decode_poe_planner_url(&url, "3_29", "P").expect("decode");
+    assert_eq!((m.class_id, m.ascend_class_id), (1.0, 2.0));
+    assert_eq!(m.nodes.iter().copied().filter(|n| [476.0, 31961.0, 292.0].contains(n)).count(), 3);
+    assert_eq!(m.mastery_effects.0, vec![(292.0, 31822.0)]);
+    // a cut link reads past the end: Lua's arithmetic error
+    let cut = format!("https://poeplanner.com/{}", &text[..24]);
+    assert!(Engine::decode_poe_planner_url(&cut, "3_29", "P").is_err());
+}

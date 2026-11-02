@@ -381,6 +381,7 @@ impl PassiveTreeView {
         input_events: &mut InputEvents,
     ) {
         let mut spec = engine.borrow().as_ref().expect("engine").spec_rc();
+        let compare_imported: Vec<u32> = self.compare_spec.as_ref().map_or_else(Vec::new, |c| c.imported_tattoos.clone());
         let art = self.art(root, &spec.tree);
         self.sync_cache(&spec, &art);
         let cur_class_id = spec.cur_class_id;
@@ -1158,10 +1159,11 @@ impl PassiveTreeView {
                                         .or_else(|| lookup(an.inactive_icon.as_ref(), "masteryInactive"));
                                 }
                             } else {
-                                base = sprites
-                                    .and_then(|s| s.get("mastery"))
-                                    .cloned()
-                                    .or_else(|| node_sprites(&art, node).and_then(|s| s.get("mastery")).cloned());
+                                base = sprites.and_then(|s| s.get("mastery")).cloned().or_else(|| {
+                                    node_sprites(&art, node, &spec.imported_tattoos)
+                                        .and_then(|s| s.get("mastery"))
+                                        .cloned()
+                                });
                             }
                             sg::set_draw_layer(f, None, 15);
                         }
@@ -1174,7 +1176,9 @@ impl PassiveTreeView {
                             }
                             let lower = ty.as_str().to_lowercase();
                             let suffix = if is_alloc { "Active" } else { "Inactive" };
-                            base = node_sprites(&art, node).and_then(|s| s.get(&format!("{lower}{suffix}"))).cloned();
+                            base = node_sprites(&art, node, &spec.imported_tattoos)
+                                .and_then(|s| s.get(&format!("{lower}{suffix}")))
+                                .cloned();
                             let asc = node.ascendancy_name();
                             let key = format!(
                                 "{state}{}{}",
@@ -1371,10 +1375,10 @@ impl PassiveTreeView {
                             .and_then(|ic| art.sprite_map.get(&**ic))
                             .and_then(|m| m.get("masteryActiveSelected"))
                             .cloned()
-                            .or_else(|| node_sprites(&art, c).and_then(|s| s.get("mastery")).cloned());
+                            .or_else(|| node_sprites(&art, c, &compare_imported).and_then(|s| s.get("mastery")).cloned());
                     }
                     ty => {
-                        base = node_sprites(&art, c)
+                        base = node_sprites(&art, c, &compare_imported)
                             .and_then(|s| s.get(&format!("{}Active", ty.as_str().to_lowercase())))
                             .cloned();
                         let key = format!(
@@ -1632,9 +1636,13 @@ fn class_start_art(index: f64) -> &'static str {
 
 /// `node.sprites`: `spriteMap[node.icon]` of the node or of what replaced it; a mastery with effects and a node with an unknown icon read
 /// `MasteryBlank` (PassiveTree.lua:875-885).
-fn node_sprites<'a>(art: &'a TreeArt, node: &SpecNode) -> Option<&'a HashMap<String, AssetRef>> {
+fn node_sprites<'a>(art: &'a TreeArt, node: &SpecNode, imported_tattoos: &[u32]) -> Option<&'a HashMap<String, AssetRef>> {
     if let Some((icon, _)) = node.tattoo_art() {
-        return art.sprite_map.get(icon);
+        let m = art.sprite_map.get(icon);
+        // `old.sprites = nil` after ImportFromNodeList: the tree node's, through the metatable (R21)
+        if m.is_some() || !imported_tattoos.contains(&node.id) {
+            return m;
+        }
     }
     if let Some(l) = node.legion_node() {
         return art.sprite_map.get(l.icon.as_str());

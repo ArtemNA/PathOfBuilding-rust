@@ -29,7 +29,7 @@ pub mod tree;
 pub use cluster::{ClusterJewel, JewelLookup};
 pub use pob_parser::ParseMode;
 pub use radius::{NodesInRadius, RadiusInfo, set_jewel_radii};
-pub use spec::{AllocNodeCounts, AllocOrder, PassiveSpec, SpecNode};
+pub use spec::{AllocNodeCounts, AllocOrder, LiveSpecPaths, PassiveSpec, SpecNode};
 pub use tattoo::{Tattoo, TattooNode};
 pub use timeless::{ConqueredBy, ConquerorId, Legion, LegionNode, SpecJewel};
 pub use tree::{

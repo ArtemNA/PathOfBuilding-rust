@@ -773,6 +773,8 @@ pub struct TooltipHost<A = ()> {
     pub tooltip_text: PropCell<Option<String>>,
     #[allow(clippy::type_complexity)]
     pub tooltip_func: RefCell<Option<Rc<dyn Fn(&mut Tooltip, &Gfx, A)>>>,
+    #[allow(clippy::type_complexity)]
+    pub draw_hook: RefCell<Option<Rc<dyn Fn(&Tooltip, &Gfx, f64, f64) -> (f64, f64)>>>,
 }
 
 impl<A> TooltipHost<A> {
@@ -782,7 +784,13 @@ impl<A> TooltipHost<A> {
             tooltip: RefCell::new(Tooltip::new()),
             tooltip_text: PropCell::new(tooltip_text),
             tooltip_func: RefCell::new(None),
+            draw_hook: RefCell::new(None),
         }
+    }
+
+    /// `tooltip.Draw = function(self, x, y, …)` (TreeTab.lua:1748): the position the tooltip's real `Draw` gets.
+    pub fn set_draw_hook(&self, f: impl Fn(&Tooltip, &Gfx, f64, f64) -> (f64, f64) + 'static) {
+        *self.draw_hook.borrow_mut() = Some(Rc::new(f));
     }
 
     /// `self.tooltipFunc = function(tooltip, …) … end`.
@@ -795,6 +803,8 @@ impl<A> TooltipHost<A> {
         let func = self.tooltip_func.borrow().clone();
         if let Some(func) = func {
             func(&mut self.tooltip.borrow_mut(), f, args);
+            let hook = self.draw_hook.borrow().clone();
+            let (x, y) = hook.map_or((x, y), |h| h(&self.tooltip.borrow(), f, x, y));
             self.tooltip.borrow_mut().draw(f, x, y, Some((width, height)), view_port);
         } else if let Some(text) = self.tooltip_text.get(f) {
             let mut tt = self.tooltip.borrow_mut();

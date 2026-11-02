@@ -914,7 +914,11 @@ impl BuildMode {
                         c.build_loadouts.set_sel(g, 1, false);
                     }
                     "^7^7New Loadout" => {
-                        unimplemented!("Modules/Build.lua:320-357 New Loadout (new spec / item / skill / config sets) — U3/U5-U7")
+                        c.build_loadouts.set_sel(g, 1, false);
+                        super::main::not_ported(
+                            g,
+                            "Modules/Build.lua:320-357 New Loadout (new spec / item / skill / config sets): U5-U7",
+                        );
                     }
                     _ => {
                         let same = {
@@ -923,9 +927,13 @@ impl BuildMode {
                         };
                         match same {
                             Some(true) => c.build_loadouts.sel_by_label(&value),
-                            Some(false) => unimplemented!(
-                                "Modules/Build.lua:405-416 switching loadouts (SetActiveSpec / ItemSet / SkillSet / ConfigSet) — U3/U5-U7"
-                            ),
+                            Some(false) => {
+                                c.build_loadouts.set_sel(g, 1, false);
+                                super::main::not_ported(
+                                    g,
+                                    "Modules/Build.lua:405-416 switching loadouts (SetActiveSpec / ItemSet / SkillSet / ConfigSet): U5-U7",
+                                );
+                            }
                             None => {}
                         }
                     }
@@ -1117,7 +1125,7 @@ impl BuildMode {
             anchor("LEFT", &mm_r, "RIGHT"),
             rect(2.0, 0.0, 120.0, 18.0),
             "Manage Spectres...".to_string(),
-            |_| unimplemented!("Modules/Build.lua:1522-1551 OpenSpectreLibrary (MinionListControl) — U5"),
+            |g| super::main::not_ported(g, "Modules/Build.lua:1522-1551 OpenSpectreLibrary (MinionListControl): U5"),
         );
         let main_skill_minion_skill = DropDownControl::new(
             g,

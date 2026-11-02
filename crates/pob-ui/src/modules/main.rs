@@ -169,6 +169,40 @@ pub struct Main {
 }
 
 thread_local! {
+    /// [`not_ported`]: the unported branches this session pressed.
+    static NOT_PORTED: RefCell<Vec<String>> = const { RefCell::new(Vec::new()) };
+}
+
+/// A control the original has and this port does not yet: no crash; the note (`file:line` of the branch) goes to the list, the console and a message popup.
+pub fn not_ported(g: &mut Gfx, what: &str) {
+    NOT_PORTED.with_borrow_mut(|n| {
+        if !n.iter().any(|x| x == what) {
+            n.push(what.to_string());
+        }
+    });
+    g.con_printf(&format!("unimplemented: {what}"));
+    main().open_message_popup(
+        g,
+        "Not ported yet",
+        &format!("^7This branch of the original is not ported yet:\n{what}"),
+    );
+}
+
+/// The same note, for what draws every frame (a tooltip): no popup.
+pub fn note_not_ported(what: &str) {
+    NOT_PORTED.with_borrow_mut(|n| {
+        if !n.iter().any(|x| x == what) {
+            n.push(what.to_string());
+        }
+    });
+}
+
+/// The notes of [`not_ported`].
+pub fn not_ported_notes() -> Vec<String> {
+    NOT_PORTED.with_borrow(Vec::clone)
+}
+
+thread_local! {
     static MAIN_OBJ: RefCell<Option<Rc<Main>>> = const { RefCell::new(None) };
 }
 
@@ -1437,7 +1471,7 @@ impl Main {
         let slider = SliderControl::new(
             tl(&sa),
             rect(current_x + label_x, current_y.get(), 200.0, 20.0),
-            Some(Rc::new(move |value: f64| {
+            Some(Rc::new(move |_g: &mut Gfx, value: f64| {
                 let q = (value * 100.0 + 0.5).floor() / 100.0;
                 main().s.borrow_mut().default_item_affix_quality = q;
                 if let Some(l) = vl.borrow().as_ref() {

@@ -188,7 +188,7 @@ pub fn scroll(g: &Gfx) -> Env {
     let slider = SliderControl::new(
         None,
         rect(80.0, 100.0, 200.0, 18.0),
-        Some(Rc::new(move |_val| ch.set(ch.get() + 1))),
+        Some(Rc::new(move |_g: &mut Gfx, _val| ch.set(ch.get() + 1))),
         None,
     );
     slider.tip.set_tooltip_func(|tooltip, g, val| {
@@ -197,7 +197,7 @@ pub fn scroll(g: &Gfx) -> Env {
     });
     let div = SliderControl::new(None, rect(80.0, 130.0, 200.0, 20.0), None, None);
     div.div_count.set(Some(4.0));
-    div.set_val(0.5);
+    div.val.set(0.5); // no change function
     host.add("v", v.clone());
     host.add("h", h.clone());
     host.add("off", off);

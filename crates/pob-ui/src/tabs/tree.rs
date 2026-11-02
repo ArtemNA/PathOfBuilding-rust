@@ -120,7 +120,12 @@ pub struct TreeTab {
     pub power_job: RefCell<Option<std::thread::JoinHandle<Result<Option<PowerResult>, String>>>>,
     pub power: RefCell<Option<Rc<PowerResult>>>,
     pub power_toast: RefCell<Option<String>>,
+    power_slice_start: Cell<u64>,
+    power_last_progress: Cell<u64>,
     pub power_state: PowerListState,
+    pub timeless: crate::tabs::timeless::TimelessPersist,
+    /// The order `pairs(spec.nodes)` / `pairs(tree.clusterNodeMap)` of an oracle process (R13/R27, `tests/tree.rs`), as `PassiveTreeView::set_order_sample`.
+    pub report_order_sample: RefCell<Option<(Vec<u32>, Vec<String>)>>,
     /// The specs behind `compareSpec`, with what their summaries read.
     compare: RefCell<Option<(usize, Rc<pob_tree::PassiveSpec>)>>,
     pub summaries: RefCell<Vec<SpecSummary>>,
@@ -222,24 +227,32 @@ impl ListHooks<ByRef<ReportEntry>> for PowerHooks {
 }
 
 fn re_sort_list(list: &mut [ByRef<ReportEntry>], column: usize, allocated: bool) {
-    let cmp = |a: f64, b: f64| if allocated { a.partial_cmp(&b) } else { b.partial_cmp(&a) }.unwrap_or(std::cmp::Ordering::Equal);
+    let compare = move |a: f64, b: f64| if allocated { a < b } else { a > b };
+    let sort = pob_engine::lua::lua_sort::<ByRef<ReportEntry>>;
     match column {
-        1 => list.sort_by(|a, b| a.0.ty.as_str().cmp(b.0.ty.as_str()).then_with(|| cmp(a.0.power, b.0.power))),
-        3 => list.sort_by(|a, b| cmp(a.0.power, b.0.power)),
-        4 => list.sort_by(|a, b| match (&a.0.path_dist, &b.0.path_dist) {
-            (ReportDist::Str(_), ReportDist::Str(_)) => std::cmp::Ordering::Equal,
-            (ReportDist::Str(_), _) => std::cmp::Ordering::Greater,
-            (_, ReportDist::Str(_)) => std::cmp::Ordering::Less,
-            (ReportDist::Num(x), ReportDist::Num(y)) => x
-                .partial_cmp(y)
-                .unwrap_or(std::cmp::Ordering::Equal)
-                .then_with(|| cmp(a.0.power, b.0.power)),
-        }),
-        5 => list.sort_by(|a, b| match (&a.0.path_dist, &b.0.path_dist) {
-            (ReportDist::Num(x), ReportDist::Num(y)) if a.0.path_power == b.0.path_power => {
-                x.partial_cmp(y).unwrap_or(std::cmp::Ordering::Equal)
+        1 => sort(list, &mut |a, b| {
+            if a.0.ty == b.0.ty {
+                compare(a.0.power, b.0.power)
+            } else {
+                a.0.ty.as_str() < b.0.ty.as_str()
             }
-            _ => cmp(a.0.path_power, b.0.path_power),
+        }),
+        3 => sort(list, &mut |a, b| compare(a.0.power, b.0.power)),
+        4 => sort(list, &mut |a, b| match (&a.0.path_dist, &b.0.path_dist) {
+            // `a.pathDist == "Anoint" or a.pathDist == "Cluster"`: false; the `b` test comes second
+            (ReportDist::Str(_), _) => false,
+            (_, ReportDist::Str(_)) => true,
+            (ReportDist::Num(x), ReportDist::Num(y)) => {
+                if x == y {
+                    compare(a.0.power, b.0.power)
+                } else {
+                    x < y
+                }
+            }
+        }),
+        5 => sort(list, &mut |a, b| match (&a.0.path_dist, &b.0.path_dist) {
+            (ReportDist::Num(x), ReportDist::Num(y)) if a.0.path_power == b.0.path_power => x < y,
+            _ => compare(a.0.path_power, b.0.path_power),
         }),
         _ => {}
     }
@@ -323,16 +336,29 @@ impl TreeTab {
             let stat = self.power_stat.borrow().clone();
             let depth = self.node_power_max_depth.get();
             let threads = std::thread::available_parallelism().map_or(1, usize::from);
-            let model = engine_read(|e| e.model().clone());
+            let (model, live) = engine_read(|e| (e.model().clone(), e.live_spec_paths()));
             *self.power_job.borrow_mut() = Some(std::thread::spawn(move || {
-                pob_engine::tree_tab::power_thread(&model, stat.as_ref(), depth, threads)
+                pob_engine::tree_tab::power_thread(&model, &live, stat.as_ref(), depth, threads)
             }));
-            // TreeTab.lua:291-311 `powerBuilderProgressCallback` (no percent from the background walk)
-            let message = "Building Power Report...";
-            let mut toast = self.power_toast.borrow_mut();
-            let exists = toast.as_deref().is_some_and(|id| main().toasts.exists(id));
-            if !exists {
-                *toast = Some(main().toasts.add(message));
+            self.power_slice_start.set(g.get_time());
+        }
+        // CalcsTab.lua:656-660 the walk reports after each 100 ms; TreeTab.lua:291-311 `powerBuilderProgressCallback`. No percent: the background walk of pob-calc has no counter to read.
+        let now = g.get_time();
+        if self.power_job.borrow().is_some() && now.saturating_sub(self.power_slice_start.get()) > 100 {
+            self.power_slice_start.set(now);
+            if now.saturating_sub(self.power_last_progress.get()) >= 100 {
+                let message = "Building Power Report...";
+                self.power_report_list.label.set(Some(message.to_string()));
+                let mut toast = self.power_toast.borrow_mut();
+                if !toast.as_deref().is_some_and(|id| main().toasts.was_dismissed(id)) {
+                    self.power_last_progress.set(now);
+                    match toast.as_deref() {
+                        Some(id) if main().toasts.exists(id) => {
+                            main().toasts.update(id, message);
+                        }
+                        _ => *toast = Some(main().toasts.add(message)),
+                    }
+                }
             }
         }
         let done = self.power_job.borrow().as_ref().is_some_and(std::thread::JoinHandle::is_finished);
@@ -349,7 +375,9 @@ impl TreeTab {
         let stat = self.power_stat.borrow().clone();
         // `local powerStat = self.build.calcsTab.powerStat or data.powerStatList[1]`
         let report_stat = stat.clone().or_else(|| power_stat_list().into_iter().next());
-        let report = ok_or_panic(engine_read(|e| e.power_report(report_stat.as_ref(), &result)));
+        let mut report = ok_or_panic(engine_read(|e| e.power_report(report_stat.as_ref(), &result)));
+        let order = self.report_order_sample.borrow();
+        engine_read(|e| e.order_power_report(&mut report, report_stat.as_ref(), order.as_ref()));
         self.power_set_report(report_stat.as_ref(), Some(report));
         *self.power.borrow_mut() = Some(Rc::new(result));
         if let Some(id) = self.power_toast.borrow_mut().take() {
@@ -955,10 +983,14 @@ pub fn new_tree_tab(g: &mut Gfx) -> Rc<TreeTab> {
         power_job: RefCell::new(None),
         power: RefCell::new(None),
         power_toast: RefCell::new(None),
+        power_slice_start: Cell::new(0),
+        power_last_progress: Cell::new(0),
         power_state: PowerListState {
             show_masteries: Cell::new(true),
             ..PowerListState::default()
         },
+        timeless: crate::tabs::timeless::TimelessPersist::default(),
+        report_order_sample: RefCell::new(None),
         compare: RefCell::new(None),
         summaries: RefCell::new(Vec::new()),
     });
@@ -1510,7 +1542,52 @@ fn validate_tree_version(alternate: Option<&str>, version: Option<&[String]>) ->
     format!("{}{suffix}", t.latest_tree_version)
 }
 
-/// `OpenImportPopup` (:687-815): the tree links. poeurl: the network, U8; poeplanner: `unimplemented` too.
+/// `treeLink:gsub("/%?v=.+#","/")` (greedy: up to the last `#`).
+fn strip_version(link: &str) -> String {
+    match (link.find("/?v="), link.rfind('#')) {
+        (Some(a), Some(b)) if a + 4 < b => format!("{}/{}", &link[..a], &link[b + 1..]),
+        _ => link.to_string(),
+    }
+}
+
+/// `poePlannerVersions` (GameVersions.lua:229), read from the checkout as [`tree_version_url`] reads the urls: the data patch does not export it.
+fn poe_planner_versions(root: &str) -> HashMap<u32, String> {
+    let text = std::fs::read_to_string(format!("{root}GameVersions.lua")).unwrap_or_default();
+    let mut out = HashMap::new();
+    let Some(p) = text.find("poePlannerVersions = {") else { return out };
+    for line in text[p..].lines().skip(1) {
+        let line = line.trim();
+        if line.starts_with('}') {
+            break;
+        }
+        // a commented-out row is not in the table
+        if let Some(c) = lua_captures(line, r#"^%[(%d+)%] = "([^"]+)""#)
+            && let Ok(k) = c[0].parse::<u32>()
+        {
+            out.insert(k, c[1].clone());
+        }
+    }
+    out
+}
+
+/// What `decodeTreeLink` and `decodePoePlannerTreeLink` share after the decode (:702-710, :720-729).
+fn push_imported_spec(g: &mut Gfx, m: pob_build::SpecModel) {
+    ok_or_panic(with_engine(|e| e.push_decoded_spec(m)));
+    let t = tab();
+    let n = engine_read(pob_engine::engine::Engine::spec_count);
+    t.set_active_spec(g, n);
+    let b = main().build_mode.clone();
+    b.mod_flag.set(true);
+    t.add_undo_state();
+    b.build_flag.set(true);
+    if SPEC_LIST.with_borrow(|w| w.upgrade().is_some()) {
+        spec_list().list.borrow_mut().push(ByRef(Rc::new(())));
+        refresh_summaries();
+    }
+    main().close_popup();
+}
+
+/// `OpenImportPopup` (:687-815): the tree links. poeurl: the network, U8.
 fn open_import_popup(g: &mut Gfx) {
     let mut controls: IndexMap<String, ControlRef> = IndexMap::new();
     controls.insert(
@@ -1568,10 +1645,25 @@ fn open_import_popup(g: &mut Gfx) {
             return;
         }
         if tree_link.contains("poeurl.com/") {
-            unimplemented!("TreeTab.lua:765-794 poeurl link: the network (U8, the user's decision)");
+            crate::modules::main::not_ported(g, "TreeTab.lua:765-794 poeurl link: the network (U8, the user's decision)");
+            return;
         }
         if tree_link.contains("poeplanner.com/") {
-            unimplemented!("TreeTab.lua:795-796 DecodePoePlannerURL (PassiveSpec.lua:395-495)");
+            // :795-796 `decodePoePlannerTreeLink(treeLink:gsub("/%?v=.+#","/"))`, :690-711
+            let link = strip_version(&tree_link);
+            let root = crate::launch::launch().cfg.script_path.clone();
+            let versions = poe_planner_versions(&root);
+            let new_version = match pob_engine::engine::Engine::poe_planner_version(&link, &|v| versions.get(&v).cloned()) {
+                Ok(v) => v,
+                Err(err) => {
+                    m2.label.set(format!("^1{err}"));
+                    return;
+                }
+            };
+            let title = n2.buf.borrow().clone();
+            let m = ok_or_panic(pob_engine::engine::Engine::decode_poe_planner_url(&link, &new_version, &title));
+            push_imported_spec(g, m);
+            return;
         }
         let version_lookup = "tree/([0-9]+)%.([0-9]+)%.([0-9]+)/";
         let (url, version) = if tree_link.contains("poeskilltree.com/") {
@@ -1579,12 +1671,8 @@ fn open_import_popup(g: &mut Gfx) {
             let old = "/%?v=([0-9]+)%.([0-9]+)%.([0-9]+)%-?%w?%-?%w?#";
             let alt = lua_captures(&tree_link, "%-(%l+%-?%l*)#");
             let v = lua_captures(&tree_link, old);
-            let stripped = match (tree_link.find("/?v="), tree_link.rfind('#')) {
-                (Some(a), Some(b)) if a < b => format!("{}/{}", &tree_link[..a], &tree_link[b + 1..]),
-                _ => tree_link.clone(),
-            };
             (
-                stripped,
+                strip_version(&tree_link),
                 validate_tree_version(alt.as_ref().and_then(|a| a.first()).map(String::as_str), v.as_deref()),
             )
         } else {
@@ -1601,21 +1689,7 @@ fn open_import_popup(g: &mut Gfx) {
         // :713-731 `decodeTreeLink`
         match ok_or_panic(pob_engine::engine::Engine::decode_tree_url(&url, &version, &title)) {
             Err(err) => m2.label.set(format!("^1{err}^7")),
-            Ok(m) => {
-                with_engine(|e| e.push_spec(m));
-                let t = tab();
-                let n = engine_read(pob_engine::engine::Engine::spec_count);
-                t.set_active_spec(g, n);
-                let b = main().build_mode.clone();
-                b.mod_flag.set(true);
-                t.add_undo_state();
-                b.build_flag.set(true);
-                if SPEC_LIST.with_borrow(|w| w.upgrade().is_some()) {
-                    spec_list().list.borrow_mut().push(ByRef(Rc::new(())));
-                    refresh_summaries();
-                }
-                main().close_popup();
-            }
+            Ok(m) => push_imported_spec(g, m),
         }
     });
     import.base.enabled.set(false);
@@ -1653,8 +1727,8 @@ fn open_export_popup(g: &mut Gfx) {
     );
     controls.insert(
         "shrink".into(),
-        ButtonControl::new(None, rect(-90.0, 70.0, 140.0, 20.0), "Shrink with PoEURL".to_string(), |_g| {
-            unimplemented!("TreeTab.lua:823-836 poeurl shrink: the network (U8, the user's decision)");
+        ButtonControl::new(None, rect(-90.0, 70.0, 140.0, 20.0), "Shrink with PoEURL".to_string(), |g| {
+            crate::modules::main::not_ported(g, "TreeTab.lua:823-836 poeurl shrink: the network (U8, the user's decision)");
         }),
     );
     let link = tree_link;
@@ -2389,6 +2463,9 @@ pub fn debug_dump(g: &Gfx) -> serde_json::Value {
                 q.insert("msg".into(), json!(l.label.get(g)));
             }
         }
+        if p.title.get(g) == "Find a Timeless Jewel" {
+            q.insert("timeless".into(), crate::tabs::timeless::debug_dump(g));
+        }
         d["popup"] = serde_json::Value::Object(q);
     }
     d
@@ -2430,7 +2507,9 @@ pub fn debug_input_state(g: &Gfx) -> serde_json::Value {
                 && n.path.as_ref().is_some_and(|p| p.len() <= 4)
                 && n.ascendancy_name().is_none()
         })
-        .find_map(|n| on_screen(n).map(|(x, y)| json!({ "id": n.id, "x": x, "y": y, "path": n.path.as_ref().map_or(0, Vec::len) })));
+        .filter_map(|n| on_screen(n).map(|(x, y)| (n.id, x, y, n.path.as_ref().map_or(0, Vec::len))))
+        .min_by_key(|t| t.0)
+        .map(|(id, x, y, path)| json!({ "id": id, "x": x, "y": y, "path": path }));
     let _ = g;
     json!({
         "ready": true,
@@ -2442,6 +2521,15 @@ pub fn debug_input_state(g: &Gfx) -> serde_json::Value {
         "search": v.search_str,
         "target": target,
     })
+}
+
+/// The test harness: the draw and input order of the open popup's controls = `pairs(popup.controls)` of the oracle process (R13: a label without a colour escape takes the colour its
+/// predecessor left, ControlHost.lua `DrawControls`).
+pub fn set_popup_order_sample(names: &[String]) {
+    if let Some(p) = main().popups.borrow().first() {
+        let rank = |k: &str| names.iter().position(|n| n == k).unwrap_or(usize::MAX);
+        p.host.controls.borrow_mut().sort_by(|a, _, b, _| rank(a).cmp(&rank(b)));
+    }
 }
 
 /// The test harness: blocks until the power walk ended, as the oracle's frames do.
