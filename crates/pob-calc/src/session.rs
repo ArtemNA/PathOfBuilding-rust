@@ -540,7 +540,13 @@ impl CalcSession {
             .borrow()
             .clone()
             .expect("the items are moved into BuildShared only once it exists");
-        let s = Rc::new(BuildShared::new(&self.core.build, items, self.core.opts.parse_mode)?);
+        let mut s = BuildShared::new(&self.core.build, items, self.core.opts.parse_mode)?;
+        if let Some(keys) = &self.core.opts.live_alloc_pairs {
+            let mut spec = (*s.spec).clone();
+            spec.live_alloc_pairs = Some(keys.clone());
+            s.spec = Rc::new(spec);
+        }
+        let s = Rc::new(s);
         *self.core.items.borrow_mut() = None;
         *self.core.shared.borrow_mut() = Some(s.clone());
         Ok(s)

@@ -1061,6 +1061,7 @@ fn init_env_core(
         mode_combat,
         mode_effective,
         alloc_nodes: IndexMap::new(),
+        alloc_table: None,
         initial_node_mod_db: ModStore::new_list(None),
         keystones_added: IndexMap::new(),
         radius_jewel_list: Vec::new(),
@@ -1460,8 +1461,13 @@ fn init_env_core(
         // Upstream's `pairs` over the copy decides the order of the tree's mods in the modDB (the `Sum`s of non-integer mods are order
         // sensitive, R-party); `ParseMode::CacheOnly` reproduces pob-ts, which walks insertion order (D13).
         None if parse_mode == pob_parser::ParseMode::Full && env.spec.alloc_order == pob_tree::AllocOrder::LuaJit => {
-            let order = env.spec.alloc_nodes_copy_order();
-            env.alloc_nodes = order.iter().map(|id| (*id, env.spec.alloc_nodes[id])).collect();
+            let table = env.spec.alloc_nodes_copy_table();
+            env.alloc_nodes = table
+                .pairs_keys()
+                .iter()
+                .map(|k| (*k as u32, env.spec.alloc_nodes[&(*k as u32)]))
+                .collect();
+            env.alloc_table = Some(table);
         }
         None => env.alloc_nodes = env.spec.alloc_nodes.clone(),
     }
@@ -2204,7 +2210,7 @@ fn init_env_core(
             .spec
             .node_idx(id)
             .unwrap_or_else(|| panic!("Modules/CalcSetup.lua:1391: spec.nodes[{id}] is nil"));
-        env.alloc_nodes.insert(id, spec_idx);
+        alloc_nodes_set(&mut env, id, spec_idx);
         env.granted_passives.insert(id, true);
         env.extra_radius_node_list.shift_remove(&id);
     }
@@ -2683,7 +2689,7 @@ fn granted_ascendancy_nodes(env: &mut Env) {
                     let id = env.spec.tree.nodes[tree_idx].id;
                     // `env.allocNodes[node.id] = node` -- the TREE node upstream; the spec node here (same mods).
                     if let Some(spec_idx) = env.spec.node_idx(id) {
-                        env.alloc_nodes.insert(id, spec_idx);
+                        alloc_nodes_set(env, id, spec_idx);
                         env.granted_passives.insert(id, true);
                     }
                 }
@@ -2873,4 +2879,19 @@ pub(crate) fn with_mod_list_inputs<R>(env: &Env, f: impl FnOnce(&crate::skill_mo
         calcs: env.mode == "CALCS",
     };
     f(&inp)
+}
+
+/// `env.allocNodes[id] = node` (CalcSetup.lua:1410, :1426): the `pairs` order of the table after the store, which the key may take from the middle of a free chain or which may rehash.
+fn alloc_nodes_set(env: &mut Env, id: u32, idx: usize) {
+    env.alloc_nodes.insert(id, idx);
+    if let Some(t) = env.alloc_table.as_mut() {
+        t.set(f64::from(id));
+        let mut old = std::mem::take(&mut env.alloc_nodes);
+        env.alloc_nodes = t
+            .pairs_keys()
+            .iter()
+            .filter_map(|k| old.swap_remove(&(*k as u32)).map(|i| (*k as u32, i)))
+            .collect();
+        debug_assert!(old.is_empty());
+    }
 }

@@ -819,7 +819,7 @@ pub fn build_power_walk(
         live_paths,
         progress,
     } = walk;
-    let (calc, granted) = ready_session(build, opts)?;
+    let (calc, granted) = ready_session(build, opts.clone())?;
     let spec = calc.session().shared().map_err(|e| e.to_string())?.spec.clone();
     let plan_spec = match live_paths {
         Some(live) => {
@@ -876,6 +876,7 @@ pub fn build_power_walk(
             let work = &work;
             let failed = failed.clone();
             let stop = &stop;
+            let opts = opts.clone();
             scope.spawn(move || {
                 // `BuildModel` is plain data; every `Rc` of a session stays on its thread.
                 match ready_session(build, opts) {

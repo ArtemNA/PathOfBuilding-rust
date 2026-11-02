@@ -867,7 +867,7 @@ fn repl_value(v: OV) -> Result<Option<String>, String> {
 }
 
 /// `modStore:Combine(modType, modCfg, ...)` (ModStore.lua:145).
-fn combine(store: &StoreRef, ty: &str, cfg: &ModCfg, names: &[&str]) -> Result<Value, String> {
+pub(crate) fn combine(store: &StoreRef, ty: &str, cfg: &ModCfg, names: &[&str]) -> Result<Value, String> {
     let s = store.borrow();
     let r = match ty {
         "MORE" => s.more(Some(cfg), names).map(Value::Num),

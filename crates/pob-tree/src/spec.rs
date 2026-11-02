@@ -343,6 +343,8 @@ pub struct PassiveSpec {
     /// sprite for, and then `node.sprites` reads the tree node's through the metatable (R21); a tattoo fresh from the popup keeps the `{ }` of PassiveTree.lua:774-777.
     pub imported_tattoos: Vec<u32>,
     pub alloc_order: AllocOrder,
+    /// `pairs(build.spec.allocNodes)` of the Lua's live object when this spec is a fresh load of the same nodes: the table's history is not in the saved list (R24).
+    pub live_alloc_pairs: Option<Vec<f64>>,
     /// What BuildAllDependsAndPaths reads off `self.build.itemsTab.items[itemId]` for the jewels (`crate::timeless`): set by
     /// the caller once the items are parsed (pob-calc `post_load_spec`); empty = no items (a spec loaded without its build).
     pub(crate) jewel_items: Vec<(f64, Rc<crate::timeless::SpecJewel>)>,
@@ -389,6 +391,7 @@ impl PassiveSpec {
             hash_overrides: IndexMap::new(),
             imported_tattoos: Vec::new(),
             alloc_order: AllocOrder::LuaJit,
+            live_alloc_pairs: None,
             jewel_items: Vec::new(),
             alloc_table: crate::lj_table::LjTable::new(),
             unimplemented: Vec::new(),
@@ -957,8 +960,23 @@ impl PassiveSpec {
     /// `pairs` order of `allocNodes` ([`AllocOrder::LuaJit`], [`crate::lj_table`]). What `pairs(env.allocNodes)` walks, so the order
     /// of the tree's mods in the modDB and of their (non-associative) float sums (R-party, D13/R11).
     pub fn alloc_nodes_copy_order(&self) -> Vec<u32> {
-        let keys = self.alloc_table.pairs_keys();
-        crate::lj_table::pairs_order(&keys).into_iter().map(|k| k as u32).collect()
+        self.alloc_nodes_copy_table().pairs_keys().into_iter().map(|k| k as u32).collect()
+    }
+
+    /// The table of [`Self::alloc_nodes_copy_order`]: `env.allocNodes` goes on growing, CalcSetup.lua:1410/:1426 add the granted passives.
+    pub fn alloc_nodes_copy_table(&self) -> crate::lj_table::LjTable {
+        let mut t = crate::lj_table::LjTable::new();
+        let own = self.alloc_table.pairs_keys();
+        // The live object's order, when it holds the same nodes (after a Convert or a Decode the fresh load prunes what the live object keeps, R35).
+        let same = |k: &[f64]| k.len() == own.len() && k.iter().all(|x| self.alloc_nodes.contains_key(&(*x as u32)));
+        let keys = match &self.live_alloc_pairs {
+            Some(k) if same(k) => k,
+            _ => &own,
+        };
+        for k in keys {
+            t.set(*k);
+        }
+        t
     }
 
     /// :1092-1600, the R3 subset: reset dependencies, restore nodes from the tree, the timeless-jewel conquests (R5.5c,
