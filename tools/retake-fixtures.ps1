@@ -19,6 +19,7 @@ $probes = @(
     @('export-data-patch', @(), 'data-patches/mod-numbers.json'),
     @('export-jewel-upvalues', @(), 'data-patches/mod-parser-upvalues.json'),
     @('export-legion', @(), 'data-patches/legion-passives.json'),
+    @('export-tattoo', @(), 'data-patches/tattoo-passives.json'),
     @('export-tree-versions', @(), 'data-patches/tree-versions.json'),
     @('export-gemdata', @(), 'crates/pob-data/tests/fixtures/gemdata-*.json + data-patches/skill-levels-shape.json'),
     @('export-numeric', @(), 'crates/pob-lua/tests/fixtures/luajit-numeric.json (docker)'),

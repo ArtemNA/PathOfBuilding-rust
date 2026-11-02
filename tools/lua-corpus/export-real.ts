@@ -4,13 +4,16 @@
 // (`output.{nums,strs,bools}` = every scalar, numbers `%.17g`; `output.tables` = structural dumps). Load notes: ConPrintf lines printed during
 // the load, gems the load could not resolve (`errMsg` / no `gemData`), the number of items, `promptMsg`.
 // A build that does not load (or whose buildOutput raises) is recorded with `loadError` / `calcError` -- the Rust gate reports it, not gates it.
-// Variant `p5stripped` (when it changes the file): the build without tattoo overrides and the <Party> section (P5 modules pob-calc does not
-// port), its XML written next to the fixture. R13: a build with an old-format gem whose variant LuaJIT resolves by `pairs` over string keys is
+// Variant `p5stripped` (when it changes the file): the build without the <Party> section (the P5 module pob-calc does not port; tattoo
+// overrides are ported since R-tattoo and stay), its XML written next to the fixture. R13: a build with an old-format gem whose variant LuaJIT resolves by `pairs` over string keys is
 // run until the process that took Rust's order is seen (`r13` in the fixture). Two passes; a job whose passes differ is reported, no fixture.
 // Fixtures: builds/pc-fixtures/<league>__<file>[.p5stripped].luajit.json (gitignored -- they carry the user's build data).
 // Run from the pob-rust root (Node 24, docker):
 //   node tools/lua-corpus/export-real.ts [--set pc|user|corpus] [regex]  -> fixtures for every build of the set whose relative path matches
 //   node tools/lua-corpus/export-real.ts perf [re] -> builds/pc-fixtures/_perf-luajit.json: buildOutput(MAIN) ms (default: 3.29)
+//   node tools/lua-corpus/export-real.ts tree-save [re] -> <slug>.tree-save.json for every build of the set with tattoos (`<Override `): LuaJIT's
+//     `build.treeTab:Save` composed by xml.lua ComposeXML after the load (PassiveSpec.lua:197-265, R-tattoo; gate crates/pob-engine/tests/tattoo_save.rs)
+//   `--out <dir>` (any mode): write there instead of builds/<set>-fixtures (a re-take into a folder of one's own).
 // Sets (R-UP, builds/README.md): pc = builds/pc/**/*.xml -> builds/pc-fixtures; user = builds/user/*.{xml,txt} (txt = a build code) ->
 // builds/user-fixtures; corpus = builds/corpus/manifest.json -> builds/corpus-fixtures. All three fixture dirs are gitignored.
 // Sampling rule for an update (UPDATE-PROMPT.md): pc -- every build of the newest league + 2-3 per older league/folder.
@@ -35,7 +38,13 @@ const SET = (() => {
 })()
 if (!['pc', 'user', 'corpus'].includes(SET)) throw new Error(`--set ${SET}: expected pc | user | corpus`)
 const PC = SET === 'corpus' ? ROOT : resolve(ROOT, `builds/${SET}`)
-const OUT = resolve(ROOT, `builds/${SET}-fixtures`)
+const OUT = (() => {
+  const i = process.argv.indexOf('--out')
+  if (i < 0) return resolve(ROOT, `builds/${SET}-fixtures`)
+  const d = resolve(process.argv[i + 1] ?? '')
+  process.argv.splice(i, 2)
+  return d
+})()
 const POB = UPSTREAM_POB
 const POBTS = 'C:/pob-work/pob-ts'
 const ORACLE = UPSTREAM_ORACLE
@@ -117,8 +126,8 @@ function rustR13Key(xml: Buffer): { key: string; ambiguous: number } {
   return { key: ids.sort(byteOrder).join('|'), ambiguous }
 }
 const R13_TRIES = 30
-/** the build without the inputs of the P5 modules pob-calc does not port: tattoo overrides (`<Overrides>` children) and the party tab (`<Party>`) */
-const stripP5 = (xml: Buffer): Buffer => Buffer.from(xml.toString('latin1').replace(/<Overrides>[\s\S]*?<\/Overrides>/g, '<Overrides/>').replace(/\n?[ \t]*<Party[\s>][\s\S]*?<\/Party>/g, ''), 'latin1')
+/** the build without the inputs of the P5 module pob-calc does not port: the party tab (`<Party>`); tattoos are ported (R-tattoo) */
+const stripP5 = (xml: Buffer): Buffer => Buffer.from(xml.toString('latin1').replace(/\n?[ \t]*<Party[\s>][\s\S]*?<\/Party>/g, ''), 'latin1')
 
 // --- docker LuaJIT (the ljEval of export-offence-synth.ts, LUT dir of this probe) ---------------------------------------------------
 const JEWEL_SHIM = String.raw`
@@ -314,8 +323,8 @@ async function fixtures(filter?: RegExp): Promise<void> {
   mkdirSync(OUT, { recursive: true })
   const image = (await run('docker', ['image', 'inspect', '--format', '{{index .RepoDigests 0}}', IMAGE]).catch(() => ({ stdout: IMAGE }))).stdout.trim()
   const pobSha = (await run('git', ['-C', POB, 'rev-parse', '--short', 'HEAD'])).stdout.trim()
-  // jobs: every build as is, plus -- when it carries one -- the build with the inputs of the two unported P5 modules removed (variant
-  // `p5stripped`: tattoo <Override>s, PassiveSpec.lua:158-186; the <Party> section, PartyTab), written next to the fixture: the gate on
+  // jobs: every build as is, plus -- when it carries one -- the build with the inputs of the unported P5 module removed (variant
+  // `p5stripped`: the <Party> section, PartyTab), written next to the fixture: the gate on
   // everything else the build exercises.
   type Job = { rel: string; slug: string; xml: Buffer; variant?: string; xmlFile?: string }
   const jobs: Job[] = files.flatMap((f) => {
@@ -380,5 +389,33 @@ async function perf(filter: RegExp): Promise<void> {
   writeFileSync(resolve(OUT, '_perf-luajit.json'), JSON.stringify(out, null, 1) + '\n')
 }
 
-if (process.argv[2] === 'perf') await perf(new RegExp(process.argv[3] ?? '^3\\.29/'))
+/** R-tattoo: LuaJIT's `<Tree>` of SaveDB (TreeTab:Save -> every PassiveSpec:Save, PassiveSpec.lua:197-265) for the builds with tattoos, two runs. */
+async function treeSave(filter?: RegExp): Promise<void> {
+  const files = listBuilds().filter((f) => (!filter || filter.test(relOf(f))) && desktopBytes(f).includes('<Override '))
+  if (!files.length) throw new Error(`no build with tattoos of set ${SET} matches ${filter}`)
+  await prepareLuts(files)
+  mkdirSync(OUT, { recursive: true })
+  const pobSha = (await run('git', ['-C', POB, 'rev-parse', '--short', 'HEAD'])).stdout.trim()
+  const SAVE = String.raw`
+if LOAD.error then return { loadError = LOAD.error, loadNotes = LOAD.notes } end
+local t = { elem = "Tree" }
+build.treeTab:Save(t)
+local text, err = require("xml").ComposeXML(t)
+return { tree = text, composeError = err, loadNotes = LOAD.notes }
+`
+  const one = (f: string): Promise<Rec> => ljEval(loadChunk(desktopBytes(f), relOf(f).replace(/^.*\//, '').replace(/\.xml$/, '')) + SAVE)
+  const a = await pool(files, one)
+  const b = await pool(files, one)
+  files.forEach((f, i) => {
+    const rel = relOf(f), slug = slugFor(f)
+    if (ser(a[i]) !== ser(b[i])) { console.log(`DIFFERS between passes: ${rel}`); return }
+    const o = a[i]!
+    const text = ser({ build: rel, set: SET, slug, xmlSha256: sha(desktopBytes(f)), ...o, producer: { luajit: 'LuaJIT docker, desktop text mode -> loadBuildFromXML -> build.treeTab:Save -> xml.ComposeXML', pobSha, generator: 'tools/lua-corpus/export-real.ts tree-save' } }) + '\n'
+    writeFileSync(resolve(OUT, `${slug}.tree-save.json`), text)
+    console.log(`${o.loadError ? 'loadError' : o.composeError ? 'composeError' : 'ok'}\t${(desktopBytes(f).toString('latin1').match(/<Override /g) ?? []).length} overrides\t${rel}`)
+  })
+}
+
+if (process.argv[2] === 'tree-save') await treeSave(process.argv[3] ? new RegExp(process.argv[3]) : undefined)
+else if (process.argv[2] === 'perf') await perf(new RegExp(process.argv[3] ?? '^3\\.29/'))
 else await fixtures(process.argv[2] ? new RegExp(process.argv[2]) : undefined)

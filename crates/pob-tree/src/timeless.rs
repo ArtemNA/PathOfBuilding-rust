@@ -4,7 +4,7 @@
 //! `ReconnectNodeToClassStart` :1722), line for line. The LUTs are pob-data's (`pob_data::timeless::read_lut`).
 //!
 //! Out of scope: abyss conquests (jewel types 7-11, `data.readAbyssJewelLUT`/`resolveAbyssJewelComponent`, :1110-1127 and
-//! :1253-1268) -- an explicit error; tattoos (`hashOverrides`, P5); Intuitive Leap-like bookkeeping of the radius pass (P5).
+//! :1253-1268) -- an explicit error; Intuitive Leap-like bookkeeping of the radius pass (P5).
 //!
 //! D13 -- the `pairs` walks of the conquest:
 //! * `pairs(self.jewels)` building `radiusJewels` (:1130): only decides which jewel wins a node two conquering jewels share; that
@@ -24,7 +24,7 @@ use pob_lua::pattern::{Repl, gsub, match_};
 use pob_lua::tostring_num;
 use pob_mods::{Mod, ModType, Value, create_mod};
 
-use crate::spec::PassiveSpec;
+use crate::spec::{PassiveSpec, Replaced};
 use crate::tree::{NodeStats, NodeType, PassiveTree, StatHolder, TreeError, process_stats};
 
 const SPEC: &str = "Classes/PassiveSpec.lua";
@@ -608,7 +608,7 @@ impl PassiveSpec {
                 self.replace_with_legion(i, &ln);
             }
         } else if ty == NodeType::Normal {
-            let attribute = ATTRIBUTES.contains(&self.nodes[i].dn()); // `or node.isTattoo` -- tattoos are P5 (nil)
+            let attribute = ATTRIBUTES.contains(&self.nodes[i].dn()) || self.nodes[i].is_tattoo();
             match cb.conqueror_type.as_str() {
                 "vaal" => {
                     let tbl = lut(1371)?;
@@ -662,10 +662,10 @@ impl PassiveSpec {
     fn replace_with_legion(&mut self, i: usize, ln: &Rc<LegionNode>) {
         let node = &mut self.nodes[i];
         // `if old.sd == newNode.sd then return 1 end`
-        if node.own_sd.is_none() && node.replaced.as_ref().is_some_and(|r| Rc::ptr_eq(r, ln)) {
+        if node.own_sd.is_none() && matches!(&node.replaced, Some(Replaced::Legion(r)) if Rc::ptr_eq(r, ln)) {
             return;
         }
-        node.replaced = Some(ln.clone());
+        node.replaced = Some(Replaced::Legion(ln.clone()));
         node.own_sd_effect = None;
         node.own_sd = None;
         // `old.modList = new("ModList"); AddList(newNode.modList)` -- the same mod objects (read through `replaced`).

@@ -2385,7 +2385,7 @@ fn spec_copy(env: &Env) -> SpecDbs {
 }
 
 /// CalcSetup.lua:702-707 the allocation counts initEnv starts from (`env.spec`'s, `copyTable(allocatedMasteryTypes)`), then :714-770 what
-/// `override.addNodes` / `removeNodes` change (tattoos are P5: `allocatedTattooTypes` stays empty).
+/// `override.addNodes` / `removeNodes` change.
 #[derive(Clone)]
 struct AllocCounts {
     notable: f64,
@@ -2393,6 +2393,8 @@ struct AllocCounts {
     mastery: f64,
     mastery_type: f64,
     mastery_types: IndexMap<String, f64>,
+    /// `copyTable(env.spec.allocatedTattooTypes)` (CalcSetup.lua:719 at 3dbca4463).
+    tattoo_types: IndexMap<String, f64>,
 }
 
 impl AllocCounts {
@@ -2404,6 +2406,11 @@ impl AllocCounts {
             mastery_type: f64::from(spec.allocated_mastery_type_count),
             mastery_types: spec
                 .allocated_mastery_types
+                .iter()
+                .map(|(k, &v)| (k.clone(), f64::from(v)))
+                .collect(),
+            tattoo_types: spec
+                .allocated_tattoo_types
                 .iter()
                 .map(|(k, &v)| (k.clone(), f64::from(v)))
                 .collect(),
@@ -2441,6 +2448,12 @@ impl AllocCounts {
             pob_tree::NodeType::Keystone => self.keystone += 1.0,
             _ => {}
         }
+        // CalcSetup.lua:749-756
+        if node.is_tattoo()
+            && let Some(ot) = node.override_type()
+        {
+            *self.tattoo_types.entry(ot.to_owned()).or_insert(0.0) += 1.0;
+        }
     }
 
     /// :750-768
@@ -2460,6 +2473,13 @@ impl AllocCounts {
             pob_tree::NodeType::Notable => self.notable -= 1.0,
             pob_tree::NodeType::Keystone => self.keystone -= 1.0,
             _ => {}
+        }
+        // CalcSetup.lua:775-779
+        if node.is_tattoo()
+            && let Some(ot) = node.override_type()
+            && let Some(c) = self.tattoo_types.get_mut(ot)
+        {
+            *c -= 1.0;
         }
     }
 }
@@ -2482,7 +2502,10 @@ fn alloc_multipliers(env: &Env, counts: &AllocCounts) {
     {
         alloc_mult("Multiplier:AllocatedLifeMastery", life);
     }
-    // :792-796 `allocatedTattooTypes` -- tattoos are P5; the table is always empty.
+    // CalcSetup.lua:805-809 `env.modDB.multipliers[type] = count` (no mod; distinct keys -- the `pairs` order cannot matter).
+    for (ty, &count) in &counts.tattoo_types {
+        set_mult(&env.mod_db, ty, count);
+    }
 }
 
 /// CalcSetup.lua:1403-1418 Forbidden Flame/Flesh. `pairs` over the List sequence = in order.

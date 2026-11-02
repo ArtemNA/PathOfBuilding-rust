@@ -10,8 +10,10 @@
 //! Timeless jewels (legion passives, LUT conquests, R5.5c) are in [`timeless`]; the caller hands the spec the jewels' item data
 //! ([`PassiveSpec::set_jewel_items`]) before `PostLoad`.
 //!
-//! Not ported (explicit `unimplemented` lists on `PassiveTree`/`PassiveSpec`): abyss jewels, tattoos,
-//! paths/`pathDist`, URL specs, tattoo passives, alternate ascendancies, display-only assets.
+//! Tattoos (`<Override>`, `hashOverrides`, R-tattoo) are in [`tattoo`]: the tattoo passives of the tree and their ReplaceNode in the spec.
+//!
+//! Not ported (explicit `unimplemented` lists on `PassiveTree`/`PassiveSpec`): abyss jewels, URL specs, alternate ascendancies,
+//! display-only assets.
 
 #![forbid(unsafe_code)]
 
@@ -20,6 +22,7 @@ pub mod lj_table;
 pub mod modtools;
 pub mod radius;
 pub mod spec;
+pub mod tattoo;
 pub mod timeless;
 pub mod tree;
 
@@ -27,6 +30,7 @@ pub use cluster::{ClusterJewel, JewelLookup};
 pub use pob_parser::ParseMode;
 pub use radius::{NodesInRadius, RadiusInfo, set_jewel_radii};
 pub use spec::{AllocNodeCounts, AllocOrder, PassiveSpec, SpecNode};
+pub use tattoo::{Tattoo, TattooNode};
 pub use timeless::{ConqueredBy, ConquerorId, Legion, LegionNode, SpecJewel};
 pub use tree::{
     AscendClass, AscendEntry, MasteryEffect, NodeModLine, NodeStats, NodeType, PassiveTree, TreeClass, TreeError, TreeGroup, TreeNode,

@@ -978,7 +978,11 @@ fn save_skills(inp: &SaveInput<'_>) -> Result<XmlElement, String> {
 // --- TreeTab:Save / PassiveSpec:Save (TreeTab.lua:536-547, PassiveSpec.lua:197-249) ----------------------------------------------------
 
 fn save_tree(inp: &SaveInput<'_>) -> Result<XmlElement, String> {
-    let (m, env) = (inp.model, &inp.res.env);
+    save_tree_of(inp.model, &inp.res.env)
+}
+
+/// `TreeTab:Save(xml)` -- the `<Tree>` element of SaveDB from the model and the MAIN env (public for the tattoo gate, `tests/tattoo_save.rs`).
+pub fn save_tree_of(m: &BuildModel, env: &pob_calc::Env) -> Result<XmlElement, String> {
     let specs = &m.tree.specs;
     // TreeTab.lua:526/:551 `activeSpec = m_min(specId, #specList)`
     let active = pob_lua::number::min2(m.tree.active_spec, specs.len().max(1) as f64);
@@ -1049,10 +1053,27 @@ fn save_spec(sm: &SpecModel, spec: &PassiveSpec) -> Result<XmlElement, String> {
         }
     }
     push(&mut x, sockets);
-    if !sm.overrides.is_empty() {
-        return Err("unimplemented: Classes/PassiveSpec.lua:236-246 <Override> (hashOverrides, tattoos -- P5)".into());
+    // PassiveSpec.lua:247-265 -- the tattoos sorted by node id, each `{ nodeId, icon, activeEffectImage, dn }` + its `sd` lines as text
+    let mut overrides = elem("Overrides");
+    let mut override_ids: Vec<u32> = spec.hash_overrides.keys().copied().collect();
+    override_ids.sort_unstable();
+    for node_id in override_ids {
+        let t = &spec.hash_overrides[&node_id];
+        let mut o = with(
+            elem("Override"),
+            &[
+                ("nodeId", Some(node_id.to_string())),
+                ("icon", Some(t.icon.clone())),
+                ("activeEffectImage", Some(t.active_effect_image.clone())),
+                ("dn", Some(t.dn.clone())),
+            ],
+        );
+        for line in &t.sd {
+            text(&mut o, line);
+        }
+        push(&mut overrides, o);
     }
-    push(&mut x, elem("Overrides"));
+    push(&mut x, overrides);
     Ok(x)
 }
 

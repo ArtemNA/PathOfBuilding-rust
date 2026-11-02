@@ -26,6 +26,7 @@ pub mod rules;
 pub mod sha256;
 pub mod skill_stat_map;
 pub mod skills;
+pub mod tattoo;
 pub mod timeless;
 pub mod tree;
 pub mod wire;

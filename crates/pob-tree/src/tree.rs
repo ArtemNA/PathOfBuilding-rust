@@ -1,6 +1,6 @@
 //! `Classes/PassiveTree.lua` -- the calc-relevant half (pob-ts `src/tree/tree.ts`): node migration, node types, the name
 //! maps, orbit geometry and `ProcessStats` (stat lines -> `node.modList`). Sprites, assets, connectors, jewel radii,
-//! legion/tattoo subgraphs and `buildTreeDependentUniques` are P5 and are listed in `unimplemented` rather than dropped
+//! legion subgraphs and `buildTreeDependentUniques` are P5 (the tattoo passives: `crate::tattoo`) and are listed in `unimplemented` rather than dropped
 //! silently (CALC-ARCH §3, §11).
 //!
 //! D13: upstream walks `pairs(self.nodes)` / `pairs(self.classes)` in hash order. Every loop here goes in ascending node id
@@ -215,6 +215,8 @@ pub struct PassiveTree {
     pub(crate) nodes_in_radius: HashMap<u32, crate::radius::NodesInRadius>,
     /// `self.legion` (PassiveTree.lua:79 + :723-787), processed on first use (`crate::timeless`).
     pub(crate) legion: std::cell::OnceCell<Result<crate::timeless::Legion, TreeError>>,
+    /// `self.tattoo` (PassiveTree.lua:80 + :758-786), processed on first use (`crate::tattoo`).
+    pub(crate) tattoo: std::cell::OnceCell<Result<crate::tattoo::Tattoo, TreeError>>,
     /// Upstream branches this crate does not port; read by reports, never by the calc.
     pub unimplemented: Vec<String>,
 }
@@ -456,12 +458,13 @@ impl PassiveTree {
             max_jewel_radius: 0.0,
             nodes_in_radius: HashMap::new(),
             legion: std::cell::OnceCell::new(),
+            tattoo: std::cell::OnceCell::new(),
             unimplemented: vec![
-                "PassiveTree.lua:80 tattoo passives (P5); legion passives (:79, :726-756) are built on first use".into(),
+                "PassiveTree.lua:79-80 legion and tattoo passives are built on first use (crate::timeless, crate::tattoo)".into(),
                 "PassiveTree.lua:131-172 alternate_ascendancies / secondaryAscendNameMap (P5)".into(),
                 "PassiveTree.lua:232-500 assets, sprites, node overlays (display only)".into(),
                 "PassiveTree.lua:623-640 connector polygons (display only)".into(),
-                "PassiveTree.lua:758-786 tattoo nodes (P5); legion sprites (:746-751) are display only".into(),
+                "PassiveTree.lua:746-751, :771-783 legion/tattoo sprites and the tattoo idMap are display only".into(),
                 "PassiveTree.lua:790 buildTreeDependentUniques (P5)".into(),
             ],
         };

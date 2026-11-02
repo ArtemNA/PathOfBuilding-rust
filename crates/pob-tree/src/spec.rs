@@ -1,6 +1,6 @@
 //! `Classes/PassiveSpec.lua` -- the subset a calculation needs (pob-ts `src/tree/spec.ts`, CALC-ARCH §3): which nodes a
 //! build has allocated, and with what mods. Cluster-jewel subgraphs are `crate::cluster` (R5.5a): their nodes are owned
-//! spec nodes appended after the Init nodes. Other jewels (abyss/tattoo/Intuitive Leap)
+//! spec nodes appended after the Init nodes. Tattoos (`hashOverrides`) are `crate::tattoo`. Other jewels (abyss/Intuitive Leap)
 //! and the URL format are P5; each is listed in `unimplemented`. Node paths (`pathDist`/`path`, R8.7) are [`PassiveSpec::build_paths`].
 //!
 //! A spec node is upstream's `setmetatable({ linked = {}, power = {} }, treeNode)`: a view onto the tree node that only grows
@@ -50,6 +50,13 @@ pub(crate) enum NodeBase {
     Owned(Rc<TreeNode>),
 }
 
+/// The node `ReplaceNode` put on a spec node (other than its own tree node).
+#[derive(Clone)]
+pub(crate) enum Replaced {
+    Legion(Rc<crate::timeless::LegionNode>),
+    Tattoo(Rc<crate::tattoo::TattooNode>),
+}
+
 #[derive(Clone)]
 pub struct SpecNode {
     tree: Rc<PassiveTree>,
@@ -75,16 +82,17 @@ pub struct SpecNode {
     pub distance_to_class_start: Option<f64>,
     /// `node.conqueredBy` (PassiveSpec.lua:1110-1200): the timeless jewel's `jewelData.conqueredBy` (one shared table).
     pub conquered_by: Option<Rc<crate::timeless::ConqueredBy>>,
-    /// `ReplaceNode(node, legionNode)` (:1697): dn/sd/name/mods/modKey/modList/keystoneMod now come from the legion node.
-    pub(crate) replaced: Option<Rc<crate::timeless::LegionNode>>,
+    /// `ReplaceNode(node, legionNode | tattooNode)` (:1726): dn/sd/name/mods/modKey/modList/keystoneMod (and a tattoo's isTattoo/overrideType)
+    /// now come from that node.
+    pub(crate) replaced: Option<Replaced>,
     /// Own `sd`: the `masteryEffects[effect].sd` table (identity is what ReplaceNode compares, :1699).
     pub(crate) own_sd_effect: Option<u64>,
     /// Own `sd`: a mastery effect's, or the table `NodeAdditionOrReplacementFromString` made (:2469/:2473).
     pub(crate) own_sd: Option<Vec<String>>,
     /// Own `mods`/`modKey`/`modList` written by `ProcessStats` on this node, or by a timeless addition/class-start reconnect.
     pub(crate) own_stats: Option<NodeStats>,
-    own_unknown: Option<bool>,
-    own_extra: Option<bool>,
+    pub(crate) own_unknown: Option<bool>,
+    pub(crate) own_extra: Option<bool>,
     pub(crate) own_reminder_text: Option<Vec<String>>,
 }
 
@@ -144,16 +152,32 @@ impl SpecNode {
 
     pub fn dn(&self) -> &str {
         match &self.replaced {
-            Some(l) => &l.dn,
+            Some(Replaced::Legion(l)) => &l.dn,
+            Some(Replaced::Tattoo(t)) => &t.dn,
             None => &self.tree_node().dn,
         }
     }
 
-    /// `node.name` -- a legion node has none (ReplaceNode :1704 copies the nil).
+    /// `node.name` -- a legion node has none (ReplaceNode :1733 copies the nil). A tattoo's `nil` name reads the tree node's through the
+    /// metatable (`crate::tattoo`); the runegrafts have their own.
     pub fn name(&self) -> Option<&str> {
         match &self.replaced {
-            Some(_) => None,
+            Some(Replaced::Legion(_)) => None,
+            Some(Replaced::Tattoo(t)) => t.name.as_deref().or(self.tree_node().name.as_deref()),
             None => self.tree_node().name.as_deref(),
+        }
+    }
+
+    /// `node.isTattoo` (ReplaceNode :1740 -- `nil` again after a legion node or the tree node replaced the tattoo).
+    pub fn is_tattoo(&self) -> bool {
+        matches!(&self.replaced, Some(Replaced::Tattoo(t)) if t.is_tattoo)
+    }
+
+    /// `node.overrideType` (ReplaceNode :1741).
+    pub fn override_type(&self) -> Option<&str> {
+        match &self.replaced {
+            Some(Replaced::Tattoo(t)) => Some(&t.override_type),
+            _ => None,
         }
     }
 
@@ -164,7 +188,8 @@ impl SpecNode {
     pub fn sd(&self) -> &[String] {
         match (&self.own_sd, &self.replaced) {
             (Some(sd), _) => sd,
-            (None, Some(l)) => &l.sd,
+            (None, Some(Replaced::Legion(l))) => &l.sd,
+            (None, Some(Replaced::Tattoo(t))) => &t.sd,
             (None, None) => &self.tree_node().sd,
         }
     }
@@ -172,7 +197,8 @@ impl SpecNode {
     pub(crate) fn stats(&self) -> &NodeStats {
         match (&self.own_stats, &self.replaced) {
             (Some(st), _) => st,
-            (None, Some(l)) => &l.stats,
+            (None, Some(Replaced::Legion(l))) => &l.stats,
+            (None, Some(Replaced::Tattoo(t))) => &t.stats,
             (None, None) => &self.tree_node().stats,
         }
     }
@@ -194,9 +220,13 @@ impl SpecNode {
         &self.stats().mod_key
     }
 
-    /// The tree's, or a legion keystone's after ReplaceNode (:1713).
+    /// The tree's, or a legion keystone's after ReplaceNode (:1742). A tattoo's `nil` (every non-keystone tattoo) reads the tree node's
+    /// through the metatable; nothing after ReplaceNode writes it on a tattooed node (ProcessStats writes it for a Keystone only).
     pub fn keystone_mod(&self) -> Option<&Rc<pob_mods::Mod>> {
-        self.stats().keystone_mod.as_ref()
+        match &self.replaced {
+            Some(Replaced::Tattoo(t)) => t.stats.keystone_mod.as_ref().or(self.tree_node().stats.keystone_mod.as_ref()),
+            _ => self.stats().keystone_mod.as_ref(),
+        }
     }
 
     pub fn unknown(&self) -> bool {
@@ -230,9 +260,9 @@ impl pob_parser::helpers::JewelNode for SpecNode {
     fn mod_list(&self) -> &[Rc<pob_mods::Mod>] {
         &SpecNode::mod_list(self).mods
     }
-    /// `node.isTattoo` -- tattoos are not ported (P5): nil.
+    /// `node.isTattoo`.
     fn is_tattoo(&self) -> bool {
-        false
+        SpecNode::is_tattoo(self)
     }
     fn node_type(&self) -> &str {
         self.ty().as_str()
@@ -289,6 +319,10 @@ pub struct PassiveSpec {
     pub allocated_mastery_count: u32,
     pub allocated_mastery_type_count: u32,
     pub allocated_mastery_types: IndexMap<String, u32>,
+    /// `self.allocatedTattooTypes` (:1440, :1484-1490): overrideType -> allocated tattooed nodes.
+    pub allocated_tattoo_types: IndexMap<String, u32>,
+    /// `self.hashOverrides` (:94, :179-182): node id -> the tattoo (`crate::tattoo`).
+    pub hash_overrides: IndexMap<u32, Rc<crate::tattoo::TattooNode>>,
     pub alloc_order: AllocOrder,
     /// What BuildAllDependsAndPaths reads off `self.build.itemsTab.items[itemId]` for the jewels (`crate::timeless`): set by
     /// the caller once the items are parsed (pob-calc `post_load_spec`); empty = no items (a spec loaded without its build).
@@ -332,6 +366,8 @@ impl PassiveSpec {
             allocated_mastery_count: 0,
             allocated_mastery_type_count: 0,
             allocated_mastery_types: IndexMap::new(),
+            allocated_tattoo_types: IndexMap::new(),
+            hash_overrides: IndexMap::new(),
             alloc_order: AllocOrder::LuaJit,
             jewel_items: Vec::new(),
             alloc_table: crate::lj_table::LjTable::new(),
@@ -361,7 +397,6 @@ impl PassiveSpec {
     fn init(&mut self) {
         self.unimplemented.extend(
             [
-                "PassiveSpec.lua:1212-1220 tattoo node replacement (hashOverrides, P5); abyss conquests (:1110-1127, :1253-1268) are an explicit error",
                 "PassiveSpec.lua:1520-1560 Intuitive Leap-like dependency bookkeeping (P5)",
                 "PassiveSpec.lua:1591-1617 Intuitive Leap-like path dependencies (potentialDeps / intuitiveLeaps, P5)",
                 "PassiveSpec.lua:196 DecodeURL (legacy URL specs, P5)",
@@ -512,7 +547,8 @@ impl PassiveSpec {
         self.cur_secondary_ascend_class_id = Some(ascend_class_id);
     }
 
-    /// :256-312 -- the `className`/`hashOverrides`/`treeVersion` arguments are P5 (always nil from `Load` without tattoos).
+    /// :274-330 -- `hashOverrides` is `self.hash_overrides` (set by [`PassiveSpec::load_overrides`] first, as `Load` sets
+    /// `self.hashOverrides` before the call, :181/:190); the `className`/`treeVersion` arguments are nil from `Load`.
     pub fn import_from_node_list(
         &mut self,
         class_id: f64,
@@ -533,6 +569,12 @@ impl PassiveSpec {
                 && let Some(m) = as_id(mastery)
             {
                 self.mastery_selections.insert(m, effect);
+            }
+        }
+        // :300-307 -- the tattoos on their nodes before allocation (sprites: display only).
+        for (id, t) in self.hash_overrides.clone() {
+            if let Some(i) = self.node_idx(id) {
+                self.replace_with_tattoo(i, &t);
             }
         }
         for &id in hash_list {
@@ -685,8 +727,8 @@ impl PassiveSpec {
             let n = &mut self.nodes[i];
             n.depends.clear();
             n.intuitive_leap_likes_affecting.clear();
-            // :1162-1166 `isUnallocatedMastery` (no runegrafts: `hashOverrides` is empty) keeps its options.
-            let unallocated_mastery = n.all_mastery_options && n.ty() == NodeType::Mastery;
+            // :1186-1189 `isUnallocatedMastery` (an unallocated mastery without a runegraft) keeps its options.
+            let unallocated_mastery = n.all_mastery_options && n.ty() == NodeType::Mastery && !self.hash_overrides.contains_key(&n.id);
             if !unallocated_mastery {
                 self.replace_node(i);
             }
@@ -698,8 +740,15 @@ impl PassiveSpec {
             }
         }
         self.check_node_links = false;
-        // :1210-1407 -- tattoos are P5; the conquered nodes are replaced or get their additions.
+        // :1235-1433 -- per node: its tattoo, then the conquest (replaced or additions).
         for i in 0..self.nodes.len() {
+            // :1236-1244 -- if node is tattooed, replace it; a runegraft (a mastery) is no list of mastery options.
+            if let Some(t) = self.hash_overrides.get(&self.nodes[i].id).cloned() {
+                self.replace_with_tattoo(i, &t);
+                if self.nodes[i].override_type() == Some("AlternateMastery") {
+                    self.nodes[i].all_mastery_options = false;
+                }
+            }
             if self.nodes[i].conquered_by.is_some() && self.nodes[i].ty() != NodeType::Socket {
                 self.conquer_node(i)?;
             }
@@ -711,6 +760,7 @@ impl PassiveSpec {
         self.allocated_keystone_count = 0;
         self.allocated_mastery_types = IndexMap::new();
         self.allocated_mastery_type_count = 0;
+        self.allocated_tattoo_types = IndexMap::new();
         for i in 0..self.nodes.len() {
             let id = self.nodes[i].id;
             let ty = self.nodes[i].ty();
@@ -721,7 +771,11 @@ impl PassiveSpec {
                 let effect_key = as_id(sel).map(u64::from).filter(|k| self.tree.mastery_effects.contains_key(k));
                 match effect_key {
                     Some(key) if self.alloc_nodes.contains_key(&id) => {
-                        self.apply_mastery_effect(i, key);
+                        // :1452-1456 -- a runegraft replaces the node, else the effect's lines.
+                        match self.hash_overrides.get(&id).cloned() {
+                            Some(t) => self.apply_tattoo_mastery(i, &t),
+                            None => self.apply_mastery_effect(i, key),
+                        }
                         self.allocated_mastery_count += 1;
                         let Some(type_name) = self.nodes[i].name().map(str::to_owned) else {
                             unimplemented!("Classes/PassiveSpec.lua:1433 allocatedMasteryTypes[nil] (a Lua error)");
@@ -745,12 +799,22 @@ impl PassiveSpec {
                         self.mastery_selections.shift_remove(&id);
                     }
                 }
-            } else if ty == NodeType::Mastery && !self.nodes[i].all_mastery_options {
+            } else if ty == NodeType::Mastery
+                && !self.nodes[i].all_mastery_options
+                && self.nodes[i].override_type() != Some("AlternateMastery")
+            {
                 self.add_mastery_effect_options_to_node(i);
             } else if ty == NodeType::Notable && self.nodes[i].alloc {
                 self.allocated_notable_count += 1;
             } else if ty == NodeType::Keystone && self.nodes[i].alloc {
                 self.allocated_keystone_count += 1;
+            }
+            // :1484-1490
+            if self.nodes[i].is_tattoo()
+                && self.nodes[i].alloc
+                && let Some(ot) = self.nodes[i].override_type()
+            {
+                *self.allocated_tattoo_types.entry(ot.to_owned()).or_insert(0) += 1;
             }
         }
 
@@ -1209,12 +1273,18 @@ impl PassiveSpec {
         // :105 `tonumber(xml.attrib.clusterHashFormatVersion) or (xml.attrib.nodes and 1 or 2)` (pob-build).
         spec.cluster_hash_format_version = model.cluster_hash_format_version;
         spec.jewels = model.jewels.clone();
-        if !model.overrides.is_empty() {
-            spec.unimplemented.push(format!(
-                "PassiveSpec.lua:150-176 {} tattoo <Override> entries (P5)",
-                model.overrides.len()
-            ));
-        }
+        // :158-188 -- the tattoos (`hashOverrides`), before ImportFromNodeList.
+        let overrides: Vec<crate::tattoo::OverrideInput> = model
+            .overrides
+            .iter()
+            .map(|o| crate::tattoo::OverrideInput {
+                node_id: Some(o.node_id),
+                dn: o.dn.clone(),
+                icon: o.icon.clone(),
+                active_effect_image: o.active_effect_image.clone(),
+            })
+            .collect();
+        spec.load_overrides(&overrides)?;
         spec.import_from_node_list(
             model.class_id,
             model.ascend_class_id,

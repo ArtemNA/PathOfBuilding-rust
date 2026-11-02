@@ -304,15 +304,11 @@ fn build_xml_bytes(path: &Path) -> Vec<u8> {
     desktop_bytes(path)
 }
 
-/// The inputs of the two P5 modules pob-calc does not port that this build really uses (measured from its XML): tattoo `<Override>`s
-/// (PassiveSpec.lua:158-186 -> `hashOverrides` -> ReplaceNode :1212-1220) and imported party buffs (`<Party><ImportedBuffs>` with content
-/// -> PartyTab -> `env.partyMembers` CalcPerform.lua:1310, `enemyModList` CalcSetup.lua:685).
+/// The inputs of the P5 module pob-calc does not port that this build really uses (measured from its XML): imported party buffs
+/// (`<Party><ImportedBuffs>` with content -> PartyTab -> `env.partyMembers` CalcPerform.lua:1310, `enemyModList` CalcSetup.lua:685). Tattoo
+/// `<Override>`s (PassiveSpec.lua:158-186 -> `hashOverrides`) are ported since R-tattoo (pob-tree `tattoo.rs`): such builds are gated as they are.
 fn p5_inputs(xml: &str) -> Vec<String> {
     let mut v = Vec::new();
-    let tattoos = xml.matches("<Override ").count();
-    if tattoos > 0 {
-        v.push(format!("P5 tattoo overrides ({tattoos})"));
-    }
     let mut party = Vec::new();
     let mut rest = xml;
     while let Some(i) = rest.find("<ImportedBuffs name=\"") {
@@ -400,14 +396,13 @@ fn run_build(slug: &str, fx: &Json) -> Row {
 
 /// `unimplemented` notes every build carries (the 6 goldens too: party / buff export, display, UI-only, P5 tree bookkeeping that does not
 /// change the output) -- the rest are what this build reaches beyond them.
-const EVERY_BUILD_NOTES: [&str; 11] = [
+const EVERY_BUILD_NOTES: [&str; 10] = [
     "CalcPerform.lua:1312 ",
     "CalcPerform.lua:3803-3990 ",
     "CalcSetup.lua:1011 ",
     "CalcSetup.lua:174 ",
     "CalcSetup.lua:685 ",
     "Calcs.lua:450-464 ",
-    "PassiveSpec.lua:1212-1220 ",
     "PassiveSpec.lua:1520-1560 ",
     "PassiveSpec.lua:1591-1617 ",
     "PassiveSpec.lua:196 ",
@@ -450,10 +445,12 @@ fn boundary_inputs(xml: &str) -> Vec<String> {
 
 /// Divergences measured to the root but outside this card's files, pinned by the build's sha256 prefix (no names in the repo) and the
 /// exact number of divergent (build, key) pairs: `(sha prefix, pairs, cause)`.
-const KNOWN: [(&str, usize, &str); 4] = [
+const KNOWN: [(&str, usize, &str); 5] = [
     ("eadab62bb90e601b", 31, CLUSTER_SOCKET),
     ("ceeb2e12d6ac6841", 22, CLUSTER_SOCKET),
     ("41ed0be8d17e4d48", 29, CLUSTER_SOCKET),
+    // R-tattoo: the as-is twin of 41ed0be8 (tattoos kept, gated since the port): the same 29 keys diverge, 24 with the very same values
+    ("11c64fa5acfeaf61", 29, CLUSTER_SOCKET),
     (
         "6eee1e8401984f67",
         1,
@@ -568,7 +565,7 @@ fn real_builds_match_luajit() {
         }] += 1;
     }
     println!(
-        "--- per league: builds / = LuaJIT / P5 inputs stripped by the probe (tattoos, party) / other port boundary / known (pinned) / other divergence ---"
+        "--- per league: builds / = LuaJIT / P5 inputs stripped by the probe (party) / other port boundary / known (pinned) / other divergence ---"
     );
     for (l, [n, eq, p5, bd, kn, bad]) in &by_league {
         println!("{l:<24} {n:>3} {eq:>3} {p5:>3} {bd:>3} {kn:>3} {bad:>3}");
