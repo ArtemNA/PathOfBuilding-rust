@@ -1,0 +1,17 @@
+{
+  "image-tint":{
+    "ms_total":1,
+    "reps":300,
+    "us_per_frame":3.3333333333333
+  },
+  "text-fonts":{
+    "ms_total":8,
+    "reps":300,
+    "us_per_frame":26.666666666667
+  },
+  "u12-holdout":{
+    "ms_total":7,
+    "reps":300,
+    "us_per_frame":23.333333333333
+  }
+}

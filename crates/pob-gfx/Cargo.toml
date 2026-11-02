@@ -1,6 +1,6 @@
 [package]
 name = "pob-gfx"
-description = "Own implementation of the SimpleGraphic host API (PoB UI); U1.1: pure text functions (fonts, widths, cursor index, escapes)"
+description = "Own implementation of the SimpleGraphic host API (PoB UI); text functions, DrawList, wgpu renderer, winit window loop"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -8,7 +8,10 @@ license.workspace = true
 publish.workspace = true
 
 [dependencies]
-image = { version = "0.25", default-features = false, features = ["tga"] }
+image = { version = "0.25", default-features = false, features = ["tga", "png"] }
+wgpu = { version = "30", default-features = false, features = ["std", "parking_lot", "dx12", "wgsl"] }
+winit = "0.30"
+pollster = "1"
 
 [dev-dependencies]
 serde_json.workspace = true

@@ -126,6 +126,11 @@ fn ceil_div(n: i64, d: i64) -> i64 {
     if n >= 0 { (n + d - 1) / d } else { -(-n / d) }
 }
 
+/// Rule 3: integer advance `ceil(adv * eff / atlas)` of an unscaled advance `adv` (exact integer arithmetic).
+pub fn scaled_advance(adv: i64, eff: i64, atlas: i64) -> i64 {
+    if eff == atlas { adv } else { ceil_div(adv * eff, atlas) }
+}
+
 /// One font family: its `.tgf` sections (one per `.tga` atlas), ascending by height.
 #[derive(Clone, Debug)]
 pub struct Font {
@@ -146,8 +151,7 @@ struct Metrics<'a> {
 impl Metrics<'_> {
     /// Rule 3/4: integer advance of one character.
     fn advance(&self, ch: char) -> i64 {
-        let atlas = i64::from(self.main.height);
-        let scale = |a: i64| if self.eff == atlas { a } else { ceil_div(a * self.eff, atlas) };
+        let scale = |a: i64| scaled_advance(a, self.eff, i64::from(self.main.height));
         match ch {
             '\t' => scale(4 * self.main.glyphs[usize::from(b' ')].advance()),
             c if c.is_ascii() => scale(self.main.glyphs[c as usize].advance()),
