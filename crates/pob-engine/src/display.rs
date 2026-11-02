@@ -697,7 +697,12 @@ fn insert_item_warnings(out: &mut StatList, res: &CalculateResult) {
             insert_if_new(&mut out.warnings, &format!("You have too many gems in your {w} slot"));
         }
     }
-    if let Some(l) = iw.get("missingAnointWarning") {
+    // pob-calc does not fill `missingAnointWarning` (CalcSetup.lua:1011, UI only): computed here when absent (U2c)
+    let anoint = iw
+        .get("missingAnointWarning")
+        .cloned()
+        .or_else(|| crate::shell::missing_anoint_warning(res));
+    if let Some(l) = anoint {
         insert_if_new(
             &mut out.warnings,
             &format!("You have eligible items missing an anoint: {}", l.join(", ")),

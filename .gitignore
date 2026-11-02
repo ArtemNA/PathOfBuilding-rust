@@ -15,3 +15,5 @@
 /tools/sg-oracle/runtime/
 # LuaJIT truth for builds/pc (tools/lua-corpus/export-real.ts; carries the personal build data)
 /builds/pc-fixtures/
+# personal build copies saved by the U2c oracle scenarios (local only)
+/tools/sg-oracle/fixtures/build/*.xml

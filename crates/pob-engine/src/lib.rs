@@ -11,6 +11,8 @@
 //! - [`save`] (R8.8): `Build:SaveDB` -- every tab's `Save`; gate `tests/save.rs` (= the R8.1 LuaJIT `SaveDB`, `load(save(b)) == b`).
 //! - [`display`] (R8.3): the sidebar stats -- Build.lua `FormatStat` / `AddDisplayStatList` / `InsertItemWarnings` / `RefreshStatList`
 //!   over [`stats`] (`Modules/BuildDisplayStats.lua`), and the structure of `engine_displayStatsJSON`; gate `tests/display.rs`.
+//! - [`shell`] (U2c): what the Build screen's shell reads and edits -- `RefreshSkillSelectControls`, the point display, the class /
+//!   ascendancy drop-downs, the main-skill / level mutators; gate `tests/shell.rs` (path equivalence).
 
 #![forbid(unsafe_code)]
 
@@ -20,5 +22,6 @@ pub mod display;
 pub mod engine;
 pub mod lua;
 pub mod save;
+pub mod shell;
 pub mod stats;
 pub mod view;
