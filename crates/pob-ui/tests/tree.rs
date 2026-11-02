@@ -441,7 +441,11 @@ fn lossy_sheet_sizes() -> std::collections::HashSet<(u32, u32)> {
     out
 }
 
-/// The pixels beyond the tolerance: how many have a lossy sheet among the quads covering them, and the others (`[x, y, Δ]`).
+/// Accepted by the user (2026-11-02): a pixel under a JPEG / WebP sheet may differ up to this much -- the decoders differ (JPEG measured 1:1 by
+/// `jpeg_decoder_measure`: max Δ 4; WebP not measured separately). Everywhere else the tolerance stays 2/255.
+const LOSSY_MAX_DELTA: u8 = 4;
+
+/// The pixels beyond the tolerance: how many are in the lossy class (a lossy sheet among the quads covering them, Δ <= [`LOSSY_MAX_DELTA`]), and the others (`[x, y, Δ]`).
 fn classify_bad(
     rgba: &[u8],
     oracle: &image::RgbaImage,
@@ -464,7 +468,7 @@ fn classify_bad(
                 let (y0, y1) = c.pos.iter().fold((f32::MAX, f32::MIN), |a, p| (a.0.min(p[1]), a.1.max(p[1])));
                 px >= x0 && px <= x1 && py >= y0 && py <= y1 && lossy.contains(&(c.texture.width, c.texture.height))
             });
-            if over {
+            if over && m <= LOSSY_MAX_DELTA {
                 n += 1;
             } else {
                 other.push([x, y, u32::from(m)]);
@@ -611,7 +615,7 @@ fn tree_pixels_equal_original() {
     let mut r = pob_gfx::Renderer::new_offscreen().expect("wgpu adapter");
     let mut failures = Vec::new();
     let lossy_sizes = lossy_sheet_sizes();
-    let mut total_other = 0;
+    let (mut total_lossy, mut total_other) = (0, 0);
     let mut names = scenario_names();
     if let Some(only) = std::env::var("POB_TREE_SCENES").ok().filter(|s| !s.is_empty()) {
         names = only.split(',').map(str::to_owned).collect();
@@ -676,7 +680,11 @@ fn tree_pixels_equal_original() {
                     other.len(),
                     &other[..other.len().min(6)]
                 );
+                total_lossy += lossy;
                 total_other += other.len();
+                if other.is_empty() && d.text_bad == 0 {
+                    continue;
+                }
                 let out = scene::out_dir();
                 scene::save(&heat, &out.join(format!("{shot}.heat.png")));
                 scene::save(&scene::crop(&rgba, w, w, h), &out.join(format!("{shot}.ours.png")));
@@ -684,7 +692,7 @@ fn tree_pixels_equal_original() {
             }
         }
     }
-    eprintln!("pixels off not over a lossy sheet, all shots: {total_other}");
+    eprintln!("all shots: pixels in the lossy class {total_lossy}, others {total_other}");
     assert!(failures.is_empty(), "the tree differs from the original:\n{}", failures.join("\n"));
 }
 
