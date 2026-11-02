@@ -155,7 +155,7 @@ fn empty_spec() -> SpecModel {
         cluster_hash_format_version: 2.0,
         class_id: 0.0,
         ascend_class_id: 0.0,
-        secondary_ascend_class_id: 0.0,
+        secondary_ascend_class_id: Some(0.0),
         nodes: Vec::new(),
         mastery_effects: NumMap::default(),
         jewels: NumMap::default(),
@@ -225,7 +225,12 @@ fn load_spec(el: &XmlElement) -> SpecModel {
     }
     spec.class_id = num(el, "classId").unwrap_or(0.0);
     spec.ascend_class_id = num(el, "ascendClassId").unwrap_or(0.0);
-    spec.secondary_ascend_class_id = num(el, "secondaryAscendClassId").unwrap_or(0.0);
+    // PassiveSpec.lua:190 `tonumber(xml.attrib.secondaryAscendClassId or 0)` -- PassiveSpec:Save writes "nil" (a tree without alternate ascendancies):
+    // that loads as nil, not 0
+    spec.secondary_ascend_class_id = match attr(el, "secondaryAscendClassId") {
+        None => Some(0.0),
+        Some(_) => num(el, "secondaryAscendClassId"),
+    };
     spec
 }
 

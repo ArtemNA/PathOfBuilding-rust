@@ -228,7 +228,7 @@ pub struct SpecModel {
     pub cluster_hash_format_version: f64,
     pub class_id: f64,
     pub ascend_class_id: f64,
-    pub secondary_ascend_class_id: f64,
+    pub secondary_ascend_class_id: Option<f64>,
     /// hashList, order as written (L9: empty `nodes` -> []).
     pub nodes: Vec<f64>,
     /// `{mastery,effect}` pairs.

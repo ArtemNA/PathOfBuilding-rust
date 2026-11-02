@@ -3,10 +3,9 @@
 //! (LuaJIT: desktop text mode -> loadBuildFromXML -> `build.treeTab:Save` -> `xml.ComposeXML`), read from `POB_TATTOO_SAVE_DIR`, else
 //! `builds/pc-fixtures`. Rust: the same text through `pob_calc::calculate_model` -> [`pob_engine::save::save_tree_of`] -> `compose_xml`.
 //!
-//! Gated: every `<Overrides>` block (each spec's, in order) byte for byte, and the whole `<Tree>` byte for byte except the lines of two
-//! recorded boundaries outside the tattoos, which are listed: `secondaryAscendClassId` of a tree whose only alternate ascendancies are the
-//! legacy ones (PassiveTree.lua:132-176 sets `alternate_ascendancies = nil` -> `"nil"`; pob-tree keeps them -> `"0"`, the
-//! `PassiveTree.lua:131-172` P5 note) and a `<Socket>` of a jewel in a legacy cluster-subgraph socket (real_builds.rs `CLUSTER_SOCKET`).
+//! Gated: every `<Overrides>` block (each spec's, in order) and the whole `<Tree>` byte for byte -- also the `secondaryAscendClassId` of a tree whose
+//! only alternate ascendancies are the legacy ones (`"nil"`, PassiveTree.lua:132-176) and the `<Socket>`s of a jewel lost in a legacy cluster socket
+//! (R-tree-legacy): the 0s the socket slots write into `spec.jewels` are not saved (PassiveSpec.lua:240). `REAL_TREE_SAVE_ANY=1` also takes builds without tattoos.
 //! Without fixtures the test is skipped with a message (other machines).
 
 use std::path::{Path, PathBuf};
@@ -45,23 +44,6 @@ fn overrides(xml: &str) -> Vec<String> {
     v
 }
 
-/// The lines of a composed XML without its `<Socket>` lines.
-fn no_socket<'a>(v: &[&'a str]) -> Vec<&'a str> {
-    v.iter().copied().filter(|l| !l.trim_start().starts_with("<Socket ")).collect()
-}
-
-/// The recorded non-tattoo boundary a differing `(rust, luajit)` line pair belongs to, if any.
-fn boundary(r: &str, l: &str) -> Option<&'static str> {
-    let t = (r.trim_start(), l.trim_start());
-    if t.0.starts_with("<Spec ") && r.replace("secondaryAscendClassId=\"0\"", "secondaryAscendClassId=\"nil\"") == l {
-        return Some("secondaryAscendClassId 0 vs nil (legacy alternate ascendancies, PassiveTree.lua:132-176, pob-tree P5)");
-    }
-    if t.0.starts_with("<Socket ") && t.1.starts_with("<Socket ") {
-        return Some("<Socket> of a legacy cluster-subgraph socket (real_builds.rs CLUSTER_SOCKET)");
-    }
-    None
-}
-
 #[test]
 fn tattoo_tree_save_matches_luajit() {
     let Ok(dir) = std::fs::read_dir(fixtures_dir()) else {
@@ -81,7 +63,7 @@ fn tattoo_tree_save_matches_luajit() {
         );
         return;
     }
-    let (mut equal, mut with_boundary, mut overrides_n) = (0usize, Vec::new(), 0usize);
+    let (mut equal, mut overrides_n) = (0usize, 0usize);
     let mut bad = Vec::new();
     for name in &names {
         let fx: Json = serde_json::from_str(&std::fs::read_to_string(fixtures_dir().join(name)).expect("fixture")).expect("json");
@@ -118,55 +100,23 @@ fn tattoo_tree_save_matches_luajit() {
             equal += 1;
             continue;
         }
-        let (mut rl, mut ll): (Vec<&str>, Vec<&str>) = (r.lines().collect(), lj.lines().collect());
-        let mut why: Vec<&str> = Vec::new();
-        if rl.len() != ll.len() {
-            // a jewel LuaJIT drops from a legacy cluster-subgraph socket (and Rust keeps): compare without the <Socket> lines
-            let (r2, l2) = (no_socket(&rl), no_socket(&ll));
-            if r2.len() != l2.len() {
-                bad.push(format!("{rel}: <Tree> has {} lines in Rust, {} in LuaJIT", rl.len(), ll.len()));
-                continue;
-            }
-            why.push("<Socket> of a legacy cluster-subgraph socket (real_builds.rs CLUSTER_SOCKET)");
-            (rl, ll) = (r2, l2);
-        }
-        let mut unexplained = None;
-        for (i, (a, b)) in rl.iter().zip(&ll).enumerate() {
-            if a != b {
-                match boundary(a, b) {
-                    Some(w) => {
-                        if !why.contains(&w) {
-                            why.push(w);
-                        }
-                    }
-                    None => {
-                        unexplained = Some(format!("{rel}: line {}: rust {a:?} | luajit {b:?}", i + 1));
-                        break;
-                    }
-                }
-            }
-        }
-        match unexplained {
-            Some(u) => bad.push(u),
-            None => with_boundary.push(format!("{rel}: {}", why.join("; "))),
-        }
-    }
-    println!(
-        "--- <Tree> = LuaJIT except recorded non-tattoo boundaries ({}) ---",
-        with_boundary.len()
-    );
-    for w in &with_boundary {
-        println!("{w}");
+        let first = r.lines().zip(lj.lines()).enumerate().find(|(_, (a, b))| a != b);
+        bad.push(match first {
+            Some((i, (a, b))) => format!("{rel}: line {}: rust {a:?} | luajit {b:?}", i + 1),
+            None => format!(
+                "{rel}: <Tree> has {} lines in Rust, {} in LuaJIT",
+                r.lines().count(),
+                lj.lines().count()
+            ),
+        });
     }
     println!("--- divergent ({}) ---", bad.len());
     for b in &bad {
         println!("{b}");
     }
     println!(
-        "tattoo_save: {} builds ({overrides_n} <Override>s); <Overrides> = LuaJIT on {}; whole <Tree> byte for byte {equal}, with recorded boundaries {}; divergent {}",
+        "tattoo_save: {} builds ({overrides_n} <Override>s); whole <Tree> byte for byte {equal}; divergent {}",
         names.len(),
-        names.len() - bad.len(),
-        with_boundary.len(),
         bad.len()
     );
     assert!(bad.is_empty(), "{} builds: Rust <Tree> != LuaJIT", bad.len());
