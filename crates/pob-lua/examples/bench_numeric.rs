@@ -109,6 +109,12 @@ fn main() {
             black_box(number::round(black_box(v), Some(2.0)));
         }
     });
+    // The line above folds `10 ^ 2` at compile time; a caller in another crate, or a variable `dec`, does not.
+    bench("round(a, dec)", finite.len(), || {
+        for &v in &finite {
+            black_box(number::round(black_box(v), Some(black_box(2.0))));
+        }
+    });
     bench("a ^ 0.9", finite.len(), || {
         for &v in &finite {
             black_box(black_box(v.abs()).powf(0.9));

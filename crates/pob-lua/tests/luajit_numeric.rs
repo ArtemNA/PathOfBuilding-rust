@@ -1,6 +1,6 @@
 //! pob-lua against desktop LuaJIT: the corpora of pob-ts test/lua/corpus.ts with answers captured from the docker image
 //! (`tools/lua-corpus/export-numeric.ts` -> `tests/fixtures/luajit-numeric.json`). Every value is compared bit for bit
-//! (NaN == NaN regardless of sign); the only tolerated class is LuaJIT's own `%f` bug on 0 < |x| < 1e-30 (L2), counted.
+//! (NaN == NaN regardless of sign).
 
 use pob_lua::number;
 use pob_lua::{Arg, format, tonumber, tostring_num};
@@ -93,7 +93,6 @@ fn tostring_is_luajit_14g() {
 fn format_is_luajit_printf() {
     let fx = fixture();
     let mut t = Tally::new();
-    let mut quirk = 0;
     for r in rows(&fx, "format") {
         let (fmt, tok, want) = (r[0], r[1], r[2]);
         let (kind, rest) = tok.split_at(1);
@@ -104,22 +103,12 @@ fn format_is_luajit_printf() {
             "z" => Arg::Nil,
             _ => panic!("bad arg token {tok:?}"),
         };
-        if let Arg::Num(v) = arg
-            && fmt.ends_with('f')
-            && v.is_finite()
-            && v != 0.0
-            && v.abs() < 1e-30
-        {
-            quirk += 1; // LuaJIT lj_strfmt %f bug on tiny magnitudes -- not a parity target (L2)
-            continue;
-        }
         let ours = format(fmt, &[arg]);
         t.check(ours.as_deref() == Ok(want), || {
             format!("{fmt} <- {tok}: want {want:?} got {ours:?}")
         });
     }
     let n = t.assert("format");
-    eprintln!("format: {n} compared, {quirk} LuaJIT %f-tiny quirks skipped");
     assert!(n >= 600, "{n}");
 }
 
