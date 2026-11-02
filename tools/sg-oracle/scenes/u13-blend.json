@@ -1,0 +1,18 @@
+{"note": "U1.3 measurement only (SetBlendMode is not called by PoB Lua): ADDITIVE / PREALPHA / ALPHA over grey, unknown mode error", "size": [320, 100], "dpi": 100, "calls": [
+["SetDrawColor", 0.5, 0.5, 0.5],
+["DrawImage", null, 0, 0, 320, 100],
+["SetBlendMode", "ADDITIVE"],
+["SetDrawColor", 0.5, 0, 0, 0.5],
+["DrawImage", null, 10, 10, 60, 60],
+["SetBlendMode", "PREALPHA"],
+["SetDrawColor", 0, 0.5, 0, 0.5],
+["DrawImage", null, 90, 10, 60, 60],
+["SetBlendMode", "ALPHA"],
+["SetDrawColor", 0, 0, 0.5, 0.5],
+["DrawImage", null, 170, 10, 60, 60],
+["SetBlendMode", "FOO"],
+["SetDrawColor", 1, 1, 1, 0.5],
+["DrawImage", null, 250, 10, 60, 60],
+["SetBlendMode", "ALPHA"]
+]}
+

@@ -16,7 +16,6 @@ struct Demo {
     start: Instant,
     frames: Vec<f64>,
     events: Vec<String>,
-    done: bool,
 }
 
 impl MainObject for Demo {
@@ -24,7 +23,7 @@ impl MainObject for Demo {
         let t = self.start.elapsed().as_secs_f64();
         self.frames.push(t * 1e3);
         if t > self.secs {
-            self.done = true;
+            f.exit(None);
         }
         let (w, h) = f.get_virtual_screen_size();
         f.set_draw_color(0.08, 0.1, 0.12, 1.0);
@@ -54,9 +53,6 @@ impl MainObject for Demo {
     fn on_char(&mut self, _g: &mut Gfx, ch: &str) {
         self.events.push(format!("char {ch:?}"));
     }
-    fn wants_exit(&self) -> bool {
-        self.done
-    }
 }
 
 fn main() {
@@ -70,7 +66,6 @@ fn main() {
         start: Instant::now(),
         frames: Vec::new(),
         events: Vec::new(),
-        done: false,
     };
     let cfg = WindowConfig {
         title: "pob-gfx window".into(),

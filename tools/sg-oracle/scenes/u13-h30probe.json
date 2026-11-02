@@ -1,0 +1,20 @@
+{"note": "U1.3: pen drift of a scaled line (VAR h 30 = atlas 28 x 30/28): the drawn pen walks in f32, ceil after each glyph", "size": [300, 546], "dpi": 100, "calls": [
+["SetDrawColor", 1, 1, 1],
+["DrawString", 10, 2, "LEFT", 30, "VAR", "h a"],
+["DrawString", 10, 34, "LEFT", 30, "VAR", "hh a"],
+["DrawString", 10, 66, "LEFT", 30, "VAR", "h3 a"],
+["DrawString", 10, 98, "LEFT", 30, "VAR", "30 a"],
+["DrawString", 10, 130, "LEFT", 30, "VAR", "h0 a"],
+["DrawString", 10, 162, "LEFT", 30, "VAR", "h30a"],
+["DrawString", 10, 194, "LEFT", 30, "VAR", "h30  a"],
+["DrawString", 10, 226, "LEFT", 30, "VAR", "hhh"],
+["DrawString", 10, 258, "LEFT", 30, "VAR", "hhhh a"],
+["DrawString", 10, 290, "LEFT", 30, "VAR", "h30 a"],
+["DrawString", 10, 322, "LEFT", 30, "VAR", "0 a"],
+["DrawString", 10, 354, "LEFT", 30, "VAR", "30: Hag"],
+["DrawString", 10, 386, "LEFT", 30, "VAR", "ha"],
+["DrawString", 10, 418, "LEFT", 30, "VAR", "h a b c d"],
+["DrawString", 10, 450, "LEFT", 30, "VAR", "hhhhhhhh|"],
+["DrawString", 10, 482, "LEFT", 30, "VAR", "mmmm|"],
+["DrawString", 10, 514, "LEFT", 30, "VAR", "a h a h a|"]
+]}

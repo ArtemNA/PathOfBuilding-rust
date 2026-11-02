@@ -7,18 +7,41 @@
 mod scene;
 
 use pob_gfx::{Gfx, Renderer};
-use scene::{Scene, SCREEN};
+use scene::{SCREEN, Scene};
 use serde_json::Value;
 
-/// Scenes of `index.json` (U1.0) plus the U1.2 checks/holdouts (`run-scenes.ps1 -Tag u12`, `-Tag u12-holdout`).
+/// Scenes of `index.json` (U1.0) plus the U1.2 checks/holdouts (`run-scenes.ps1 -Tag u12`, `-Tag u12-holdout`) and the U1.3/U1.5
+/// scenes (`-Tag u13`, `-Tag u13-h30probe`). `u13-blend` is a measurement only (`SetBlendMode` modes other than ALPHA are
+/// `unimplemented`: the Lua UI never calls them).
 fn all_scenes() -> Vec<String> {
     let mut v = Scene::names();
-    v.extend(["u12-frac", "u12-dpi125", "u12-image", "u12-holdout", "u12-nearest"].map(String::from));
+    v.extend(
+        [
+            "u12-frac",
+            "u12-dpi125",
+            "u12-image",
+            "u12-holdout",
+            "u12-nearest",
+            "u13-negative",
+            "u13-layers",
+            "u13-placeholder",
+            "u13-dpi125",
+            "u13-h30probe",
+            "u15-demo",
+        ]
+        .map(String::from),
+    );
     v
 }
 
 fn manifest_logs(name: &str) -> Option<Value> {
-    for file in ["manifest.json", "manifest-u12.json", "manifest-u12-holdout.json"] {
+    for file in [
+        "manifest.json",
+        "manifest-u12.json",
+        "manifest-u12-holdout.json",
+        "manifest-u13.json",
+        "manifest-u13-h30probe.json",
+    ] {
         let p = scene::oracle_dir().join("fixtures/scenes").join(file);
         let m: Value = serde_json::from_str(&std::fs::read_to_string(&p).expect("manifest")).expect("manifest json");
         if let Some(e) = m.as_array().expect("array").iter().find(|e| e["name"] == name) {
@@ -93,4 +116,68 @@ fn blit_path_equals_readback() {
     let got: Vec<u8> = got.chunks(4).flat_map(|p| [p[2], p[1], p[0], p[3]]).collect();
     let bad = want.chunks(4).zip(got.chunks(4)).filter(|(a, b)| a[..3] != b[..3]).count();
     assert_eq!(bad, 0, "blit path differs from readback in {bad} pixels");
+}
+
+/// U1.3 `frame-probe.lua` shots (full 1280x800, 24-bit): the frame `TakeScreenshot` captures (the one after the call),
+/// the frame-start reset of viewport/layer, and a DPI switch in the middle of the captured frame — replayed with the
+/// same frame sequence and compared pixel by pixel.
+#[test]
+#[ignore = "needs a GPU adapter (or POB_GFX_WARP=1); run with --ignored"]
+fn frame_probe_equals_original() {
+    let mut r = Renderer::new_offscreen().expect("wgpu adapter");
+    let mut gfx = Gfx::new(&scene::fonts_dir(), SCREEN, 1.0).expect("fonts");
+    // Runs frames until one is captured; `draw(frame, frame_no, shot_requested_before)`.
+    let mut shoot = |gfx: &mut Gfx, draw: &dyn Fn(&mut pob_gfx::Frame<'_>, u32)| -> Vec<u8> {
+        for n in 0.. {
+            let mut f = gfx.begin_frame();
+            draw(&mut f, n);
+            if n == 8 {
+                f.take_screenshot();
+            }
+            let list = f.finish();
+            if gfx.frame_wants_screenshot() {
+                return r.render_to_rgba(&list).expect("render");
+            }
+        }
+        unreachable!()
+    };
+    let shot = shoot(&mut gfx, &|f, n| {
+        // green before the call, red in the calling frame, blue after
+        let c = if n < 8 {
+            [0.0, 1.0, 0.0]
+        } else if n == 8 {
+            [1.0, 0.0, 0.0]
+        } else {
+            [0.0, 0.0, 1.0]
+        };
+        f.set_draw_color(c[0], c[1], c[2], 1.0);
+        f.draw_image(None, 0.0, 0.0, 1280.0, 800.0, None).unwrap();
+    });
+    let viewport = shoot(&mut gfx, &|f, _| {
+        f.set_draw_color(1.0, 1.0, 0.0, 1.0);
+        f.draw_image(None, 0.0, 0.0, 1280.0, 800.0, None).unwrap();
+        f.set_viewport(Some([100.0, 100.0, 50.0, 50.0]));
+        f.set_draw_layer(Some(3), Some(4)).unwrap();
+        f.set_draw_color(0.0, 0.0, 1.0, 0.5);
+    });
+    let dpi = shoot(&mut gfx, &|f, n| {
+        f.set_draw_color(0.0, 0.0, 0.0, 1.0);
+        f.draw_image(None, 0.0, 0.0, 2000.0, 2000.0, None).unwrap();
+        f.set_draw_color(0.0, 1.0, 0.0, 1.0);
+        f.draw_image(None, 10.0, 10.0, 20.0, 20.0, None).unwrap();
+        if n == 9 {
+            f.set_dpi_scale_override_percent(150);
+        }
+        f.set_draw_color(1.0, 0.0, 0.0, 1.0);
+        f.draw_image(None, 100.0, 100.0, 100.0, 100.0, None).unwrap();
+    });
+    for (name, ours) in [("shot", shot), ("viewport", viewport), ("dpi", dpi)] {
+        let p = scene::oracle_dir().join(format!("fixtures/frame-probe/{name}.png"));
+        let want = image::open(&p).unwrap_or_else(|e| panic!("{}: {e}", p.display())).to_rgba8();
+        assert_eq!(want.dimensions(), SCREEN, "{name}");
+        let mask = vec![false; (SCREEN.0 * SCREEN.1) as usize];
+        let (d, _) = scene::diff(&ours, SCREEN.0, &want, &mask);
+        eprintln!("frame-probe {name}: {} px, bad {}, maxΔ {}", d.pixels, d.bad, d.max_delta);
+        assert_eq!(d.bad, 0, "frame-probe {name}: {} px off, bbox {:?}", d.bad, d.bbox);
+    }
 }

@@ -12,6 +12,7 @@ image = { version = "0.25", default-features = false, features = ["tga", "png"] 
 wgpu = { version = "30", default-features = false, features = ["std", "parking_lot", "dx12", "wgsl"] }
 winit = "0.30"
 pollster = "1"
+arboard = { version = "3.7.0", default-features = false }
 
 [dev-dependencies]
 serde_json.workspace = true

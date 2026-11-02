@@ -1,14 +1,13 @@
 //! The `winit` main loop: window + surface, callbacks of a [`MainObject`] (`OnInit`, `OnFrame`, `OnKeyDown`, `OnKeyUp`,
-//! `OnChar`, `CanExit`, `OnExit`), frame cadence.
+//! `OnChar`, `CanExit`, `OnExit`), frame cadence, window requests (`SetWindowTitle`, `Exit`) and `TakeScreenshot`.
 //!
 //! Cadence (UI-ARCH §11): the original draws a frame about every 30 ms both idle and under input
 //! (`glfwWaitEventsTimeout`), and none while minimised. Here: `ControlFlow::WaitUntil(last + 30 ms)`, input callbacks run
 //! as events arrive (between frames), `OnFrame` once per tick; a frame whose draw list equals the previous one is
 //! not re-presented (like `r_elideFrames`).
 //!
-//! Input is minimal in U1.2 (U1.4 does key names, double-click, layouts, `IsKeyDown`): mouse buttons, the wheel
-//! (`OnKeyDown` + `OnKeyUp` per message, §11), a few named keys, printable keys as lower-case characters, `OnChar`
-//! with non-ASCII as `"?"`.
+//! Input: `winit` events become platform-neutral [`RawEvent`]s (physical key positions, typed text as UTF-16 units, wheel
+//! messages, the OS cursor) and go through [`dispatch`] — the same path the oracle replay tests use (`tests/input.rs`).
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -18,10 +17,12 @@ use winit::application::ApplicationHandler;
 use winit::dpi::PhysicalSize;
 use winit::event::{ElementState, MouseButton, MouseScrollDelta, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
-use winit::keyboard::{Key, NamedKey};
+use winit::keyboard::{KeyCode, PhysicalKey};
 use winit::window::{Window, WindowId};
 
 use crate::draw::{DrawList, Frame, Gfx};
+use crate::input::{self, Button, Callback, PhysKey, RawEvent};
+use crate::platform::SystemPlatform;
 use crate::render::{RenderError, Renderer};
 
 /// Frame period of the original (§11: ~30 ms, ~33 fps).
@@ -39,9 +40,16 @@ pub trait MainObject {
         true
     }
     fn on_exit(&mut self, _gfx: &mut Gfx) {}
-    /// Host-side request to leave the loop (`Exit()`), polled after each callback.
-    fn wants_exit(&self) -> bool {
-        false
+}
+
+/// Feeds one platform event to `gfx` and fires the resulting callbacks on `main`, in order.
+pub fn dispatch<M: MainObject + ?Sized>(main: &mut M, gfx: &mut Gfx, ev: RawEvent) {
+    for cb in gfx.input(ev) {
+        match cb {
+            Callback::KeyDown(k, dbl) => main.on_key_down(gfx, k, dbl),
+            Callback::KeyUp(k) => main.on_key_up(gfx, k),
+            Callback::Char(c) => main.on_char(gfx, c),
+        }
     }
 }
 
@@ -64,6 +72,7 @@ pub struct RunStats {
     pub fonts_ready: Duration,
     pub frames: u64,
     pub presented: u64,
+    pub screenshots: u64,
 }
 
 #[derive(Debug)]
@@ -104,58 +113,153 @@ struct App<M: MainObject> {
     error: Option<RunError>,
 }
 
-fn key_name(key: &Key) -> Option<String> {
-    Some(match key {
-        Key::Named(n) => match n {
-            NamedKey::Backspace => "BACK",
-            NamedKey::Tab => "TAB",
-            NamedKey::Enter => "RETURN",
-            NamedKey::Escape => "ESCAPE",
-            NamedKey::Shift => "SHIFT",
-            NamedKey::Control => "CTRL",
-            NamedKey::Alt => "ALT",
-            NamedKey::Pause => "PAUSE",
-            NamedKey::PageUp => "PAGEUP",
-            NamedKey::PageDown => "PAGEDOWN",
-            NamedKey::End => "END",
-            NamedKey::Home => "HOME",
-            NamedKey::PrintScreen => "PRINTSCREEN",
-            NamedKey::Insert => "INSERT",
-            NamedKey::Delete => "DELETE",
-            NamedKey::ArrowUp => "UP",
-            NamedKey::ArrowDown => "DOWN",
-            NamedKey::ArrowLeft => "LEFT",
-            NamedKey::ArrowRight => "RIGHT",
-            NamedKey::Space => " ",
-            NamedKey::F1 => "F1",
-            NamedKey::F2 => "F2",
-            NamedKey::F3 => "F3",
-            NamedKey::F4 => "F4",
-            NamedKey::F5 => "F5",
-            NamedKey::F6 => "F6",
-            NamedKey::F7 => "F7",
-            NamedKey::F8 => "F8",
-            NamedKey::F9 => "F9",
-            NamedKey::F10 => "F10",
-            NamedKey::F11 => "F11",
-            NamedKey::F12 => "F12",
-            _ => return None,
-        }
-        .to_string(),
-        Key::Character(s) => s.to_lowercase(),
-        _ => return None,
+/// Physical key -> the original's key (US positions; GLFW maps keys by scancode, so names ignore the layout).
+fn phys_key(code: KeyCode) -> PhysKey {
+    use KeyCode as K;
+    let ch = |c: u8| PhysKey::Char(c);
+    match code {
+        K::KeyA => ch(b'a'),
+        K::KeyB => ch(b'b'),
+        K::KeyC => ch(b'c'),
+        K::KeyD => ch(b'd'),
+        K::KeyE => ch(b'e'),
+        K::KeyF => ch(b'f'),
+        K::KeyG => ch(b'g'),
+        K::KeyH => ch(b'h'),
+        K::KeyI => ch(b'i'),
+        K::KeyJ => ch(b'j'),
+        K::KeyK => ch(b'k'),
+        K::KeyL => ch(b'l'),
+        K::KeyM => ch(b'm'),
+        K::KeyN => ch(b'n'),
+        K::KeyO => ch(b'o'),
+        K::KeyP => ch(b'p'),
+        K::KeyQ => ch(b'q'),
+        K::KeyR => ch(b'r'),
+        K::KeyS => ch(b's'),
+        K::KeyT => ch(b't'),
+        K::KeyU => ch(b'u'),
+        K::KeyV => ch(b'v'),
+        K::KeyW => ch(b'w'),
+        K::KeyX => ch(b'x'),
+        K::KeyY => ch(b'y'),
+        K::KeyZ => ch(b'z'),
+        K::Digit0 => ch(b'0'),
+        K::Digit1 => ch(b'1'),
+        K::Digit2 => ch(b'2'),
+        K::Digit3 => ch(b'3'),
+        K::Digit4 => ch(b'4'),
+        K::Digit5 => ch(b'5'),
+        K::Digit6 => ch(b'6'),
+        K::Digit7 => ch(b'7'),
+        K::Digit8 => ch(b'8'),
+        K::Digit9 => ch(b'9'),
+        K::Minus => ch(b'-'),
+        K::Equal => ch(b'='),
+        K::BracketLeft => ch(b'['),
+        K::BracketRight => ch(b']'),
+        K::Backslash => ch(b'\\'),
+        K::Semicolon => ch(b';'),
+        K::Quote => ch(b'\''),
+        K::Backquote => ch(b'`'),
+        K::Comma => ch(b','),
+        K::Period => ch(b'.'),
+        K::Slash => ch(b'/'),
+        K::Space => ch(b' '),
+        K::Backspace => PhysKey::Backspace,
+        K::Tab => PhysKey::Tab,
+        K::Enter => PhysKey::Enter,
+        K::Escape => PhysKey::Escape,
+        K::ShiftLeft | K::ShiftRight => PhysKey::Shift,
+        K::ControlLeft | K::ControlRight => PhysKey::Ctrl,
+        K::AltLeft | K::AltRight => PhysKey::Alt,
+        K::Pause => PhysKey::Pause,
+        K::PageUp => PhysKey::PageUp,
+        K::PageDown => PhysKey::PageDown,
+        K::End => PhysKey::End,
+        K::Home => PhysKey::Home,
+        K::PrintScreen => PhysKey::PrintScreen,
+        K::Insert => PhysKey::Insert,
+        K::Delete => PhysKey::Delete,
+        K::ArrowUp => PhysKey::Up,
+        K::ArrowDown => PhysKey::Down,
+        K::ArrowLeft => PhysKey::Left,
+        K::ArrowRight => PhysKey::Right,
+        K::F1 => PhysKey::F(1),
+        K::F2 => PhysKey::F(2),
+        K::F3 => PhysKey::F(3),
+        K::F4 => PhysKey::F(4),
+        K::F5 => PhysKey::F(5),
+        K::F6 => PhysKey::F(6),
+        K::F7 => PhysKey::F(7),
+        K::F8 => PhysKey::F(8),
+        K::F9 => PhysKey::F(9),
+        K::F10 => PhysKey::F(10),
+        K::F11 => PhysKey::F(11),
+        K::F12 => PhysKey::F(12),
+        K::F13 => PhysKey::F(13),
+        K::F14 => PhysKey::F(14),
+        K::F15 => PhysKey::F(15),
+        K::NumLock => PhysKey::NumLock,
+        K::ScrollLock => PhysKey::ScrollLock,
+        K::Numpad0 => PhysKey::Numpad0,
+        K::NumpadAdd => PhysKey::NumpadAdd,
+        K::NumpadSubtract => PhysKey::NumpadSubtract,
+        K::NumpadEnter => PhysKey::NumpadEnter,
+        _ => PhysKey::Other,
+    }
+}
+
+fn button(b: MouseButton) -> Option<Button> {
+    Some(match b {
+        MouseButton::Left => Button::Left,
+        MouseButton::Middle => Button::Middle,
+        MouseButton::Right => Button::Right,
+        MouseButton::Back => Button::Mouse4,
+        MouseButton::Forward => Button::Mouse5,
+        MouseButton::Other(_) => return None,
     })
 }
 
-fn button_name(b: MouseButton) -> Option<&'static str> {
-    Some(match b {
-        MouseButton::Left => "LEFTBUTTON",
-        MouseButton::Middle => "MIDDLEBUTTON",
-        MouseButton::Right => "RIGHTBUTTON",
-        MouseButton::Back => "MOUSE4",
-        MouseButton::Forward => "MOUSE5",
-        MouseButton::Other(_) => return None,
-    })
+/// `winit` window event -> platform events, in delivery order (a key press with text = the key, then its characters).
+fn raw_events(event: &WindowEvent) -> Vec<RawEvent> {
+    match event {
+        WindowEvent::KeyboardInput { event, .. } => {
+            let key = match event.physical_key {
+                PhysicalKey::Code(c) => phys_key(c),
+                PhysicalKey::Unidentified(_) => PhysKey::Other,
+            };
+            let pressed = event.state == ElementState::Pressed;
+            let mut v = vec![RawEvent::Key { key, pressed }];
+            if pressed && let Some(t) = &event.text {
+                v.extend(t.chars().flat_map(input::char_units).map(RawEvent::Char));
+            }
+            v
+        }
+        WindowEvent::MouseInput { state, button: b, .. } => button(*b)
+            .map(|button| RawEvent::Button {
+                button,
+                pressed: *state == ElementState::Pressed,
+                pos: None,
+            })
+            .into_iter()
+            .collect(),
+        WindowEvent::MouseWheel { delta, .. } => {
+            let dy = match delta {
+                MouseScrollDelta::LineDelta(_, y) => f64::from(*y),
+                MouseScrollDelta::PixelDelta(p) => p.y,
+            };
+            vec![RawEvent::Wheel(dy)]
+        }
+        WindowEvent::CursorMoved { position, .. } => vec![RawEvent::Cursor {
+            x: position.x,
+            y: position.y,
+        }],
+        WindowEvent::CursorEntered { .. } => vec![RawEvent::CursorInside(true)],
+        WindowEvent::CursorLeft { .. } => vec![RawEvent::CursorInside(false)],
+        WindowEvent::Focused(false) => vec![RawEvent::FocusLost],
+        _ => Vec::new(),
+    }
 }
 
 impl<M: MainObject> App<M> {
@@ -188,7 +292,10 @@ impl<M: MainObject> App<M> {
             color_space: wgpu::SurfaceColorSpace::default(),
         };
         surface.configure(renderer.device(), &config);
-        let mut gfx = Gfx::new(&self.cfg.fonts_dir, (size.width, size.height), window.scale_factor()).map_err(RunError::Font)?;
+        // `GetTime()` counts from `run()` (the original: from process start).
+        let platform = Box::new(SystemPlatform::new(self.start));
+        let mut gfx =
+            Gfx::with_platform(&self.cfg.fonts_dir, (size.width, size.height), window.scale_factor(), platform).map_err(RunError::Font)?;
         self.stats.fonts_ready = self.start.elapsed();
         self.main.on_init(&mut gfx);
         self.live = Some(Live {
@@ -211,6 +318,19 @@ impl<M: MainObject> App<M> {
         self.main.on_frame(&mut frame);
         let list = frame.finish();
         self.stats.frames += 1;
+        if live.gfx.frame_wants_screenshot() {
+            // Written even when the frame is elided (identical to the previous one).
+            match live.renderer.render_to_rgba(&list) {
+                Ok(rgba) => match crate::screenshot::save(&rgba, list.size.0, list.size.1, live.gfx.screenshot_dir()) {
+                    Ok(p) => {
+                        self.stats.screenshots += 1;
+                        live.gfx.con_printf(&format!("Wrote screenshot to {}", p.display()));
+                    }
+                    Err(e) => live.gfx.con_printf(&format!("Screenshot failed: {e}")),
+                },
+                Err(e) => live.gfx.con_printf(&format!("Screenshot failed: {e}")),
+            }
+        }
         if live.last.as_ref() == Some(&list) {
             return;
         }
@@ -231,26 +351,42 @@ impl<M: MainObject> App<M> {
         }
         live.last = Some(list);
     }
+
+    /// Applies `SetWindowTitle` / `Exit` made by the last callback.
+    fn apply_requests(&mut self, el: &ActiveEventLoop) {
+        let Some(live) = self.live.as_mut() else { return };
+        let req = live.gfx.take_requests();
+        if let Some(t) = req.title {
+            live.window.set_title(&t);
+        }
+        if req.exit.is_some() {
+            self.main.on_exit(&mut live.gfx);
+            el.exit();
+        }
+    }
 }
 
 impl<M: MainObject> ApplicationHandler for App<M> {
     fn resumed(&mut self, el: &ActiveEventLoop) {
-        if self.live.is_none()
-            && let Err(e) = self.init(el)
-        {
-            self.error = Some(e);
-            el.exit();
+        if self.live.is_none() {
+            if let Err(e) = self.init(el) {
+                self.error = Some(e);
+                el.exit();
+                return;
+            }
+            self.apply_requests(el);
         }
     }
 
     fn window_event(&mut self, el: &ActiveEventLoop, _id: WindowId, event: WindowEvent) {
         let Some(live) = self.live.as_mut() else { return };
         let gfx = &mut live.gfx;
-        match event {
+        match &event {
             WindowEvent::CloseRequested => {
                 if self.main.can_exit(gfx) {
                     self.main.on_exit(gfx);
                     el.exit();
+                    return;
                 }
             }
             WindowEvent::Resized(size) => {
@@ -265,54 +401,20 @@ impl<M: MainObject> ApplicationHandler for App<M> {
             }
             WindowEvent::ScaleFactorChanged { scale_factor, .. } => {
                 let s = gfx.get_screen_size();
-                gfx.set_screen(s, scale_factor);
+                gfx.set_screen(s, *scale_factor);
+                live.last = None;
             }
             WindowEvent::RedrawRequested => self.frame(),
-            WindowEvent::MouseInput { state, button, .. } => {
-                if let Some(name) = button_name(button) {
-                    match state {
-                        ElementState::Pressed => self.main.on_key_down(gfx, name, false),
-                        ElementState::Released => self.main.on_key_up(gfx, name),
+            _ => {
+                for ev in raw_events(&event) {
+                    dispatch(&mut self.main, gfx, ev);
+                    if gfx.exit_requested() {
+                        break;
                     }
                 }
             }
-            WindowEvent::MouseWheel { delta, .. } => {
-                let dy = match delta {
-                    MouseScrollDelta::LineDelta(_, y) => f64::from(y),
-                    MouseScrollDelta::PixelDelta(p) => p.y,
-                };
-                if dy != 0.0 {
-                    let name = if dy > 0.0 { "WHEELUP" } else { "WHEELDOWN" };
-                    self.main.on_key_down(gfx, name, false);
-                    self.main.on_key_up(gfx, name);
-                }
-            }
-            WindowEvent::KeyboardInput { event, .. } => {
-                let name = key_name(&event.logical_key);
-                match event.state {
-                    ElementState::Pressed => {
-                        if let Some(n) = &name {
-                            self.main.on_key_down(gfx, n, false);
-                        }
-                        if let Some(t) = &event.text {
-                            for c in t.chars() {
-                                let s = if c.is_ascii() { c.to_string() } else { "?".to_string() };
-                                self.main.on_char(gfx, &s);
-                            }
-                        }
-                    }
-                    ElementState::Released => {
-                        if let Some(n) = &name {
-                            self.main.on_key_up(gfx, n);
-                        }
-                    }
-                }
-            }
-            _ => {}
         }
-        if self.main.wants_exit() {
-            el.exit();
-        }
+        self.apply_requests(el);
     }
 
     fn about_to_wait(&mut self, el: &ActiveEventLoop) {
@@ -323,14 +425,11 @@ impl<M: MainObject> ApplicationHandler for App<M> {
             }
             self.next_frame = now + FRAME_PERIOD;
         }
-        if self.main.wants_exit() {
-            el.exit();
-        }
         el.set_control_flow(ControlFlow::WaitUntil(self.next_frame));
     }
 }
 
-/// Opens the window and runs the loop until the window closes (and `can_exit` agrees) or `wants_exit()`.
+/// Opens the window and runs the loop until the window closes (and `can_exit` agrees) or `Exit()` is called.
 pub fn run<M: MainObject>(main: M, cfg: WindowConfig) -> Result<(M, RunStats), RunError> {
     let start = Instant::now();
     let el = EventLoop::new().map_err(|e| RunError::EventLoop(e.to_string()))?;

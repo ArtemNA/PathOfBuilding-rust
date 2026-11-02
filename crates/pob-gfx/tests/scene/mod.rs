@@ -5,7 +5,7 @@
 #![allow(dead_code)]
 
 use pob_gfx::text::FontFamily;
-use pob_gfx::{Align, DrawList, Gfx, ImageHandle};
+use pob_gfx::{Align, DrawList, Frame, Gfx, ImageHandle};
 use serde_json::Value;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -129,6 +129,12 @@ impl Scene {
         f.set_draw_layer(Some(0), Some(0)).expect("layer");
         f.set_viewport(None);
         f.set_draw_color(1.0, 1.0, 1.0, 1.0);
+        let logs = self.draw(&mut f);
+        (f.finish(), logs)
+    }
+
+    /// Replays the scene's calls into `f` (no reset); returns the `@log` results.
+    pub fn draw(&self, f: &mut Frame<'_>) -> Vec<(usize, [f32; 4])> {
         let mut logs = Vec::new();
         let img = |k: &Option<String>| k.as_ref().map(|k| &self.images[k]);
         for (i, call) in self.calls.iter().enumerate() {
@@ -143,7 +149,7 @@ impl Scene {
                 Call::Text(l, t, al, h, font, text) => f.draw_string(*l, *t, *al, *h, *font, text),
             }
         }
-        (f.finish(), logs)
+        logs
     }
 }
 

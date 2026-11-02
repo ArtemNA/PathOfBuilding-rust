@@ -5,15 +5,17 @@
 //! end of the frame the list is stably sorted by `(layer, subLayer)` and drawn in one pass. Geometry is stored in
 //! physical pixels (virtual coordinates × screen scale).
 
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::fmt;
 use std::ops::{Deref, DerefMut};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::time::Instant;
 
 use crate::color::{self, Rgba, WHITE};
 use crate::image::{ImageHandle, Texture};
+use crate::input::{Callback, InputState, KeyId, KeyNameError, RawEvent};
+use crate::platform::{Platform, SystemPlatform};
 use crate::text::{self, FontError, FontFamily, FontSet};
 
 /// `DrawString` alignment (`nil` = `Left`).
@@ -39,20 +41,25 @@ impl Align {
     }
 }
 
-/// Lua errors raised by the original for bad arguments (SG-DLL-FACTS §6).
+/// Lua errors raised by the original for bad arguments (SG-DLL-FACTS §6; texts as measured where the oracle saw them).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum GfxError {
     LayerNeedsSubLayer,
+    /// `SetDrawColor(str)` without a valid escape at the start (`"^"`, `" ^1"`, `"^a"`; trailing text after a valid escape
+    /// is ignored: `"^1abc"`, `"^xFF80001"` — `fixtures/frame-probe/log.json`).
     InvalidColorEscape(String),
     NoImageLoaded,
+    /// `SetBlendMode(x)` with an unknown mode (scene `u13-blend`).
+    InvalidBlendMode(String),
 }
 
 impl fmt::Display for GfxError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::LayerNeedsSubLayer => write!(f, "SetDrawLayer(): must provide subLayer if layer is nil"),
-            Self::InvalidColorEscape(s) => write!(f, "SetDrawColor(): invalid color escape sequence {s:?}"),
+            Self::InvalidColorEscape(_) => write!(f, "SetDrawColor() argument 1: invalid color escape sequence"),
             Self::NoImageLoaded => write!(f, "image handle has no image loaded"),
+            Self::InvalidBlendMode(m) => write!(f, "bad argument #1 to '?' (invalid option '{m}')"),
         }
     }
 }
@@ -95,6 +102,8 @@ pub struct DrawList {
     pub commands: Vec<Command>,
     /// Physical size of the frame.
     pub size: (u32, u32),
+    /// `SetClearColor` (default opaque black; the Lua UI never sets it).
+    pub clear: Rgba,
 }
 
 impl DrawList {
@@ -103,8 +112,20 @@ impl DrawList {
     }
 }
 
+/// Window requests made by Lua-side calls, applied by the window loop after the callback returns.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct WindowRequests {
+    /// `SetWindowTitle(title)`.
+    pub title: Option<String>,
+    /// `Exit([msg])`: leave the main loop after the current callback.
+    pub exit: Option<Option<String>>,
+}
+
+/// Lines kept by `ConPrintf` (the original's console is an in-app overlay; here stderr + this ring).
+const CONSOLE_LINES: usize = 1000;
+
 /// Host state that lives between frames: fonts, screen, DPI, the current colour (it is **not** reset per frame,
-/// UI-ARCH §11) and the clock.
+/// UI-ARCH §11), input state, the platform (clock, clipboard, URLs) and pending window requests.
 pub struct Gfx {
     fonts: FontSet,
     atlases: HashMap<(FontFamily, u32), Rc<Texture>>,
@@ -113,17 +134,32 @@ pub struct Gfx {
     system_scale: f64,
     dpi_override: u32,
     color: Rgba,
+    clear: Rgba,
     layer: i32,
     sub_layer: i32,
     /// Virtual `x, y, w, h`; `None` = whole screen.
     viewport: Option<[f64; 4]>,
     list: DrawList,
-    start: Instant,
+    platform: Box<dyn Platform>,
+    input: InputState,
+    requests: WindowRequests,
+    /// `TakeScreenshot()` called since the last frame started: the **next** frame is captured.
+    shot_requested: bool,
+    /// The current frame is to be captured (set at `begin_frame` from `shot_requested`).
+    shot_this_frame: bool,
+    screenshot_dir: PathBuf,
+    console: VecDeque<String>,
+    cvars: HashMap<String, String>,
 }
 
 impl Gfx {
-    /// `fonts_dir` = `runtime/SimpleGraphic/Fonts`; `screen` = physical frame size.
+    /// `fonts_dir` = `runtime/SimpleGraphic/Fonts`; `screen` = physical frame size. `GetTime()` counts from now.
     pub fn new(fonts_dir: &Path, screen: (u32, u32), system_scale: f64) -> Result<Self, FontError> {
+        Self::with_platform(fonts_dir, screen, system_scale, Box::new(SystemPlatform::new(Instant::now())))
+    }
+
+    /// Like [`Gfx::new`] with an explicit platform (clock, clipboard, URLs) — e.g. [`crate::platform::TestPlatform`].
+    pub fn with_platform(fonts_dir: &Path, screen: (u32, u32), system_scale: f64, platform: Box<dyn Platform>) -> Result<Self, FontError> {
         Ok(Self {
             fonts: FontSet::load(fonts_dir)?,
             atlases: HashMap::new(),
@@ -132,12 +168,149 @@ impl Gfx {
             system_scale,
             dpi_override: 0,
             color: WHITE,
+            clear: [0.0, 0.0, 0.0, 1.0],
             layer: 0,
             sub_layer: 0,
             viewport: None,
             list: DrawList::default(),
-            start: Instant::now(),
+            platform,
+            input: InputState::new(),
+            requests: WindowRequests::default(),
+            shot_requested: false,
+            shot_this_frame: false,
+            screenshot_dir: PathBuf::from("SimpleGraphic/Screenshots"),
+            console: VecDeque::new(),
+            cvars: HashMap::new(),
         })
+    }
+
+    pub fn platform_mut(&mut self) -> &mut dyn Platform {
+        &mut *self.platform
+    }
+
+    // ----- input (U1.4, `input` module) -----
+
+    /// Feeds one platform event; returns the callbacks to fire (see [`crate::input`]).
+    pub fn input(&mut self, ev: RawEvent) -> Vec<Callback> {
+        let now = self.get_time();
+        self.input.translate(ev, now)
+    }
+
+    pub fn input_state(&self) -> &InputState {
+        &self.input
+    }
+
+    /// `IsKeyDown(keyName)`.
+    pub fn is_key_down(&self, name: &str) -> Result<bool, KeyNameError> {
+        KeyId::parse(name).map(|k| self.input.is_down(k))
+    }
+
+    /// `GetCursorPos()`: the OS cursor in virtual coordinates, `physical / scale` rounded to the nearest integer
+    /// (oracle `input-probe`: 640 / 1.5 -> 427, 680 / 1.5 -> 453) [H: halves].
+    pub fn get_cursor_pos(&self) -> (f64, f64) {
+        let s = self.get_screen_scale();
+        let (x, y) = self.input.cursor();
+        ((x / s).round(), (y / s).round())
+    }
+
+    // ----- platform -----
+
+    /// `Copy(text)`.
+    pub fn copy(&mut self, text: &str) {
+        self.platform.copy(text);
+    }
+
+    /// `Paste()`; `None` = `nil`.
+    pub fn paste(&mut self) -> Option<String> {
+        self.platform.paste()
+    }
+
+    /// `OpenURL(url)`.
+    pub fn open_url(&mut self, url: &str) {
+        self.platform.open_url(url);
+    }
+
+    // ----- window -----
+
+    /// `SetWindowTitle(title)`.
+    pub fn set_window_title(&mut self, title: &str) {
+        self.requests.title = Some(title.to_string());
+    }
+
+    /// `Exit([msg])`: after the current callback the loop calls `OnExit` (not `CanExit`) and ends (oracle traces:
+    /// `Exit()` in `OnChar` -> `OnExit` logged next).
+    pub fn exit(&mut self, msg: Option<&str>) {
+        self.requests.exit = Some(msg.map(str::to_string));
+    }
+
+    /// Pending window requests, taken by the window loop.
+    pub fn take_requests(&mut self) -> WindowRequests {
+        std::mem::take(&mut self.requests)
+    }
+
+    pub fn exit_requested(&self) -> bool {
+        self.requests.exit.is_some()
+    }
+
+    /// `RenderInit(flags…)`: the only call is `RenderInit("DPI_AWARE")` (Launch.lua:69); the window is always
+    /// per-monitor DPI aware here, so it is accepted and has no effect.
+    pub fn render_init(&mut self, _flags: &[&str]) {}
+
+    /// `ConExecute(cmd)`: only `set <var> <value>` is used (Launch.lua:12-13: `vid_mode 8`, `vid_resizable 3`); the
+    /// values are stored and read by the window setup ([`Gfx::cvar`]) [H: their meaning is not measured].
+    pub fn con_execute(&mut self, cmd: &str) {
+        let mut it = cmd.split_whitespace();
+        if let (Some("set"), Some(var), Some(val)) = (it.next(), it.next(), it.next()) {
+            self.cvars.insert(var.to_string(), val.to_string());
+        }
+    }
+
+    pub fn cvar(&self, name: &str) -> Option<&str> {
+        self.cvars.get(name).map(String::as_str)
+    }
+
+    /// `ConPrintf(fmt, …)` with the text already formatted by the caller (`pob_lua::format`): stderr + a ring buffer.
+    pub fn con_printf(&mut self, text: &str) {
+        eprintln!("{text}");
+        if self.console.len() == CONSOLE_LINES {
+            self.console.pop_front();
+        }
+        self.console.push_back(text.to_string());
+    }
+
+    /// `ConClear()`.
+    pub fn con_clear(&mut self) {
+        self.console.clear();
+    }
+
+    pub fn console(&self) -> impl Iterator<Item = &str> {
+        self.console.iter().map(String::as_str)
+    }
+
+    /// `SetClearColor(r, g, b[, a])` (unused by the Lua UI).
+    pub fn set_clear_color(&mut self, r: f64, g: f64, b: f64, a: f64) {
+        self.clear = [r as f32, g as f32, b as f32, a as f32];
+    }
+
+    // ----- screenshots -----
+
+    /// `TakeScreenshot()`: the **next** frame is written (oracle `frame-probe`), see [`crate::screenshot`].
+    pub fn take_screenshot(&mut self) {
+        self.shot_requested = true;
+    }
+
+    /// Directory `TakeScreenshot` writes to (default `SimpleGraphic/Screenshots`, relative to the working directory).
+    pub fn set_screenshot_dir(&mut self, dir: impl Into<PathBuf>) {
+        self.screenshot_dir = dir.into();
+    }
+
+    pub fn screenshot_dir(&self) -> &Path {
+        &self.screenshot_dir
+    }
+
+    /// The frame just finished must be written as a screenshot.
+    pub fn frame_wants_screenshot(&self) -> bool {
+        self.shot_this_frame
     }
 
     pub fn fonts(&self) -> &FontSet {
@@ -174,9 +347,9 @@ impl Gfx {
         self.dpi_override
     }
 
-    /// `GetTime()`: integer milliseconds since start.
+    /// `GetTime()`: integer milliseconds since start (from the platform clock).
     pub fn get_time(&self) -> u64 {
-        self.start.elapsed().as_millis() as u64
+        self.platform.now_ms()
     }
 
     /// `GetDrawColor()`: the current tint (after escapes of the last `DrawString`).
@@ -201,13 +374,16 @@ impl Gfx {
     }
 
     /// Starts a frame: layer/sub-layer `(0, 0)` (`GetDrawLayer()` = 0 at frame start, UI-ARCH §11) and the full-screen
-    /// viewport [H: the original was not measured without an explicit `SetViewport()`]; the colour carries over.
+    /// viewport (oracle `frame-probe`: frames ending with `SetViewport(100, 100, 50, 50)` start unclipped); the colour
+    /// carries over. A `TakeScreenshot()` made before this point captures this frame.
     pub fn begin_frame(&mut self) -> Frame<'_> {
         self.layer = 0;
         self.sub_layer = 0;
         self.viewport = None;
+        self.shot_this_frame = std::mem::take(&mut self.shot_requested);
         self.list.commands.clear();
         self.list.size = self.screen;
+        self.list.clear = self.clear;
         Frame { gfx: self }
     }
 
@@ -276,10 +452,24 @@ impl Frame<'_> {
         self.gfx.color = [r as f32, g as f32, b as f32, a as f32];
     }
 
-    /// `SetDrawColor(escapeStr)`: `^N` / `^xRRGGBB`, alpha 1.
+    /// `SetDrawColor(escapeStr)`: `^N` / `^xRRGGBB` at the start of the string, alpha 1; on error the colour is kept.
     pub fn set_draw_color_escape(&mut self, s: &str) -> Result<(), GfxError> {
         self.gfx.color = color::parse_escape(s).ok_or_else(|| GfxError::InvalidColorEscape(s.to_string()))?;
         Ok(())
+    }
+
+    /// `SetBlendMode(mode)`. The Lua UI never calls it (UI-ARCH §2.2: 0 calls), so only the default `"ALPHA"` is
+    /// implemented. The other modes were measured (scene `u13-blend`, over grey 127): `"ADDITIVE"` = (ONE, ONE)
+    /// (0.5 red, a 0.5 -> 254), `"PREALPHA"` = (ONE, ONE_MINUS_SRC_ALPHA) (0.5 green -> 191, others 64); an unknown
+    /// mode is a Lua error and keeps the current mode.
+    pub fn set_blend_mode(&mut self, mode: &str) -> Result<(), GfxError> {
+        match mode {
+            "ALPHA" => Ok(()),
+            "PREALPHA" | "ADDITIVE" => unimplemented!(
+                "SetBlendMode({mode:?}): not called by the PoB Lua UI (UI-ARCH §2.2, 0 calls); measured in tools/sg-oracle/scenes/u13-blend.json"
+            ),
+            other => Err(GfxError::InvalidBlendMode(other.to_string())),
+        }
     }
 
     /// Viewport offset and clip rectangle in physical pixels. The original works with whole-pixel viewports:
@@ -468,13 +658,20 @@ impl LineCtx<'_> {
     }
 
     /// Lays out one line (no `\n`) starting at pen `x`, top `y`; escapes update `color` as they are met.
+    ///
+    /// The pen of a drawn line is **not** the integer advance sum of `DrawStringWidth` (U1.1): the original walks the
+    /// line in `f32` — glyph left `gx = pen + spLeft·s`, then `pen = ceil(gx + width·s + spRight·s)` with
+    /// `s = H / atlas` — so a scaled line drifts by +1 px wherever the `f32` sum lands just above an integer
+    /// (SG-oracle scenes `u13-placeholder` / `u13-h30probe`: VAR h 30, `"hhhhhhhh|"` glyphs at +0,0,0,0,0,+1,+2,+3,+3
+    /// against the integer model; this rule fits all 17 probe lines, the integer and the `f64` variants do not).
+    /// Unscaled lines (`s = 1`) are exact integers either way.
     fn layout(&self, line: &str, x: f64, y: f64, color: &mut Rgba, out: &mut Vec<Command>) {
         let bytes = line.as_bytes();
         let (fh, sh) = (self.main, self.sub);
         let eff = f64::from(self.eff);
         let (eff_i, atlas_i) = (i64::from(self.eff), i64::from(fh.height));
-        let scale = eff / f64::from(fh.height);
-        let mut pen = x;
+        let s32 = self.eff as f32 / fh.height as f32;
+        let mut pen = x as f32;
         let mut i = 0;
         while i < bytes.len() {
             if let Some((len, c)) = color::escape_color(bytes, i) {
@@ -484,24 +681,28 @@ impl LineCtx<'_> {
             }
             let b = bytes[i];
             if b == b'\t' {
-                pen += text::scaled_advance(4 * fh.glyphs[usize::from(b' ')].advance(), eff_i, atlas_i) as f64;
+                // [H] the tab keeps the width rule (not covered by a drawn scene).
+                pen += text::scaled_advance(4 * fh.glyphs[usize::from(b' ')].advance(), eff_i, atlas_i) as f32;
                 i += 1;
             } else if b.is_ascii() {
                 let g = &fh.glyphs[usize::from(b)];
-                let gx = pen + f64::from(g.sp_left) * scale;
-                let rect = [gx, y, gx + f64::from(g.width) * scale, y + eff];
+                let gx = pen + g.sp_left as f32 * s32;
+                let gx1 = gx + g.width as f32 * s32;
+                let rect = [f64::from(gx), y, f64::from(gx1), y + eff];
                 let uv = [f64::from(g.x), f64::from(g.y), f64::from(g.x + g.width), f64::from(g.y + fh.height)];
                 self.quad(out, self.main_tex, rect, uv, *color);
-                pen += text::scaled_advance(g.advance(), eff_i, atlas_i) as f64;
+                pen = (gx1 + g.sp_right as f32 * s32).ceil();
                 i += 1;
             } else {
                 let ch = line[i..].chars().next().expect("char boundary");
                 i += ch.len_utf8();
                 // `[U+XXXX]` with the smaller atlas, unscaled, centred vertically (scene `escape-carry`: H 16, atlas 12 ->
-                // 2 px down; `u12-frac`: H 12/20/24/32) [H: halving of an odd difference — all heights are even].
+                // 2 px down; `u12-frac`: H 12/20/24/32). A placeholder atlas taller than the line is not moved up: offset
+                // 0 for H 1 / atlas 10 and H 6 / atlas 10 (scene `u13-placeholder`). An odd difference cannot occur: H > 1
+                // and every atlas height are even.
                 let a = f64::from(sh.height);
-                let py = y + ((eff - a) / 2.0).floor();
-                let mut p = pen;
+                let py = y + ((eff - a) / 2.0).floor().max(0.0);
+                let mut p = f64::from(pen);
                 for pb in text::placeholder(ch).bytes() {
                     let g = &sh.glyphs[usize::from(pb)];
                     let gx = p + f64::from(g.sp_left);
@@ -510,7 +711,7 @@ impl LineCtx<'_> {
                     self.quad(out, self.sub_tex, rect, uv, *color);
                     p += g.advance() as f64;
                 }
-                pen += self.font.char_advance(eff, ch) as f64;
+                pen += self.font.char_advance(eff, ch) as f32;
             }
         }
     }

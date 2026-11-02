@@ -12,10 +12,14 @@ use std::rc::{Rc, Weak};
 use crate::draw::DrawList;
 use crate::image::Texture;
 
-/// Frames are cleared to opaque black (the original's default clear colour; `SetClearColor` is unused by the Lua UI).
-const CLEAR: wgpu::Color = wgpu::Color::BLACK;
 /// Format of the frame texture the main pass draws into (non-sRGB: the original blends in gamma space).
 const FRAME_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8Unorm;
+
+/// The frame's clear colour (`SetClearColor`; opaque black by default — the Lua UI never sets it).
+fn clear_color(list: &DrawList) -> wgpu::Color {
+    let [r, g, b, a] = list.clear.map(f64::from);
+    wgpu::Color { r, g, b, a }
+}
 
 #[derive(Debug)]
 pub enum RenderError {
@@ -431,7 +435,7 @@ impl Renderer {
                     depth_slice: None,
                     resolve_target: None,
                     ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(CLEAR),
+                        load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
                         store: wgpu::StoreOp::Store,
                     },
                 })],
@@ -493,7 +497,7 @@ impl Renderer {
                     depth_slice: None,
                     resolve_target: None,
                     ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(CLEAR),
+                        load: wgpu::LoadOp::Clear(clear_color(list)),
                         store: wgpu::StoreOp::Store,
                     },
                 })],
