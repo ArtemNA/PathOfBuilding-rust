@@ -4,7 +4,7 @@
 {"treeOrder":"order-tabp"},
 {"cursor":[914,786]},
 {"hold":["LEFTBUTTON"],"events":[["KeyDown","LEFTBUTTON"]]},
-{"release":["LEFTBUTTON"],"events":[["KeyUp","LEFTBUTTON"]],"dump":true,"tab":true},
+{"release":["LEFTBUTTON"],"events":[["KeyUp","LEFTBUTTON"]],"dump":true,"tab":true,"shot":"tab-heat-start"},
 {"waitPower":true},
 {"cursor":[-100,-100],"time":40000,"dump":true,"tab":true,"shot":"tab-heat"},
 {"perfPower":"Life"},
@@ -14,8 +14,8 @@
 {"cursor":[764,786]},
 {"hold":["LEFTBUTTON"],"events":[["KeyDown","LEFTBUTTON"]]},
 {"release":["LEFTBUTTON"],"events":[["KeyUp","LEFTBUTTON"]],"dump":true,"tab":true},
-{"cursor":[-100,-100],"dump":true,"tab":true,"shot":"tab-report","mask":[318,650,998,798]},
+{"cursor":[-100,-100],"dump":true,"tab":true,"shot":"tab-report"},
 {"cursor":[600,652]},
 {"hold":["LEFTBUTTON"],"events":[["KeyDown","LEFTBUTTON"]]},
 {"release":["LEFTBUTTON"],"events":[["KeyUp","LEFTBUTTON"]],"dump":true,"tab":true},
-{"cursor":[-100,-100],"dump":true,"tab":true,"shot":"tab-report-jump","mask":[318,650,998,798]}]}
+{"cursor":[-100,-100],"dump":true,"tab":true,"shot":"tab-report-jump"}]}

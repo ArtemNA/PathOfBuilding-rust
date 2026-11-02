@@ -339,6 +339,9 @@ pub struct PassiveSpec {
     pub allocated_tattoo_types: IndexMap<String, u32>,
     /// `self.hashOverrides` (:94, :179-182): node id -> the tattoo (`crate::tattoo`).
     pub hash_overrides: IndexMap<u32, Rc<crate::tattoo::TattooNode>>,
+    /// The ids of `hashOverrides` `ImportFromNodeList` went over: its `override.sprites = spriteMap[override.icon]` (:301-303) writes nil on a tattoo whose icon the tree has no
+    /// sprite for, and then `node.sprites` reads the tree node's through the metatable (R21); a tattoo fresh from the popup keeps the `{ }` of PassiveTree.lua:774-777.
+    pub imported_tattoos: Vec<u32>,
     pub alloc_order: AllocOrder,
     /// What BuildAllDependsAndPaths reads off `self.build.itemsTab.items[itemId]` for the jewels (`crate::timeless`): set by
     /// the caller once the items are parsed (pob-calc `post_load_spec`); empty = no items (a spec loaded without its build).
@@ -384,6 +387,7 @@ impl PassiveSpec {
             allocated_mastery_types: IndexMap::new(),
             allocated_tattoo_types: IndexMap::new(),
             hash_overrides: IndexMap::new(),
+            imported_tattoos: Vec::new(),
             alloc_order: AllocOrder::LuaJit,
             jewel_items: Vec::new(),
             alloc_table: crate::lj_table::LjTable::new(),
@@ -620,8 +624,10 @@ impl PassiveSpec {
             }
         }
         // :300-307 -- the tattoos on their nodes before allocation (sprites: display only).
+        self.imported_tattoos.clear();
         for (id, t) in self.hash_overrides.clone() {
             if let Some(i) = self.node_idx(id) {
+                self.imported_tattoos.push(id);
                 self.replace_with_tattoo(i, &t);
             }
         }
@@ -643,6 +649,53 @@ impl PassiveSpec {
             }
         }
         self.build_all_depends_and_paths()
+    }
+
+    /// What `DecodeURL` / `DecodePoePlannerURL` (:395-541) do to a new spec: `ResetNodes`, the class, `AllocateDecodedNodes`, `AllocateMasteryEffects`. They do not rebuild the paths: until the
+    /// next edit the nodes keep the paths of the class start, and a node the link does not connect stays allocated.
+    pub fn apply_decoded(
+        &mut self,
+        class_id: f64,
+        ascend_class_id: f64,
+        secondary: Option<f64>,
+        nodes: &[f64],
+        masteries: &NumMap<f64>,
+    ) -> Result<(), TreeError> {
+        self.reset_nodes();
+        self.select_class(class_id)?;
+        self.select_ascend_class(ascend_class_id)?;
+        if secondary.is_some() {
+            self.select_secondary_ascend_class(secondary)?;
+        }
+        for &id in nodes {
+            if let Some(i) = as_id(id).and_then(|id| self.node_idx(id)) {
+                self.alloc(i);
+            }
+        }
+        for &(mastery, effect) in &masteries.0 {
+            let (Some(i), Some(key)) = (as_id(mastery).and_then(|m| self.node_idx(m)), as_id(effect).map(u64::from)) else {
+                continue;
+            };
+            self.alloc(i);
+            self.apply_mastery_effect(i, key);
+            let id = self.nodes[i].id;
+            self.mastery_selections.insert(id, effect);
+            self.allocated_mastery_count += 1;
+            let name = self.nodes[i].name().unwrap_or("").to_string();
+            match self.allocated_mastery_types.get(&name).copied() {
+                None => {
+                    self.allocated_mastery_types.insert(name, 1);
+                    self.allocated_mastery_type_count += 1;
+                }
+                Some(prev) => {
+                    self.allocated_mastery_types.insert(name, prev + 1);
+                    if prev == 0 {
+                        self.allocated_mastery_type_count += 1;
+                    }
+                }
+            }
+        }
+        Ok(())
     }
 
     /// :1697-1720 `ReplaceNode(old, treeNode)` -- see the module comment: dropping the own fields IS assigning the tree's.
@@ -841,7 +894,9 @@ impl PassiveSpec {
 
     /// TreeTab.lua:885-892 `addModifier`: `hashOverrides[node.id] = tattoo`, `ReplaceNode`, the mastery flag, `BuildAllDependsAndPaths`.
     pub fn set_tattoo(&mut self, i: usize, t: &Rc<crate::tattoo::TattooNode>) -> Result<(), TreeError> {
-        self.hash_overrides.insert(self.nodes[i].id, t.clone());
+        let id = self.nodes[i].id;
+        self.hash_overrides.insert(id, t.clone());
+        self.imported_tattoos.retain(|x| *x != id);
         self.replace_with_tattoo(i, t);
         if self.nodes[i].ty() == NodeType::Mastery {
             self.nodes[i].all_mastery_options = false;
@@ -893,6 +948,16 @@ impl PassiveSpec {
     /// `crate::timeless`), apply mastery selections and the four counters, then prune every allocated node with no path to a
     /// start node. Errors: what upstream raises in the conquest half (and its unported abyss branch).
     pub fn build_all_depends_and_paths(&mut self) -> Result<(), TreeError> {
+        self.build_all_depends_and_paths_inner()?;
+        LIVE_PATHS.with_borrow(|l| {
+            if let Some(l) = l {
+                l.apply(self);
+            }
+        });
+        Ok(())
+    }
+
+    fn build_all_depends_and_paths_inner(&mut self) -> Result<(), TreeError> {
         let mut visited: Vec<usize> = Vec::new();
         // :1110-1140 -- the abyss conquests (an error, out of scope) and the radius jewels of `self.jewels`.
         let radius_jewels = self.gather_radius_jewels()?;
@@ -1487,4 +1552,65 @@ impl PassiveSpec {
         )?;
         Ok(spec)
     }
+}
+
+/// `node.path` / `node.depends` / `node.pathDist` of a live `build.spec` by node id. Which of the equal shortest paths a node has follows the history of the
+/// `allocNodes` table (`pairs`, PassiveSpec.lua:1628), and the sessions of the node power walk are fresh loads of the model, whose table has another history (measured on
+/// the edited golden: `Life Mastery: +30 to maximum Life`, Per Point 126 instead of the original's 97).
+#[derive(Clone, Debug, Default)]
+pub struct LiveSpecPaths {
+    tree_version: String,
+    nodes: Vec<LivePath>,
+}
+
+/// `(node id, path, depends, pathDist)`.
+type LivePath = (u32, Option<Vec<u32>>, Vec<u32>, f64);
+
+impl LiveSpecPaths {
+    pub fn of(spec: &PassiveSpec) -> LiveSpecPaths {
+        let ids = |l: &[usize]| l.iter().map(|&i| spec.nodes[i].id).collect::<Vec<u32>>();
+        LiveSpecPaths {
+            tree_version: spec.tree_version.clone(),
+            nodes: spec
+                .nodes
+                .iter()
+                .map(|n| (n.id, n.path.as_deref().map(ids), ids(&n.depends), n.path_dist))
+                .collect(),
+        }
+    }
+
+    /// A node the session's spec does not have keeps nothing: the session's own node then stays as the load built it.
+    fn apply(&self, spec: &mut PassiveSpec) {
+        if self.tree_version != spec.tree_version {
+            return;
+        }
+        for (id, path, depends, dist) in &self.nodes {
+            let Some(i) = spec.node_idx(*id) else { continue };
+            let to_idx = |l: &[u32], s: &PassiveSpec| l.iter().filter_map(|&x| s.node_idx(x)).collect::<Vec<usize>>();
+            let p = path.as_ref().map(|p| to_idx(p, spec));
+            let d = to_idx(depends, spec);
+            let n = &mut spec.nodes[i];
+            n.path = p;
+            n.depends = d;
+            n.path_dist = *dist;
+        }
+    }
+}
+
+thread_local! {
+    static LIVE_PATHS: std::cell::RefCell<Option<LiveSpecPaths>> = const { std::cell::RefCell::new(None) };
+}
+
+/// `f`, with every `BuildAllDependsAndPaths` of this thread leaving the paths of `live` (the coordinating thread of the node power walk: its plan reads them; the workers only
+/// take jobs by node index). The calculation itself does not read `path`.
+pub fn with_live_paths<R>(live: &LiveSpecPaths, f: impl FnOnce() -> R) -> R {
+    struct Reset;
+    impl Drop for Reset {
+        fn drop(&mut self) {
+            LIVE_PATHS.with_borrow_mut(|l| *l = None);
+        }
+    }
+    LIVE_PATHS.with_borrow_mut(|l| *l = Some(live.clone()));
+    let _reset = Reset;
+    f()
 }

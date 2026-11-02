@@ -23,8 +23,12 @@ const BUILDS: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../builds/pc/3.29/
 fn local_builds(key: &str) -> Vec<String> {
     let p = concat!(env!("CARGO_MANIFEST_DIR"), "/../../builds/local-builds.json");
     let v: Option<serde_json::Value> = std::fs::read_to_string(p).ok().and_then(|t| serde_json::from_str(&t).ok());
-    v.and_then(|v| v[key].as_array().map(|a| a.iter().filter_map(|x| x.as_str().map(str::to_owned)).collect()))
-        .unwrap_or_default()
+    v.and_then(|v| {
+        v[key]
+            .as_array()
+            .map(|a| a.iter().filter_map(|x| x.as_str().map(str::to_owned)).collect())
+    })
+    .unwrap_or_default()
 }
 const GOLDEN: &str = "Generals Perforate Zerker";
 
@@ -192,6 +196,7 @@ struct Run {
     shots: Vec<Shot>,
     perf: Vec<(String, f64)>,
     orders: HashMap<String, Value>,
+    paths: HashMap<String, Value>,
     unimplemented: Vec<String>,
 }
 
@@ -237,6 +242,64 @@ fn order_of() -> Value {
     v.debug_orders()
 }
 
+/// The `treePaths` record of tree-runner.lua: `node.path` of the live spec and `pairs(allocNodes)`.
+fn paths_of() -> Value {
+    let b = main().build_mode.clone();
+    let eng = b.engine.borrow();
+    let spec = eng.as_ref().expect("engine").spec_rc();
+    let mut paths = Map::new();
+    for n in &spec.nodes {
+        if let Some(p) = &n.path {
+            paths.insert(n.id.to_string(), json!(p.iter().map(|i| spec.nodes[*i].id).collect::<Vec<_>>()));
+        }
+    }
+    json!({ "paths": paths, "allocOrder": spec.alloc_table_pairs() })
+}
+
+/// `cursorFind` of tree-runner.lua.
+fn cursor_find(kind: &str) -> (f64, f64) {
+    let art = main().build_mode.tree_art();
+    let b = main().build_mode.clone();
+    let eng = b.engine.borrow();
+    let spec = eng.as_ref().expect("engine").spec_rc();
+    let tv = b.tree_view.borrow();
+    let v = tv.as_ref().expect("view");
+    let mut best: Option<(u32, f64, f64)> = None;
+    let (w, h) = (968.0, 712.0);
+    let scale = f64::min(w, h) / art.size * v.zoom;
+    let mut take = |id: u32, n: &pob_tree::SpecNode| {
+        let t = n.tree_node();
+        if let (Some(x), Some(y)) = (t.x, t.y)
+            && best.is_none_or(|(i, _, _)| id < i)
+        {
+            let (x, y) = (
+                (x * scale + v.zoom_x + 312.0 + w / 2.0).floor(),
+                (y * scale + v.zoom_y + 32.0 + h / 2.0).floor(),
+            );
+            if kind == "compareOnly" || (x > 320.0 && x < 1270.0 && y > 40.0 && y < 736.0) {
+                best = Some((id, x, y));
+            }
+        }
+    };
+    if kind == "clusterSocket" {
+        for n in &spec.nodes {
+            if n.alloc && n.tree_node().expansion_jewel.is_some() && n.id < 65536 {
+                take(n.id, n);
+            }
+        }
+    } else {
+        let cmp = v.compare_spec.as_ref().expect("compare spec");
+        for c in &cmp.nodes {
+            let own = spec.node(c.id);
+            if c.alloc && ((kind == "compareOnly" && own.is_none()) || (kind == "compareAlloc" && own.is_some_and(|n| !n.alloc))) {
+                take(c.id, c);
+            }
+        }
+    }
+    let (_, x, y) = best.unwrap_or_else(|| panic!("cursorFind: none {kind}"));
+    (x, y)
+}
+
 fn run(name: &str) -> Run {
     let sc: Value =
         serde_json::from_str(&std::fs::read_to_string(scene::oracle_dir().join(format!("scenes/tree/{name}.json"))).expect("scenario"))
@@ -267,9 +330,11 @@ fn run(name: &str) -> Run {
         shots: Vec::new(),
         perf: Vec::new(),
         orders: HashMap::new(),
+        paths: HashMap::new(),
         unimplemented: Vec::new(),
     };
     let mut held: HashMap<String, RawEvent> = HashMap::new();
+    let oracle_dumps = oracle_record_opt(name).unwrap_or(Value::Null);
     for (i, st) in sc["steps"].as_array().expect("steps").iter().enumerate() {
         if st["waitAssets"].as_bool() == Some(true) {
             main().build_mode.wait_tree_assets();
@@ -392,7 +457,22 @@ fn run(name: &str) -> Run {
                 .borrow_mut()
                 .as_mut()
                 .expect("view")
-                .set_order_sample(ids, conns);
+                .set_order_sample(ids.clone(), conns);
+            if let Some(names) = rec["clusterNames"].as_array() {
+                let names = names.iter().filter_map(|v| v.as_str().map(str::to_owned)).collect();
+                *main()
+                    .build_mode
+                    .tree_tab
+                    .borrow()
+                    .as_ref()
+                    .expect("tab")
+                    .report_order_sample
+                    .borrow_mut() = Some((ids, names));
+            }
+            continue;
+        }
+        if let Some(o) = st["treePaths"].as_str() {
+            out.paths.insert(o.to_string(), paths_of());
             continue;
         }
         if let Some(c) = st["cursor"].as_array() {
@@ -419,6 +499,10 @@ fn run(name: &str) -> Run {
             };
             gfx.input(RawEvent::Cursor { x, y });
         }
+        if let Some(kind) = st["cursorFind"].as_str() {
+            let (x, y) = cursor_find(kind);
+            gfx.input(RawEvent::Cursor { x, y });
+        }
         if let Some(t) = st["time"].as_u64() {
             tp.set_time(t);
         }
@@ -432,6 +516,7 @@ fn run(name: &str) -> Run {
                 gfx.input(release(ev));
             }
         }
+        let perf_t0 = std::time::Instant::now();
         for e in st["events"].as_array().into_iter().flatten() {
             let key = e[1].as_str().expect("key");
             match e[0].as_str().expect("type") {
@@ -442,6 +527,9 @@ fn run(name: &str) -> Run {
             }
         }
         frame(&mut gfx, &l);
+        if let Some(label) = st["perfClick"].as_str() {
+            out.perf.push((label.to_string(), perf_t0.elapsed().as_secs_f64() * 1e3));
+        }
         if st["dump"].as_bool() == Some(true) {
             let mut d = dump();
             if st["tab"].as_bool() == Some(true) {
@@ -450,6 +538,10 @@ fn run(name: &str) -> Run {
             out.dumps.push(((i + 1) as u64, d));
         }
         if let Some(shot) = st["shot"].as_str() {
+            // the popup's `pairs(controls)` of the oracle process (R13)
+            if let Some(order) = oracle_popup_order(&oracle_dumps, (i + 1) as u64) {
+                pob_ui::tabs::tree::set_popup_order_sample(&order);
+            }
             let list = frame(&mut gfx, &l);
             out.shots.push(Shot {
                 name: shot.to_string(),
@@ -464,13 +556,54 @@ fn run(name: &str) -> Run {
     if let Some(v) = main().build_mode.tree_view.borrow().as_ref() {
         out.unimplemented.clone_from(&v.unimplemented);
     }
+    // a panic in a handler is the error prompt (`launch.promptMsg`)
+    assert!(l.prompt_msg.borrow().is_none(), "{name}: error: {:?}", l.prompt_msg.borrow());
     pob_ui::modules::main::clear_main();
     out
+}
+
+/// `popupOrder` of the oracle's dump of a step.
+fn oracle_popup_order(rec: &Value, step: u64) -> Option<Vec<String>> {
+    let d = rec["dumps"].as_array()?.iter().find(|d| d["step"].as_u64() == Some(step))?;
+    Some(
+        d["state"]["popupOrder"]
+            .as_array()?
+            .iter()
+            .filter_map(|v| v.as_str().map(str::to_owned))
+            .collect(),
+    )
+}
+
+fn oracle_record_opt(name: &str) -> Option<Value> {
+    let p = scene::oracle_dir().join(format!("fixtures/tree/{name}.json"));
+    serde_json::from_str(&std::fs::read_to_string(&p).ok()?).ok()
 }
 
 fn oracle_record(name: &str) -> Value {
     let p = scene::oracle_dir().join(format!("fixtures/tree/{name}.json"));
     serde_json::from_str(&std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("{}: {e}", p.display()))).expect("json")
+}
+
+/// U3c: what the tab cannot do yet is a note with `file:line`, no crash; the original has these branches (the network, Abyss, `Generate`).
+#[test]
+fn unported_branches_do_not_crash() {
+    if let Some(why) = missing_inputs() {
+        eprintln!("SKIPPED unported_branches_do_not_crash: {why}");
+        return;
+    }
+    for (step, d) in run("u3c-crash").dumps {
+        eprintln!("step {step}: popups {} {}", d["popups"], d["tab"]["popup"]["title"]);
+    }
+    let notes = pob_ui::modules::main::not_ported_notes();
+    eprintln!("notes: {notes:#?}");
+    for want in [
+        "TreeTab.lua:823-836",
+        "TreeTab.lua:765-794",
+        "TreeTab.lua:2575-2609",
+        "TreeTab.lua:1951-2117",
+    ] {
+        assert!(notes.iter().any(|n| n.starts_with(want)), "{want}: {notes:?}");
+    }
 }
 
 /// `(w, h)` of the JPEG / WebP sheets of the trees the scenes use.
@@ -527,7 +660,11 @@ fn classify_bad(
     (n, other)
 }
 
+/// `scenes/tree/index.json`; `POB_TREE_SCENES=a,b`: a run over those only (a debugging aid: the gate is the run without it).
 fn scenario_names() -> Vec<String> {
+    if let Some(only) = std::env::var("POB_TREE_SCENES").ok().filter(|s| !s.is_empty()) {
+        return only.split(',').map(str::to_owned).collect();
+    }
     serde_json::from_str(&std::fs::read_to_string(scene::oracle_dir().join("scenes/tree/index.json")).expect("index")).expect("json")
 }
 
@@ -611,8 +748,9 @@ fn tree_states_equal_original() {
             .expect("write");
             for key in ["groups", "connectors", "subGraphs", "nodes"] {
                 let (mut a, mut b) = (norm(&ours[key]), norm(&theirs[key]));
-                // `pairs(tree.nodes)` differs per process of the original (R13): the same set; `groups`/`subGraphs` (number keys only): the order
-                if matches!(key, "connectors" | "nodes") {
+                // `pairs(tree.nodes)` differs per process of the original (R13): the same set. `subGraphs` too (R31; 24 processes of the golden: 23 + 1 of 2 orders, the
+                // insertion follows `pairs(tree.sockets)`). `groups` (number keys only): the order
+                if matches!(key, "connectors" | "nodes" | "subGraphs") {
                     for v in [&mut a, &mut b] {
                         if let Some(l) = v.as_array_mut() {
                             l.sort_by_key(|x| x.to_string());
@@ -629,6 +767,41 @@ fn tree_states_equal_original() {
                     eprintln!("{o}: {key} order differs: {same} of {av}/{bv} at the same place");
                     failures.push(format!("{o}: {key} order: {same} of {av}/{bv} at the same place"));
                 }
+            }
+        }
+        for (o, ours) in &run.paths {
+            let theirs = oracle_record(o);
+            let (mut same, mut other) = (0, Vec::new());
+            let empty = Map::new();
+            let (a, b) = (
+                ours["paths"].as_object().unwrap_or(&empty),
+                theirs["paths"].as_object().unwrap_or(&empty),
+            );
+            for k in a.keys().chain(b.keys().filter(|k| !a.contains_key(*k))) {
+                if norm(&a.get(k).cloned().unwrap_or(Value::Null)) == norm(&b.get(k).cloned().unwrap_or(Value::Null)) {
+                    same += 1;
+                } else {
+                    other.push(k.clone());
+                }
+            }
+            eprintln!(
+                "{o}: node.path {same} equal, {} differ; pairs(allocNodes) {}",
+                other.len(),
+                if norm(&ours["allocOrder"]) == norm(&theirs["allocOrder"]) {
+                    "equal"
+                } else {
+                    "differs"
+                }
+            );
+            if !other.is_empty() {
+                failures.push(format!(
+                    "{o}: node.path differs on {} nodes: {:?}",
+                    other.len(),
+                    &other[..other.len().min(8)]
+                ));
+            }
+            if norm(&ours["allocOrder"]) != norm(&theirs["allocOrder"]) {
+                failures.push(format!("{o}: pairs(allocNodes) order differs"));
             }
         }
         eprintln!(
@@ -657,6 +830,10 @@ fn tree_states_equal_original() {
     assert!(failures.is_empty(), "{} differ:\n{}", failures.len(), failures.join("\n"));
 }
 
+/// Frames the user accepted (2026-11-02), with the pixels allowed outside the lossy class; the text stays gated. `tab-heat-start`: the first frame of the node power walk: under the
+/// scene's frozen clock the original finishes it within that frame, this port runs it in the background and the nodes have no colour yet. The next frames (`tab-heat`, `tab-heat-life`) are equal.
+const ACCEPTED_FRAMES: &[(&str, usize)] = &[("tab-heat-start", 3616)];
+
 #[test]
 #[ignore = "needs a GPU adapter (or POB_GFX_WARP=1); run with --ignored"]
 fn tree_pixels_equal_original() {
@@ -668,11 +845,7 @@ fn tree_pixels_equal_original() {
     let mut failures = Vec::new();
     let lossy_sizes = lossy_sheet_sizes();
     let (mut total_lossy, mut total_other) = (0, 0);
-    let mut names = scenario_names();
-    if let Some(only) = std::env::var("POB_TREE_SCENES").ok().filter(|s| !s.is_empty()) {
-        names = only.split(',').map(str::to_owned).collect();
-    }
-    for name in names {
+    for name in scenario_names() {
         for Shot { name: shot, list, mask } in run(&name).shots {
             let mut rgba = r.render_to_rgba(&list).expect("render");
             // POB_TREE_SAVE_OURS=<dir>;<shot>,<shot>: this port's PNG of those shots
@@ -741,6 +914,10 @@ fn tree_pixels_equal_original() {
                 total_lossy += lossy;
                 total_other += other.len();
                 if other.is_empty() && d.text_bad == 0 {
+                    continue;
+                }
+                if d.text_bad == 0 && ACCEPTED_FRAMES.iter().any(|&(s, max)| s == shot && other.len() <= max) {
+                    eprintln!("  {shot}: an accepted exception, {} px outside the lossy class", other.len());
                     continue;
                 }
                 let out = scene::out_dir();

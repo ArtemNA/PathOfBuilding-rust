@@ -57,7 +57,9 @@ function PLoadModule(name, ...)
 	return r[2]
 end
 function GetUserPath() return USER end
-local realGetTime = GetTime
+-- U3c: no background scripts: FetchLeagues of the Timeless popup (TreeTab.lua:2358) is the network, and `launch:DownloadPage` does nothing without an id
+function LaunchSubScript() return nil end
+local realGetTime, realIsKeyDown = GetTime, IsKeyDown
 local cursorX, cursorY, nowMs, held = -100, -100, 0, { }
 function GetCursorPos() return cursorX, cursorY end
 function GetTime() return nowMs end
@@ -208,6 +210,19 @@ local function tabDump(b)
 		end
 		if pc.edit then q.edit = pc.edit.buf end
 		if pc.msg then q.msg = pc.msg.label end
+		if p.title == "Find a Timeless Jewel" then
+			local labels = function(c) local r = { } for i, v in ipairs(c.list) do r[i] = type(v) == "table" and v.label or v end return r end
+			local rows = { }
+			for i, v in ipairs(pc.searchResults.list) do rows[i] = v.label end
+			local boxes, i = { }, 1
+			while pc["protectAllocatedBox" .. i] do boxes[i] = pc["protectAllocatedBox" .. i].label i = i + 1 end
+			local td = b.timelessData
+			q.timeless = { jewelSel = pc.jewelSelect.selIndex, conquerorSel = pc.conquerorSelect.selIndex, conquerors = labels(pc.conquerorSelect), socketSel = pc.socketSelect.selIndex, sockets = labels(pc.socketSelect),
+				nodeSel = pc.nodeSelect.selIndex or "nil", nodes = labels(pc.nodeSelect), fallbackModes = labels(pc.fallbackWeightsList), slider1 = pc.nodeSliderValue.label, slider2 = pc.nodeSlider2Value.label, slider3 = pc.nodeSlider3Value.label,
+				slider2Label = pc.nodeSlider2Label.label, slider2Enabled = pc.nodeSlider2.enabled ~= false, searchList = pc.searchList.buf, searchListFallback = pc.searchListFallback.buf, fallbackShown = pc.searchListFallback.shown and true or false,
+				results = rows, resultSel = pc.searchResults.selIndex or "nil", highlight = pc.searchResults.highlightIndex or "nil", tradeEnabled = pc.searchTradeButton.enabled and true or false, tradeLabel = pc.searchTradeButton.label,
+				protect = boxes, filter = pc.socketFilter.state and true or false, distance = td.socketFilterDistance or 0, jewelSocket = td.jewelSocket.id }
+		end
 		d.popup = q
 	end
 	return d
@@ -220,6 +235,8 @@ local function dump(st)
 		d.popupTitle = p.title
 		d.popupSel = nameOf(p.controls, p.selControl)
 		d.popupEdit = p.controls.edit and p.controls.edit.buf or "nil"
+		d.popupOrder = { }
+		for k in pairs(p.controls) do d.popupOrder[#d.popupOrder + 1] = tostring(k) end
 	end
 	if main.mode == "BUILD" and main.modes.BUILD.controls and main.modes.BUILD.controls.statBox then
 		d.build = buildDump(main.modes.BUILD)
@@ -332,6 +349,27 @@ function runner:Step()
 		if main.mode == "BUILD" then main.modes.BUILD.modFlag = false main:SetMode("LIST") end
 		return
 	end
+	if st.realInput then
+		if not self.real then
+			self.real = true
+			GetTime, IsKeyDown = realGetTime, realIsKeyDown
+			writeAll(base .. "/ready", "1")
+		end
+		local c = realOpen(base .. "/cursor.txt", "r")
+		if c then
+			local x, y = c:read("*n", "*n")
+			c:close()
+			if x and y then cursorX, cursorY = x, y end
+		end
+		self:Frame()
+		writeAll(base .. "/state.tmp", json.encode(self:RealState()))
+		os.remove(base .. "/state.json")
+		os.rename(base .. "/state.tmp", base .. "/state.json")
+		local stop = realOpen(base .. "/stop", "r")
+		if stop then stop:close() return self:Finish() end
+		sc.step = sc.step - 1
+		return
+	end
 	if st.waitAssets then
 		-- every ASYNC tree image decoded (GetAsyncCount), then one frame
 		if GetAsyncCount() > 0 then sc.step = sc.step - 1 end
@@ -390,7 +428,24 @@ function runner:Step()
 		for id in pairs(b.spec.tree.groups) do groups[#groups + 1] = id end
 		for _, c in ipairs(b.spec.tree.connectors) do conns[#conns + 1] = c.nodeId1 .. "-" .. c.nodeId2 .. ":" .. c.type end
 		for id in pairs(b.spec.subGraphs) do subs[#subs + 1] = id end
-		writeAll(OUT .. st.treeOrder .. ".json", json.encode({ nodes = ids, groups = groups, connectors = conns, subGraphs = subs, size = b.spec.tree.size }) .. "\n")
+		local clusterNames = { }
+		for name in pairs(b.spec.tree.clusterNodeMap) do clusterNames[#clusterNames + 1] = name end
+		writeAll(OUT .. st.treeOrder .. ".json", json.encode({ nodes = ids, groups = groups, connectors = conns, subGraphs = subs, clusterNames = clusterNames, size = b.spec.tree.size }) .. "\n")
+		return
+	end
+	if st.treePaths then
+		-- U3c: `node.path` of every node with a path + `pairs(allocNodes)`: what equal shortest paths resolved to in this spec's history
+		local b = main.modes.BUILD
+		local paths, order = { }, { }
+		for id, node in pairs(b.spec.nodes) do
+			if node.path then
+				local p = { }
+				for i, n in ipairs(node.path) do p[i] = n.id end
+				paths[tostring(id)] = p
+			end
+		end
+		for id in pairs(b.spec.allocNodes) do order[#order + 1] = id end
+		writeAll(OUT .. st.treePaths .. ".json", json.encode({ paths = paths, allocOrder = order }) .. "\n")
 		return
 	end
 	if st.perfAlloc then
@@ -471,15 +526,40 @@ function runner:Step()
 		local scale = math.min(W, H) / b.spec.tree.size * v.zoom
 		cursorX, cursorY = math.floor(n.x * scale + v.zoomX + 312 + W / 2), math.floor(n.y * scale + v.zoomY + 32 + H / 2)
 	end
+	if st.cursorFind then
+		-- U3c: the smallest id of a kind of node (compare-only, allocated only in the compare spec, an allocated cluster socket), at its place on screen
+		local b = main.modes.BUILD
+		local v, spec, cmp = b.treeTab.viewer, b.spec, b.treeTab.viewer.compareSpec
+		local best
+		local W, H = 968, 712
+		local scale = math.min(W, H) / spec.tree.size * v.zoom
+		local function take(id, n)
+			if n.x and (not best or id < best.id) then
+				local x, y = math.floor(n.x * scale + v.zoomX + 312 + W / 2), math.floor(n.y * scale + v.zoomY + 32 + H / 2)
+				if st.cursorFind == "compareOnly" or (x > 320 and x < 1270 and y > 40 and y < 736) then best = { id = id, x = x, y = y } end
+			end
+		end
+		if st.cursorFind == "clusterSocket" then
+			for id, n in pairs(spec.nodes) do if n.alloc and n.expansionJewel and id < 65536 then take(id, n) end end
+		else
+			for id, c in pairs(cmp.nodes) do
+				if c.alloc and ((st.cursorFind == "compareOnly" and not spec.nodes[id]) or (st.cursorFind == "compareAlloc" and spec.nodes[id] and not spec.nodes[id].alloc)) then take(id, c) end
+			end
+		end
+		assert(best, "cursorFind: none " .. st.cursorFind)
+		cursorX, cursorY = best.x, best.y
+	end
 	if st.time then nowMs = st.time end
 	for _, k in ipairs(st.hold or { }) do held[k] = true end
 	for _, k in ipairs(st.release or { }) do held[k] = nil end
+	local perfT0 = os.clock()
 	for _, e in ipairs(st.events or { }) do
 		if e[1] == "KeyDown" then L:OnKeyDown(e[2], e[3] == true)
 		elseif e[1] == "KeyUp" then L:OnKeyUp(e[2])
 		else L:OnChar(e[2]) end
 	end
 	self:Frame()
+	if st.perfClick then sc.perf[#sc.perf + 1] = { what = st.perfClick, ms = (os.clock() - perfT0) * 1000 } end
 	if st.dump then
 		local ok, d = pcall(dump, st)
 		sc.dumps[#sc.dumps + 1] = { step = sc.step, state = ok and d or ("dump error: " .. tostring(d)) }
@@ -491,6 +571,34 @@ function runner:Finish()
 	self.finished = true
 	SetDPIScaleOverridePercent(0)
 	Exit()
+end
+
+-- U3c: the events of the real window (scene real-input, inject-real.ps1)
+local realEvents = { }
+function runner:OnKeyDown(key, double)
+	if self.real then realEvents[#realEvents + 1] = "down " .. key .. (double and " double" or "") L:OnKeyDown(key, double) end
+end
+function runner:OnKeyUp(key)
+	if self.real then realEvents[#realEvents + 1] = "up " .. key L:OnKeyUp(key) end
+end
+function runner:OnChar(key)
+	if self.real then realEvents[#realEvents + 1] = "char " .. key L:OnChar(key) end
+end
+function runner:RealState()
+	local b = main.modes.BUILD
+	local v = b.treeTab.viewer
+	local W, H = 968, 680
+	local scale = math.min(W, H) / b.spec.tree.size * v.zoom
+	local target
+	local n = 0
+	for id, node in pairs(b.spec.nodes) do
+		if node.alloc then n = n + 1 end
+		if not node.alloc and node.type == "Normal" and node.path and #node.path <= 4 and not node.ascendancyName and node.x and (not target or id < target.id) then
+			local x, y = node.x * scale + v.zoomX + 312 + W / 2, node.y * scale + v.zoomY + 32 + H / 2
+			if x > 320 and x < 1272 and y > 40 and y < 32 + H - 8 then target = { id = id, x = math.floor(x), y = math.floor(y), path = #node.path } end
+		end
+	end
+	return { ready = true, zoomLevel = v.zoomLevel, zoomX = v.zoomX, zoomY = v.zoomY, hover = v.hoverNode and v.hoverNode.id or json.null, alloc = n, search = v.searchStr, target = target or json.null, events = realEvents }
 end
 
 function runner:OnExit()

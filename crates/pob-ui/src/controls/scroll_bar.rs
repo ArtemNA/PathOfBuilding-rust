@@ -410,7 +410,7 @@ pub struct SliderControl {
     pub tip: TooltipHost<f64>,
     pub knob_size: Cell<f64>,
     pub val: Cell<f64>,
-    pub change_func: RefCell<Option<Rc<dyn Fn(f64)>>>,
+    pub change_func: RefCell<Option<Rc<dyn Fn(&mut Gfx, f64)>>>,
     /// `{ SHIFT, CTRL, DEFAULT }`.
     pub scroll_wheel_speed: Cell<[f64; 3]>,
     pub div_count: Cell<Option<f64>>,
@@ -424,7 +424,7 @@ impl SliderControl {
     pub fn new(
         anchor: Option<Anchor>,
         rect: RectProps,
-        change_func: Option<Rc<dyn Fn(f64)>>,
+        change_func: Option<Rc<dyn Fn(&mut Gfx, f64)>>,
         scroll_wheel_speed: Option<[f64; 3]>,
     ) -> Rc<Self> {
         let base = ControlBase::new(anchor, rect);
@@ -471,13 +471,13 @@ impl SliderControl {
     }
 
     /// SliderControl.lua:49-57
-    pub fn set_val(&self, new_val: f64) {
+    pub fn set_val(&self, g: &mut Gfx, new_val: f64) {
         let new_val = 0f64.max(1f64.min(new_val));
         if new_val != self.val.get() {
             self.val.set(new_val);
             let cf = self.change_func.borrow().clone();
             if let Some(cf) = cf {
-                cf(new_val);
+                cf(g, new_val);
             }
         }
     }
@@ -495,8 +495,9 @@ impl SliderControl {
     }
 
     /// SliderControl.lua:69-71
-    pub fn set_val_from_knob_x(&self, g: &Gfx, knob_x: f64) {
-        self.set_val(knob_x / self.get_knob_travel(g));
+    pub fn set_val_from_knob_x(&self, g: &mut Gfx, knob_x: f64) {
+        let travel = self.get_knob_travel(g);
+        self.set_val(g, knob_x / travel);
     }
 
     /// SliderControl.lua:73-76
@@ -650,9 +651,9 @@ impl Control for SliderControl {
                 self.set_val_from_knob_x(g, (cursor_x - self.drag_cx.get()) + self.drag_knob_x.get());
             }
         } else if (!invert && key == "WHEELDOWN") || (invert && key == "WHEELUP") || key == "DOWN" || key == "LEFT" {
-            self.set_val(self.val.get() - speed(g));
+            self.set_val(g, self.val.get() - speed(g));
         } else if (!invert && key == "WHEELUP") || (invert && key == "WHEELDOWN") || key == "UP" || key == "RIGHT" {
-            self.set_val(self.val.get() + speed(g));
+            self.set_val(g, self.val.get() + speed(g));
         }
         None
     }
