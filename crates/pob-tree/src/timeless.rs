@@ -45,6 +45,8 @@ pub struct LegionNode {
     pub stats: NodeStats,
     pub sorted_stats: Vec<String>,
     pub stat_defs: &'static OrderedMap<LegionStat>,
+    /// `node.icon` (display: `node.sprites = spriteMap[node.icon]`, PassiveTree.lua:749).
+    pub icon: String,
 }
 
 /// `legion.additions[i]` (only `dn` is rewritten, :726-731).
@@ -145,6 +147,7 @@ fn build_legion(tree: &PassiveTree) -> Result<Legion, TreeError> {
             stats,
             sorted_stats: n.sorted_stats.clone(),
             stat_defs: &n.stats,
+            icon: n.icon.clone(),
         }));
     }
     Ok(Legion {

@@ -275,6 +275,10 @@ impl Renderer {
                 address_mode_v: mode,
                 mag_filter: filter,
                 min_filter: filter,
+                mipmap_filter: if nearest { wgpu::MipmapFilterMode::Nearest } else { wgpu::MipmapFilterMode::Linear },
+                // SimpleGraphic filters anisotropically, 16x, without mip levels (scene `u3a-aniso`, ratios 4..87: 0 pixels differ at 16, 647 at 8):
+                // uniformly scaled quads look bilinear, stretched ones (connectors, tooltip header tiles) do not.
+                anisotropy_clamp: if nearest { 1 } else { 16 },
                 ..Default::default()
             })
         };

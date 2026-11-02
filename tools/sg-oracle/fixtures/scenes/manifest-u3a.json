@@ -1,0 +1,12 @@
+[{
+    "name":"u3a-frames",
+    "shot":"110226_145633.png",
+    "size":[1000,600],
+    "dpi":100,
+    "screen":[1280,800],
+    "scale":1,
+    "frames_before_shot":5,
+    "frames_until_file":2,
+    "logs":[],
+    "errors":[]
+  }]

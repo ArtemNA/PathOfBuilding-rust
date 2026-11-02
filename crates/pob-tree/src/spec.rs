@@ -185,6 +185,22 @@ impl SpecNode {
         self.tree_node().ascendancy_name.as_deref()
     }
 
+    /// `node.icon` after ReplaceNode (:1738), the tree view's `node.sprites`: a tattoo's; a legion node's is `legion_icon`.
+    pub fn tattoo_art(&self) -> Option<(&str, &str)> {
+        match &self.replaced {
+            Some(Replaced::Tattoo(t)) => Some((t.icon.as_str(), t.active_effect_image.as_str())),
+            _ => None,
+        }
+    }
+
+    /// The legion node this node was replaced by (`node.sprites` = its sprites; ReplaceNode :1733).
+    pub fn legion_node(&self) -> Option<&Rc<crate::timeless::LegionNode>> {
+        match &self.replaced {
+            Some(Replaced::Legion(l)) => Some(l),
+            _ => None,
+        }
+    }
+
     pub fn sd(&self) -> &[String] {
         match (&self.own_sd, &self.replaced) {
             (Some(sd), _) => sd,
@@ -662,8 +678,14 @@ impl PassiveSpec {
     /// alone with Intuitive Leap-likes affecting it), the multiple-choice siblings dropped, then `BuildAllDependsAndPaths`. A cluster
     /// jewel socket on the path takes the `BuildClusterJewelGraphs` branch (:813-814) -- an explicit error here.
     pub fn alloc_node(&mut self, i: usize) -> Result<(), TreeError> {
+        self.alloc_node_path(i, None)
+    }
+
+    /// `PassiveSpec:AllocNode(node, altPath)` (:805-842): `altPath` (the tree view's trace path, indices into `nodes`) replaces `node.path`.
+    pub fn alloc_node_path(&mut self, i: usize, alt_path: Option<&[usize]>) -> Result<(), TreeError> {
         // :782-785 no path: nothing happens
         let Some(path) = self.nodes[i].path.clone() else { return Ok(()) };
+        let path = alt_path.map_or(path, <[usize]>::to_vec);
         let mut rebuild_cluster = false;
         if !self.nodes[i].intuitive_leap_likes_affecting.is_empty() {
             rebuild_cluster = !self.nodes[i].alloc && self.nodes[i].tree_node().expansion_jewel.is_some();

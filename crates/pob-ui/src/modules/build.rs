@@ -20,6 +20,7 @@ use crate::launch::launch;
 use crate::lua::{self, tostring_num};
 use crate::sg;
 use crate::tooltip::Tooltip;
+use crate::tree_view::PassiveTreeView;
 use indexmap::IndexMap;
 use pob_engine::display::DisplaySettings;
 use pob_engine::engine::Engine;
@@ -130,6 +131,8 @@ pub struct BuildMode {
     pub host: ControlHost,
     me: Weak<BuildMode>,
     pub engine: RefCell<Option<Engine>>,
+    /// `treeTab.viewer` (`None` until the tab is first drawn; a new one per opened build).
+    pub tree_view: RefCell<Option<PassiveTreeView>>,
     pub db_file_name: RefCell<DbFile>,
     pub build_name: RefCell<Option<String>>,
     pub db_file_sub_path: RefCell<Option<String>>,
@@ -162,6 +165,7 @@ impl BuildMode {
             host: ControlHost::new(),
             me: me.clone(),
             engine: RefCell::new(None),
+            tree_view: RefCell::new(None),
             db_file_name: RefCell::new(DbFile::Nil),
             build_name: RefCell::new(None),
             db_file_sub_path: RefCell::new(None),
@@ -1439,6 +1443,7 @@ impl Mode for BuildMode {
         *self.save_as_sort_mode.borrow_mut() = "NAME".into();
         *self.view_mode.borrow_mut() = "TREE".into();
         *self.engine.borrow_mut() = None;
+        *self.tree_view.borrow_mut() = None;
         self.initialised.set(false);
         // LoadDBFile / LoadDB (Build.lua:2222-2275): the XML into the engine (the tabs' Load + BuildOutput + RefreshStatList)
         let xml = match &db {
@@ -1629,15 +1634,19 @@ impl Mode for BuildMode {
         let side_bar_width = 312.0;
         let (screen_w, screen_h) = crate::common::screen_size();
         sg::set_draw_color(f, 1.0, 1.0, 1.0);
-        sg::draw_string(
-            f,
-            side_bar_width + 20.0,
-            52.0,
-            Some("LEFT"),
-            16.0,
-            "VAR",
-            &format!("^8The {} tab is not ported yet.", self.view_mode.borrow().to_lowercase()),
-        );
+        if self.view_mode.borrow().as_str() == "TREE" {
+            self.draw_tree_tab(f, side_bar_width, screen_w, screen_h, input_events);
+        } else {
+            sg::draw_string(
+                f,
+                side_bar_width + 20.0,
+                52.0,
+                Some("LEFT"),
+                16.0,
+                "VAR",
+                &format!("^8The {} tab is not ported yet.", self.view_mode.borrow().to_lowercase()),
+            );
+        }
         self.unsaved.set(self.mod_flag.get());
         sg::set_draw_layer(f, Some(5), 0);
         sg::set_draw_color(f, 0.2, 0.2, 0.2);
@@ -1651,6 +1660,95 @@ impl Mode for BuildMode {
         sg::draw_rect(f, side_bar_width - 4.0, 32.0, 4.0, screen_h - 32.0);
         // `SetDisplayStat(statBox.hoveredLine)` (the hover breakdown): U4
         me.host.draw_controls(f, &vp, None);
+    }
+}
+
+impl BuildMode {
+    /// The part of `TreeTab:Draw` (TreeTab.lua:358-451) that places the view; the tab's controls are U3b (the widths below are theirs).
+    fn draw_tree_tab(&self, f: &mut Frame<'_>, side_bar_width: f64, screen_w: f64, screen_h: f64, input_events: &mut InputEvents) {
+        let view_port = Rect {
+            x: side_bar_width,
+            y: 32.0,
+            width: screen_w - side_bar_width,
+            height: screen_h - 32.0,
+        };
+        // :394-428 `linesHeight`: specSelect 190+8, compareCheck 20+74, reset 145+8, versionText w+8, versionSelect 100+8; treeSearch 300+8,
+        // findTimelessJewel 150+8, treeHeatMap 20+130, nodePowerMaxDepthSelect 55+8.
+        let version_w = sg::draw_string_width(f, 16.0, "VAR", "^7Version:");
+        let first = 190.0 + 8.0 + 20.0 + 74.0 + 145.0 + 8.0 + version_w + 8.0 + 100.0 + 8.0;
+        let second = 300.0 + 8.0 + 150.0 + 8.0 + 20.0 + 130.0 + 55.0 + 8.0;
+        let mut lines_height = 24.0;
+        if view_port.width >= first + second + 10.0 {
+            lines_height = 0.0;
+        }
+        if view_port.width < second + 10.0 {
+            lines_height *= 2.0;
+        }
+        // :572 `self.showConvert = not curSpec.treeVersion:match("^" .. latestTreeVersion)`
+        let show_convert = {
+            let eng = self.engine.borrow();
+            let spec_version = eng.as_ref().expect("engine").spec_rc().tree_version.clone();
+            let latest = &pob_data::tree::tree_versions().expect("GameVersions").latest_tree_version;
+            !spec_version.starts_with(latest.as_str())
+        };
+        let tree_view_port = Rect {
+            x: view_port.x,
+            y: view_port.y,
+            width: view_port.width,
+            height: view_port.height - (if show_convert { 64.0 } else { 32.0 } + lines_height),
+        };
+        let root = launch().cfg.script_path.clone();
+        self.tree_view
+            .borrow_mut()
+            .get_or_insert_with(|| {
+                let mut v = PassiveTreeView::new(&root);
+                v.load(&self.engine.borrow().as_ref().expect("engine").extras().tree_view);
+                v
+            })
+            .draw(
+                f,
+                &root,
+                &self.engine,
+                &self.build_flag,
+                &self.mod_flag,
+                &tree_view_port,
+                input_events,
+            );
+        // `PassiveTreeView:Save` (:105-114) reads the live view at `SaveDB`
+        let tv = self.tree_view.borrow();
+        let v = tv.as_ref().expect("just made");
+        let st = pob_engine::save::TreeViewState {
+            zoom_level: Some(v.zoom_level),
+            zoom_x: Some(v.zoom_x),
+            zoom_y: Some(v.zoom_y),
+            search_str: v.search_str.clone(),
+            show_stat_differences: v.show_stat_differences,
+        };
+        let mut eng = self.engine.borrow_mut();
+        let e = eng.as_mut().expect("engine");
+        if e.extras().tree_view != st {
+            e.set_tree_view_state(st);
+        }
+    }
+
+    /// The current tree's art (the test harness).
+    pub fn tree_art(&self) -> Rc<crate::tree_art::TreeArt> {
+        let root = launch().cfg.script_path.clone();
+        let mut tv = self.tree_view.borrow_mut();
+        let view = tv.get_or_insert_with(|| PassiveTreeView::new(&root));
+        let spec = self.engine.borrow().as_ref().expect("engine").spec_rc();
+        view.art(&root, &spec.tree)
+    }
+
+    /// The test harness' waits (as the oracle's): the ASYNC images of the current tree.
+    pub fn wait_tree_assets(&self) {
+        let root = launch().cfg.script_path.clone();
+        let mut tv = self.tree_view.borrow_mut();
+        let view = tv.get_or_insert_with(|| PassiveTreeView::new(&root));
+        let spec = self.engine.borrow().as_ref().expect("engine").spec_rc();
+        for h in &view.art(&root, &spec.tree).async_handles {
+            h.wait();
+        }
     }
 }
 

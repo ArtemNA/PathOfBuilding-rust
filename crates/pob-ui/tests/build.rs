@@ -443,8 +443,34 @@ fn first_diff(a: &Value, b: &Value, path: &str) -> Option<String> {
     }
 }
 
+/// What the gates read that is not in git: the saved XML records of the oracle (`fixtures/build/*.xml`, `.gitignore`) and the personal builds.
+/// The reason to skip, else `None`.
+fn missing_inputs() -> Option<String> {
+    let b = format!("{BUILDS}{}.xml", BUILD_FILES[0]);
+    if !std::path::Path::new(&b).exists() {
+        return Some(format!("{b} is missing (personal builds)"));
+    }
+    let dir = scene::oracle_dir().join("fixtures/build");
+    let any_xml = std::fs::read_dir(&dir)
+        .into_iter()
+        .flatten()
+        .flatten()
+        .any(|e| e.path().extension().is_some_and(|x| x == "xml"));
+    if !any_xml {
+        return Some(format!(
+            "no {}/*.xml (ignored by git; in a worktree copy them, or run tools/sg-oracle/run.ps1 -Script build-runner.lua)",
+            dir.display()
+        ));
+    }
+    None
+}
+
 #[test]
 fn build_states_equal_original() {
+    if let Some(why) = missing_inputs() {
+        eprintln!("SKIPPED build_states_equal_original: {why}");
+        return;
+    }
     let mut failures = Vec::new();
     for name in scenario_names() {
         let rec = oracle_record(&name);
@@ -544,6 +570,10 @@ fn build_states_equal_original() {
 /// "New" in the build list (`main:SetMode("BUILD", false, "Unnamed build")`): an empty build opens (not oracle-gated: a smoke test).
 #[test]
 fn new_build_opens() {
+    if !std::path::Path::new(&format!("{BUILDS}{}.xml", BUILD_FILES[0])).exists() {
+        eprintln!("SKIPPED new_build_opens: no personal builds (its sandbox copies them)");
+        return;
+    }
     let sandbox = Sandbox::new("new");
     let tp = TestPlatform::new();
     let mut gfx = Gfx::with_platform(&scene::fonts_dir(), scene::SCREEN, 1.0, Box::new(tp.clone())).expect("fonts");
@@ -589,6 +619,10 @@ fn shell_pixel(x: u32, y: u32, popup: Option<[f64; 4]>) -> bool {
 #[test]
 #[ignore = "needs a GPU adapter (or POB_GFX_WARP=1); run with --ignored"]
 fn build_pixels_equal_original() {
+    if let Some(why) = missing_inputs() {
+        eprintln!("SKIPPED build_pixels_equal_original: {why}");
+        return;
+    }
     let mut r = pob_gfx::Renderer::new_offscreen().expect("wgpu adapter");
     let mut failures = Vec::new();
     for name in scenario_names() {

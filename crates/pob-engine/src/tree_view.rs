@@ -1,0 +1,255 @@
+//! What the tree view's node tooltip asks of the build (U3a): `calcsTab:GetMiscCalculator(build)` (one per `outputRevision`) and
+//! `Build:AddStatComparesToTooltip` / `CompareStatList` (Build.lua:2121-2180) over its outputs -- PassiveTreeView.lua:1683-1730.
+
+use std::rc::Rc;
+
+use pob_calc::CalculateOptions;
+use pob_calc::env::{CalcOverride, OverrideNode};
+use pob_calc::session::{CalcMode, CalcSession, MiscCalculator, RunRef};
+use pob_lua::format::{Arg, format};
+
+use crate::display::{DisplayEnv, MinionBorrow, format_num_sep, match_flags};
+use crate::engine::Engine;
+use crate::lua::LuaV;
+use crate::stats::{DISPLAY_STATS, DisplayStat, MINION_DISPLAY_STATS, color};
+use crate::view::ActorView;
+
+/// The tooltip lines of the stat differences of one node, as `tooltip:AddLine(14, line)`.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct NodeCompare {
+    pub lines: Vec<String>,
+    /// `isGranted` (`calcsTab.mainEnv.grantedPassives[node.id]`).
+    pub is_granted: bool,
+    pub count: usize,
+}
+
+/// `s_format("%+"..fmt, v)`.
+fn signed(fmt: &str, v: f64) -> Result<String, String> {
+    format(&format!("%+{fmt}"), &[Arg::Num(v)])
+}
+
+impl Engine {
+    fn misc_calculator(&self) -> Result<std::cell::Ref<'_, MiscCalculator>, String> {
+        if self.misc.borrow().is_none() {
+            let sess = CalcSession::new(Rc::new(self.model().clone()), CalculateOptions::default());
+            sess.build_output(CalcMode::Main).map_err(|e| e.0)?;
+            let calc = sess.get_misc_calculator().map_err(|e| e.0)?;
+            *self.misc.borrow_mut() = Some(calc);
+        }
+        Ok(std::cell::Ref::map(self.misc.borrow(), |m| m.as_ref().expect("just made")))
+    }
+
+    /// `Build:CompareStatList` (Build.lua:2121-2163).
+    #[allow(clippy::too_many_arguments)]
+    fn compare_stat_list(
+        &self,
+        lines: &mut Vec<String>,
+        stat_list: &[DisplayStat],
+        skill_flags: &indexmap::IndexMap<String, bool>,
+        base: &ActorView<'_>,
+        cmp: &ActorView<'_>,
+        header: &str,
+        node_count: Option<f64>,
+    ) -> Result<usize, String> {
+        let mut count = 0;
+        let num = |v: LuaV<'_>| if let LuaV::Num(n) = v { n } else { 0.0 };
+        for sd in stat_list {
+            let Some(stat) = sd.stat else { continue };
+            if !match_flags(sd.flag, sd.not_flag, skill_flags) || sd.child_stat.is_some() || stat == "SkillDPS" {
+                continue;
+            }
+            let v1 = num(cmp.get(stat));
+            let v2 = num(base.get(stat));
+            let mut diff = v1 - v2;
+            if stat == "FullDPS" && !cmp.has(stat) {
+                diff = 0.0;
+            }
+            if !(diff > 0.001 || diff < -0.001) {
+                continue;
+            }
+            let shown = match sd.cond_func {
+                None => true,
+                Some(f) => f(&LuaV::Num(v1), cmp)?.truthy() || f(&LuaV::Num(v2), base)?.truthy(),
+            };
+            if !shown {
+                continue;
+            }
+            if count == 0 {
+                lines.push(header.to_string());
+            }
+            let good = (sd.lower_is_better && diff < 0.0) || (!sd.lower_is_better && diff > 0.0);
+            let col = if good { color::POSITIVE } else { color::NEGATIVE };
+            let scale = if sd.pc || sd.mod_ { 100.0 } else { 1.0 };
+            let fmt = sd.fmt.ok_or("Build.lua:2137: attempt to concatenate field 'fmt' (a nil value)")?;
+            let mut val_str = signed(fmt, diff * scale)?;
+            // :2138-2141 `valStr:match("^([%+%-]?%d+%.%d+)(%D*)$")`: trailing zeros of the number
+            if let Some(cap) = pob_lua::match_(val_str.as_bytes(), b"^([%+%-]?%d+%.%d+)(%D*)$", None).map_err(|e| e.0)? {
+                let bytes = val_str.as_bytes();
+                let number = String::from_utf8_lossy(cap.get(0).and_then(|c| c.bytes(bytes)).unwrap_or(b"")).into_owned();
+                let suffix = String::from_utf8_lossy(cap.get(1).and_then(|c| c.bytes(bytes)).unwrap_or(b"")).into_owned();
+                let trimmed = number.trim_end_matches('0');
+                let trimmed = trimmed.strip_suffix('.').unwrap_or(trimmed);
+                val_str = format!("{trimmed}{suffix}");
+            }
+            let val_str = format_num_sep(&val_str, self.settings());
+            let label = sd.label.unwrap_or("");
+            let mut line = format!("{col}{val_str} {label}");
+            let mut pc_per_pt = String::new();
+            if sd.comp_percent && v1 != 0.0 && v2 != 0.0 {
+                let pc = v1 / v2 * 100.0 - 100.0;
+                line.push_str(&format(" (%+.1f%%)", &[Arg::Num(pc)])?);
+                if let Some(n) = node_count {
+                    pc_per_pt = format(" (%+.1f%%)", &[Arg::Num(pc / n)])?;
+                }
+            }
+            if let Some(n) = node_count {
+                line.push_str(&format!(" ^8[{}{pc_per_pt} per point]", signed(fmt, diff * scale / n)?));
+            }
+            lines.push(line);
+            count += 1;
+        }
+        Ok(count)
+    }
+
+    /// `Build:AddStatComparesToTooltip` (Build.lua:2168-2180).
+    fn add_stat_compares(
+        &self,
+        lines: &mut Vec<String>,
+        base: &RunRef,
+        cmp: &RunRef,
+        header: &str,
+        node_count: Option<f64>,
+    ) -> Result<usize, String> {
+        let res = self.result();
+        let mb = MinionBorrow::new(res);
+        let denv = DisplayEnv::new(res, &mb)?;
+        let (b, c) = (base.borrow(), cmp.borrow());
+        let mut count = 0;
+        let mut header = header.to_string();
+        if let (Some(m), Some(bm), Some(cm)) = (&denv.minion, b.state.minion.as_ref(), c.state.minion.as_ref()) {
+            let (bm, cm) = (bm.borrow(), cm.borrow());
+            let (bv, cv) = (ActorView::new(&bm, &b.env), ActorView::new(&cm, &c.env));
+            count += self.compare_stat_list(
+                lines,
+                MINION_DISPLAY_STATS,
+                m.skill_flags,
+                &bv,
+                &cv,
+                &format!("{header}\n^7Minion:"),
+                node_count,
+            )?;
+            header = if count > 0 {
+                "^7Player:".to_string()
+            } else {
+                format!("{header}\n^7Player:")
+            };
+        }
+        let (bv, cv) = (ActorView::new(&b.state.player, &b.env), ActorView::new(&c.state.player, &c.env));
+        count += self.compare_stat_list(lines, DISPLAY_STATS, denv.player.skill_flags, &bv, &cv, &header, node_count)?;
+        Ok(count)
+    }
+
+    /// PassiveTreeView.lua:1684-1729 on spec node `i`: the differences of allocating / deallocating it and its path. `trace_path`:
+    /// `self.tracePath` (indices into `spec.nodes`).
+    pub fn node_stat_compare(&self, i: usize, trace_path: Option<&[usize]>) -> Result<NodeCompare, String> {
+        let calc = self.misc_calculator()?;
+        let spec = self.spec_rc();
+        let node = &spec.nodes[i];
+        let view_tree = self.view_mode_is_tree.get();
+        let path: Vec<usize> = if node.alloc {
+            node.depends.clone()
+        } else if let Some(t) = trace_path {
+            t.to_vec()
+        } else {
+            node.path.clone().unwrap_or_default()
+        };
+        let path_length = path.len();
+        let is_granted = self.result().env.granted_passives.contains_key(&node.id);
+        let run = |ov: CalcOverride| -> Result<RunRef, String> { calc.calc(&Rc::new(ov), None, view_tree).map_err(|e| e.0) };
+        let add = |nodes: Vec<usize>| {
+            run(CalcOverride {
+                add_nodes: Some(nodes.into_iter().map(OverrideNode::Spec).collect()),
+                ..CalcOverride::default()
+            })
+        };
+        let remove = |nodes: Vec<usize>| {
+            run(CalcOverride {
+                remove_nodes: Some(nodes),
+                ..CalcOverride::default()
+            })
+        };
+        let mut path_output = None;
+        let node_output;
+        if node.alloc {
+            node_output = remove(vec![i])?;
+            if path_length > 1 {
+                path_output = Some(remove(path.clone())?);
+            }
+        } else if is_granted {
+            // `removeNodes = { [node.id] = true }` (:1706): keyed by the id, not the node: CalcSetup's `removeNodes[node]` never sees it
+            node_output = run(CalcOverride::default())?;
+        } else {
+            if node.ty() == pob_tree::NodeType::Mastery && node.all_mastery_options {
+                // :1710-1711 `pathNodes[node] = nil`, `calcFunc()`
+                node_output = run(CalcOverride::default())?;
+            } else {
+                node_output = add(vec![i])?;
+            }
+            if path_length > 1 {
+                let nodes: Vec<usize> = path
+                    .iter()
+                    .copied()
+                    .filter(|p| !(node.ty() == pob_tree::NodeType::Mastery && node.all_mastery_options && *p == i))
+                    .collect();
+                path_output = Some(add(nodes)?);
+            }
+        }
+        let mut out = NodeCompare {
+            is_granted,
+            ..NodeCompare::default()
+        };
+        let header = if node.alloc {
+            "^7Unallocating this node will give you:"
+        } else if is_granted {
+            "^7This node is granted by an item. Removing it will give you:"
+        } else {
+            "^7Allocating this node will give you:"
+        };
+        let mut count = self.add_stat_compares(&mut out.lines, &calc.base, &node_output, header, None)?;
+        if path_length > 1 && !is_granted && (node.intuitive_leap_likes_affecting.is_empty() || node.alloc) {
+            let header = if node.alloc {
+                "^7Unallocating this node and all nodes depending on it will give you:"
+            } else {
+                "^7Allocating this node and all nodes leading to it will give you:"
+            };
+            let po = path_output.as_ref().expect("path output");
+            count += self.add_stat_compares(&mut out.lines, &calc.base, po, header, Some(path_length as f64))?;
+        }
+        out.count = count;
+        Ok(out)
+    }
+
+    /// `specNode.finalModList:Sum("BASE", nil, attrib)` (PassiveTreeView.lua:1450).
+    pub fn node_attrib_sum(&self, id: u32, attrib: &str) -> f64 {
+        let env = &self.result().env;
+        if let Some(s) = env.node_final_mod_list.get(&id) {
+            return s.borrow().sum(pob_mods::ModType::Base, None, &[attrib]).unwrap_or(0.0);
+        }
+        // CalcsTab.lua:456 `node.finalModList = node.modList` (every node, before the run)
+        env.spec.node(id).map_or(0.0, |n| {
+            let s = pob_mods::store::ModStore::new_list(None);
+            s.borrow_mut().add_list(&n.mod_list().mods);
+            s.borrow().sum(pob_mods::ModType::Base, None, &[attrib]).unwrap_or(0.0)
+        })
+    }
+
+    /// `data.goldRespecPrices[build.characterLevel]`.
+    pub fn gold_respec_price(&self) -> f64 {
+        let level = self.model().level as usize;
+        pob_data::constants::constants()
+            .gold_respec_prices
+            .get(level.saturating_sub(1))
+            .copied()
+            .unwrap_or(0.0)
+    }
+}

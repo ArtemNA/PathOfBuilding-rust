@@ -515,7 +515,8 @@ impl Frame<'_> {
         tc: Option<[f64; 4]>,
     ) -> Result<(), GfxError> {
         let Some(tex) = self.image_texture(img)? else { return Ok(()) };
-        let (r, b) = (left + width, top + height);
+        // SimpleGraphic takes `left`/`width` as floats and adds them in float (`tree_pixels_equal_original`: 53 pixels up to Δ7 without this)
+        let (r, b) = (f64::from(left as f32 + width as f32), f64::from(top as f32 + height as f32));
         let [tl, tt, tr, tb] = tc.unwrap_or([0.0, 0.0, 1.0, 1.0]);
         self.push(tex, [[left, top], [r, top], [r, b], [left, b]], [[tl, tt], [tr, tt], [tr, tb], [tl, tb]], false);
         Ok(())

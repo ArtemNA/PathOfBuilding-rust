@@ -7,9 +7,10 @@
 use crate::common::{not_supported_mod_tooltips, show_flavour_text, wrap_string};
 use crate::control::{PropCell, Rect};
 use crate::sg;
-use pob_gfx::{Frame, Gfx};
+use pob_gfx::{Frame, Gfx, ImageHandle};
 use std::any::Any;
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::rc::Rc;
 
 const BORDER_WIDTH: f64 = 1.0;
@@ -37,11 +38,22 @@ pub struct TooltipLine {
     pub background: Option<String>,
     /// `bounds = { x, y, width, height }` (set by `CalculateColumns`).
     pub bounds: Option<Rect>,
+    /// `separatorImage`.
+    pub separator_image: Option<ImageHandle>,
 }
 
 /// One `drawStack` entry (Tooltip.lua:226-370): text lines have 6 fields, rectangles 5.
 #[derive(Clone, Debug)]
 enum DrawEntry {
+    /// `{ { handle = ..., isSeparator = ... }, x, y, w, h }`.
+    Image {
+        handle: ImageHandle,
+        x: f64,
+        y: f64,
+        w: f64,
+        h: f64,
+        is_separator: bool,
+    },
     Text {
         x: f64,
         y: f64,
@@ -70,6 +82,186 @@ pub struct Tooltip {
     pub max_width: Option<f64>,
     pub color: TooltipColor,
     pub child_tooltips: Option<Vec<Tooltip>>,
+    /// `self.recipe`: `SetRecipe` (a notable's oils).
+    pub recipe: Option<Vec<String>>,
+}
+
+/// `headerConfigs[rarity]` (Tooltip.lua:45-59).
+struct HeaderConfig {
+    left: &'static str,
+    middle: &'static str,
+    right: &'static str,
+    height: f64,
+    side_width: f64,
+    middle_width: f64,
+    text_y_offset: f64,
+}
+
+fn header_config_of(rarity: &str) -> HeaderConfig {
+    let c = |left, middle, right, height, side_width, middle_width, text_y_offset| HeaderConfig {
+        left,
+        middle,
+        right,
+        height,
+        side_width,
+        middle_width,
+        text_y_offset,
+    };
+    match rarity {
+        "RELIC" => c(
+            "Assets/itemsheaderfoilleft.png",
+            "Assets/itemsheaderfoilmiddle.png",
+            "Assets/itemsheaderfoilright.png",
+            54.0,
+            47.0,
+            52.0,
+            3.0,
+        ),
+        "UNIQUE" => c(
+            "Assets/itemsheaderuniqueleft.png",
+            "Assets/itemsheaderuniquemiddle.png",
+            "Assets/itemsheaderuniqueright.png",
+            54.0,
+            47.0,
+            52.0,
+            3.0,
+        ),
+        "RARE" => c(
+            "Assets/itemsheaderrareleft.png",
+            "Assets/itemsheaderraremiddle.png",
+            "Assets/itemsheaderrareright.png",
+            54.0,
+            47.0,
+            52.0,
+            3.0,
+        ),
+        "MAGIC" => c(
+            "Assets/itemsheadermagicleft.png",
+            "Assets/itemsheadermagicmiddle.png",
+            "Assets/itemsheadermagicright.png",
+            38.0,
+            32.0,
+            32.0,
+            6.0,
+        ),
+        "GEM" => c(
+            "Assets/itemsheadergemleft.png",
+            "Assets/itemsheadergemmiddle.png",
+            "Assets/itemsheadergemright.png",
+            38.0,
+            33.0,
+            38.0,
+            5.0,
+        ),
+        "JEWEL" => c(
+            "Assets/jewelpassiveheaderleft.png",
+            "Assets/jewelpassiveheadermiddle.png",
+            "Assets/jewelpassiveheaderright.png",
+            38.0,
+            33.0,
+            38.0,
+            6.0,
+        ),
+        "NOTABLE" => c(
+            "Assets/notablepassiveheaderleft.png",
+            "Assets/notablepassiveheadermiddle.png",
+            "Assets/notablepassiveheaderright.png",
+            38.0,
+            38.0,
+            38.0,
+            6.0,
+        ),
+        "PASSIVE" => c(
+            "Assets/normalpassiveheaderleft.png",
+            "Assets/normalpassiveheadermiddle.png",
+            "Assets/normalpassiveheaderright.png",
+            38.0,
+            33.0,
+            38.0,
+            6.0,
+        ),
+        "KEYSTONE" => c(
+            "Assets/keystonepassiveheaderleft.png",
+            "Assets/keystonepassiveheadermiddle.png",
+            "Assets/keystonepassiveheaderright.png",
+            38.0,
+            33.0,
+            38.0,
+            6.0,
+        ),
+        "ASCENDANCY" => c(
+            "Assets/ascendancypassiveheaderleft.png",
+            "Assets/ascendancypassiveheadermiddle.png",
+            "Assets/ascendancypassiveheaderright.png",
+            38.0,
+            33.0,
+            38.0,
+            6.0,
+        ),
+        "MASTERY" => c(
+            "Assets/masteryheaderunallocatedleft.png",
+            "Assets/masteryheaderunallocatedmiddle.png",
+            "Assets/masteryheaderunallocatedright.png",
+            38.0,
+            33.0,
+            38.0,
+            6.0,
+        ),
+        "MASTERYALLOC" => c(
+            "Assets/masteryheaderallocatedleft.png",
+            "Assets/masteryheaderallocatedmiddle.png",
+            "Assets/masteryheaderallocatedright.png",
+            38.0,
+            33.0,
+            38.0,
+            6.0,
+        ),
+        _ => c(
+            "Assets/itemsheaderwhiteleft.png",
+            "Assets/itemsheaderwhitemiddle.png",
+            "Assets/itemsheaderwhiteright.png",
+            38.0,
+            32.0,
+            32.0,
+            6.0,
+        ),
+    }
+}
+
+thread_local! {
+    /// `tooltipAssetCache` (Tooltip.lua:88-100) + `recipeImages` (:37-41).
+    static IMAGES: RefCell<HashMap<String, ImageHandle>> = RefCell::new(HashMap::new());
+}
+
+fn image_of(path: &str, flags: &[pob_gfx::LoadFlag]) -> ImageHandle {
+    IMAGES.with_borrow_mut(|m| {
+        m.entry(path.to_string())
+            .or_insert_with(|| {
+                let h = ImageHandle::new();
+                let root = crate::launch::launch().cfg.script_path.clone();
+                let _ = h.load(format!("{root}{path}"), flags);
+                h
+            })
+            .clone()
+    })
+}
+
+/// `getCachedImage(path)` (`image:Load(path)`).
+fn cached_image(path: &str) -> ImageHandle {
+    image_of(path, &[])
+}
+
+fn cached_clamp_image(path: &str) -> ImageHandle {
+    image_of(path, &[pob_gfx::LoadFlag::Clamp])
+}
+
+/// A recipe name without its `"Oil"`.
+fn recipe_short(name: &str) -> &str {
+    if name.len() > 3 && name.ends_with("Oil") {
+        &name[..name.len() - 3]
+    } else {
+        name
+    }
 }
 
 impl Default for Tooltip {
@@ -91,6 +283,7 @@ impl Tooltip {
             max_width: None,
             color: TooltipColor::Rgb(0.5, 0.3, 0.0),
             child_tooltips: None,
+            recipe: None,
         };
         t.clear(false);
         t
@@ -105,6 +298,7 @@ impl Tooltip {
         }
         self.tooltip_header = None;
         self.title_y_offset = 0.0;
+        self.recipe = None;
         self.center = false;
         self.max_width = None;
         self.color = TooltipColor::Rgb(0.5, 0.3, 0.0);
@@ -158,6 +352,7 @@ impl Tooltip {
                 mod_line_disabled,
                 background: background.map(str::to_string),
                 bounds: None,
+                separator_image: None,
             };
             if let Some(max_width) = self.max_width {
                 for wrapped in wrap_string(g, line, size, max_width - H_PAD) {
@@ -174,15 +369,28 @@ impl Tooltip {
     /// `Tooltip:AddSeparator(size)` (Tooltip.lua:120-160).
     pub fn add_separator(&mut self, size: Option<f64>) {
         let size = size.unwrap_or(10.0);
-        if self.tooltip_header.is_some() {
-            unimplemented!("Tooltip.lua:131-152: header separator images (items/gems, U6)");
+        // :183-186 no back-to-back separator images
+        if self.lines.last().is_some_and(|l| l.separator_image.is_some()) {
+            return;
         }
+        let separator_image = self.tooltip_header.as_ref().map(|h| {
+            let path = match h.to_uppercase().as_str() {
+                "RELIC" => "Assets/itemsseparatorfoil.png",
+                "UNIQUE" => "Assets/itemsseparatorunique.png",
+                "RARE" => "Assets/itemsseparatorrare.png",
+                "MAGIC" => "Assets/itemsseparatormagic.png",
+                "GEM" => "Assets/itemsseparatorgem.png",
+                _ => "Assets/itemsseparatorwhite.png",
+            };
+            cached_image(path)
+        });
         let last_block = self.lines.last().map_or(1, |l| l.block);
         self.lines.push(TooltipLine {
             size,
             text: None,
             block: last_block,
             font: "VAR",
+            separator_image,
             ..TooltipLine::default()
         });
     }
@@ -199,6 +407,17 @@ impl Tooltip {
             if let Some(t) = &data.text {
                 tt_w = tt_w.max(sg::draw_string_width(g, data.size, data.font, t));
             }
+        }
+        // :216-230 recipe display
+        if let (Some(recipe), Some(title)) = (&self.recipe, self.lines.first()) {
+            let font = if show_flavour_text() { "FONTIN SC" } else { "VAR" };
+            let mut image_x = sg::draw_string_width(g, title.size, font, title.text.as_deref().unwrap_or("")) + title.size;
+            let recipe_text_size = (title.size * 3.0) / 4.0;
+            for name in recipe {
+                let short = recipe_short(name);
+                image_x += sg::draw_string_width(g, recipe_text_size, font, short) + title.size * 1.25;
+            }
+            tt_w = tt_w.max(image_x);
         }
         (tt_w + H_PAD, tt_h + V_PAD)
     }
@@ -232,8 +451,60 @@ impl Tooltip {
         let flavour = show_flavour_text();
         for i in 0..self.lines.len() {
             let font = if flavour { self.lines[i].font } else { "VAR" };
+            // :277-323 the first line with its oils
+            let mut handled = false;
+            if let (Some(recipe), 0, Some(title_text)) = (&self.recipe, i, self.lines[i].text.clone()) {
+                let title_size = self.lines[i].size;
+                let recipe_text_size = (title_size * 3.0 / 4.0).floor();
+                let padding = 4.0;
+                let mut total_width = sg::draw_string_width(g, title_size, font, &title_text);
+                let mut oils = Vec::new();
+                for r in recipe {
+                    let rn = recipe_short(r);
+                    let text_w = sg::draw_string_width(g, recipe_text_size, font, rn);
+                    oils.push((rn.to_string(), r.clone(), text_w, title_size));
+                    total_width += text_w + title_size + padding;
+                }
+                let mut cur_x = tt_x + tt_w / 2.0 - total_width / 2.0;
+                draw_stack.push(DrawEntry::Text {
+                    x: cur_x,
+                    y,
+                    align: "LEFT",
+                    size: title_size,
+                    font,
+                    text: title_text.clone(),
+                    strikethrough: false,
+                });
+                cur_x += sg::draw_string_width(g, title_size, font, &title_text) + H_PAD / 2.0;
+                for (rn, name, text_w, icon_w) in oils {
+                    let rn = if flavour { format!("^xF8E6CA{rn}") } else { rn };
+                    draw_stack.push(DrawEntry::Text {
+                        x: cur_x,
+                        y: y + (title_size - recipe_text_size) / 2.0,
+                        align: "LEFT",
+                        size: recipe_text_size,
+                        font,
+                        text: rn,
+                        strikethrough: false,
+                    });
+                    cur_x += text_w;
+                    draw_stack.push(DrawEntry::Image {
+                        handle: cached_clamp_image(&format!("TreeData/{name}.png")),
+                        x: cur_x,
+                        y,
+                        w: icon_w,
+                        h: icon_w,
+                        is_separator: false,
+                    });
+                    cur_x += icon_w + padding;
+                }
+                y += title_size.max(0.0) + 2.0;
+                handled = true;
+            }
             let data = &self.lines[i];
-            if let Some(text) = data.text.clone() {
+            if handled {
+                // the line is printed above
+            } else if let Some(text) = data.text.clone() {
                 let size = data.size;
                 if current_block != data.block && self.blocks[data.block - 1] + y > tt_y + tt_h.min(view_port.height) {
                     y = tt_y + 2.0 * BORDER_WIDTH;
@@ -258,8 +529,25 @@ impl Tooltip {
                 if columns > 1 {
                     extra_column_width = extra_column_width.max(sg::draw_string_width(g, size, font, &text) + H_PAD);
                 }
+            } else if let (Some(img), true) = (&data.separator_image, flavour) {
+                // :356-365
+                let sep_size = data.size;
+                if current_block != data.block && y + sep_size > tt_y + tt_h.min(view_port.height) {
+                    y = tt_y + 2.0 * BORDER_WIDTH;
+                    x = tt_x + tt_w * columns as f64;
+                    columns += 1;
+                }
+                current_block = data.block;
+                draw_stack.push(DrawEntry::Image {
+                    handle: img.clone(),
+                    x: x + H_PAD / 2.0,
+                    y,
+                    w: tt_w - H_PAD,
+                    h: sep_size,
+                    is_separator: true,
+                });
+                y += sep_size + 2.0;
             } else if i >= 1 && self.lines.get(i + 1).is_some_and(|n| n.text.is_some()) {
-                // separator without image (`separatorImage` exists only with a header — unimplemented above)
                 draw_stack.push(DrawEntry::Rect {
                     x,
                     y: y - 1.0 + data.size / 2.0,
@@ -273,7 +561,7 @@ impl Tooltip {
         if columns > 1 && extra_column_width > 0.0 {
             for line in &mut draw_stack {
                 let orig_x = match line {
-                    DrawEntry::Text { x, .. } | DrawEntry::Rect { x, .. } => *x,
+                    DrawEntry::Text { x, .. } | DrawEntry::Rect { x, .. } | DrawEntry::Image { x, .. } => *x,
                 };
                 let col_index = ((orig_x - tt_x) / tt_w).floor() + 1.0;
                 if col_index > 1.0 {
@@ -287,7 +575,7 @@ impl Tooltip {
                                 orig_x - old_base_x + new_base_x
                             };
                         }
-                        DrawEntry::Rect { x, w, .. } => {
+                        DrawEntry::Rect { x, w, .. } | DrawEntry::Image { x, w, .. } => {
                             *x = orig_x - old_base_x + new_base_x;
                             *w = extra_column_width - BORDER_WIDTH;
                         }
@@ -310,9 +598,21 @@ impl Tooltip {
         if self.lines.is_empty() {
             return None;
         }
-        let (tt_w, tt_h) = self.get_size(f);
-        if self.tooltip_header.is_some() && self.lines[0].text.is_some() {
-            unimplemented!("Tooltip.lua:386-392, :428-432, :480-574: item/passive header (U3/U6)");
+        let (mut tt_w, tt_h) = self.get_size(f);
+        // :427-439 the header: a minimum width, the title's offset
+        let flavour = show_flavour_text();
+        let mut header_config = None;
+        if let Some(h) = self.tooltip_header.clone().filter(|_| self.lines[0].text.is_some()) {
+            let font = if flavour { "FONTIN SC" } else { "VAR" };
+            let title_w = sg::draw_string_width(f, self.lines[0].size, font, self.lines[0].text.as_deref().unwrap_or(""));
+            if title_w + 50.0 > tt_w {
+                tt_w = title_w + 50.0;
+            }
+            if flavour {
+                let c = header_config_of(&h.to_uppercase());
+                self.title_y_offset = c.text_y_offset;
+                header_config = Some(c);
+            }
         }
         let mut tt_x = x;
         let mut tt_y = y;
@@ -338,7 +638,7 @@ impl Tooltip {
             // Tooltip.lua:461-469: index [2] of 5-field entries `{nil, x, y, w, h}` and [1] of text entries — both `x`.
             for line in &mut draw_stack {
                 match line {
-                    DrawEntry::Rect { x, .. } | DrawEntry::Text { x, .. } => *x += offset_x,
+                    DrawEntry::Rect { x, .. } | DrawEntry::Text { x, .. } | DrawEntry::Image { x, .. } => *x += offset_x,
                 }
             }
         }
@@ -351,11 +651,62 @@ impl Tooltip {
             max_column_height - 2.0 * BORDER_WIDTH,
         );
         sg::set_draw_color(f, 1.0, 1.0, 1.0);
+        // :487-562 the header (RELIC foil colours and influence icons: U6)
+        if let Some(c) = &header_config {
+            let header_x = tt_x + BORDER_WIDTH;
+            let header_y = tt_y + BORDER_WIDTH;
+            let header_total_width = tt_w - 2.0 * BORDER_WIDTH;
+            let middle_area = (header_total_width - 2.0 * c.side_width).max(0.0);
+            sg::draw_image(f, Some(&cached_image(c.left)), header_x, header_y, c.side_width, c.height, None);
+            if middle_area > 0.0 {
+                let mut draw_x = header_x + c.side_width;
+                let end_x = header_x + header_total_width - c.side_width;
+                let middle = cached_image(c.middle);
+                while draw_x + c.middle_width <= end_x {
+                    sg::draw_image(f, Some(&middle), draw_x, header_y, c.middle_width, c.height, None);
+                    draw_x += c.middle_width;
+                }
+                let remaining = end_x - draw_x;
+                if remaining > 0.0 {
+                    sg::draw_image(f, Some(&middle), draw_x, header_y, remaining, c.height, None);
+                }
+            }
+            sg::draw_image(
+                f,
+                Some(&cached_image(c.right)),
+                header_x + header_total_width - c.side_width,
+                header_y,
+                c.side_width,
+                c.height,
+                None,
+            );
+        }
+        let mut first_separator_skipped = false;
+        let header_type = self.tooltip_header.as_deref().map(str::to_uppercase).unwrap_or_default();
         for line in &draw_stack {
             match line {
                 DrawEntry::Rect { x, y, w, h } => {
                     self.set_color(f);
                     sg::draw_rect(f, *x, *y, *w, *h);
+                }
+                DrawEntry::Image {
+                    handle,
+                    x,
+                    y,
+                    w,
+                    h,
+                    is_separator,
+                } => {
+                    let skip = *is_separator
+                        && flavour
+                        && !first_separator_skipped
+                        && matches!(header_type.as_str(), "RELIC" | "UNIQUE" | "RARE" | "MAGIC" | "GEM");
+                    if skip {
+                        first_separator_skipped = true;
+                    } else {
+                        sg::set_draw_color(f, 1.0, 1.0, 1.0);
+                        sg::draw_image(f, Some(handle), *x, *y, *w, *h, None);
+                    }
                 }
                 DrawEntry::Text {
                     x,

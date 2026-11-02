@@ -56,6 +56,38 @@ pub(crate) struct SubGraph {
     nodes: Vec<usize>,
     parent_socket: usize,
     entrance: Option<usize>,
+    /// `subGraph.group.x` / `.y` / the orbit of `oo[nodeOrbit]` (display only, read by the tree view).
+    group: (f64, f64),
+    node_orbit: f64,
+    /// `linkNodes(a, b)` in call order: `subGraph.connectors` (display only).
+    links: Vec<(usize, usize)>,
+}
+
+/// What the tree view reads off `spec.subGraphs[id]`.
+pub struct SubGraphView {
+    pub id: u32,
+    pub x: f64,
+    pub y: f64,
+    /// `group.oo[orbit]`.
+    pub node_orbit: f64,
+    /// `linkNodes(node1, node2)`: indices into `PassiveSpec::nodes`.
+    pub links: Vec<(usize, usize)>,
+}
+
+impl PassiveSpec {
+    /// `spec.subGraphs` (the tree view; insertion order).
+    pub fn sub_graph_views(&self) -> Vec<SubGraphView> {
+        self.sub_graphs
+            .iter()
+            .map(|(id, sg)| SubGraphView {
+                id: *id,
+                x: sg.group.0,
+                y: sg.group.1,
+                node_orbit: sg.node_orbit,
+                links: sg.links.clone(),
+            })
+            .collect()
+    }
 }
 
 fn err(line: u32, what: impl std::fmt::Display) -> TreeError {
@@ -540,6 +572,9 @@ impl PassiveSpec {
                 nodes: Vec::new(),
                 parent_socket,
                 entrance: None,
+                group: (0.0, 0.0),
+                node_orbit: cj.size_index + 1.0,
+                links: Vec::new(),
             },
         );
 
@@ -556,6 +591,7 @@ impl PassiveSpec {
             .ok_or_else(|| err(2018, "attempt to index a nil value (proxyNode.group)"))?;
         let (gx, gy) = {
             let g = &tree.groups[&proxy_group];
+            self.sub_graphs[&node_id].group = (g.x, g.y);
             (g.x, g.y)
         };
 
@@ -834,6 +870,7 @@ impl PassiveSpec {
                 }
                 if let Some(l) = last {
                     self.link_nodes(this, l);
+                    self.sub_graphs[&node_id].links.push((this, l));
                 }
                 last = Some(this);
             }
@@ -844,8 +881,10 @@ impl PassiveSpec {
         {
             // Close the loop on non-small clusters
             self.link_nodes(f, l);
+            self.sub_graphs[&node_id].links.push((f, l));
         }
         self.link_nodes(entrance, parent_socket);
+        self.sub_graphs[&node_id].links.push((entrance, parent_socket));
 
         // :2347-2357 Add synthetic nodes to the main node list
         for &idx in &ids {
