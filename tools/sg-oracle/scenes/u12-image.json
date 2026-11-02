@@ -1,0 +1,22 @@
+{"note": "U1.2 check of images: NEAREST, CLAMP quad, negative tc, sub-texel uv, magnified/minified, tint x image alpha, non-integer image rect", "size": [420, 220], "dpi": 100, "images": {"img": ["scenes/img/test8.png"], "imgn": ["scenes/img/test8.png", "NEAREST"], "imgcn": ["scenes/img/test8.png", "CLAMP", "NEAREST"], "imgc": ["scenes/img/test8.png", "CLAMP"]}, "calls": [
+["SetDrawColor", 1, 1, 1],
+["DrawImage", "imgn", 10, 10, 64, 64],
+["DrawImage", "imgcn", 84, 10, 64, 64, -0.5, -0.5, 1.5, 1.5],
+["DrawImage", "imgc", 158, 10, 64, 64, -0.5, -0.5, 1.5, 1.5],
+["DrawImage", "img", 232, 10, 4, 4],
+["DrawImage", "img", 240, 10, 12, 12],
+["DrawImage", "img", 260.5, 10.5, 16.5, 16.5],
+["DrawImage", "img", 290, 10, 64, 64, 0.0625, 0.0625, 0.9375, 0.9375],
+["DrawImage", "img", 10, 84, 64, 64, -2, 0, 0, 2],
+["SetDrawColor", 0, 1, 1, 0.5],
+["DrawImage", "img", 84, 84, 64, 64],
+["SetDrawColor", 1, 1, 1],
+["DrawImageQuad", "imgc", 160, 84, 220, 90, 230, 150, 150, 140, -1, -1, 2, -1, 2, 2, -1, 2],
+["DrawImageQuad", "imgn", 240, 84, 300, 84, 300, 144, 240, 144, 0, 1, 0, 0, 1, 0, 1, 1],
+["DrawImageQuad", null, 310, 84, 350, 84, 330, 104, 330, 144],
+["SetDrawColor", 1, 0.5, 0],
+["DrawImageQuad", null, 360, 84, 400, 144, 360, 144, 400, 84],
+["SetDrawColor", 1, 1, 1],
+["DrawImage", "img", 10, 160, 400, 8],
+["DrawImage", "img", 10, 175, 400, 40, 0, 0, 50, 5]
+]}

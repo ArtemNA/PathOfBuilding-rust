@@ -1,0 +1,13 @@
+{
+  "build": "basic",
+  "steps": [
+    { "dump": true, "shot": "basic-idle" },
+    { "cursor": [60, 100], "shot": "basic-hover" },
+    { "events": [["KeyDown", "LEFTBUTTON"]], "dump": true, "shot": "basic-pressed" },
+    { "events": [["KeyUp", "LEFTBUTTON"]], "dump": true },
+    { "cursor": [170, 166], "events": [["KeyDown", "LEFTBUTTON"]], "dump": true },
+    { "events": [["KeyUp", "LEFTBUTTON"]], "dump": true, "shot": "basic-check" },
+    { "cursor": [100, 166], "events": [["KeyDown", "LEFTBUTTON"], ["KeyUp", "LEFTBUTTON"]], "dump": true },
+    { "cursor": [700, 500], "dump": true, "shot": "basic-final" }
+  ]
+}

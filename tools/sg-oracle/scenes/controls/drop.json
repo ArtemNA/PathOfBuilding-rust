@@ -1,0 +1,26 @@
+{
+  "build": "drop",
+  "steps": [
+    { "dump": true, "shot": "drop-idle" },
+    { "cursor": [100, 50], "dump": true, "shot": "drop-hover" },
+    { "events": [["KeyDown", "LEFTBUTTON"], ["KeyUp", "LEFTBUTTON"]], "dump": true },
+    { "cursor": [100, 118], "dump": true, "shot": "drop-open" },
+    { "events": [["KeyDown", "WHEELDOWN"], ["KeyUp", "WHEELDOWN"]], "dump": true },
+    { "events": [["Char", "1"]], "dump": true, "shot": "drop-search" },
+    { "events": [["KeyDown", "BACK"], ["Char", "i"], ["Char", "t"], ["Char", "e"], ["Char", " "], ["Char", " "], ["Char", "2"]], "dump": true, "shot": "drop-search2" },
+    { "cursor": [100, 66], "events": [["KeyDown", "LEFTBUTTON"], ["KeyUp", "LEFTBUTTON"]], "dump": true },
+    { "cursor": [100, 50], "events": [["KeyDown", "WHEELDOWN"], ["KeyUp", "WHEELDOWN"]], "dump": true },
+    { "events": [["KeyUp", "UP"]], "dump": true },
+    { "cursor": [350, 50], "events": [["KeyDown", "LEFTBUTTON"], ["KeyUp", "LEFTBUTTON"]], "dump": true },
+    { "cursor": [350, 86], "dump": true, "shot": "drop-table" },
+    { "events": [["Char", "d"], ["Char", "e"], ["Char", "l"]], "dump": true, "shot": "drop-table-search" },
+    { "events": [["KeyDown", "ESCAPE"]], "dump": true },
+    { "events": [["KeyDown", "ESCAPE"]], "dump": true },
+    { "cursor": [100, 770], "events": [["KeyDown", "LEFTBUTTON"], ["KeyUp", "LEFTBUTTON"]], "dump": true },
+    { "cursor": [100, 720], "dump": true, "shot": "drop-up" },
+    { "events": [["KeyDown", "LEFTBUTTON"], ["KeyUp", "LEFTBUTTON"]], "dump": true },
+    { "cursor": [620, 50], "events": [["KeyDown", "LEFTBUTTON"], ["KeyUp", "LEFTBUTTON"]], "dump": true },
+    { "cursor": [700, 66], "dump": true, "shot": "drop-wide" },
+    { "cursor": [900, 400], "events": [["KeyDown", "LEFTBUTTON"], ["KeyUp", "LEFTBUTTON"]], "dump": true, "shot": "drop-final" }
+  ]
+}

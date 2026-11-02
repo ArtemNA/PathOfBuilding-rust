@@ -1,0 +1,19 @@
+{"note": "U1.3: non-ASCII placeholders [U+XXXX] across heights (odd, between atlases, > 64) and fonts", "size": [700, 400], "dpi": 100, "calls": [
+["SetDrawColor", 1, 1, 1],
+["DrawString", 10, 5, "LEFT", 10, "VAR", "h10 a\u00e9b\u20acc"],
+["DrawString", 10, 20, "LEFT", 13, "VAR", "h13 a\u00e9b\u20acc"],
+["DrawString", 10, 38, "LEFT", 17, "VAR", "h17 a\u00e9b\u20acc"],
+["DrawString", 10, 60, "LEFT", 30, "VAR", "h30 a\u00e9b\u20acc"],
+["DrawString", 10, 95, "LEFT", 22, "FONTIN SC", "sc22 \u044f\u0456\u00fc"],
+["DrawString", 10, 122, "LEFT", 14, "FIXED", "fx14 \u00e9\u00e9 x"],
+["DrawString", 10, 140, "LEFT", 70, "VAR", "h70 \u00e9b"],
+["DrawString", 10, 215, "LEFT", 100, "FONTIN", "\u00e9W"],
+["DrawString", 400, 5, "LEFT", 11, "VAR BOLD", "b11 \u00e9\u00e9"],
+["DrawString", 400, 20, "LEFT", 15, "FONTIN ITALIC", "i15 \u00e9 x"],
+["DrawString", 400, 40, "LEFT", 9, "VAR", "h9 \u00e9 x"],
+["DrawString", 400, 55, "LEFT", 1, "VAR", "h1 \u00e9 x"],
+["DrawString", 400, 60, "LEFT", 5, "VAR", "h5 \u00e9 x"],
+["DrawString", 690, 80, "RIGHT_X", 16, "VAR", "rx \u00e9\u00e9"],
+["DrawString", 550, 100, "CENTER_X", 20, "FONTIN SC ITALIC", "cx \u00e9 \ud83d\ude00"]
+]}
+
