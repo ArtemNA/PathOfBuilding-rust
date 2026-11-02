@@ -50,6 +50,7 @@ impl Default for CalculateOptions {
 /// Wall time per phase, milliseconds.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct Timings {
+    /// The build XML, and on the session path also `parse_items`.
     pub load_ms: f64,
     pub init_env_ms: f64,
     /// perform + the buildOutput tail.
@@ -173,8 +174,11 @@ fn calculate_session_modes(
     load_ms: f64,
     with_calcs: bool,
 ) -> Result<(CalculateResult, Option<CalcRun>), CalcError> {
-    let t1 = Instant::now();
+    // `CalcSession::new` parses the items (`build.itemsTab`): that is loading the build, not `buildOutput`.
+    let t0 = Instant::now();
     let session = CalcSession::new(model, opts);
+    let load_ms = load_ms + ms(t0);
+    let t1 = Instant::now();
     let out = session.build_output(CalcMode::Main)?;
     let calcs = if with_calcs {
         Some(session.build_output(CalcMode::Calcs)?)
