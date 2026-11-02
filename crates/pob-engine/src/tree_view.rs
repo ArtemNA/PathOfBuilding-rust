@@ -112,7 +112,7 @@ impl Engine {
     }
 
     /// `Build:AddStatComparesToTooltip` (Build.lua:2168-2180).
-    fn add_stat_compares(
+    pub(crate) fn add_stat_compares(
         &self,
         lines: &mut Vec<String>,
         base: &RunRef,

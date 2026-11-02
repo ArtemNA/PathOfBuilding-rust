@@ -19,6 +19,7 @@
 pub mod api;
 pub mod calcs;
 pub mod calcs_tab;
+pub mod config_tab;
 pub mod display;
 pub mod engine;
 pub mod lua;

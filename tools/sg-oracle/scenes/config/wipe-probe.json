@@ -1,0 +1,1 @@
+{"steps":[{"open":"Dual Savior"},{"waitAssets":true},{"cursor":[-100,-100],"time":10000},{"cursorBuild":"modeConfig","hold":["LEFTBUTTON"],"events":[["KeyDown","LEFTBUTTON"]]},{"release":["LEFTBUTTON"],"events":[["KeyUp","LEFTBUTTON"]]},{"cursor":[-100,-100]},{"wipeCache":true},{"cursorVar":"buffOnslaught","dump":true}]}

@@ -47,6 +47,10 @@ pub struct Engine {
     /// `specList[i]` of the specs left in this session (parallel to `model.tree.specs`, grown on need): the Lua keeps the objects, and which of the equal shortest
     /// paths a node has follows the history of the object's `allocNodes` table.
     pub(crate) spec_objects: Vec<Option<Rc<pob_tree::PassiveSpec>>>,
+    /// `varControls[var].enabled` / `.selIndex` the ConfigTab's `BuildModList`s left: the controls live on the tab, over the runs (`config_tab.rs`).
+    pub(crate) config_controls: Option<pob_build::config::ConfigControls>,
+    /// The `if*` gates of the ConfigTab over this run (`config_tab.rs`).
+    pub(crate) config_gates: std::cell::RefCell<crate::config_tab::ConfigGates>,
 }
 
 /// The gem property `engine_setGem` edits (boot.lua:405-460).
@@ -87,6 +91,8 @@ impl Engine {
             run_fresh: false,
             live_spec: None,
             spec_objects: Vec::new(),
+            config_controls: None,
+            config_gates: Default::default(),
         };
         e.refresh_stat_list()?;
         Ok(e)
@@ -147,6 +153,10 @@ impl Engine {
         &mut self.extras
     }
 
+    pub(crate) fn res_mut(&mut self) -> &mut CalculateResult {
+        &mut self.res
+    }
+
     /// `calcsTab.input`: the model's copy and the one the CALCS run holds (`env.calcsInput`), one table upstream.
     pub(crate) fn model_and_calcs_input(
         &mut self,
@@ -163,6 +173,7 @@ impl Engine {
         *self.misc.borrow_mut() = None;
         self.output_revision += 1;
         (self.res, self.calcs) = run(&self.model, self.live_spec.as_deref())?;
+        *self.config_gates.borrow_mut() = Default::default();
         if let Some(l) = &self.live_spec {
             self.res.env.spec = l.clone();
         }

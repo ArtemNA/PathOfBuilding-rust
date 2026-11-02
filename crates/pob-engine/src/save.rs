@@ -608,7 +608,7 @@ pub fn default_state() -> &'static IndexMap<String, InputValue> {
 }
 
 /// `ConfigTab:GetDefaultState(var, type(v))` (:941-959) -- the ACTIVE set's placeholder first.
-fn get_default_state(active_placeholder: &IndexMap<String, InputValue>, var: &str, v: &InputValue) -> InputValue {
+pub(crate) fn get_default_state(active_placeholder: &IndexMap<String, InputValue>, var: &str, v: &InputValue) -> InputValue {
     if let Some(p) = active_placeholder.get(var) {
         return p.clone();
     }
