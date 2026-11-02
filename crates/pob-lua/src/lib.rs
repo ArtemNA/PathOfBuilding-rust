@@ -4,6 +4,7 @@
 #![forbid(unsafe_code)]
 
 pub mod format;
+pub mod lj_strfmt_num;
 pub mod number;
 pub mod pattern;
 pub mod string;

@@ -1,14 +1,28 @@
 //! LuaJIT number semantics PoB relies on (MOD-CORE §6, MINEFIELD L5-L7, L20). Doubles only; `-0` and NaN pass through as LuaJIT does.
 
-/// `10 ^ dec` as LuaJIT computes it (`^` -> `pow`).
-fn pow10(dec: f64) -> f64 {
-    10f64.powf(dec)
+/// 10^k for k = 0..=22: every one is an exact double, and `pow` returns exactly it (`tests/format_parity.rs` checks against `powf`).
+const POW10: [f64; 23] = [
+    1e0, 1e1, 1e2, 1e3, 1e4, 1e5, 1e6, 1e7, 1e8, 1e9, 1e10, 1e11, 1e12, 1e13, 1e14, 1e15, 1e16, 1e17, 1e18, 1e19, 1e20, 1e21, 1e22,
+];
+
+/// `10 ^ dec` as LuaJIT computes it (`^` -> `pow`): the table for whole `dec` in 0..=22, `pow` for anything else.
+pub fn pow10(dec: f64) -> f64 {
+    // `as` saturates (a negative or NaN `dec` gives 0), and the round trip then rejects it. -0 hits entry 0, like pow(10, -0) = 1.
+    let i = dec as usize;
+    if i < POW10.len() && i as f64 == dec {
+        POW10[i]
+    } else {
+        10f64.powf(dec)
+    }
 }
 
 /// Common.lua:709 `round(val, dec)`: `m_floor(val * 10 ^ dec + 0.5) / 10 ^ dec`, or `m_floor(val + 0.5)` without `dec`.
 pub fn round(val: f64, dec: Option<f64>) -> f64 {
     match dec {
-        Some(d) => (val * pow10(d) + 0.5).floor() / pow10(d),
+        Some(d) => {
+            let mult = pow10(d);
+            (val * mult + 0.5).floor() / mult
+        }
         None => (val + 0.5).floor(),
     }
 }
