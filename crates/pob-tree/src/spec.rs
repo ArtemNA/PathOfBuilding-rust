@@ -732,6 +732,14 @@ impl PassiveSpec {
         list
     }
 
+    /// `copyTable(spec.allocNodes, true)` (CalcSetup.lua:775): the node ids in the `pairs` order of the COPY -- a new table filled in the
+    /// `pairs` order of `allocNodes` ([`AllocOrder::LuaJit`], [`crate::lj_table`]). What `pairs(env.allocNodes)` walks, so the order
+    /// of the tree's mods in the modDB and of their (non-associative) float sums (R-party, D13/R11).
+    pub fn alloc_nodes_copy_order(&self) -> Vec<u32> {
+        let keys = self.alloc_table.pairs_keys();
+        crate::lj_table::pairs_order(&keys).into_iter().map(|k| k as u32).collect()
+    }
+
     /// :1092-1600, the R3 subset: reset dependencies, restore nodes from the tree, the timeless-jewel conquests (R5.5c,
     /// `crate::timeless`), apply mastery selections and the four counters, then prune every allocated node with no path to a
     /// start node. Errors: what upstream raises in the conquest half (and its unported abyss branch).

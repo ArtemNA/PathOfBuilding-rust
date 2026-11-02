@@ -211,11 +211,45 @@ pub(super) fn setup(off: &mut Off<'_>) -> bool {
         off.set_out(k, v.map_or(Value::Nil, Value::Num));
     }
 
-    // :568-583 Energy Blade
+    // :568-583 Energy Blade: the blade's base stats and the skill's damage onto `actor.weaponData1/2` (the weapon's table, written in place)
     if off.mod_db.borrow().conditions.get("AffectedByEnergyBlade").copied() == Some(true) {
-        off.note(format!(
-            "{LUA}:568-583 Energy Blade weapon data (data.itemBases weapon stats onto actor.weaponData1/2; not ported)"
-        ));
+        let dmg_mod = q.calc_mod(Some(&cfg), &["EnergyBladeDamage"]);
+        let speed_mod = q.calc_mod(Some(&cfg), &["EnergyBladeAttackSpeed"]);
+        for (slot, n) in [("Weapon 1", 1u8), ("Weapon 2", 2u8)] {
+            let name = wd_val(off, n, "name");
+            let Some(base) = name.as_str().and_then(|x| pob_data::item_bases::item_bases().base(x)) else {
+                continue;
+            };
+            if !has_weapon(off, slot) {
+                continue;
+            }
+            let w = base
+                .weapon
+                .as_ref()
+                .unwrap_or_else(|| panic!("{LUA}:574: attempt to index local 'weaponBaseData' (a nil value)"));
+            let mut sets: Vec<(String, f64)> = vec![
+                ("CritChance".to_owned(), w.CritChanceBase),
+                ("AttackRate".to_owned(), w.AttackRateBase * speed_mod),
+                ("Range".to_owned(), w.Range),
+            ];
+            for dt in DMG_TYPE_LIST {
+                // `weaponBaseData[damageType.."Min"] or 0` -- the bases only have physical damage
+                let (bmin, bmax) = if dt == "Physical" {
+                    (w.PhysicalMin.unwrap_or(0.0), w.PhysicalMax.unwrap_or(0.0))
+                } else {
+                    (0.0, 0.0)
+                };
+                let add = |mm: &str| (q.base(Some(&cfg), &[&format!("EnergyBlade{mm}{dt}")]) * dmg_mod).floor();
+                sets.push((format!("{dt}Min"), bmin + add("Min")));
+                sets.push((format!("{dt}Max"), bmax + add("Max")));
+            }
+            let actor = crate::perform::actor_of(off.env, off.who);
+            let mut a = actor.borrow_mut();
+            let data = if n == 1 { &mut a.weapon_data1 } else { &mut a.weapon_data2 };
+            for (k, v) in sets {
+                data.set(&k, Value::Num(v));
+            }
+        }
     }
 
     // :587-594 Battlemage

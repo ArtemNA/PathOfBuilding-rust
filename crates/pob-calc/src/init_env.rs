@@ -16,7 +16,7 @@ use pob_data::pantheons::pantheons;
 use pob_data::rules::rules;
 use pob_items::{DataTable, Item, ItemOptions, NumKey};
 use pob_lua::number::{max2, min2};
-use pob_mods::{Actor, Mod, ModStore, ModType, StoreRef, Value};
+use pob_mods::{Actor, Mod, ModCfg, ModStore, ModType, StoreRef, Value};
 use pob_tree::{ClusterJewel, ConqueredBy, PassiveSpec, SpecJewel, TreeError};
 
 use crate::calc_lib;
@@ -634,7 +634,7 @@ fn merge_scaled(src_list: &[Rc<Mod>], scale: f64) -> Vec<Rc<Mod>> {
 
 /// CalcSetup.lua:875-904: one `radiusJewelList` entry per function of the jewel (`item.jewelData.funcList`, or the default
 /// tally), and the unallocated nodes in radius of every non-`Self` function into `extraRadiusNodeList`.
-fn add_radius_jewel(env: &mut Env, item: &Rc<Item>, socket_id: u32, radius_index: f64) {
+fn add_radius_jewel(env: &mut Env, item: &Rc<Item>, socket_id: u32, radius_index: Option<f64>) {
     // `(item.jewelData and item.jewelData.funcList) or { default }` -- an empty funcList table is truthy (L4).
     let funcs: Vec<(RadiusFunc, Value)> = match item.jewel_data.as_ref().map(|jd| jd.get("funcList")) {
         Some(Value::Table(t)) => t
@@ -650,40 +650,87 @@ fn add_radius_jewel(env: &mut Env, item: &Rc<Item>, socket_id: u32, radius_index
         ),
     };
     for (func, ty) in funcs {
-        // `local node = env.spec.nodes[slot.nodeId]` -- the socket is allocated (:845), so it exists.
-        let socket = env
-            .spec
-            .node(socket_id)
-            .unwrap_or_else(|| panic!("Modules/CalcSetup.lua:888: attempt to index local 'node' (a nil value)"));
-        let nir = socket.nodes_in_radius();
-        // `nodesInRadius[item.jewelRadiusIndex]` -- an index the tree's table does not have is nil.
-        let list = nir.and_then(|l| {
-            (radius_index >= 1.0 && radius_index.fract() == 0.0)
-                .then(|| l.get(radius_index as usize - 1))
-                .flatten()
-        });
-        let nodes = list.cloned().unwrap_or_default();
-        if !ty.is_str("Self") && nir.is_some() {
-            let Some(list) = list else {
-                panic!("Modules/CalcSetup.lua:898: bad argument #1 to 'pairs' (table expected, got nil)");
-            };
-            for &id in list {
-                // `env.extraRadiusNodeList[nodeId] = env.spec.nodes[nodeId]` -- a nil value leaves no key.
-                if !env.alloc_nodes.contains_key(&id)
-                    && let Some(idx) = env.spec.node_idx(id)
-                {
-                    env.extra_radius_node_list.insert(id, idx);
-                }
+        push_radius_jewel(env, item, socket_id, radius_index, func, ty);
+    }
+}
+
+/// :898-915 / :918-942 one entry of `env.radiusJewelList`; `radius_index` nil = `nodesInRadius[nil]` is nil (the jewel has no radius of
+/// its own and only an `override.extraJewelFuncs` brought it here).
+fn push_radius_jewel(env: &mut Env, item: &Rc<Item>, socket_id: u32, radius_index: Option<f64>, func: RadiusFunc, ty: Value) {
+    // `local node = env.spec.nodes[slot.nodeId]` -- the socket is allocated (:845), so it exists.
+    let socket = env
+        .spec
+        .node(socket_id)
+        .unwrap_or_else(|| panic!("Modules/CalcSetup.lua:898: attempt to index local 'node' (a nil value)"));
+    let nir = socket.nodes_in_radius();
+    // `nodesInRadius[item.jewelRadiusIndex]` -- an index the tree's table does not have is nil.
+    let list = nir.and_then(|l| {
+        radius_index
+            .filter(|r| *r >= 1.0 && r.fract() == 0.0)
+            .and_then(|r| l.get(r as usize - 1))
+    });
+    let nodes = list.cloned().unwrap_or_default();
+    if !ty.is_str("Self") && nir.is_some() {
+        let Some(list) = list else {
+            panic!("Modules/CalcSetup.lua:910: bad argument #1 to 'pairs' (table expected, got nil)");
+        };
+        for &id in list {
+            // `env.extraRadiusNodeList[nodeId] = env.spec.nodes[nodeId]` -- a nil value leaves no key.
+            if !env.alloc_nodes.contains_key(&id)
+                && let Some(idx) = env.spec.node_idx(id)
+            {
+                env.extra_radius_node_list.insert(id, idx);
             }
         }
-        env.radius_jewel_list.push(RadiusJewel {
-            nodes,
-            func,
-            ty,
-            item: item.clone(),
-            node_id: socket_id,
-            data: pob_mods::Table::default(),
-        });
+    }
+    env.radius_jewel_list.push(RadiusJewel {
+        nodes,
+        func,
+        ty,
+        item: item.clone(),
+        node_id: socket_id,
+        data: pob_mods::Table::default(),
+    });
+}
+
+/// CalcSetup.lua:1140-1164: the replacement weapon of Energy Blade -- `new("Item"):Item()` (no raw: nothing parsed yet), the fields, an empty
+/// mod-line list of every kind (`item.baseName.implicit` indexes a STRING: nil, so no implicit lines), `NormaliseQuality`, `BuildAndParseRaw`,
+/// and the previous weapon's sockets.
+#[allow(clippy::field_reassign_with_default)] // Item has private fields: no struct update from outside pob-items
+fn energy_blade_item(name: &str, previous: &Item, parse_mode: pob_parser::ParseMode) -> Item {
+    let mut item = Item::default();
+    item.parse_mode = parse_mode;
+    item.name = name.to_owned();
+    item.base = pob_data::item_bases::item_bases().base(name);
+    item.base_name = Some(name.to_owned());
+    item.quality = Some(0.0);
+    item.rarity = "NORMAL".to_owned();
+    item.normalise_quality();
+    item.build_and_parse_raw();
+    item.sockets.clone_from(&previous.sockets);
+    item.abyssal_socket_count = previous.abyssal_socket_count;
+    item
+}
+
+/// :917-943 `override.extraJewelFuncs:List({ item = item }, "ExtraJewelFunc")`: the funcs (non-unique jewels only, by their
+/// `ItemCondition` tags) at the radius their label names -- the first entry of `data.jewelRadius` with that label (`pairs` over a sequence).
+/// `data.jewelRadius` is the table of the tree's version (D7; the 3_15 and 3_16 tables only differ for trees up to 3_15, older than this
+/// mod).
+fn add_extra_jewel_funcs(env: &mut Env, item: &Rc<Item>, socket_id: u32, funcs: &StoreRef) {
+    let cfg = ModCfg {
+        item: Some(item.clone() as Rc<dyn pob_mods::ItemLike>),
+        ..ModCfg::default()
+    };
+    for fd in ok(funcs.borrow().list(Some(&cfg), &["ExtraJewelFunc"])) {
+        let label = fd.get("radius");
+        let radius = env
+            .spec
+            .tree
+            .jewel_radius
+            .iter()
+            .position(|r| label.is_str(&r.label))
+            .map(|i| (i + 1) as f64);
+        push_radius_jewel(env, item, socket_id, radius, RadiusFunc::Visitor(fd.get("func")), fd.get("type"));
     }
 }
 
@@ -915,6 +962,8 @@ fn init_env_core(
     let mut prof = profile::Marker::new();
     // :501 `env.spec = override.spec or build.spec`. The `override.addNodes` that are no spec nodes (mastery-effect nodes, cluster
     // notables of the tree) ride on a copy of it, past its own nodes ([`PassiveSpec::with_extra_nodes`]).
+    // `calcs.initEnv(build, mode, override, specEnv)` of the ExtraJewelFunc re-run (:1449) starts from the same arguments
+    let spec_arg = spec.clone();
     let spec = ov.and_then(|o| o.spec.clone()).unwrap_or(spec);
     let base_len = spec.nodes.len();
     let extra: Vec<pob_tree::SpecNode> = ov
@@ -1408,6 +1457,12 @@ fn init_env_core(
             env.alloc_nodes = nodes;
         }
         // `copyTable(env.spec.allocNodes, true)` -- a shallow copy: the same nodes.
+        // Upstream's `pairs` over the copy decides the order of the tree's mods in the modDB (the `Sum`s of non-integer mods are order
+        // sensitive, R-party); `ParseMode::CacheOnly` reproduces pob-ts, which walks insertion order (D13).
+        None if parse_mode == pob_parser::ParseMode::Full && env.spec.alloc_order == pob_tree::AllocOrder::LuaJit => {
+            let order = env.spec.alloc_nodes_copy_order();
+            env.alloc_nodes = order.iter().map(|id| (*id, env.spec.alloc_nodes[id])).collect();
+        }
         None => env.alloc_nodes = env.spec.alloc_nodes.clone(),
     }
     let (initial, _) = build_mod_list_for_node_list(&mut env, true);
@@ -1567,11 +1622,15 @@ fn init_env_core(
                     }
                     jewel_limits.insert(limit_key, used.unwrap_or(0.0) + 1.0);
                 }
-                // :871-935 -- gated on `item.jewelRadiusIndex` (`override` is nil in MAIN: no `extraJewelFuncs`, see (16)).
+                // :887-944 -- `item.jewelRadiusIndex or (override.extraJewelFuncs and #override.extraJewelFuncs > 0)`, see (16).
                 // `ParseMode::CacheOnly` reproduces pob-ts, which has no radius jewels.
-                if let Some(radius_index) = item.jewel_radius_index {
+                let extra_funcs = ov.and_then(|o| o.extra_jewel_funcs.as_ref()).filter(|l| !list_mods(l).is_empty());
+                if item.jewel_radius_index.is_some() || extra_funcs.is_some() {
                     if opts.parse_mode == pob_parser::ParseMode::Full {
-                        add_radius_jewel(&mut env, item, node_id, radius_index);
+                        add_radius_jewel(&mut env, item, node_id, item.jewel_radius_index);
+                        if let Some(l) = extra_funcs {
+                            add_extra_jewel_funcs(&mut env, item, node_id, l);
+                        }
                     } else {
                         env.unimplemented
                             .push(format!("CalcSetup.lua:871 radius jewel {} (nodesInRadius, pob-ts)", item.name));
@@ -1758,19 +1817,19 @@ fn init_env_core(
                 _ => item = None,
             }
         }
-        if slot.node_id.is_some()
+        if let Some(node_id) = slot.node_id
             && let Some(it) = &item
             && it.ty.as_deref() == Some("Jewel")
-            && it
-                .jewel_data
-                .as_ref()
-                .is_some_and(|d| d.get("jewelIncEffectFromClassStart").truthy())
+            && let Some(inc) = it.jewel_data.as_ref().map(|d| d.get("jewelIncEffectFromClassStart"))
+            && inc.truthy()
         {
-            // :1061-1066 -- needs `node.distanceToClassStart` (PassiveSpec path machinery, P5).
-            env.unimplemented.push(format!(
-                "CalcSetup.lua:1061 jewelIncEffectFromClassStart on {} (distanceToClassStart, P5)",
-                it.name
-            ));
+            // :1077-1082 Split Personality: `node.distanceToClassStart` (PassiveSpec.lua:949-988 `SetNodeDistanceToClassStart`, pob-tree)
+            if let Some(dist) = env.spec.node(node_id).and_then(|n| n.distance_to_class_start) {
+                let inc = inc
+                    .as_num()
+                    .expect("Modules/CalcSetup.lua:1080: attempt to perform arithmetic on field 'jewelIncEffectFromClassStart'");
+                scale += dist * (inc / 100.0);
+            }
         }
         let Some(item) = item else { continue };
 
@@ -1846,10 +1905,26 @@ fn init_env_core(
         } else if (slot_name == "Weapon 1" || slot_name == "Weapon 2")
             && mod_db.borrow().conditions.get("AffectedByEnergyBlade").copied().unwrap_or(false)
         {
-            // :1118-1152 -- only reachable through the skill phase's `override.conditions` (P5).
-            env.unimplemented
-                .push("CalcSetup.lua:1118 Energy Blade weapon replacement (needs the skill phase, P5)".into());
-            ok(item_mod_db.borrow_mut().scale_add_list(&src_list, scale, false));
+            // :1134-1168 -- reached through the skill phase's `override.conditions` (:1950-1952): a melee weapon is replaced by the Energy
+            // Blade base, its mods are not merged; a bow / an off hand without weapon data stays.
+            let info = item
+                .weapon_data
+                .as_ref()
+                .and_then(|w| w.get(&pob_items::NumKey(1.0)))
+                .and_then(|d| d.get("type").as_str().map(str::to_owned))
+                .filter(|t| t != "Bow")
+                .and_then(|t| pob_data::rules::rules().weapon_type_info.get(t.as_str()));
+            if let Some(info) = info {
+                let name = if info.one_hand == Some(true) {
+                    "Energy Blade One Handed"
+                } else {
+                    "Energy Blade Two Handed"
+                };
+                let blade = energy_blade_item(name, &item, opts.parse_mode);
+                player.borrow_mut().item_list.insert(slot_name.clone(), Rc::new(blade));
+            } else {
+                ok(item_mod_db.borrow_mut().scale_add_list(&src_list, scale, false));
+            }
         } else if slot_name == "Weapon 1" && item.name == "The Iron Mass, Gladius" {
             let iron = ModStore::new_list(None);
             env.the_iron_mass = Some(iron.clone());
@@ -2139,20 +2214,44 @@ fn init_env_core(
     // --- (15) the allocated nodes' mods, into modDB (:1420-1425)
     merge_node_mods(&mut env);
 
-    // --- (16) ExtraJewelFunc (:1426-1437) ------------------------------------------------------------------------------
-    // With `override.extraJewelFuncs` given the block is skipped; a non-empty list would feed :875/:905 (P5, as the recursion below).
-    if let Some(l) = ov.and_then(|o| o.extra_jewel_funcs.as_ref()) {
-        if !list_mods(l).is_empty() {
-            env.unimplemented
-                .push("CalcSetup.lua:875/905 override.extraJewelFuncs (radius functions from ExtraJewelFunc mods, P5)".into());
+    // --- (16) ExtraJewelFunc (:1441-1451) ------------------------------------------------------------------------------
+    // Without `override.extraJewelFuncs`: the list of the ExtraJewelFunc mods (its `actor` = this env's player) goes onto the override
+    // table, and when it is not empty initEnv starts over with it -- nothing of this pass is kept (the skill phase has not run). An empty
+    // list stays on upstream's table only to skip this block next time: here the next initEnv recomputes the same empty list.
+    if ov.and_then(|o| o.extra_jewel_funcs.as_ref()).is_none() {
+        let tab = ok(mod_db.borrow().tabulate(Some(ModType::List), None, &["ExtraJewelFunc"]));
+        if !tab.is_empty() {
+            if opts.parse_mode == pob_parser::ParseMode::Full {
+                let list = ModStore::new_list(None);
+                let actor = player.borrow().actor.clone();
+                list.borrow_mut().set_actor(&actor);
+                for e in &tab {
+                    list.borrow_mut().add_mod(e.mod_.clone());
+                }
+                let mut next = ov.map_or_else(CalcOverride::default, |o| (**o).clone());
+                next.extra_jewel_funcs = Some(list);
+                next.extra_jewel_funcs_actor = Some(actor);
+                let items = env.items.clone();
+                let build = env.build.clone();
+                drop(env);
+                return init_env_core(
+                    build,
+                    spec_arg,
+                    items,
+                    parse_mode,
+                    shared,
+                    skills,
+                    carry,
+                    spec_in,
+                    Some(&Rc::new(next)),
+                    mode,
+                );
+            }
+            env.unimplemented.push(format!(
+                "CalcSetup.lua:1449 {} ExtraJewelFunc mods (no radius jewels, pob-ts)",
+                tab.len()
+            ));
         }
-    } else if let extra_jewel_funcs = ok(mod_db.borrow().tabulate(Some(ModType::List), None, &["ExtraJewelFunc"]))
-        && !extra_jewel_funcs.is_empty()
-    {
-        env.unimplemented.push(format!(
-            "CalcSetup.lua:1434 {} ExtraJewelFunc mods (initEnv would recurse; P5)",
-            extra_jewel_funcs.len()
-        ));
     }
 
     // --- (17) skills granted by tree nodes (:1439-1451) ----------------------------------------------------------------
@@ -2295,6 +2394,29 @@ fn init_env_core(
             };
             crate::skills::setup_skills(&mut st, &inp).map_err(InitEnvError)?
         };
+        // :1945-1955 an enabled Energy Blade: `t_insert(override.conditions, "AffectedByEnergyBlade")`, then initEnv starts over with it
+        if out.energy_blade_rerun {
+            let mut next = ov.map_or_else(CalcOverride::default, |o| (**o).clone());
+            next.conditions
+                .get_or_insert_with(Vec::new)
+                .push("AffectedByEnergyBlade".to_owned());
+            let items = env.items.clone();
+            let build = env.build.clone();
+            drop(st);
+            drop(env);
+            return init_env_core(
+                build,
+                spec_arg,
+                items,
+                parse_mode,
+                shared,
+                skills,
+                carry,
+                spec_in,
+                Some(&Rc::new(next)),
+                mode,
+            );
+        }
         prof.mark("(18c) setup_skills");
         env.requirements_table_gems = out.requirements_table_gems;
         env.unimplemented.extend(out.unimplemented);

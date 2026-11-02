@@ -395,6 +395,8 @@ pub struct SetupInputs<'a> {
 pub struct SetupOutputs {
     pub requirements_table_gems: Vec<ReqEntry>,
     pub unimplemented: Vec<String>,
+    /// :1946-1952 a group has an enabled Energy Blade and the env is not yet `AffectedByEnergyBlade`: initEnv starts over.
+    pub energy_blade_rerun: bool,
 }
 
 /// Where `addBestSupport` writes: `supportLists[slotName][group]` or `supportLists[group]` (:1618-1625).
@@ -558,6 +560,47 @@ fn apply_socket_mods(mod_db: &StoreRef, gem_data: &GemEntry, group_cfg: &GroupCf
     }
 }
 
+/// CalcSetup.lua:1610-1614 `env.crossLinkedSupportGroups`. `mod.mod.sourceSlot` is written onto the item's copy of the mod (Item.lua:2262,
+/// [`pob_items::SlotMod::source_slot`]) and `pob_mods::Mod` does not carry it: each `LinkedSupport` of the modDB is matched to the next
+/// such mod with the same source in the equipped items -- `env.player.itemList` is in the order the items were merged into the modDB.
+fn cross_linked_support_groups(mod_db: &StoreRef, inp: &SetupInputs<'_>) -> Result<IndexMap<String, Vec<String>>, LuaError> {
+    let mut groups: IndexMap<String, Vec<String>> = IndexMap::new();
+    let linked = ok(mod_db.borrow().tabulate(Some(ModType::List), None, &["LinkedSupport"]));
+    if linked.is_empty() {
+        return Ok(groups);
+    }
+    // `(mod.source, mod.sourceSlot)`
+    let mut carriers = Vec::new();
+    for (slot_name, item) in inp.item_list {
+        let slot = inp
+            .ordered_slots
+            .iter()
+            .find(|s| s.slot_name == *slot_name || s.slot_name.replace(" Swap", "") == *slot_name);
+        // `item.modList or item.slotModList[slot.slotNum]`
+        let list = item.mod_list.as_ref().or_else(|| {
+            let k = slot.and_then(|s| s.slot_num)?;
+            item.slot_mod_list.as_ref()?.get((k as usize).checked_sub(1)?)
+        });
+        for m in list.into_iter().flatten().filter(|m| &*m.m.name == "LinkedSupport") {
+            carriers.push((m.m.source.clone(), m.source_slot.clone()));
+        }
+    }
+    for e in &linked {
+        let source_slot = carriers
+            .iter()
+            .position(|c| c.0 == e.mod_.source)
+            .and_then(|i| carriers.remove(i).1)
+            // `crossLinkedSupportGroups[nil] = ...`: a LinkedSupport from outside the items has no `sourceSlot`
+            .ok_or_else(|| "Modules/CalcSetup.lua:1612: table index is nil".to_owned())?;
+        let target = e.value.get("targetSlotName");
+        let target = target
+            .as_str()
+            .ok_or_else(|| "Modules/CalcSetup.lua:1613: LinkedSupport without a targetSlotName".to_owned())?;
+        groups.entry(source_slot.to_string()).or_default().push(target.to_owned());
+    }
+    Ok(groups)
+}
+
 /// CalcSetup.lua:1584-1940: the main socket group, supports, active skills, the per-group lists and the main skill.
 #[allow(clippy::too_many_lines)]
 pub fn setup_skills(st: &mut SkillsState, inp: &SetupInputs<'_>) -> Result<SetupOutputs, LuaError> {
@@ -567,16 +610,8 @@ pub fn setup_skills(st: &mut SkillsState, inp: &SetupInputs<'_>) -> Result<Setup
     let main_group = inp.main_socket_group;
     let is_main = |index: usize| (index + 1) as f64 == main_group;
 
-    // :1594-1598 cross-linked supports. `mod.mod.sourceSlot` is written onto the item's mod table (Item.lua:2242) and is not carried by
-    // `pob_mods::Mod` -- recorded, never guessed (no golden has LinkedSupport).
-    let linked = ok(mod_db.borrow().tabulate(Some(ModType::List), None, &["LinkedSupport"]));
-    let cross_linked: IndexMap<String, Vec<String>> = IndexMap::new();
-    if !linked.is_empty() {
-        out.unimplemented.push(format!(
-            "CalcSetup.lua:1595 {} LinkedSupport mods (mod.sourceSlot is not carried by pob_mods::Mod)",
-            linked.len()
-        ));
-    }
+    // :1610-1614 cross-linked supports: `crossLinkedSupportGroups[mod.mod.sourceSlot]` gets `mod.value.targetSlotName`
+    let cross_linked = cross_linked_support_groups(mod_db, inp)?;
 
     let use_second = active_item_set(inp.build).use_second_weapon_set;
     let want_set = if use_second { 2.0 } else { 1.0 };
@@ -987,12 +1022,24 @@ pub fn setup_skills(st: &mut SkillsState, inp: &SetupInputs<'_>) -> Result<Setup
                             }
                         }
                     }
-                    // :1813-1832 supports from cross-linked groups (empty: see above)
+                    // :1844-1863 supports from cross-linked groups (`pairs` over slot names: their order in the modDB, R13)
                     for (cl_slot, cl_targets) in &cross_linked {
                         for t in cl_targets {
                             if Some(t) == slot_name.as_ref()
                                 && let Some(slot_lists) = support_lists.by_slot.get(cl_slot)
                             {
+                                // :1847-1855 the other groups' socketed supports (display only)
+                                for (oi, other) in st.tab.socket_group_list().iter().enumerate() {
+                                    if other.slot.as_ref() == Some(cl_slot) {
+                                        for (gj, g) in other.gem_list.iter().enumerate() {
+                                            if let Some(gd) = &g.gem_data
+                                                && sk.get(&gem(gd).granted_effect_id).is_some_and(|e| e.support)
+                                            {
+                                                display.push((oi, gj));
+                                            }
+                                        }
+                                    }
+                                }
                                 for group_list in slot_lists.values() {
                                     for se in group_list {
                                         add_best_support(&sk, se, &mut applied)?;
@@ -1089,7 +1136,7 @@ pub fn setup_skills(st: &mut SkillsState, inp: &SetupInputs<'_>) -> Result<Setup
                 Some(label.unwrap_or_else(|| "<No active skills>".into()))
             }
         };
-        // :1917-1926 energy blade: `return calcs.initEnv(build, mode, override, specEnv)` with AffectedByEnergyBlade
+        // :1945-1955 energy blade: `return calcs.initEnv(build, mode, override, specEnv)` with AffectedByEnergyBlade
         if !inp.affected_by_energy_blade && sg.enabled && sg.slot_enabled == Some(true) {
             for gi in &sg.gem_list {
                 let ge = match &gi.gem_data {
@@ -1101,8 +1148,8 @@ pub fn setup_skills(st: &mut SkillsState, inp: &SetupInputs<'_>) -> Result<Setup
                     && gi.enabled
                     && ge.name == "Energy Blade"
                 {
-                    out.unimplemented
-                        .push("CalcSetup.lua:1923 Energy Blade: initEnv re-run with override.conditions AffectedByEnergyBlade".into());
+                    out.energy_blade_rerun = true;
+                    return Ok(out);
                 }
             }
         }

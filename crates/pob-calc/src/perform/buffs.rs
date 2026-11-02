@@ -1162,14 +1162,24 @@ fn allies(env: &Env, mod_db: &StoreRef, enemy_db: &StoreRef, minion: Option<&Min
             if !flag(mod_db, &["AlliesAurasCannotAffectSelf"]) && super::cond(mod_db, &key) != Some(true) {
                 set_cond(mod_db, "AffectedByAura", true);
                 set_cond(mod_db, &key, true);
-                merge_scaled(&a.mod_list, effect_mult_num(&a.effect_mult, 3049) / 100.0, &mut out.buffs, aura_name);
+                merge_scaled(
+                    &a.mod_list,
+                    effect_mult_num(&a.effect_mult, 3049) / 100.0,
+                    &mut out.buffs,
+                    aura_name,
+                );
             }
             if let Some(mc) = minion
                 && super::cond(&mc.db, &key) != Some(true)
             {
                 set_cond(&mc.db, "AffectedByAura", true);
                 set_cond(&mc.db, &key, true);
-                merge_scaled(&a.mod_list, effect_mult_num(&a.effect_mult, 3056) / 100.0, &mut out.minion_buffs, aura_name);
+                merge_scaled(
+                    &a.mod_list,
+                    effect_mult_num(&a.effect_mult, 3056) / 100.0,
+                    &mut out.minion_buffs,
+                    aura_name,
+                );
             }
         }
         // :3061-3080 the Vaal auras
@@ -1181,14 +1191,24 @@ fn allies(env: &Env, mod_db: &StoreRef, enemy_db: &StoreRef, minion: Option<&Min
                 // `auraName:sub(6):gsub(" ","")`
                 set_cond(mod_db, &format!("AffectedBy{}", no_spaces(aura_name.get(5..).unwrap_or(""))), true);
                 set_cond(mod_db, &key, true);
-                merge_scaled(&a.mod_list, effect_mult_num(&a.effect_mult, 3069) / 100.0, &mut out.buffs, aura_name);
+                merge_scaled(
+                    &a.mod_list,
+                    effect_mult_num(&a.effect_mult, 3069) / 100.0,
+                    &mut out.buffs,
+                    aura_name,
+                );
             }
             if let Some(mc) = minion
                 && super::cond(&mc.db, &key) != Some(true)
             {
                 set_cond(&mc.db, "AffectedByAura", true);
                 set_cond(&mc.db, &key, true);
-                merge_scaled(&a.mod_list, effect_mult_num(&a.effect_mult, 3076) / 100.0, &mut out.minion_buffs, aura_name);
+                merge_scaled(
+                    &a.mod_list,
+                    effect_mult_num(&a.effect_mult, 3076) / 100.0,
+                    &mut out.minion_buffs,
+                    aura_name,
+                );
             }
         }
     }
@@ -1201,7 +1221,12 @@ fn allies(env: &Env, mod_db: &StoreRef, enemy_db: &StoreRef, minion: Option<&Min
             if super::cond(enemy_db, &key) != Some(true) {
                 set_cond(enemy_db, &key, true);
                 set_cond(mod_db, &key, true);
-                merge_scaled(&a.mod_list, effect_mult_num(&a.effect_mult, 3090) / 100.0, &mut out.debuffs, aura_name);
+                merge_scaled(
+                    &a.mod_list,
+                    effect_mult_num(&a.effect_mult, 3090) / 100.0,
+                    &mut out.debuffs,
+                    aura_name,
+                );
             }
         }
     }
@@ -1209,7 +1234,11 @@ fn allies(env: &Env, mod_db: &StoreRef, enemy_db: &StoreRef, minion: Option<&Min
         // :3108-3130 each warcry buff scaled by its own `warcryPowerBonus` (written onto the mod's first tag by a player warcry)
         let scaled = |w: &PartyBuff| -> StoreRef {
             let src = new_list();
-            let eff = if w.effect_mult.is_nil() { 100.0 } else { effect_mult_num(&w.effect_mult, 3116) };
+            let eff = if w.effect_mult.is_nil() {
+                100.0
+            } else {
+                effect_mult_num(&w.effect_mult, 3116)
+            };
             for wb in &w.mod_list {
                 let bonus = match wb.tags.first() {
                     Some(t) => match t.get("warcryPowerBonus") {
@@ -1245,7 +1274,11 @@ fn allies(env: &Env, mod_db: &StoreRef, enemy_db: &StoreRef, minion: Option<&Min
             if super::cond(mod_db, &key) != Some(true) {
                 set_cond(mod_db, "AffectedByLink", true);
                 set_cond(mod_db, &key, true);
-                let eff = if l.effect_mult.is_nil() { 100.0 } else { effect_mult_num(&l.effect_mult, 3138) };
+                let eff = if l.effect_mult.is_nil() {
+                    100.0
+                } else {
+                    effect_mult_num(&l.effect_mult, 3138)
+                };
                 merge_scaled(&l.mod_list, eff / 100.0, &mut out.buffs, link_name);
             }
         }
