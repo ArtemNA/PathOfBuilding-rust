@@ -1,0 +1,21 @@
+{"note": "U1.2 check at 125 %: fractional physical positions, text heights x1.25, CENTER/RIGHT against the virtual screen, fractional viewport", "size": [1024, 120], "dpi": 125, "images": {"img": ["scenes/img/test8.png"]}, "calls": [
+["SetDrawColor", 1, 1, 1],
+["DrawImage", null, 10, 10, 21, 11],
+["DrawImage", null, 40.3, 10.3, 9.4, 9.4],
+["DrawString", 60, 10, "LEFT", 16, "VAR", "dpi125 h16"],
+["DrawString", 180.3, 10.3, "LEFT", 13, "VAR", "h13 at .3"],
+["DrawString", 300, 10, "LEFT", 14, "FONTIN SC", "Fontin SC 14"],
+["DrawString", 0, 34, "CENTER", 16, "VAR", "centre full"],
+["DrawString", 0, 54, "RIGHT", 16, "VAR", "right full"],
+["DrawString", 10, 54, "RIGHT_X", 16, "VAR", "rx"],
+["DrawString", 500, 54, "CENTER_X", 16, "VAR", "cx odd"],
+["DrawString", 10, 74, "LEFT", 16, "VAR", "multi\n^3line é"],
+["SetViewport", 600.3, 30.5, 150.3, 40.6],
+["SetDrawColor", 0.2, 0.2, 0.4],
+["DrawImage", null, 0, 0, 200, 60],
+["SetDrawColor", 1, 1, 1],
+["DrawString", 2, 2, "LEFT", 16, "VAR", "in vp .3/.5"],
+["SetViewport"],
+["DrawImage", "img", 800.5, 30.5, 24, 24],
+["DrawImageQuad", "img", 850, 30, 900, 35, 895, 80, 845, 75]
+]}

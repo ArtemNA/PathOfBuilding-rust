@@ -1,0 +1,12 @@
+[{
+    "name":"u13-h30probe",
+    "shot":"110226_025517.png",
+    "size":[300,546],
+    "dpi":100,
+    "screen":[1280,800],
+    "scale":1,
+    "frames_before_shot":5,
+    "frames_until_file":2,
+    "errors":[],
+    "logs":[]
+  }]

@@ -1,0 +1,22 @@
+{"note": "U1.3 at 125%: negative/fractional viewports, odd/fractional text heights with placeholders, fractional tops", "size": [400, 200], "dpi": 125, "calls": [
+["SetDrawColor", 0.2, 0.2, 0.2],
+["DrawImage", null, 0, 0, 400, 200],
+["SetViewport", -10.5, -5.25, 120.5, 60.5],
+["SetDrawColor", 0.8, 0.1, 0.1],
+["DrawImage", null, 0, 0, 200, 200],
+["SetDrawColor", 1, 1, 1],
+["DrawString", 2, 2, "LEFT", 16, "VAR", "neg vp Wg"],
+["SetViewport", 33.3, 70.7, 50.1, 20.2],
+["SetDrawColor", 0.1, 0.7, 0.1],
+["DrawImage", null, -10, -10, 100, 100],
+["SetViewport"],
+["SetDrawColor", 1, 1, 1],
+["DrawString", 150.3, 10.3, "LEFT", 13, "VAR", "h13 a\u00e9b"],
+["DrawString", 150, 30.6, "LEFT", 15, "VAR", "h15 a\u00e9b"],
+["DrawString", 150, 50, "LEFT", 14.4, "FONTIN", "h14.4 \u00e9W"],
+["DrawString", -3.5, 110, "LEFT", 16, "VAR", "left -3.5"],
+["DrawString", 10, -3.5, "LEFT", 16, "VAR", "top -3.5 Wg"],
+["DrawString", 390, 130, "RIGHT_X", 12, "VAR", "rx12 \u00e9"],
+["DrawString", 0, 150, "CENTER", 16, "VAR", "center \u00e9"],
+["DrawImage", null, -5.5, 172, 20.25, 10]
+]}
