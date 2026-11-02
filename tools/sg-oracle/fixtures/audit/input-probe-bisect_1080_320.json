@@ -1,0 +1,13 @@
+{
+  "script": "input-probe.lua",
+  "args": "bisect 1080,320",
+  "exit": 0,
+  "ms": 14008,
+  "sandbox_changes": [
+    "CHG  <rt>\\imgui.ini",
+    "CHG  <rt>\\SimpleGraphic\\SimpleGraphic.cfg"
+  ],
+  "outside_watched_changes": [],
+  "recent_writes_elsewhere": 5,
+  "pob_like_recent": []
+}

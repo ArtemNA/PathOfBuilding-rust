@@ -1,0 +1,16 @@
+{
+  "build": "popup",
+  "steps": [
+    { "dump": true, "shot": "popup-idle" },
+    { "events": [["Char", "x"], ["Char", "y"]], "dump": true, "shot": "popup-typed" },
+    { "cursor": [590, 440], "dump": true, "shot": "popup-hover" },
+    { "hold": ["LEFTBUTTON"], "events": [["KeyDown", "LEFTBUTTON"]], "dump": true },
+    { "release": ["LEFTBUTTON"], "events": [["KeyUp", "LEFTBUTTON"]], "dump": true },
+    { "events": [["KeyDown", "RETURN"]], "dump": true },
+    { "events": [["KeyDown", "ESCAPE"]], "dump": true },
+    { "cursor": [500, 410], "events": [["KeyDown", "LEFTBUTTON"], ["KeyUp", "LEFTBUTTON"]], "dump": true },
+    { "hold": ["CTRL"], "events": [["KeyDown", "a"]], "dump": true },
+    { "release": ["CTRL"], "events": [["KeyDown", "BACK"], ["Char", "\b"]], "dump": true, "shot": "popup-disabled" },
+    { "cursor": [80, 80], "events": [["KeyDown", "RETURN"], ["KeyDown", "ESCAPE"]], "dump": true }
+  ]
+}

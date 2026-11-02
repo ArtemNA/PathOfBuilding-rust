@@ -1,0 +1,23 @@
+[{
+    "name":"u12-holdout",
+    "shot":"110226_022118.png",
+    "size":[600,240],
+    "dpi":150,
+    "screen":[1280,800],
+    "scale":1.5,
+    "frames_until_file":2,
+    "errors":[],
+    "logs":[],
+    "frames_before_shot":5
+  },{
+    "name":"u12-nearest",
+    "shot":"110226_022119.png",
+    "size":[200,100],
+    "dpi":100,
+    "screen":[1280,800],
+    "scale":1,
+    "frames_until_file":2,
+    "errors":[],
+    "logs":[],
+    "frames_before_shot":33
+  }]
