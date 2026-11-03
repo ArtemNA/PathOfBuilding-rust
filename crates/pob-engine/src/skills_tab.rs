@@ -9,6 +9,7 @@
 use std::rc::Rc;
 
 use pob_calc::calc_tools::{ActiveSkillView, WeaponView, can_granted_effect_support_active_skill_ext};
+use pob_calc::env::{CalcOverride, GemOverride};
 use pob_calc::pob_build::{self, GemModel, InputValue, SkillSetModel, SocketGroupModel};
 use pob_calc::session::{CalcSession, RunRef};
 use pob_calc::skills_tab::{GemInstance, SkillSet, SkillsTab, SocketGroup, process_gem_level, process_socket_group};
@@ -873,8 +874,61 @@ impl Engine {
         Ok(m)
     }
 
-    /// `calcFunc(nil, useFullDPS)` with the edit: a session over the edited model (upstream re-reads the live tables; `Env` builds from the model).
-    fn run_gem_edit(&self, group: usize, gem: usize, edit: &GemEdit, use_full_dps: Option<bool>) -> Result<RunRef, String> {
+    /// The write of `edit` as the calculator's override, or `None` for a group the override cannot name: one with a `source` (no gem slots upstream, SkillsTab.lua:777).
+    fn gem_override(&self, group: usize, gem: usize, edit: &GemEdit) -> Result<Option<GemOverride>, String> {
+        let groups = self.socket_groups();
+        let target = group.wrapping_sub(1);
+        let Some(g) = groups.get(target) else {
+            return Err(format!("SkillsTab: no socket group {group}"));
+        };
+        if g.source.is_some() {
+            return Ok(None);
+        }
+        let edit = match edit {
+            GemEdit::Candidate { gem_id, imbued } => {
+                let gd = pob_data::gems::gems()
+                    .gems
+                    .0
+                    .get(gem_id)
+                    .ok_or_else(|| format!("GemSelectControl: no data.gems['{gem_id}']"))?;
+                let skills = self.skill_data();
+                let tab = self.skills_tab();
+                let level = process_gem_level(gd, *imbued, &tab.default_gem_level, Some(self.model().level), &skills).map_err(lua_err)?;
+                pob_calc::env::GemEdit::Candidate {
+                    gem_data: gem_id.clone(),
+                    level,
+                    default_quality: tab.default_gem_quality,
+                }
+            }
+            GemEdit::Quality20 => pob_calc::env::GemEdit::Quality(20.0),
+            GemEdit::ToggleEnabled => pob_calc::env::GemEdit::ToggleEnabled,
+        };
+        Ok(Some(GemOverride {
+            group: groups[..target].iter().filter(|g| g.source.is_none()).count(),
+            gem: gem.wrapping_sub(1),
+            edit,
+        }))
+    }
+
+    /// `calcFunc(nil, useFullDPS)` with the edit (GemSelectControl.lua:96-109, SkillsTab.lua:940-943, :980-982): in the session of `GetMiscCalculator`, over its `GlobalCache` (R47) -- what
+    /// earlier calls of this `outputRevision` cached stays there, as upstream. An edit made since the last run (the session does not hold it yet) goes through a session of its own.
+    pub fn gem_edit_run(&self, group: usize, gem: usize, edit: &GemEdit, use_full_dps: Option<bool>) -> Result<RunRef, String> {
+        if self.skills_live_ref().is_some() {
+            return self.gem_edit_run_own_session(group, gem, edit, use_full_dps);
+        }
+        let Some(ov) = self.gem_override(group, gem, edit)? else {
+            return self.gem_edit_run_own_session(group, gem, edit, use_full_dps);
+        };
+        let calc = self.misc_calculator()?;
+        let ov = CalcOverride {
+            gem_edit: Some(ov),
+            ..CalcOverride::default()
+        };
+        calc.calc(&Rc::new(ov), use_full_dps, self.view_mode_is_tree.get()).map_err(|e| e.0)
+    }
+
+    /// [`Engine::gem_edit_run`] as a session over the edited model: an empty cache, and the gem as `Load` makes it. Costs a full `BuildOutput` per call.
+    pub fn gem_edit_run_own_session(&self, group: usize, gem: usize, edit: &GemEdit, use_full_dps: Option<bool>) -> Result<RunRef, String> {
         let m = self.model_with_edit(group, gem, edit)?;
         let sess = CalcSession::new(Rc::new(m), CalculateOptions::default());
         sess.build_output(pob_calc::session::CalcMode::Main).map_err(|e| e.0)?;
@@ -938,7 +992,7 @@ impl Engine {
             gem_id: gem_id.to_owned(),
             imbued,
         };
-        let run = self.run_gem_edit(group, gem, &edit, Some(field == "FullDPS"))?;
+        let run = self.gem_edit_run(group, gem, &edit, Some(field == "FullDPS"))?;
         Ok(dps_of(&run, field))
     }
 
@@ -951,7 +1005,7 @@ impl Engine {
         header: &str,
         use_full_dps: Option<bool>,
     ) -> Result<Vec<String>, String> {
-        let run = self.run_gem_edit(group, gem, edit, use_full_dps)?;
+        let run = self.gem_edit_run(group, gem, edit, use_full_dps)?;
         let calc = self.misc_calculator()?;
         self.stat_compare_lines(&calc.base, &run, header)
     }

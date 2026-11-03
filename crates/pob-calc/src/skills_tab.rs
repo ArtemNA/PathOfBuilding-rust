@@ -19,7 +19,7 @@ use pob_lua::{Repl, gsub, match_};
 use std::rc::Rc;
 
 use crate::active_skill::EffectRef;
-use crate::env::Slot;
+use crate::env::{GemEdit, GemOverride, Slot};
 
 use crate::calc_tools::{GemLevelTarget, LuaError, get_gem_stat_requirement, validate_gem_level};
 
@@ -301,6 +301,52 @@ fn load_gem(g: &GemModel, skills: &Skills, data: &pob_data::gems::Gems) -> GemIn
 /// `nameSpec:match("%S")`.
 fn has_non_space(s: &str) -> bool {
     s.bytes().any(|b| !matches!(b, b' ' | b'\t' | b'\n' | 0x0b | 0x0c | b'\r'))
+}
+
+/// The write of [`crate::env::CalcOverride::gem_edit`] on a loaded tab. No `ProcessSocketGroup` after it, as upstream.
+pub fn apply_gem_override(tab: &mut SkillsTab, ov: &GemOverride) -> Result<(), LuaError> {
+    let group = tab
+        .socket_group_list_mut()
+        .iter_mut()
+        .filter(|g| g.source.is_none())
+        .nth(ov.group)
+        .ok_or_else(|| format!("CalcOverride.gem_edit: no socket group {}", ov.group))?;
+    let gi = group.gem_list.get_mut(ov.gem);
+    match (&ov.edit, gi) {
+        (GemEdit::Candidate { gem_data, level, .. }, Some(gi)) => {
+            gi.level = Some(*level);
+            gi.gem_data = Some(gem_data.clone());
+            gi.display_effect = None;
+        }
+        // GemSelectControl.lua:82-92
+        (
+            GemEdit::Candidate {
+                gem_data,
+                level,
+                default_quality,
+            },
+            None,
+        ) => {
+            let gd = &gems().gems[gem_data];
+            group.gem_list.push(GemInstance {
+                level: Some(*level),
+                quality: Some(*default_quality),
+                count: Some(1.0),
+                enabled: true,
+                enable_global1: Some(true),
+                enable_global2: Some(true),
+                gem_id: Some(gem_data.clone()),
+                name_spec: Some(gd.name.clone()),
+                skill_id: Some(gd.granted_effect_id.clone()),
+                gem_data: Some(gem_data.clone()),
+                ..GemInstance::default()
+            });
+        }
+        (GemEdit::Quality(q), Some(gi)) => gi.quality = Some(*q),
+        (GemEdit::ToggleEnabled, Some(gi)) => gi.enabled = !gi.enabled,
+        (_, None) => return Err(format!("CalcOverride.gem_edit: group {} has no gem {}", ov.group, ov.gem)),
+    }
+    Ok(())
 }
 
 /// SkillsTab.lua:1161-1236 `ProcessSocketGroup`.
