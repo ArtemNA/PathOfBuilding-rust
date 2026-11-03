@@ -1,0 +1,211 @@
+{
+"steps": [
+{
+"open": "party-attack-full"
+},
+{
+"cursorBuild": "modeParty",
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true,
+"shot": "party-load"
+},
+{
+"cursorParty": "ShowAdvanceTools",
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true,
+"shot": "party-load-advanced"
+},
+{
+"cursorParty": "importCodeDestination",
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"cursorDrop": [
+"party",
+"importCodeDestination",
+5
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"cursor": [
+1200,
+790
+],
+"hold": [
+"CTRL"
+],
+"events": [
+[
+"KeyDown",
+"s"
+],
+[
+"KeyUp",
+"s"
+]
+],
+"dump": true,
+"file": "party-attack-full.xml",
+"fileOut": "party-load-saved.xml"
+},
+{
+"release": [
+"CTRL"
+]
+},
+{
+"cursor": [
+1200,
+790
+],
+"dump": true
+},
+{
+"open": "party-attack-full"
+},
+{
+"cursorBuild": "modeParty",
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true,
+"shot": "party-reload"
+},
+{
+"cursorParty": "ShowAdvanceTools",
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"cursorParty": "removeEffects",
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"cursor": [
+1200,
+790
+],
+"dump": true
+},
+{
+"cursorParty": "rebuild",
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"cursor": [
+1200,
+790
+],
+"dump": true
+},
+{
+"cursor": [
+1200,
+790
+],
+"hold": [
+"CTRL"
+],
+"events": [
+[
+"KeyDown",
+"s"
+],
+[
+"KeyUp",
+"s"
+]
+],
+"dump": true,
+"file": "party-attack-full.xml",
+"fileOut": "party-reload-saved.xml"
+},
+{
+"release": [
+"CTRL"
+]
+},
+{
+"cursor": [
+1200,
+790
+],
+"dump": true
+}
+]
+}

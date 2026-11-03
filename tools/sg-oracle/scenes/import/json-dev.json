@@ -1,0 +1,320 @@
+{
+"steps": [
+{
+"open": "OccVortex"
+},
+{
+"cursorBuild": "modeImport",
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"cursor": [
+1200,
+790
+],
+"hold": [
+"CTRL"
+],
+"events": [
+[
+"KeyDown",
+"i"
+],
+[
+"KeyUp",
+"i"
+]
+],
+"dump": true
+},
+{
+"release": [
+"CTRL"
+]
+},
+{
+"clipboard": "{\"character\":{\"equipment\":[],\"passives\":{}}}",
+"hold": [
+"CTRL"
+],
+"events": [
+[
+"KeyDown",
+"v"
+],
+[
+"KeyUp",
+"v"
+]
+],
+"dump": true
+},
+{
+"release": [
+"CTRL"
+]
+},
+{
+"devMode": true,
+"hold": [
+"CTRL"
+],
+"events": [
+[
+"KeyDown",
+"a"
+],
+[
+"KeyUp",
+"a"
+]
+],
+"dump": true
+},
+{
+"release": [
+"CTRL"
+]
+},
+{
+"clipboard": "{\"character\":{\"equipment\":[],\"passives\":{}}}",
+"hold": [
+"CTRL"
+],
+"events": [
+[
+"KeyDown",
+"v"
+],
+[
+"KeyUp",
+"v"
+]
+],
+"dump": true,
+"shot": "json-valid"
+},
+{
+"release": [
+"CTRL"
+]
+},
+{
+"hold": [
+"CTRL"
+],
+"events": [
+[
+"KeyDown",
+"a"
+],
+[
+"KeyUp",
+"a"
+]
+],
+"dump": true
+},
+{
+"release": [
+"CTRL"
+]
+},
+{
+"clipboard": "{bad json}",
+"hold": [
+"CTRL"
+],
+"events": [
+[
+"KeyDown",
+"v"
+],
+[
+"KeyUp",
+"v"
+]
+],
+"dump": true
+},
+{
+"release": [
+"CTRL"
+]
+},
+{
+"hold": [
+"CTRL"
+],
+"events": [
+[
+"KeyDown",
+"a"
+],
+[
+"KeyUp",
+"a"
+]
+],
+"dump": true
+},
+{
+"release": [
+"CTRL"
+]
+},
+{
+"clipboard": "{\"other\":1}",
+"hold": [
+"CTRL"
+],
+"events": [
+[
+"KeyDown",
+"v"
+],
+[
+"KeyUp",
+"v"
+]
+],
+"dump": true
+},
+{
+"release": [
+"CTRL"
+]
+},
+{
+"hold": [
+"CTRL"
+],
+"events": [
+[
+"KeyDown",
+"a"
+],
+[
+"KeyUp",
+"a"
+]
+],
+"dump": true
+},
+{
+"release": [
+"CTRL"
+]
+},
+{
+"clipboard": "{\"character\":{\"equipment\":[]}}",
+"hold": [
+"CTRL"
+],
+"events": [
+[
+"KeyDown",
+"v"
+],
+[
+"KeyUp",
+"v"
+]
+],
+"dump": true
+},
+{
+"release": [
+"CTRL"
+]
+},
+{
+"hold": [
+"CTRL"
+],
+"events": [
+[
+"KeyDown",
+"a"
+],
+[
+"KeyUp",
+"a"
+]
+],
+"dump": true
+},
+{
+"release": [
+"CTRL"
+]
+},
+{
+"clipboard": "{\"character\":{\"passives\":{}}}",
+"hold": [
+"CTRL"
+],
+"events": [
+[
+"KeyDown",
+"v"
+],
+[
+"KeyUp",
+"v"
+]
+],
+"dump": true
+},
+{
+"release": [
+"CTRL"
+]
+},
+{
+"devMode": false,
+"hold": [
+"CTRL"
+],
+"events": [
+[
+"KeyDown",
+"a"
+],
+[
+"KeyUp",
+"a"
+]
+],
+"dump": true
+},
+{
+"release": [
+"CTRL"
+]
+},
+{
+"events": [
+[
+"KeyDown",
+"DELETE"
+],
+[
+"KeyUp",
+"DELETE"
+]
+],
+"dump": true
+}
+]
+}

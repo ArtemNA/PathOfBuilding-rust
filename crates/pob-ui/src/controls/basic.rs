@@ -40,6 +40,9 @@ impl Control for LabelControl {
     fn base(&self) -> &ControlBase {
         &self.base
     }
+    fn debug_value(&self, g: &Gfx) -> Option<serde_json::Value> {
+        Some(serde_json::json!(self.label.get(g)))
+    }
     fn has_draw(&self) -> bool {
         true
     }
@@ -122,6 +125,9 @@ impl ButtonControl {
 impl Control for ButtonControl {
     fn base(&self) -> &ControlBase {
         &self.base
+    }
+    fn debug_value(&self, g: &Gfx) -> Option<serde_json::Value> {
+        Some(serde_json::json!(self.label.get(g)))
     }
 
     fn click(&self, g: &mut Gfx) {
@@ -352,6 +358,9 @@ impl Control for CheckBoxControl {
     fn base(&self) -> &ControlBase {
         &self.base
     }
+    fn debug_value(&self, _g: &Gfx) -> Option<serde_json::Value> {
+        Some(serde_json::json!(self.state.get()))
+    }
 
     fn is_mouse_over(&self, g: &Gfx) -> Option<bool> {
         Some(self.mouse_over(g))
@@ -522,6 +531,9 @@ impl SectionControl {
 impl Control for SectionControl {
     fn base(&self) -> &ControlBase {
         &self.base
+    }
+    fn debug_value(&self, g: &Gfx) -> Option<serde_json::Value> {
+        Some(serde_json::json!(self.label.get(g)))
     }
     fn has_draw(&self) -> bool {
         true

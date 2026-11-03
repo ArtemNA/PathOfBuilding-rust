@@ -1,0 +1,96 @@
+{
+"steps": [
+{
+"open": "OccVortex"
+},
+{
+"cursorBuild": "modeImport",
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"cursor": [
+1200,
+790
+],
+"hold": [
+"CTRL"
+],
+"events": [
+[
+"KeyDown",
+"i"
+],
+[
+"KeyUp",
+"i"
+]
+],
+"dump": true
+},
+{
+"release": [
+"CTRL"
+]
+},
+{
+"clipboard": "eJyzCUgsyfBPcyrNzEnJzEu3s0m0s9FPAmI0cQAbnA3q",
+"hold": [
+"CTRL"
+],
+"events": [
+[
+"KeyDown",
+"v"
+],
+[
+"KeyUp",
+"v"
+]
+],
+"dump": true
+},
+{
+"release": [
+"CTRL"
+]
+},
+{
+"cursorImport": "importCodeGo",
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"cursorPopup": "confirm",
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+}
+]
+}

@@ -1,0 +1,664 @@
+{
+"steps": [
+{
+"open": "OccVortex"
+},
+{
+"cursorBuild": "modeParty",
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true,
+"shot": "party-tab"
+},
+{
+"cursorParty": "importCodeDestination",
+"dump": true,
+"shot": "party-hover-dest"
+},
+{
+"cursorParty": "appendNotReplace",
+"dump": true,
+"shot": "party-hover-append"
+},
+{
+"cursorParty": "clear",
+"dump": true,
+"shot": "party-hover-clear"
+},
+{
+"cursorParty": "ShowAdvanceTools",
+"dump": true,
+"shot": "party-hover-advanced"
+},
+{
+"cursorParty": "removeEffects",
+"dump": true,
+"shot": "party-hover-remove"
+},
+{
+"cursorParty": "rebuild",
+"dump": true,
+"shot": "party-hover-rebuild"
+},
+{
+"cursorParty": "importCodeIn",
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"clipboard": "abc",
+"hold": [
+"CTRL"
+],
+"events": [
+[
+"KeyDown",
+"v"
+],
+[
+"KeyUp",
+"v"
+]
+],
+"dump": true,
+"shot": "party-invalid"
+},
+{
+"release": [
+"CTRL"
+]
+},
+{
+"hold": [
+"CTRL"
+],
+"events": [
+[
+"KeyDown",
+"a"
+],
+[
+"KeyUp",
+"a"
+]
+],
+"dump": true
+},
+{
+"release": [
+"CTRL"
+]
+},
+{
+"clipboard": "https://pobb.in/abc",
+"hold": [
+"CTRL"
+],
+"events": [
+[
+"KeyDown",
+"v"
+],
+[
+"KeyUp",
+"v"
+]
+],
+"dump": true
+},
+{
+"release": [
+"CTRL"
+]
+},
+{
+"hold": [
+"CTRL"
+],
+"events": [
+[
+"KeyDown",
+"a"
+],
+[
+"KeyUp",
+"a"
+]
+],
+"dump": true
+},
+{
+"release": [
+"CTRL"
+]
+},
+{
+"clipboard": "eJydVu9v2jwQ_u6_IuLL-2UshBZtrZpNQGlXqawIuu3jqyO5gIVj89pOW6T88Ts7hPK2TEomhOLcOffcPffDvvr6kovgCbXhSsad6GOvE6BMVMrlKu78eLzpfu58_cKuZmDXD9mo4MJpvEDbHT0nL1ulLaajIstMICHHuON1U8yXqBcWrOl8Yfc8w_ii1-uxKUiI-251Ff7v4z8YGxYayMBQrlCz6HOPnffKxYYLcelF5Q3XOOWyHA0Xk7JLP7vbYnwr1BLEJMswsSH6x6OTO2vs0wkL8NLGQrfbZd_AakzZoMei2l4lKmfrneEJiGvIYYW3wOXQjJVI2yL85BYEtzsW9R1IjVKLS0fqHFfYKvjolJXy7vu4jWMAIvgGxiKLznqsf_CM5F5cLrZIRLSzOis0-ROoLLhLyHBEMQ_2hr-rRZGs_bp0TM7RcGPb8jnTPMV_r3FJ5cX6x4nzmjd5e4QNMds4hL1ZhzMFgU9KUB8d0Ch7rBvV3B9t8NXXOpwjMJ-LWw2OMgcyOMqFF_8dYUcIyq5RV7sMu9YIaTACKalzqC7L17r0qr1mqHNV6IZ4rt3fGx6cMDt5AjeommVlVAeAL1ZD1fkn6umer9ZW0lR7y1HXf0z_AIJE5TlKGzjJWID2XUl0R_3yzmJ--elyoXIM5mTmQzBWmnLi1qWbdq1b1IE0G47jQhuk6eic9Ovgnue8cnPAhsaAMVz-Y4Ip6I132OoC2flFPQD3O4zTlwsU2ZhCmxbC8q3g2DSBHtq7fSMgz2HJq7FFsyED4VRndZEcb2hf-69AE5khLkVV9HuQwxyqlWXVyeX0Yd7KeDPyf4FO9C7wkO6Mm4MQO0p6MNYU-7kvjsqfWkOK2qVGFVwhsLMTZtoWVmUqfPaPmXpGPVKyMHH0cbDnM6XxWzvfO5qNtcahtj1x9gE05_Sey80ro65YXElLqt1owAZHNYRO2vLwd5988DtmqBNqZ3c7CSGxSsdb0CQIt5UijkJDutjFy86ji9PAje8MPoLmJEwk5ruxkim3NOwcEYeXy5Ggg5WycSSaKW6UpKvIq2hO0TzoH5L_R93eAnSqUg_nOqEK40G6qUC9VZPvdeW7HQ17bH-sUPVy8FMhGgT-JaBcJBtTDhMXQIvrQ2WxSuuBgPAJdDzMMsETF-auwntPRFhfY8M3F9zfWY7qzA==",
+"hold": [
+"CTRL"
+],
+"events": [
+[
+"KeyDown",
+"v"
+],
+[
+"KeyUp",
+"v"
+]
+],
+"dump": true,
+"shot": "party-code-valid"
+},
+{
+"release": [
+"CTRL"
+]
+},
+{
+"cursorParty": "importCodeGo",
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true,
+"perfClick": "partyImport"
+},
+{
+"cursor": [
+1200,
+790
+],
+"dump": true,
+"shot": "party-imported"
+},
+{
+"cursorParty": "ShowAdvanceTools",
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true,
+"shot": "party-advanced"
+},
+{
+"cursorParty": "editWarcries",
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true,
+"shot": "party-focus-warcries"
+},
+{
+"events": [
+[
+"Char",
+"x"
+]
+],
+"dump": true
+},
+{
+"hold": [
+"CTRL"
+],
+"events": [
+[
+"KeyDown",
+"z"
+],
+[
+"KeyUp",
+"z"
+]
+],
+"dump": true
+},
+{
+"release": [
+"CTRL"
+]
+},
+{
+"cursorParty": "editLinks",
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true,
+"shot": "party-focus-links"
+},
+{
+"cursorParty": "editPartyMemberStats",
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true,
+"shot": "party-focus-stats"
+},
+{
+"cursorParty": "enemyCond",
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true,
+"shot": "party-focus-cond"
+},
+{
+"cursorParty": "enemyMods",
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true,
+"shot": "party-focus-mods"
+},
+{
+"cursorParty": "editCurses",
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true,
+"shot": "party-focus-curses"
+},
+{
+"cursorParty": "editAuras",
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"events": [
+[
+"Char",
+"Y"
+],
+[
+"KeyDown",
+"RETURN"
+],
+[
+"KeyUp",
+"RETURN"
+]
+],
+"dump": true
+},
+{
+"hold": [
+"CTRL"
+],
+"events": [
+[
+"KeyDown",
+"z"
+],
+[
+"KeyUp",
+"z"
+]
+],
+"dump": true
+},
+{
+"release": [
+"CTRL"
+]
+},
+{
+"hold": [
+"CTRL"
+],
+"events": [
+[
+"KeyDown",
+"y"
+],
+[
+"KeyUp",
+"y"
+]
+],
+"dump": true
+},
+{
+"release": [
+"CTRL"
+]
+},
+{
+"hold": [
+"CTRL"
+],
+"events": [
+[
+"KeyDown",
+"a"
+],
+[
+"KeyUp",
+"a"
+]
+],
+"dump": true
+},
+{
+"release": [
+"CTRL"
+]
+},
+{
+"cursorParty": "rebuild",
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"cursor": [
+1200,
+790
+],
+"dump": true
+},
+{
+"cursorParty": "removeEffects",
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"cursor": [
+1200,
+790
+],
+"dump": true,
+"shot": "party-removed"
+},
+{
+"cursorParty": "rebuild",
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"cursor": [
+1200,
+790
+],
+"dump": true,
+"shot": "party-rebuilt"
+},
+{
+"cursorParty": "ShowAdvanceTools",
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"cursorParty": "importCodeDestination",
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true,
+"shot": "party-dest-open"
+},
+{
+"cursorDrop": [
+"party",
+"importCodeDestination",
+3
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"cursorParty": "clear",
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"cursor": [
+1200,
+790
+],
+"dump": true,
+"shot": "party-clear-aura"
+},
+{
+"cursorParty": "importCodeDestination",
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"cursorDrop": [
+"party",
+"importCodeDestination",
+1
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"cursorParty": "clear",
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"cursor": [
+1200,
+790
+],
+"dump": true,
+"shot": "party-clear-all"
+},
+{
+"cursorParty": "appendNotReplace",
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"cursor": [
+1200,
+790
+],
+"hold": [
+"CTRL"
+],
+"events": [
+[
+"KeyDown",
+"s"
+],
+[
+"KeyUp",
+"s"
+]
+],
+"dump": true,
+"file": "OccVortex.xml",
+"fileOut": "party-saved-empty.xml"
+},
+{
+"release": [
+"CTRL"
+]
+},
+{
+"cursor": [
+1200,
+790
+],
+"dump": true
+}
+]
+}

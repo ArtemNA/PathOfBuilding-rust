@@ -631,6 +631,7 @@ impl Engine {
 
     /// `controls.defaultQuality`: `m_min(tonumber(buf) or 0, 23)`.
     pub fn set_default_gem_quality(&mut self, buf: Option<f64>) -> Result<(), String> {
+        self.extras_mut().nil_default_gem_quality = false;
         self.edit_skills(|t, _| {
             t.default_gem_quality = pob_lua::number::min2(buf.unwrap_or(0.0), 23.0);
             Ok(())

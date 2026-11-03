@@ -1,0 +1,312 @@
+{
+"steps": [
+{
+"open": "OccVortex"
+},
+{
+"cursorBuild": "modeImport",
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true,
+"shot": "tab"
+},
+{
+"cursorImport": "enablePartyExportBuffs",
+"dump": true,
+"shot": "tab-hover-export"
+},
+{
+"cursorImport": "generateCode",
+"dump": true,
+"shot": "tab-hover-generate"
+},
+{
+"cursorImport": "siteRemoveAccount",
+"dump": true,
+"shot": "tab-hover-remove"
+},
+{
+"cursorImport": "authenticateButton",
+"dump": true,
+"shot": "tab-hover-auth"
+},
+{
+"cursorImport": "exportFrom",
+"dump": true
+},
+{
+"cursorImport": "importCodeMode",
+"dump": true
+},
+{
+"cursorImport": "importCodeGo",
+"dump": true
+},
+{
+"cursorImport": "siteAccountName",
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"events": [
+[
+"Char",
+"S"
+],
+[
+"Char",
+"o"
+],
+[
+"Char",
+"m"
+],
+[
+"Char",
+"e"
+]
+],
+"dump": true,
+"shot": "tab-account-typed"
+},
+{
+"cursorImport": "siteAccountNameGo",
+"dump": true,
+"shot": "tab-account-go-tip"
+},
+{
+"cursorImport": "siteAccountName",
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"events": [
+[
+"Char",
+"#"
+],
+[
+"Char",
+"1"
+],
+[
+"Char",
+"2"
+],
+[
+"Char",
+"3"
+],
+[
+"Char",
+"4"
+]
+],
+"dump": true
+},
+{
+"cursorImport": "siteAccountNameGo",
+"dump": true,
+"shot": "tab-account-go"
+},
+{
+"cursorImport": "siteAccountHistory",
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true,
+"shot": "tab-history-open"
+},
+{
+"cursor": [
+1200,
+790
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"cursor": [
+1200,
+790
+],
+"importMode": "SELECTCHAR",
+"dump": true,
+"shot": "tab-selectchar"
+},
+{
+"cursorImport": "siteCharImportTree",
+"dump": true
+},
+{
+"cursorImport": "siteCharImportTreeClearJewels",
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"cursorImport": "siteCharImportItemsIgnoreWeaponSwap",
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true,
+"shot": "tab-selectchar-checks"
+},
+{
+"cursorImport": "siteCharClose",
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"cursor": [
+1200,
+790
+],
+"token": "synthetic",
+"dump": true,
+"shot": "tab-authorized"
+},
+{
+"cursorImport": "logoutApiButton",
+"dump": true
+},
+{
+"cursorImport": "accountRealmFetchButton",
+"dump": true
+},
+{
+"cursorImport": "charImportTreeClearJewels",
+"dump": true,
+"shot": "tab-authorized-hover"
+},
+{
+"cursorImport": "accountRealm",
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true,
+"shot": "tab-realm-open"
+},
+{
+"cursorDrop": [
+"import",
+"accountRealm",
+2
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"cursor": [
+1200,
+790
+],
+"dump": true,
+"shot": "tab-realm-xbox"
+},
+{
+"cursorImport": "logoutApiButton",
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"cursor": [
+1200,
+790
+],
+"dump": true,
+"shot": "tab-logged-out"
+}
+]
+}
