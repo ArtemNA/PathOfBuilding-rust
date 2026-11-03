@@ -411,7 +411,11 @@ pub(super) fn cached_out_truthy(c: &CachedSkill, k: &str) -> bool {
 /// `GlobalCache.cachedData[env.mode][uuid].ActiveSkill.skillData[k]` (= `.Env.player.mainSkill.skillData[k]`).
 pub(super) fn cached_sd(c: &CachedSkill, k: &str) -> Value {
     let r = c.run.borrow();
-    r.env.skills.as_ref().expect("skills on").active_skill_list[c.active_skill]
+    r.env
+        .skills
+        .as_ref()
+        .expect("skills on")
+        .skill(c.active_skill)
         .skill_data
         .get(k)
         .cloned()

@@ -111,6 +111,17 @@ fn against_oracle(run: &RunRef, rec: &Json) -> Vec<String> {
     out
 }
 
+/// The other processes of the original on `name`: `u5probe-<name>~<n>.json` (R13: the sample of what `pairs(guards)` gives).
+fn process_samples(name: &str) -> Vec<Json> {
+    (2..).map_while(|n| oracle_probe(&format!("{name}~{n}"))).collect()
+}
+
+/// The row of `sample` for the same `calcFunc`: a process walks `pairs(self.gems)` in an order of its own.
+fn same_row<'a>(sample: &'a Json, list: &str, rw: &Json) -> Option<&'a Json> {
+    let key = ["group", "slot", "gem", "edit"];
+    sample[list].as_array()?.iter().find(|o| key.iter().all(|k| o[*k] == rw[*k]))
+}
+
 /// One row of the record: `(group, slot, edit, use_full_dps, label)`. `self.gems` is keyed `Default:<id>`; `gemChangeFunc` strips it (GemSelectControl.lua:469).
 fn row(rec: &Json) -> (usize, usize, GemEdit, Option<bool>, String) {
     let (g, s) = (
@@ -147,6 +158,7 @@ fn gem_edits_equal_the_original() {
             continue;
         };
         let e = engine(name);
+        let samples = process_samples(name);
         let (mut n, mut r13) = (0, Vec::new());
         for list in ["edits", "candidates"] {
             for rw in rec[list].as_array().expect("rows") {
@@ -157,7 +169,12 @@ fn gem_edits_equal_the_original() {
                 if d.is_empty() {
                     continue;
                 }
-                if guard_order_decides(&run) {
+                // R13: only with a measurement -- the numbers must be those of another process of the original
+                let measured = samples
+                    .iter()
+                    .filter_map(|s| same_row(s, list, rw))
+                    .any(|o| against_oracle(&run, &o["output"]).is_empty());
+                if guard_order_decides(&run) && measured {
                     r13.push(label);
                 } else {
                     failures.push(format!("{name} {label}: {} keys, {}", d.len(), d[..d.len().min(4)].join("; ")));
@@ -219,6 +236,17 @@ fn candidate_values_do_not_depend_on_their_order() {
         differ.len(),
         differ.join("\n")
     );
+}
+
+/// A whole `BuildOutput` with these gems reads the `GlobalCache` entry of a detached main skill (`cached_sd`, `skills::DETACHED`): it used to index past the list.
+#[test]
+fn detached_main_skill_in_the_cache_does_not_panic() {
+    let e = engine("Dual Savior");
+    let data = pob_data::gems::gems();
+    for name in ["Summon Holy Relic", "Prismatic Burst"] {
+        let id = data.gems.0.iter().find(|(_, g)| g.name == name).expect("gem").0;
+        e.gem_edit_run_own_session(1, 3, &candidate(id), Some(false)).expect("calc");
+    }
 }
 
 /// The rows of the original's record on the two paths: what the old one got wrong. `--ignored --nocapture`.
