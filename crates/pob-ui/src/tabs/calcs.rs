@@ -22,7 +22,7 @@ use crate::controls::edit::{EditArgs, EditControl};
 use crate::controls::scroll_bar::ScrollBarControl;
 use crate::host::{ControlHost, InputEvent, InputEvents, ipairs};
 use crate::modules::build::{BuildMode, SkillControls, apply_skill_select};
-use crate::modules::main::{BareControl, main, not_ported, sel_by_value};
+use crate::modules::main::{BareControl, main, sel_by_value};
 use crate::sg;
 use crate::undo::{UndoHandler, UndoHost};
 
@@ -977,6 +977,18 @@ impl CalcsTab {
                 None,
                 false,
             );
+            // :52-58
+            let bf0 = bf.clone();
+            main_socket_group.tip.set_tooltip_func(
+                move |tooltip: &mut crate::tooltip::Tooltip, g: &Gfx, (_mode, index, _v): (&'static str, usize, Option<DropItem>)| {
+                    let (_, b) = bf0();
+                    let eng = b.engine.borrow();
+                    let e = eng.as_ref().expect("engine");
+                    if e.socket_groups().get(index.wrapping_sub(1)).is_some() && tooltip.check_for_update((index, e.output_revision())) {
+                        crate::gem_tooltip::add_socket_group_tooltip(tooltip, g, e, index);
+                    }
+                },
+            );
             let edit = |f: fn(&mut pob_engine::engine::Engine, usize, &DropItem) -> Result<(), String>, undo: bool| {
                 let bf = bf.clone();
                 Some(Rc::new(move |_g: &mut Gfx, index: usize, v: &DropItem| {
@@ -1069,9 +1081,12 @@ impl CalcsTab {
                 None,
                 false,
             );
-            let main_skill_minion_library = ButtonControl::new(None, with_w(100.0), "Manage Spectres...".to_string(), |g| {
-                not_ported(g, "Modules/Build.lua:1522-1551 OpenSpectreLibrary (MinionListControl): U5");
-            });
+            let main_skill_minion_library = ButtonControl::new(
+                None,
+                with_w(100.0),
+                "Manage Spectres...".to_string(),
+                crate::tabs::minion_list::open_spectre_library,
+            );
             let main_skill_minion_skill = DropDownControl::new(
                 g,
                 None,

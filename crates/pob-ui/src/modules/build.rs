@@ -5,8 +5,8 @@
 //!
 //! Not ported here (later phases; each place is marked): the tabs (TREE U3, CALCS U4, SKILLS U5, ITEMS U6, CONFIG/NOTES U7,
 //! IMPORT/PARTY/COMPARE U8 — `viewMode` switches, the tab area shows a placeholder), the sidebar breakdown popup
-//! (`CalcBreakdownControl`, `SetDisplayStat`, overlay panes — U4), the socket-group / level tooltips (U5), class and
-//! ascendancy changes and loadout switching (`PassiveSpec:SelectClass` …, U3/U5–U7), the spectre library (U5), the
+//! (`CalcBreakdownControl`, `SetDisplayStat`, overlay panes — U4), the level tooltip, class and
+//! ascendancy changes and loadout switching (`PassiveSpec:SelectClass` …, U3/U5–U7), the
 //! version-conversion popup, dev-mode autosave and `~~temp~~` builds (devMode is never set in the port), import links (U8).
 
 use super::main::{BareControl, HelpSection, Mode, ModeArg, file_exists, main, sel_by_value};
@@ -157,6 +157,8 @@ pub struct BuildMode {
     pub host: ControlHost,
     /// `self.calcsTab`.
     pub calcs_tab: RefCell<Option<Rc<CalcsTab>>>,
+    /// `self.skillsTab`.
+    pub skills_tab: RefCell<Option<Rc<crate::tabs::skills::SkillsTab>>>,
     /// `self.controls.breakdown`.
     pub breakdown: RefCell<Option<Rc<CalcBreakdownControl>>>,
     /// `self.overlayPanes`.
@@ -203,6 +205,7 @@ impl BuildMode {
         Rc::new_cyclic(|me| Self {
             host: ControlHost::new(),
             calcs_tab: RefCell::new(None),
+            skills_tab: RefCell::new(None),
             breakdown: RefCell::new(None),
             overlay_panes: RefCell::new(Vec::new()),
             overlay_breakdown_control: RefCell::new(None),
@@ -354,6 +357,9 @@ impl BuildMode {
             t.reset_mod_flags();
         }
         if let Some(t) = self.config_tab.borrow().as_ref() {
+            t.undo.mod_flag.set(false);
+        }
+        if let Some(t) = self.skills_tab.borrow().as_ref() {
             t.undo.mod_flag.set(false);
         }
         match action.as_deref() {
@@ -1021,7 +1027,18 @@ impl BuildMode {
             false,
         );
         main_socket_group.max_dropped_width.set(500.0);
-        // `mainSocketGroup.tooltipFunc` (skillsTab:AddSocketGroupTooltip): U5.
+        // :487-492
+        let b = bm.clone();
+        main_socket_group
+            .tip
+            .set_tooltip_func(move |tooltip: &mut Tooltip, g: &Gfx, (_mode, index, _v)| {
+                let s = b();
+                let eng = s.engine.borrow();
+                let e = eng.as_ref().expect("engine");
+                if e.socket_groups().get(index.wrapping_sub(1)).is_some() && tooltip.check_for_update((index, e.output_revision())) {
+                    crate::gem_tooltip::add_socket_group_tooltip(tooltip, g, e, index);
+                }
+            });
         let msg_r: ControlRef = main_socket_group.clone();
         let edit_skill = |f: fn(&mut Engine, usize, &DropItem) -> Result<(), String>| {
             let b = bm.clone();
@@ -1136,7 +1153,7 @@ impl BuildMode {
             anchor("LEFT", &mm_r, "RIGHT"),
             rect(2.0, 0.0, 120.0, 18.0),
             "Manage Spectres...".to_string(),
-            |g| super::main::not_ported(g, "Modules/Build.lua:1522-1551 OpenSpectreLibrary (MinionListControl): U5"),
+            crate::tabs::minion_list::open_spectre_library,
         );
         let main_skill_minion_skill = DropDownControl::new(
             g,
@@ -1658,6 +1675,8 @@ impl Mode for BuildMode {
         *self.notes_tab.borrow_mut() = Some(crate::tabs::notes::NotesTab::new(g, self.me.clone()));
         *self.config_tab.borrow_mut() = Some(crate::tabs::config::ConfigTab::new(g, self.me.clone()));
         *self.breakdown.borrow_mut() = Some(breakdown);
+        let skills = crate::tabs::skills::new_skills_tab(g, self.me.clone());
+        *self.skills_tab.borrow_mut() = Some(skills);
         self.overlay_panes.borrow_mut().clear();
         *self.overlay_breakdown_control.borrow_mut() = None;
         *self.breakdown_inputs.borrow_mut() = None;
@@ -1822,6 +1841,10 @@ impl Mode for BuildMode {
         }
         self.refresh_skill_select_controls(f);
         // the tab (TREE U3, SKILLS U5, ITEMS U6, CALCS U4, CONFIG/NOTES U7, IMPORT/PARTY/COMPARE U8)
+        if let Some(e) = self.engine.borrow().as_ref() {
+            // Calcs.lua:102 `build.viewMode == "TREE"`
+            e.view_mode_is_tree.set(self.view_mode.borrow().as_str() == "TREE");
+        }
         let side_bar_width = 312.0;
         let (screen_w, screen_h) = crate::common::screen_size();
         sg::set_draw_color(f, 1.0, 1.0, 1.0);
@@ -1829,6 +1852,15 @@ impl Mode for BuildMode {
             self.draw_tree_tab(f, side_bar_width, screen_w, screen_h, input_events);
         } else if self.view_mode.borrow().as_str() == "CALCS" {
             let tab = self.calcs_tab.borrow().clone().expect("calcsTab");
+            let view_port = Rect {
+                x: side_bar_width,
+                y: 32.0,
+                width: screen_w - side_bar_width,
+                height: screen_h - 32.0,
+            };
+            tab.draw(f, &view_port, input_events);
+        } else if self.view_mode.borrow().as_str() == "SKILLS" {
+            let tab = self.skills_tab.borrow().clone().expect("skillsTab");
             let view_port = Rect {
                 x: side_bar_width,
                 y: 32.0,
@@ -1871,7 +1903,8 @@ impl Mode for BuildMode {
         let calcs_mod = self.calcs_tab.borrow().as_ref().is_some_and(|t| t.undo.mod_flag.get());
         let notes_mod = self.notes_tab.borrow().as_ref().is_some_and(|t| t.mod_flag.get());
         let config_mod = self.config_tab.borrow().as_ref().is_some_and(|t| t.undo.mod_flag.get());
-        self.unsaved.set(self.mod_flag.get() || calcs_mod || notes_mod || config_mod);
+        let skills_mod = self.skills_tab.borrow().as_ref().is_some_and(|t| t.undo.mod_flag.get());
+        self.unsaved.set(self.mod_flag.get() || calcs_mod || notes_mod || config_mod || skills_mod);
         sg::set_draw_layer(f, Some(5), 0);
         sg::set_draw_color(f, 0.2, 0.2, 0.2);
         sg::draw_rect(f, 0.0, 0.0, screen_w, 28.0);

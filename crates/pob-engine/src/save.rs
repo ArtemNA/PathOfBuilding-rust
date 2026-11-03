@@ -319,6 +319,8 @@ pub struct SaveInput<'a> {
     /// (CalcSetup.lua:1586), `group.mainActiveSkillCalcs` (:1883) and the gems' `*Calcs` fields (CalcActiveSkill.lua:251/:697/...) come
     /// from it. `None` = no CALCS run (those fields as the MAIN run left them).
     pub calcs_env: Option<&'a pob_calc::Env>,
+    /// `build.skillsTab` edited since the last run (U5): `SkillsTab:Save` reads it instead of the run's.
+    pub skills_live: Option<&'a pob_calc::SkillsTab>,
 }
 
 /// `Build:SaveDB` -- the `<PathOfBuilding>` tree (compose with [`pob_build::compose_xml`]).
@@ -869,7 +871,10 @@ fn save_party(inp: &SaveInput<'_>) -> Result<XmlElement, String> {
 /// `build.skillsTab` after `BuildOutput`: the MAIN run's tab with what the CALCS run wrote into the active set's groups (the `*Calcs`
 /// fields only -- every other write of a CALCS run is the same as MAIN's: CalcSetup.lua:1883, CalcActiveSkill.lua:251/:268-269/:629-630/
 /// :656-657/:697/:738/:748).
-fn merged_tab(inp: &SaveInput<'_>) -> Result<pob_calc::SkillsTab, String> {
+pub(crate) fn merged_tab(inp: &SaveInput<'_>) -> Result<pob_calc::SkillsTab, String> {
+    if let Some(t) = inp.skills_live {
+        return Ok(t.clone());
+    }
     let mut tab = inp
         .res
         .env

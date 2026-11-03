@@ -14,6 +14,7 @@ pob-lua = { path = "../pob-lua" }
 pob-build.workspace = true
 pob-data.workspace = true
 pob-engine = { path = "../pob-engine" }
+pob-calc = { path = "../pob-calc" }
 pob-tree = { path = "../pob-tree" }
 pob-items = { path = "../pob-items" }
 pob-parser.workspace = true

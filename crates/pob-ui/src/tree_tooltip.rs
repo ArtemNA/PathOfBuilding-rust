@@ -1,7 +1,6 @@
 //! The node tooltip of `PassiveTreeView` (:1047-1109, `AddNodeName` :1412-1470, `AddNodeTooltip` :1476-1770).
 //!
-//! `unimplemented`: `build.itemsTab:AddItemTooltip` of a socketed jewel (:1501, U6), `gemTooltip.AddGemTooltip` of a node's granted skill
-//! (:1629-1643, `skillTooltip`, U5), the compare spec's sections of `AddNodeTooltip` (:1482-1511, :1574-1594: the jewel sections need U6), `launch.devModeAlt`.
+//! `unimplemented`: `build.itemsTab:AddItemTooltip` of a socketed jewel (:1501, U6), the compare spec's sections of `AddNodeTooltip` (:1482-1511, :1574-1594: the jewel sections need U6), `launch.devModeAlt`.
 
 use pob_engine::engine::Engine;
 use pob_gfx::{Frame, Gfx};
@@ -379,15 +378,37 @@ fn add_node_tooltip(
         for (k, l) in sd.iter().enumerate() {
             add_mod_info(view, g, node, k, l, font_size_big);
         }
-        if node
+        // :1626-1646 the child tooltip of a granted skill
+        let granted: Vec<(String, f64)> = node
             .mods()
             .iter()
             .flatten()
             .filter_map(|m| m.list.as_ref())
             .flatten()
-            .any(|m| matches!(&*m.name, "ExtraSkill" | "ExtraSupport"))
-        {
-            view.note_unimplemented("PassiveTreeView.lua:1629-1643 gemTooltip.AddGemTooltip of a granted skill (U5)");
+            .filter(|m| matches!(&*m.name, "ExtraSkill" | "ExtraSupport"))
+            .filter_map(|m| {
+                let id = m.value.get("skillId");
+                Some((id.as_str()?.to_string(), m.value.get("level").as_num().unwrap_or(1.0)))
+            })
+            .collect();
+        let skills = pob_data::skills::skills();
+        for (id, level) in granted {
+            let Some(effect) = skills.get(&id) else { continue };
+            let data = pob_data::gems::gems();
+            let gem = data.gem_for_skill.get(&effect.id).and_then(|x| data.gems.0.get(x));
+            crate::gem_tooltip::add_gem_tooltip(
+                &mut view.skill_tooltip,
+                g,
+                e,
+                &crate::gem_tooltip::GemInst {
+                    gem,
+                    effect,
+                    level,
+                    quality: 0.0,
+                    display: None,
+                    skip_requirements: gem.is_none(),
+                },
+            );
         }
     }
 

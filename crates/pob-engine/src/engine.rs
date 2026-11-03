@@ -51,6 +51,13 @@ pub struct Engine {
     pub(crate) config_controls: Option<pob_build::config::ConfigControls>,
     /// The `if*` gates of the ConfigTab over this run (`config_tab.rs`).
     pub(crate) config_gates: std::cell::RefCell<crate::config_tab::ConfigGates>,
+    /// `build.skillsTab` after a skills mutator (`skills_tab.rs`), until the next run: the model already holds it.
+    skills_live: Option<pob_calc::SkillsTab>,
+    /// `build.mainSocketGroup` after a skills mutator, until the next run clamps it.
+    main_pending: Option<f64>,
+    /// `mainActiveSkill` / `mainActiveSkillCalcs` still nil by set id and group: a group the tab made (`{ label, enabled, gemList }`) has them nil until it is the main group;
+    /// the model has no nil there, the run's tab gets them back ([`Engine::restore_nil_main`]).
+    pub(crate) nil_main: std::collections::HashMap<u64, Vec<crate::skills_tab::NilGroup>>,
 }
 
 /// The gem property `engine_setGem` edits (boot.lua:405-460).
@@ -93,6 +100,9 @@ impl Engine {
             spec_objects: Vec::new(),
             config_controls: None,
             config_gates: Default::default(),
+            skills_live: None,
+            main_pending: None,
+            nil_main: std::collections::HashMap::new(),
         };
         e.refresh_stat_list()?;
         Ok(e)
@@ -171,11 +181,40 @@ impl Engine {
     /// `RefreshStatList` (boot.lua does not run it): `SkillDPS` stays in output order, the character level stays.
     pub fn recalc(&mut self) -> Result<(), String> {
         *self.misc.borrow_mut() = None;
+        let shown = self.shown_effects();
+        // A run touches only the active set's tables: the others stay what they were (a model's round trip would change e.g. `nameSpec` of a granted skill, SkillsTab.lua:492).
+        let old_sets: Vec<pob_calc::SkillSet> = self
+            .skills_live
+            .as_ref()
+            .or(self.res.env.skills.as_ref().map(|s| &s.tab))
+            .filter(|t| t.skill_sets.len() > 1)
+            .map_or_else(Vec::new, |t| t.skill_sets.clone());
+        self.skills_live = None;
+        self.main_pending = None;
         self.output_revision += 1;
         (self.res, self.calcs) = run(&self.model, self.live_spec.as_deref())?;
         *self.config_gates.borrow_mut() = Default::default();
         if let Some(l) = &self.live_spec {
             self.res.env.spec = l.clone();
+        }
+        self.restore_nil_main();
+        self.restore_shown_effects(shown);
+        if let Some(tab) = self.res.env.skills.as_mut().map(|s| &mut s.tab) {
+            let active = tab.active_skill_set_id;
+            for old in old_sets {
+                if old.id != active
+                    && let Some(set) = tab.skill_sets.iter_mut().find(|x| x.id == old.id)
+                {
+                    *set = old;
+                }
+            }
+        }
+        // CalcSetup.lua:1590 / :1586 write the clamped values back: `build.mainSocketGroup`, `calcsTab.input.skill_number`
+        if let Some(st) = self.res.env.skills.as_ref() {
+            self.model.main_socket_group = st.build_main_socket_group;
+        }
+        if let Some(v) = self.calcs.env.calcs_input.get("skill_number").cloned() {
+            self.model.calcs_input.insert("skill_number".to_owned(), v);
         }
         self.skill_dps = match self.res.perform.player.output.table("SkillDPS") {
             Some(OutTable::SkillDps(v)) => Some(v.clone()),
@@ -219,6 +258,158 @@ impl Engine {
             res: &self.res,
             skill_dps: self.skill_dps.as_deref(),
             calcs_env: Some(&self.calcs.env),
+            skills_live: self.skills_live.as_ref(),
+        })
+    }
+
+    /// `gemInstance.displayEffect` / `.supportEffect` of every gem: upstream's tables keep them through a run that does not reach the gem (a disabled group, CalcSetup.lua:1672-1694).
+    #[allow(clippy::type_complexity)]
+    fn shown_effects(
+        &self,
+    ) -> Vec<(
+        f64,
+        usize,
+        usize,
+        Option<String>,
+        Option<pob_calc::active_skill::EffectRef>,
+        Option<pob_calc::active_skill::EffectRef>,
+    )> {
+        let Some(tab) = self.skills_live.as_ref().or(self.res.env.skills.as_ref().map(|s| &s.tab)) else {
+            return Vec::new();
+        };
+        let mut out = Vec::new();
+        for set in &tab.skill_sets {
+            for (g, group) in set.socket_group_list.iter().enumerate() {
+                for (k, gem) in group.gem_list.iter().enumerate() {
+                    if gem.display_effect.is_some() || gem.support_effect.is_some() {
+                        out.push((
+                            set.id,
+                            g,
+                            k,
+                            gem.gem_data.clone(),
+                            gem.display_effect.clone(),
+                            gem.support_effect.clone(),
+                        ));
+                    }
+                }
+            }
+        }
+        out
+    }
+
+    #[allow(clippy::type_complexity)]
+    fn restore_shown_effects(
+        &mut self,
+        shown: Vec<(
+            f64,
+            usize,
+            usize,
+            Option<String>,
+            Option<pob_calc::active_skill::EffectRef>,
+            Option<pob_calc::active_skill::EffectRef>,
+        )>,
+    ) {
+        let Some(tab) = self.res.env.skills.as_mut().map(|s| &mut s.tab) else {
+            return;
+        };
+        for (id, g, k, data, display, support) in shown {
+            let Some(gem) = tab
+                .skill_sets
+                .iter_mut()
+                .find(|s| s.id == id)
+                .and_then(|s| s.socket_group_list.get_mut(g))
+                .and_then(|x| x.gem_list.get_mut(k))
+            else {
+                continue;
+            };
+            if gem.gem_data == data {
+                if gem.display_effect.is_none() {
+                    gem.display_effect = display;
+                }
+                if gem.support_effect.is_none() {
+                    gem.support_effect = support;
+                }
+            }
+        }
+    }
+
+    /// What the last run wrote stays (CalcSetup.lua:1882-1890: the main group); the rest of [`Engine::nil_main`] is nil again.
+    fn restore_nil_main(&mut self) {
+        if self.nil_main.is_empty() {
+            return;
+        }
+        let main = self.res.env.skills.as_ref().map_or(0.0, |s| s.build_main_socket_group);
+        let calcs_main = self.calcs.env.skills.as_ref().map_or(0.0, |s| s.build_main_socket_group);
+        for (tab, is_calcs) in [
+            (self.res.env.skills.as_mut().map(|s| &mut s.tab), false),
+            (self.calcs.env.skills.as_mut().map(|s| &mut s.tab), true),
+        ] {
+            let Some(tab) = tab else { continue };
+            let active = tab.active_skill_set_id;
+            for set in &mut tab.skill_sets {
+                let Some(flags) = self.nil_main.get(&(set.id as u64)) else {
+                    continue;
+                };
+                for (i, g) in set.socket_group_list.iter_mut().enumerate() {
+                    let Some(f) = flags.get(i) else { continue };
+                    let this = (i + 1) as f64;
+                    let is_active = set.id == active;
+                    if f.main && !(is_active && this == main) {
+                        g.main_active_skill = None;
+                    }
+                    if f.calcs && !(is_active && this == calcs_main && is_calcs) {
+                        g.main_active_skill_calcs = None;
+                    }
+                    for (gem, nil) in g.gem_list.iter_mut().zip(&f.gems) {
+                        if nil.0 {
+                            gem.count = None;
+                        }
+                        if nil.1 {
+                            gem.enable_global1 = None;
+                        }
+                        if nil.2 {
+                            gem.enable_global2 = None;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    pub(crate) fn set_main_pending(&mut self, v: f64) {
+        self.main_pending = Some(v);
+        self.model.main_socket_group = v;
+    }
+
+    pub(crate) fn main_pending(&self) -> Option<f64> {
+        self.main_pending
+    }
+
+    pub(crate) fn skills_live_ref(&self) -> Option<&pob_calc::SkillsTab> {
+        self.skills_live.as_ref()
+    }
+
+    pub(crate) fn skills_live_mut(&mut self) -> Option<&mut pob_calc::SkillsTab> {
+        self.skills_live.as_mut()
+    }
+
+    pub(crate) fn take_skills_live(&mut self) -> Option<pob_calc::SkillsTab> {
+        self.skills_live.take()
+    }
+
+    pub(crate) fn put_skills_live(&mut self, tab: pob_calc::SkillsTab) {
+        self.skills_live = Some(tab);
+    }
+
+    /// `build.skillsTab` as the last `BuildOutput` left it (MAIN + the `*Calcs` fields of CALCS).
+    pub(crate) fn merged_skills_tab(&self) -> Result<pob_calc::SkillsTab, String> {
+        crate::save::merged_tab(&SaveInput {
+            model: &self.model,
+            extras: &self.extras,
+            res: &self.res,
+            skill_dps: self.skill_dps.as_deref(),
+            calcs_env: Some(&self.calcs.env),
+            skills_live: None,
         })
     }
 
@@ -230,6 +421,10 @@ impl Engine {
     /// The runtime state written back into the model: `SaveDB` + the tabs' `Load` (what upstream reads on the next load).
     pub fn materialize(&mut self) -> Result<(), String> {
         let xml = self.save_xml()?;
+        let tab = self.merged_skills_tab()?;
+        self.nil_main = crate::skills_tab::nil_main_of(&tab);
+        // `build.mainSocketGroup` a selection has just changed: `SaveDB` reads the last run's
+        let main = self.model.main_socket_group;
         // The Lua keeps `spec.allocNodes` of the load: its `pairs` order (R24) and so the order of the tree's mods do not follow `SaveDB`'s sorted ids.
         let old: Vec<_> = self.model.tree.specs.iter().map(|s| s.nodes.clone()).collect();
         self.model = pob_build::load_build_xml(&xml).map_err(|e| format!("XML: {e}"))?;
@@ -237,6 +432,7 @@ impl Engine {
             s.nodes = n;
         }
         self.extras = SaveExtras::from_xml(&xml)?;
+        self.model.main_socket_group = main;
         Ok(())
     }
 
@@ -514,7 +710,7 @@ impl Engine {
 
     /// Whether `socketGroupList` holds groups the model does not (CalcSetup's item-granted groups).
     pub fn model_has_runtime_groups(&self) -> bool {
-        self.socket_group_count() != pob_build::active_skill_groups(&self.model).len()
+        self.skills_live.is_none() && self.socket_group_count() != pob_build::active_skill_groups(&self.model).len()
     }
 
     /// `engine_addItemText` (boot.lua:1336-1395): the text (`sanitiseText`) as a new item (`CreateDisplayItemFromRaw(raw, true)`:

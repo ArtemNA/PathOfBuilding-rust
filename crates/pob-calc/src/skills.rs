@@ -64,6 +64,8 @@ pub struct SkillsState {
     /// (CalcActiveSkill.lua:167-192) for a mirage (CalcMirages.lua:40/:51, :155/:232). Reached only through [`SkillsState::main_skill`] =
     /// `Some(`[`DETACHED`]`)` ([`SkillsState::skill`]); every walk over `activeSkillList` keeps not seeing it, as upstream.
     pub detached_main: Option<DetachedSkill>,
+    /// `env.crossLinkedSupportGroups` (a reader for GemSelectControl.lua:333).
+    pub cross_linked_support_groups: IndexMap<String, Vec<String>>,
 }
 
 /// The index [`SkillsState::main_skill`] holds when `env.player.mainSkill` is [`SkillsState::detached_main`] (never a list index).
@@ -215,6 +217,7 @@ impl SkillsState {
             order_notes: Vec::new(),
             aux_skill_list: Vec::new(),
             detached_main: None,
+            cross_linked_support_groups: IndexMap::new(),
         }
     }
 
@@ -612,6 +615,7 @@ pub fn setup_skills(st: &mut SkillsState, inp: &SetupInputs<'_>) -> Result<Setup
 
     // :1610-1614 cross-linked supports: `crossLinkedSupportGroups[mod.mod.sourceSlot]` gets `mod.value.targetSlotName`
     let cross_linked = cross_linked_support_groups(mod_db, inp)?;
+    st.cross_linked_support_groups.clone_from(&cross_linked);
 
     let use_second = active_item_set(inp.build).use_second_weapon_set;
     let want_set = if use_second { 2.0 } else { 1.0 };
