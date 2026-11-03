@@ -674,6 +674,18 @@ fn items_pixels_equal_original() {
             if other == 0 && d.text_bad == 0 {
                 continue;
             }
+            // The original draws this frame in more than one way between processes (MINEFIELD R54): any frame it was seen to draw counts, unmasked.
+            let variant = (2..)
+                .map_while(|n| image::open(scene::oracle_dir().join(format!("fixtures/items/{shot}~{n}.png"))).ok())
+                .any(|v| {
+                    let v = v.to_rgba8();
+                    let (d, _) = scene::diff(&rgba, w, &v, &mask);
+                    d.bad == 0 || (d.text_bad == 0 && classify_bad(&rgba, &v, &list, &lossy_sizes).1 == 0)
+                });
+            if variant {
+                eprintln!("{shot}: equals a variant of the original");
+                continue;
+            }
             let out = scene::out_dir();
             scene::save(&heat, &out.join(format!("{shot}.heat.png")));
             scene::save(&scene::crop(&rgba, w, w, h), &out.join(format!("{shot}.ours.png")));
