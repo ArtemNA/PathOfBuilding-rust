@@ -170,6 +170,8 @@ pub struct BuildMode {
     pub tree_view: RefCell<Option<PassiveTreeView>>,
     /// `build.treeTab` (made at the tab's first draw; a new one per opened build).
     pub tree_tab: RefCell<Option<Rc<crate::tabs::tree::TreeTab>>>,
+    pub config_tab: RefCell<Option<Rc<crate::tabs::config::ConfigTab>>>,
+    pub notes_tab: RefCell<Option<Rc<crate::tabs::notes::NotesTab>>>,
     pub db_file_name: RefCell<DbFile>,
     pub build_name: RefCell<Option<String>>,
     pub db_file_sub_path: RefCell<Option<String>>,
@@ -210,6 +212,8 @@ impl BuildMode {
             engine: RefCell::new(None),
             tree_view: RefCell::new(None),
             tree_tab: RefCell::new(None),
+            config_tab: RefCell::new(None),
+            notes_tab: RefCell::new(None),
             db_file_name: RefCell::new(DbFile::Nil),
             build_name: RefCell::new(None),
             db_file_sub_path: RefCell::new(None),
@@ -317,6 +321,14 @@ impl BuildMode {
             self.open_save_as_popup(g);
             return false;
         };
+        // NotesTab:Save (NotesTab.lua:84-87)
+        if let Some(t) = self.notes_tab.borrow().as_ref() {
+            t.before_save();
+        }
+        // `viewMode = self.viewMode` (Build.lua:1012)
+        if let Some(e) = self.engine.borrow_mut().as_mut() {
+            e.set_view_mode(&self.view_mode.borrow());
+        }
         let xml = match self.engine.borrow().as_ref().expect("engine").save_xml() {
             Ok(x) => x,
             Err(e) => {
@@ -336,6 +348,12 @@ impl BuildMode {
         // `ResetModFlags` (:1100-1111): the tabs' flags are the engine's edits — one flag here
         self.mod_flag.set(false);
         if let Some(t) = self.calcs_tab.borrow().as_ref() {
+            t.undo.mod_flag.set(false);
+        }
+        if let Some(t) = self.notes_tab.borrow().as_ref() {
+            t.reset_mod_flags();
+        }
+        if let Some(t) = self.config_tab.borrow().as_ref() {
             t.undo.mod_flag.set(false);
         }
         match action.as_deref() {
@@ -899,11 +917,33 @@ impl BuildMode {
                         match same {
                             Some(true) => c.build_loadouts.sel_by_label(&value),
                             Some(false) => {
-                                c.build_loadouts.set_sel(g, 1, false);
-                                super::main::not_ported(
-                                    g,
-                                    "Modules/Build.lua:405-416 switching loadouts (SetActiveSpec / ItemSet / SkillSet / ConfigSet): U5-U7",
-                                );
+                                let ids = {
+                                    let eng = s.engine.borrow();
+                                    loadout_set_ids(eng.as_ref().expect("engine").model(), &value)
+                                };
+                                // Build.lua:405-416: the item and skill sets are U5, U6; a {link} loadout is not modelled
+                                let Some((spec_id, config_id)) = ids else {
+                                    c.build_loadouts.set_sel(g, 1, false);
+                                    super::main::not_ported(
+                                        g,
+                                        "Modules/Build.lua:408-413 switching loadouts (SetActiveItemSet / SetActiveSkillSet, {link}): U5-U6",
+                                    );
+                                    return;
+                                };
+                                let (active_spec, active_config) = {
+                                    let eng = s.engine.borrow();
+                                    let e = eng.as_ref().expect("engine");
+                                    (e.model().tree.active_spec as usize, e.model().config.active_config_set)
+                                };
+                                if spec_id != active_spec {
+                                    let tab = s.tree_tab.borrow().clone().expect("treeTab");
+                                    tab.set_active_spec(g, spec_id);
+                                }
+                                if config_id != active_config {
+                                    let tab = s.config_tab.borrow().clone().expect("configTab");
+                                    tab.set_active_config_set(g, config_id);
+                                }
+                                c.build_loadouts.sel_by_label(&value);
                             }
                             None => {}
                         }
@@ -1389,6 +1429,37 @@ fn loadout_is_active(m: &pob_build::BuildModel, value: &str) -> Option<bool> {
     )
 }
 
+/// Build.lua:395-398: `(newSpecId, newConfigId)` when this loadout does not change the item or the skill set.
+fn loadout_set_ids(m: &pob_build::BuildModel, value: &str) -> Option<(usize, f64)> {
+    if lua::lmatch(value, "%{(%w+)%}").is_some() {
+        return None;
+    }
+    let spec_id = m.tree.specs.iter().position(|s| {
+        let t = s.title.clone().unwrap_or_else(|| "Default".into());
+        spec_list_name(&s.tree_version, &t) == value
+    })? + 1;
+    let same_set = |one: bool, titles: Vec<(f64, Option<String>)>, active: f64| {
+        one || titles.iter().any(|(id, t)| t.as_deref().unwrap_or("Default") == value && *id == active)
+    };
+    if !same_set(
+        m.item_sets.len() == 1,
+        m.item_sets.iter().map(|s| (s.id, s.title.clone())).collect(),
+        m.active_item_set,
+    ) || !same_set(
+        m.skills.sets.len() <= 1,
+        m.skills.sets.iter().map(|s| (s.id, s.title.clone())).collect(),
+        m.skills.active_skill_set,
+    ) {
+        return None;
+    }
+    let config_id = if m.config.sets.len() <= 1 {
+        1.0
+    } else {
+        m.config.sets.iter().find(|s| s.title.as_deref().unwrap_or("Default") == value)?.id
+    };
+    Some((spec_id, config_id))
+}
+
 /// `treeVersions[v].display` with the `[...] ` prefix of a non-latest spec (Build.lua:812).
 fn spec_list_name(tree_version: &str, title: &str) -> String {
     let tv = pob_data::tree::tree_versions().expect("GameVersions");
@@ -1583,6 +1654,9 @@ impl Mode for BuildMode {
             Some(Rc::new(move |g: &mut Gfx| w.upgrade().expect("buildMode").clear_display_stat(g)));
         self.host.add("breakdown", breakdown.clone());
         *self.calcs_tab.borrow_mut() = Some(tab);
+        // Build.lua:609-611
+        *self.notes_tab.borrow_mut() = Some(crate::tabs::notes::NotesTab::new(g, self.me.clone()));
+        *self.config_tab.borrow_mut() = Some(crate::tabs::config::ConfigTab::new(g, self.me.clone()));
         *self.breakdown.borrow_mut() = Some(breakdown);
         self.overlay_panes.borrow_mut().clear();
         *self.overlay_breakdown_control.borrow_mut() = None;
@@ -1718,6 +1792,10 @@ impl Mode for BuildMode {
             }
             let tab = self.calcs_tab.borrow().clone().expect("calcsTab");
             tab.after_build_output(f);
+            let config = self.config_tab.borrow().clone();
+            if let Some(t) = config {
+                t.after_recalc(f);
+            }
             // :1267-1270
             let inputs = self.breakdown_inputs.borrow().clone();
             if let Some(i) = inputs {
@@ -1758,6 +1836,20 @@ impl Mode for BuildMode {
                 height: screen_h - 32.0,
             };
             tab.draw(f, &view_port, input_events);
+        } else if matches!(self.view_mode.borrow().as_str(), "CONFIG" | "NOTES") {
+            let view_port = Rect {
+                x: side_bar_width,
+                y: 32.0,
+                width: screen_w - side_bar_width,
+                height: screen_h - 32.0,
+            };
+            if self.view_mode.borrow().as_str() == "CONFIG" {
+                let tab = self.config_tab.borrow().clone().expect("configTab");
+                tab.draw(f, &view_port, input_events);
+            } else {
+                let tab = self.notes_tab.borrow().clone().expect("notesTab");
+                tab.draw(f, &view_port, input_events);
+            }
         } else {
             sg::draw_string(
                 f,
@@ -1777,7 +1869,9 @@ impl Mode for BuildMode {
             }
         }
         let calcs_mod = self.calcs_tab.borrow().as_ref().is_some_and(|t| t.undo.mod_flag.get());
-        self.unsaved.set(self.mod_flag.get() || calcs_mod);
+        let notes_mod = self.notes_tab.borrow().as_ref().is_some_and(|t| t.mod_flag.get());
+        let config_mod = self.config_tab.borrow().as_ref().is_some_and(|t| t.undo.mod_flag.get());
+        self.unsaved.set(self.mod_flag.get() || calcs_mod || notes_mod || config_mod);
         sg::set_draw_layer(f, Some(5), 0);
         sg::set_draw_color(f, 0.2, 0.2, 0.2);
         sg::draw_rect(f, 0.0, 0.0, screen_w, 28.0);

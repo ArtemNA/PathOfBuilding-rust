@@ -52,3 +52,8 @@
 /tools/sg-oracle/scenes/tree/static.json
 /tools/sg-oracle/scenes/tree/tips.json
 /tools/sg-oracle/scenes/tree/usershots.json
+
+# U7: the Config and Notes tabs' oracle (screenshots and states; personal scenes local-<n>)
+/tools/sg-oracle/fixtures/config/
+/tools/sg-oracle/fixtures/audit/config-runner-*.json
+/tools/sg-oracle/scenes/config/local-*.json

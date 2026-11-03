@@ -32,6 +32,8 @@ use pob_items::Item;
 use crate::calculate::{CalcError, CalculateOptions};
 use crate::env::CalcOverride;
 use crate::env::Env;
+use pob_build::{ConfigModLists, ConfigState};
+
 use crate::init_env::{BuildShared, SpecDbs, init_env_shared_mode, parse_items, reinit_accelerated};
 use crate::output::{FullDpsSkill, OutTable};
 use crate::perform::{ActorState, Checkpoint, PerformState, finish_output_spec, perform_skip_ehp};
@@ -550,6 +552,20 @@ impl CalcSession {
         *self.core.items.borrow_mut() = None;
         *self.core.shared.borrow_mut() = Some(s.clone());
         Ok(s)
+    }
+
+    /// `build.configTab` after a `BuildModList` of the ConfigTab: the state and lists the next initEnv of this session reads (CalcSetup.lua:508-509, :693-694). `GlobalCache` stays: the tab's
+    /// comparison tooltips run `calcFunc` over the same cache as the calculator's base pass (ConfigTab.lua:776-779). A session that never calls this is as before.
+    pub fn set_config(&self, config: ConfigState, lists: ConfigModLists) -> Result<(), CalcError> {
+        self.shared().map_err(|e| CalcError(format!("initEnv: {e}")))?;
+        let mut shared = self.core.shared.borrow_mut();
+        let s = shared
+            .as_mut()
+            .and_then(Rc::get_mut)
+            .ok_or_else(|| CalcError("set_config: a run holds the shared build".into()))?;
+        s.config = config;
+        s.config_lists = lists;
+        Ok(())
     }
 
     /// `calcs.perform(env, skipEHP)` (CalcPerform.lua:1286-3990) -- the env moves into the returned run, which the cache shares

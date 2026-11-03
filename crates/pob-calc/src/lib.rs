@@ -20,6 +20,7 @@ pub mod calcs_tail;
 pub mod calculate;
 pub mod defence;
 pub mod env;
+pub mod env_used;
 pub mod estimations;
 pub mod init_env;
 pub(crate) mod minion;
