@@ -315,6 +315,8 @@ fn run(name: &str) -> Run {
     l.on_init(&mut gfx);
     assert!(l.prompt_msg.borrow().is_none(), "startup error: {:?}", l.prompt_msg.borrow());
     main().background.wait();
+    // the runners wait for `main.uniqueDB.loading` and `main.rareDB.loading` too
+    pob_ui::tabs::items::load_item_dbs_step(None);
     for _ in 0..4 {
         frame(&mut gfx, &l);
     }
@@ -632,6 +634,46 @@ fn items_perf() {
     };
     eprintln!("oracle: {}", rec["perf"]);
     eprintln!("rust:   {:?}", run("perf").perf);
+}
+
+/// What the start of the program pays for the databases of `onFrameFuncs["LoadItems"]`: the frames until they are ready, frame by frame.
+#[test]
+#[ignore = "numbers for a report"]
+fn item_db_startup_perf() {
+    let sandbox = Sandbox::new("startup");
+    let tp = TestPlatform::new();
+    let mut gfx = Gfx::with_platform(&scene::fonts_dir(), scene::SCREEN, 1.0, Box::new(tp.clone())).expect("fonts");
+    gfx.set_dpi_scale_override_percent(100);
+    let root = scene::pob_root();
+    let l = Launch::new(LaunchConfig {
+        user_path: Some(sandbox.0.to_string_lossy().replace('\\', "/")),
+        user_folder: "Path of Building".into(),
+        script_path: format!("{root}/src/"),
+        doc_path: format!("{root}/"),
+        version_number: "?".into(),
+        version_branch: Some("?".into()),
+        version_platform: Some("?".into()),
+    });
+    let t0 = std::time::Instant::now();
+    l.on_init(&mut gfx);
+    eprintln!("on_init {:.1} ms", t0.elapsed().as_secs_f64() * 1e3);
+    main().background.wait();
+    let mut frames = Vec::new();
+    while !main().item_dbs_ready() {
+        let t = std::time::Instant::now();
+        frame(&mut gfx, &l);
+        frames.push(t.elapsed().as_secs_f64() * 1e3);
+    }
+    let sum: f64 = frames.iter().sum();
+    let max = frames.iter().copied().fold(0.0, f64::max);
+    eprintln!(
+        "frames {}, total {sum:.1} ms, longest {max:.1} ms, first three {:?}, uniques {}, rares {}",
+        frames.len(),
+        &frames[..frames.len().min(3)],
+        pob_ui::tabs::items::unique_db_items().len(),
+        pob_ui::tabs::items::rare_db_items().len()
+    );
+    pob_ui::modules::main::clear_main();
 }
 
 #[test]

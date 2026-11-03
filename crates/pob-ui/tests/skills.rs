@@ -369,6 +369,8 @@ fn run(name: &str) -> Run {
     l.on_init(&mut gfx);
     assert!(l.prompt_msg.borrow().is_none(), "startup error: {:?}", l.prompt_msg.borrow());
     main().background.wait();
+    // the runners wait for `main.uniqueDB.loading` and `main.rareDB.loading` too
+    pob_ui::tabs::items::load_item_dbs_step(None);
     for _ in 0..4 {
         frame(&mut gfx, &l);
     }

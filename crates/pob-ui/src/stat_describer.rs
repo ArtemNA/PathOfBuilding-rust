@@ -4,6 +4,7 @@
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
+use std::sync::Arc;
 
 use pob_lua::format::{Arg, format};
 use pob_lua::{Repl, gsub};
@@ -30,14 +31,14 @@ struct Desc {
     lang: Option<Vec<Lang>>,
 }
 
-struct Scope {
+pub(crate) struct Scope {
     by_stat: HashMap<String, usize>,
-    descs: HashMap<usize, Rc<Desc>>,
+    descs: HashMap<usize, Arc<Desc>>,
     parent: Option<String>,
 }
 
 thread_local! {
-    static SCOPES: RefCell<HashMap<String, Rc<Scope>>> = RefCell::new(HashMap::new());
+    static SCOPES: RefCell<HashMap<String, Arc<Scope>>> = RefCell::new(HashMap::new());
     static PEARL: RefCell<Option<Rc<LuaVal>>> = const { RefCell::new(None) };
 }
 
@@ -77,7 +78,34 @@ fn lang_of(t: &LuaTab) -> Lang {
     }
 }
 
-fn load_scope(name: &str) -> Rc<Scope> {
+/// The scopes [`read_all_scopes`] read, by name.
+pub(crate) type Scopes = HashMap<String, Arc<Scope>>;
+
+/// Every file of `Data/StatDescriptions/`: for a thread of its own. A file it cannot read is left to [`load_scope`], which reports it.
+pub(crate) fn read_all_scopes(root: &str) -> Scopes {
+    let mut out = HashMap::new();
+    for e in std::fs::read_dir(format!("{root}Data/StatDescriptions"))
+        .into_iter()
+        .flatten()
+        .flatten()
+    {
+        let name = e.file_name().to_string_lossy().into_owned();
+        if let Some(name) = name.strip_suffix(".lua")
+            && let Ok(src) = std::fs::read(e.path())
+            && let Ok(v) = parse_return(&src)
+        {
+            out.insert(name.to_string(), Arc::new(scope_of(&v)));
+        }
+    }
+    out
+}
+
+pub(crate) fn install_scopes(scopes: Scopes) {
+    SCOPES.with_borrow_mut(|m| m.extend(scopes));
+}
+
+fn load_scope(name: &str) -> Arc<Scope> {
+    crate::gem_tooltip::join_preload();
     if let Some(s) = SCOPES.with_borrow(|m| m.get(name).cloned()) {
         return s;
     }
@@ -85,6 +113,12 @@ fn load_scope(name: &str) -> Rc<Scope> {
     let path = format!("{root}Data/StatDescriptions/{name}.lua");
     let src = std::fs::read(&path).unwrap_or_else(|e| panic!("Modules/StatDescriber.lua:15: {path}: {e}"));
     let v = parse_return(&src).unwrap_or_else(|e| panic!("{path}: {e}"));
+    let scope = Arc::new(scope_of(&v));
+    SCOPES.with_borrow_mut(|m| m.insert(name.to_string(), scope.clone()));
+    scope
+}
+
+fn scope_of(v: &LuaVal) -> Scope {
     let t = v.as_tab().expect("a scope is a table");
     let mut by_stat = HashMap::new();
     let mut descs = HashMap::new();
@@ -96,7 +130,7 @@ fn load_scope(name: &str) -> Rc<Scope> {
             .get_num(1.0)
             .and_then(LuaVal::as_tab)
             .map(|l| l.seq().iter().filter_map(|e| e.as_tab().map(|e| lang_of(e))).collect());
-        descs.insert(order, Rc::new(Desc { stats, lang }));
+        descs.insert(order, Arc::new(Desc { stats, lang }));
     };
     for (i, d) in t.arr.iter().enumerate() {
         if let Some(d) = d.as_tab() {
@@ -120,13 +154,11 @@ fn load_scope(name: &str) -> Rc<Scope> {
             }
         }
     }
-    let scope = Rc::new(Scope { by_stat, descs, parent });
-    SCOPES.with_borrow_mut(|m| m.insert(name.to_string(), scope.clone()));
-    scope
+    Scope { by_stat, descs, parent }
 }
 
 /// `scope.scopeList`: the scope, then its parents.
-fn scope_list(name: &str) -> Vec<Rc<Scope>> {
+fn scope_list(name: &str) -> Vec<Arc<Scope>> {
     let mut out = Vec::new();
     let mut cur = Some(name.to_string());
     while let Some(n) = cur.take() {
@@ -392,7 +424,7 @@ fn describe_text(text: &str, val: &[Val]) -> String {
 pub fn describe_stats(stats: &[(String, f64)], scope_name: &str, quality: bool) -> (Vec<String>, HashMap<String, String>) {
     let scopes = scope_list(scope_name);
     let lookup = |s: &str| stats.iter().find(|(k, _)| k == s).map(|(_, v)| *v);
-    let mut described: HashMap<String, (usize, usize, Rc<Desc>)> = HashMap::new();
+    let mut described: HashMap<String, (usize, usize, Arc<Desc>)> = HashMap::new();
     for (s, v) in stats {
         if *v != 0.0 {
             for (depth, scope) in scopes.iter().enumerate() {
@@ -408,7 +440,7 @@ pub fn describe_stats(stats: &[(String, f64)], scope_name: &str, quality: bool) 
             }
         }
     }
-    let mut ordered: Vec<(usize, usize, Rc<Desc>)> = described.into_values().collect();
+    let mut ordered: Vec<(usize, usize, Arc<Desc>)> = described.into_values().collect();
     ordered.sort_by(|a, b| if a.0 == b.0 { a.1.cmp(&b.1) } else { b.0.cmp(&a.0) });
     let mut out = Vec::new();
     let mut line_map = HashMap::new();

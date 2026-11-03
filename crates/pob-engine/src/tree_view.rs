@@ -28,12 +28,25 @@ fn signed(fmt: &str, v: f64) -> Result<String, String> {
     format(&format!("%+{fmt}"), &[Arg::Num(v)])
 }
 
+/// What a calculator's session reads of `calcs.buildOutput(build, "MAIN")` (Calcs.lua:386-397): the MAIN initEnv (the granted-skill merge, CalcSetup.lua:1452) and the `CALCULATOR` entries of
+/// `calcFullDPS`. The tail (:400-449, every skill's MAIN run for the cost warnings) writes only `GlobalCache.cachedData.MAIN` and the MAIN output, which no calculator reads; the run shown by the
+/// program has done it. Gate: `tests/misc_main_pass.rs`.
+pub fn main_pass_for_calculator(sess: &CalcSession) -> Result<(), String> {
+    let (env, cached) = sess.init_env_spec(CalcMode::Main, None).map_err(|e| match e {
+        pob_calc::session::SessionError::Calc(e) => e.0,
+        pob_calc::session::SessionError::Unimplemented(what) => format!("Calcs.lua:386 {what}"),
+    })?;
+    let _main = sess.perform(env, false);
+    sess.calc_full_dps_spec(CalcMode::Calculator, Some(cached)).map_err(|e| e.0)?;
+    Ok(())
+}
+
 impl Engine {
     pub(crate) fn misc_calculator(&self) -> Result<std::cell::Ref<'_, MiscCalculator>, String> {
         if self.misc.borrow().is_none() || self.misc_dirty.get() {
             let old = self.misc.borrow().as_ref().map(|m| (m.base.clone(), m.session().main_merge()));
             let sess = CalcSession::new(Rc::new(self.model().clone()), CalculateOptions::default());
-            sess.build_output(CalcMode::Main).map_err(|e| e.0)?;
+            main_pass_for_calculator(&sess)?;
             let mut calc = sess.get_misc_calculator().map_err(|e| e.0)?;
             if let Some((b, merge)) = old {
                 calc.base = b;
@@ -270,7 +283,12 @@ impl Engine {
         for t in [&mut ov.toggle_flask, &mut ov.toggle_tincture] {
             let twin = t.as_ref().and_then(|i| {
                 let id = i.id? as u64;
-                self.result().env.items.get(&id).is_some_and(|l| Rc::ptr_eq(l, i)).then(|| shared.items.get(&id).cloned())?
+                self.result()
+                    .env
+                    .items
+                    .get(&id)
+                    .is_some_and(|l| Rc::ptr_eq(l, i))
+                    .then(|| shared.items.get(&id).cloned())?
             });
             if twin.is_some() {
                 *t = twin;

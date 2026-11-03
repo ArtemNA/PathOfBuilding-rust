@@ -499,6 +499,16 @@ pub fn skills() -> Rc<Skills> {
     })
 }
 
+/// `grantedEffect.description` of the effects that have one (the model above keeps only what the calculation reads). Thread-free of [`skills`]: a reader on its own thread can call it.
+pub fn skill_descriptions() -> Result<HashMap<String, String>, crate::DataError> {
+    #[derive(Deserialize)]
+    struct Row {
+        description: Option<String>,
+    }
+    let rows: HashMap<String, Row> = crate::read_json("skills.json")?;
+    Ok(rows.into_iter().filter_map(|(k, r)| Some((k, r.description?))).collect())
+}
+
 /// A fresh `data.skills` (no lazy copies made yet) -- for tests that need the state of a new process.
 pub fn load_skills_fresh() -> Result<Skills, crate::DataError> {
     let raw: OrderedMap<RawEffect> = crate::read_json("skills.json")?;
