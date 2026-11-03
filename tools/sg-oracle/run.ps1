@@ -16,6 +16,8 @@ $here = $PSScriptRoot
 $rt = Join-Path $here 'runtime'
 $exe = Join-Path $rt 'Path{space}of{space}Building.exe'
 if (-not (Test-Path $exe)) { throw 'sandbox missing: run setup.ps1' }
+# Without its script the exe falls back to the installed PoB, which updates itself over the network (MINEFIELD R57).
+if (-not (Test-Path (Join-Path $here "lua\$Script"))) { throw "no script tools/sg-oracle/lua/$($Script): the exe would start the installed PoB" }
 # The upstream checkout (tools/upstream.json via upstream.ps1): the Lua runners read its src/ in place (read-only) and the
 # sandbox must be a copy of ITS runtime (else: setup.ps1 -Force).
 . (Join-Path $here 'upstream.ps1')
