@@ -638,6 +638,65 @@ fn missing_inputs() -> Option<String> {
         .map(|n| format!("fixtures/skills/{n}.json is absent (tools/sg-oracle/run.ps1 -Script skills-runner.lua)"))
 }
 
+/// One scene against its record: the differences go to `failures`, returns the dumps compared.
+fn compare_scene(name: &str, failures: &mut Vec<String>) -> usize {
+    let rec = oracle_record(name).expect("record");
+    let r = run(name);
+    let dumps = rec["dumps"].as_array().expect("dumps");
+    assert_eq!(dumps.len(), r.dumps.len(), "{name}: dump count");
+    if let Ok(dir) = std::env::var("POB_SKILLS_DUMP_OURS") {
+        std::fs::create_dir_all(&dir).expect("mkdir");
+        let all: Vec<Value> = r.dumps.iter().map(|(s, d, _)| json!({ "step": s, "state": d })).collect();
+        std::fs::write(
+            format!("{dir}/{name}.json"),
+            serde_json::to_string(&json!({ "dumps": all })).expect("json"),
+        )
+        .expect("write");
+    }
+    let mut compared = 0;
+    for (o, (step, ours, st)) in dumps.iter().zip(&r.dumps) {
+        assert_eq!(o["step"].as_u64(), Some(*step), "{name}: steps");
+        let mut state = norm(&oracle_state(o, st, name));
+        compared += 1;
+        let mut ours = norm(ours);
+        for d in [&mut state, &mut ours] {
+            if let Some(ss) = d.get_mut("calcs").and_then(|c| c["sections"].as_array_mut()) {
+                for s in ss {
+                    if s["enabled"] != json!(true) {
+                        s["rect"] = Value::Null;
+                    }
+                }
+            }
+        }
+        if let Some(d) = first_diff(&state, &ours, "") {
+            failures.push(format!("{name} step {step}: {d}"));
+        }
+    }
+    compared
+}
+
+/// U5-perf: the tooltips of a gem's Quality / Enabled and of a hovered candidate on a build whose calculator reads `GlobalCache` (The Saviour, R47): the cache of `GetMiscCalculator`, not an
+/// empty one. `tools/sg-oracle/run.ps1 -Script skills-runner.lua -ScriptArgs u5hover`.
+#[test]
+fn gem_tooltips_over_the_shared_cache_equal_original() {
+    if oracle_record("u5hover").is_none() {
+        eprintln!("SKIPPED gem_tooltips_over_the_shared_cache_equal_original: no fixtures/skills/u5hover.json");
+        return;
+    }
+    let mut failures = Vec::new();
+    let compared = compare_scene("u5hover", &mut failures);
+    eprintln!("dumps compared {compared}, differ {}", failures.len());
+    assert!(
+        failures.is_empty(),
+        "{}",
+        failures
+            .iter()
+            .map(|s| s.chars().take(900).collect::<String>())
+            .collect::<Vec<_>>()
+            .join("\n")
+    );
+}
+
 #[test]
 fn skills_states_equal_original() {
     if let Some(why) = missing_inputs() {
@@ -652,37 +711,7 @@ fn skills_states_equal_original() {
         if only.as_ref().is_some_and(|o| *o != name) {
             continue;
         }
-        let rec = oracle_record(&name).expect("record");
-        let r = run(&name);
-        let dumps = rec["dumps"].as_array().expect("dumps");
-        assert_eq!(dumps.len(), r.dumps.len(), "{name}: dump count");
-        if let Ok(dir) = std::env::var("POB_SKILLS_DUMP_OURS") {
-            std::fs::create_dir_all(&dir).expect("mkdir");
-            let all: Vec<Value> = r.dumps.iter().map(|(s, d, _)| json!({ "step": s, "state": d })).collect();
-            std::fs::write(
-                format!("{dir}/{name}.json"),
-                serde_json::to_string(&json!({ "dumps": all })).expect("json"),
-            )
-            .expect("write");
-        }
-        for (o, (step, ours, st)) in dumps.iter().zip(&r.dumps) {
-            assert_eq!(o["step"].as_u64(), Some(*step), "{name}: steps");
-            let mut state = norm(&oracle_state(o, st, &name));
-            compared += 1;
-            let mut ours = norm(ours);
-            for d in [&mut state, &mut ours] {
-                if let Some(ss) = d.get_mut("calcs").and_then(|c| c["sections"].as_array_mut()) {
-                    for s in ss {
-                        if s["enabled"] != json!(true) {
-                            s["rect"] = Value::Null;
-                        }
-                    }
-                }
-            }
-            if let Some(d) = first_diff(&state, &ours, "") {
-                failures.push(format!("{name} step {step}: {d}"));
-            }
-        }
+        compared += compare_scene(&name, &mut failures);
     }
     eprintln!("dumps compared {compared}, differ {}", failures.len());
     let notes = pob_ui::modules::main::not_ported_notes();

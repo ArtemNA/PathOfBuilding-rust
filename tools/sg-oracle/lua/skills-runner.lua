@@ -807,6 +807,50 @@ function runner:Step()
 		writeAll(OUT .. st.buffOrder .. ".json", json.encode({ keys = keys }) .. "\n")
 		return
 	end
+	if st.gemProbe then
+		-- U5-perf: the scalars of `output` of every calcFunc the tab's gem controls run, in one GlobalCache, as crates/pob-engine/tests/gem_select_calc.rs reads them.
+		local b = main.modes.BUILD
+		local tab = b.skillsTab
+		local function scalars(o)
+			local out = { }
+			for k, v in pairs(o) do
+				if type(v) == "number" then out[k] = string.format("%.17g", v)
+				elseif type(v) == "boolean" or type(v) == "string" then out[k] = tostring(v) end
+			end
+			return out
+		end
+		local res = { candidates = { }, edits = { } }
+		local calcFunc = b.calcsTab:GetMiscCalculator(b)
+		for g, group in ipairs(tab.socketGroupList) do
+			if not group.source then
+				for i, gem in ipairs(group.gemList) do
+					local q = gem.quality
+					gem.quality = 20
+					res.edits[#res.edits + 1] = { group = g, slot = i, edit = "quality", output = scalars(calcFunc()) }
+					gem.quality = q
+					gem.enabled = not gem.enabled
+					res.edits[#res.edits + 1] = { group = g, slot = i, edit = "enable", output = scalars(calcFunc()) }
+					gem.enabled = not gem.enabled
+				end
+				if g == st.gemProbe.group then
+					tab:SetDisplayGroup(group)
+					for _, slot in ipairs({ 1, #group.gemList + 1 }) do
+						local sel = tab.gemSlots[slot].nameSpec
+						sel:UpdateSortCache()
+						sel.dpsBuildFlag = false
+						local c = sel.sortCache
+						for _, id in ipairs(c.pendingGems) do
+							res.candidates[#res.candidates + 1] = { group = g, slot = slot, gem = id, output = scalars(sel:CalcOutputWithThisGem(c.calcFunc, sel.gems[id], false)) }
+						end
+						c.pendingGems = nil
+						sel.sortCache = nil
+					end
+				end
+			end
+		end
+		writeAll(OUT .. "u5probe-" .. st.gemProbe.file .. ".json", json.encode(res) .. "\n")
+		return
+	end
 	if st.perfAlloc then
 		-- the click's work + the recalculation frame: spec:AllocNode / DeallocNode, buildFlag, launch:OnFrame
 		local b = main.modes.BUILD

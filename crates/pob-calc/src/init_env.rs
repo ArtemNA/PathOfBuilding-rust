@@ -1494,6 +1494,9 @@ fn init_env_core(
             None => SkillsState::load(&build, &env.ordered_slots, &env.items),
         };
         let mut st = loaded.map_err(|e| InitEnvError(format!("SkillsTab:Load: {e}")))?;
+        if let Some(edit) = ov.and_then(|o| o.gem_edit.as_ref()) {
+            crate::skills_tab::apply_gem_override(&mut st.tab, edit).map_err(InitEnvError)?;
+        }
         if let Some(c) = carry {
             st.from_item_marks.clone_from(&c.from_item_marks);
             st.cost_wiped.clone_from(&c.cost_wiped);

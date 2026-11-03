@@ -48,6 +48,36 @@ pub struct CalcOverride {
     pub extra_jewel_funcs: Option<StoreRef>,
     /// `override.extraJewelFuncs.actor = env.player` (:1444) -- the env of the first pass is gone, a store holds its actor only weakly.
     pub extra_jewel_funcs_actor: Option<ActorRef>,
+    /// Not an upstream field: the temporary write on a live gem instance around a `calcFunc` call (GemSelectControl.lua:96-109, SkillsTab.lua:940-943, :980-982). Upstream's every
+    /// initEnv of that call reads the written table; here every initEnv of the call gets the override (Calcs.lua:358, CalcActiveSkill.lua:182) and writes its own copy of the tab.
+    pub gem_edit: Option<GemOverride>,
+}
+
+/// One write of [`CalcOverride::gem_edit`].
+#[derive(Clone, Debug, PartialEq)]
+pub struct GemOverride {
+    /// Which group: the n-th (0-based) of `socketGroupList` with `source == nil`. A run's granted groups are appended or dropped around them (CalcSetup.lua:1448-1561), so the index in the
+    /// tab's list is not stable; the tab shows gem slots only for these groups (SkillsTab.lua:777).
+    pub group: usize,
+    /// `gemList[gem + 1]`.
+    pub gem: usize,
+    pub edit: GemEdit,
+}
+
+/// What [`GemOverride`] writes.
+#[derive(Clone, Debug, PartialEq)]
+pub enum GemEdit {
+    /// `CalcOutputWithThisGem` (GemSelectControl.lua:79-99): `gemData` and `level` -- and nothing else (the old gem's `nameSpec`, `reqStr`, `matchesSocket`, ... stay); an empty slot gets a new
+    /// instance (:82-92). `default_quality` = `skillsTab.defaultGemQuality or 0`.
+    Candidate {
+        gem_data: String,
+        level: f64,
+        default_quality: f64,
+    },
+    /// `gemList[index].quality = 20` (SkillsTab.lua:941).
+    Quality(f64),
+    /// `gemList[index].enabled = not gemList[index].enabled` (SkillsTab.lua:980).
+    ToggleEnabled,
 }
 
 /// `env.player` / `env.enemy` (CALC-ARCH §7 `CalcActor`).
