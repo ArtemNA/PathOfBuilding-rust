@@ -64,3 +64,9 @@
 /tools/sg-oracle/fixtures/items/
 /tools/sg-oracle/fixtures/audit/items-runner-*.json
 /tools/sg-oracle/scenes/items/local-*.json
+
+# U8a: the Import and Party tabs' oracle (screenshots and states; personal scenes local-<n>)
+/tools/sg-oracle/fixtures/import/
+/tools/sg-oracle/fixtures/audit/import-runner-*.json
+/tools/sg-oracle/fixtures/audit/import-runner.json
+/tools/sg-oracle/scenes/import/local-*.json

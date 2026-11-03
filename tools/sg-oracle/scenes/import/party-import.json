@@ -1,0 +1,753 @@
+{
+"steps": [
+{
+"open": "OccVortex"
+},
+{
+"cursorBuild": "modeParty",
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"cursorParty": "importCodeIn",
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"clipboard": "eJydVF1v2jAUffevsPK8DMKGWiFolQClSKVDwPY63SY3YNWxkeMgkPzjaxvSMcYDmaIo1rFzju-5H_3HfcHpDlXJpBgE0dd2QFGkMmNiPQh-rp7C--DxgfTnoDc_8qRi3O14QOmD_Y73W6k0ZkmV5yUVUOAgiCsFwQOJxRoVie7b5HvbLN8Z5z0PmSemcMaESeLl2IT20YctDiZcvgEf5zmmuoX-s3K4YyN3Vxhg34QhDEPyDFphRrptEtV8R8jMN4eSpcBHUMAaJ8BEXA4lz5oq_GIaONMHEnWcSK1Sw-aF5bjANTYKPrrGYqavwyYXA-D0GUqNJPrWJp3Pm1ncw2a5RWtEM9Z5pex9qMzpNLXEkY25eyJ-lcsq3fi1cU4usGSlburnXLEMf4_wzZYX6Zwnzu9c5G0F79bZm0M40TqdGXDcSW5L_1PNZo-EUe392QFffY3DORPzuZgocJY5ke5ZLjz8f4adKUi9QXU8VZKRQshoAkLYzrF1af7Upd867cSqkJW6Uc-1-7_E3Su04x242XJbVpI6ANxrBcfOv1JPL2y90cIOokuPQv-zfSnQVBYFCk0dMuSgfFdau6OOmWosene9pSyQLizNFzqUyubErc0MBDRuUSfSb_01DO1wbNVTsnUxPz8A3s_qLQ==",
+"hold": [
+"CTRL"
+],
+"events": [
+[
+"KeyDown",
+"v"
+],
+[
+"KeyUp",
+"v"
+]
+],
+"dump": true
+},
+{
+"release": [
+"CTRL"
+]
+},
+{
+"cursorParty": "importCodeGo",
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"cursor": [
+1200,
+790
+],
+"dump": true
+},
+{
+"cursorParty": "appendNotReplace",
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"cursorParty": "importCodeIn",
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"hold": [
+"CTRL"
+],
+"events": [
+[
+"KeyDown",
+"a"
+],
+[
+"KeyUp",
+"a"
+]
+],
+"dump": true
+},
+{
+"release": [
+"CTRL"
+]
+},
+{
+"clipboard": "eJydVF1v2jAUffevsPK8DMKGWiFolQClSKVDwPY63SY3YNWxkeMgkPzjaxvSMcYDmaIo1rFzju-5H_3HfcHpDlXJpBgE0dd2QFGkMmNiPQh-rp7C--DxgfTnoDc_8qRi3O14QOmD_Y73W6k0ZkmV5yUVUOAgiCsFwQOJxRoVie7b5HvbLN8Z5z0PmSemcMaESeLl2IT20YctDiZcvgEf5zmmuoX-s3K4YyN3Vxhg34QhDEPyDFphRrptEtV8R8jMN4eSpcBHUMAaJ8BEXA4lz5oq_GIaONMHEnWcSK1Sw-aF5bjANTYKPrrGYqavwyYXA-D0GUqNJPrWJp3Pm1ncw2a5RWtEM9Z5pex9qMzpNLXEkY25eyJ-lcsq3fi1cU4usGSlburnXLEMf4_wzZYX6Zwnzu9c5G0F79bZm0M40TqdGXDcSW5L_1PNZo-EUe392QFffY3DORPzuZgocJY5ke5ZLjz8f4adKUi9QXU8VZKRQshoAkLYzrF1af7Upd867cSqkJW6Uc-1-7_E3Su04x242XJbVpI6ANxrBcfOv1JPL2y90cIOokuPQv-zfSnQVBYFCk0dMuSgfFdau6OOmWosene9pSyQLizNFzqUyubErc0MBDRuUSfSb_01DO1wbNVTsnUxPz8A3s_qLQ==",
+"hold": [
+"CTRL"
+],
+"events": [
+[
+"KeyDown",
+"v"
+],
+[
+"KeyUp",
+"v"
+]
+],
+"dump": true
+},
+{
+"release": [
+"CTRL"
+]
+},
+{
+"cursorParty": "importCodeGo",
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"cursor": [
+1200,
+790
+],
+"dump": true,
+"shot": "party-append-aura"
+},
+{
+"cursorParty": "importCodeIn",
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"hold": [
+"CTRL"
+],
+"events": [
+[
+"KeyDown",
+"a"
+],
+[
+"KeyUp",
+"a"
+]
+],
+"dump": true
+},
+{
+"release": [
+"CTRL"
+]
+},
+{
+"clipboard": "eJyVkcFugzAMhu95iojLTgxYN2mboFXpYJehTm33AKF1OqsmoCRMRcrDD1CRut0qH-z4t_Ilv-PFuSL-A9pgrRIvug89DmpfH1AdE-9rl_vP3mLO4k9hv9cybZEGZWxo2_U5Oze1tnBIWykNV6KCxFu12oA3Z77v87HmH1ih5f2ZPbGlMcIYVHeGF0KfWBSGzOoW2OOL256Q6HWaMIPutkBypdEWLVlsCEG7dLnNnN-H7RpI3qkuBWVSwt4GMKbd0B_RwyNYTqKqRImEtmPRLGRS0CDNwgvxesDlqGEDBo29GZQpCVASjJ-6QB4myCS6N1GJI7hivbnp8jj4Y3ZvfjBtIfi3n1_UQ6F7",
+"hold": [
+"CTRL"
+],
+"events": [
+[
+"KeyDown",
+"v"
+],
+[
+"KeyUp",
+"v"
+]
+],
+"dump": true
+},
+{
+"release": [
+"CTRL"
+]
+},
+{
+"cursorParty": "importCodeGo",
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"cursor": [
+1200,
+790
+],
+"dump": true
+},
+{
+"cursorParty": "importCodeIn",
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"hold": [
+"CTRL"
+],
+"events": [
+[
+"KeyDown",
+"a"
+],
+[
+"KeyUp",
+"a"
+]
+],
+"dump": true
+},
+{
+"release": [
+"CTRL"
+]
+},
+{
+"clipboard": "eJyVkcFugzAMhu95iojLTgxYN2mboFXpYJehTm33AKF1OqsmoCRMRcrDD1CRut0qH-z4t_Ilv-PFuSL-A9pgrRIvug89DmpfH1AdE-9rl_vP3mLO4k9hv9cybZEGZWxo2_U5Oze1tnBIWykNV6KCxFu12oA3Z77v87HmH1ih5f2ZPbGlMcIYVHeGF0KfWBSGzOoW2OOL256Q6HWaMIPutkBypdEWLVlsCEG7dLnNnN-H7RpI3qkuBWVSwt4GMKbd0B_RwyNYTqKqRImEtmPRLGRS0CDNwgvxesDlqGEDBo29GZQpCVASjJ-6QB4myCS6N1GJI7hivbnp8jj4Y3ZvfjBtIfi3n1_UQ6F7",
+"hold": [
+"CTRL"
+],
+"events": [
+[
+"KeyDown",
+"v"
+],
+[
+"KeyUp",
+"v"
+]
+],
+"dump": true
+},
+{
+"release": [
+"CTRL"
+]
+},
+{
+"cursorParty": "importCodeGo",
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"cursor": [
+1200,
+790
+],
+"dump": true,
+"shot": "party-append-curse"
+},
+{
+"cursorParty": "importCodeIn",
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"hold": [
+"CTRL"
+],
+"events": [
+[
+"KeyDown",
+"a"
+],
+[
+"KeyUp",
+"a"
+]
+],
+"dump": true
+},
+{
+"release": [
+"CTRL"
+]
+},
+{
+"clipboard": "eJyNUdFqwjAUfc9XlDyvi24IQ1rFum7soatY_YDY3mzBNOmSVCzk49dGFDdhjPtwuecezuHcG82PtQgOoA1XMsbj-xEOQJaq4vIjxtvNS_iE5zMUraj9zFnScjFsPKBt1_f02ChtoUpaxkwgaQ0xTiXU3VLJitte1eAZugzTRAAMElfQSnGjJFRX0JpqyPVW8q8WUER-mPxlmqnK27XaQMoYlDaXBQiGwoeJK_ZciKnfuRuGy_J16sK-bNdA_CrUjooTgYBvmwF_hl3viTIqOUXh48iNJ4EfgsLScm_cohwCFE2f0r29L_-reOc5lwOQA9XxgjHByyFmd_K7PQQ5v4H8etA38t6ohw==",
+"hold": [
+"CTRL"
+],
+"events": [
+[
+"KeyDown",
+"v"
+],
+[
+"KeyUp",
+"v"
+]
+],
+"dump": true
+},
+{
+"release": [
+"CTRL"
+]
+},
+{
+"cursorParty": "importCodeGo",
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"cursor": [
+1200,
+790
+],
+"dump": true,
+"shot": "party-enemy"
+},
+{
+"cursorParty": "importCodeIn",
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"hold": [
+"CTRL"
+],
+"events": [
+[
+"KeyDown",
+"a"
+],
+[
+"KeyUp",
+"a"
+]
+],
+"dump": true
+},
+{
+"release": [
+"CTRL"
+]
+},
+{
+"clipboard": "eJyzsa_IzVEoSy0qzszPs1Uy1DNQUkjNS85PycxLt1UKDXHTtVCyt-OyCUgsyfBPcyrNzAHJgAWKSiqBtGtFQX5RSWqKU2laWrFCXmJuqq0SWM43NTcptSi4JLGkWMmOyyczLdXW0sDAgMs3MS_R1gjEstFH0Qw0TB9mqj6afQDgSjay",
+"hold": [
+"CTRL"
+],
+"events": [
+[
+"KeyDown",
+"v"
+],
+[
+"KeyUp",
+"v"
+]
+],
+"dump": true
+},
+{
+"release": [
+"CTRL"
+]
+},
+{
+"cursorParty": "importCodeGo",
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"cursorParty": "importCodeIn",
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"hold": [
+"CTRL"
+],
+"events": [
+[
+"KeyDown",
+"a"
+],
+[
+"KeyUp",
+"a"
+]
+],
+"dump": true
+},
+{
+"release": [
+"CTRL"
+]
+},
+{
+"clipboard": "eJyzsa_IzVEoSy0qzszPs1Uy1DNQUkjNS85PycxLt1UKDXHTtVCyt-OyCUgsyfBPcyrNzAHJgAWKSiqBtGtFQX5RSWqKU2laWrFCXmJuqq0SWM43NTcptSi4JLGkWMmOyyczLdXW0sDAgMs3MS_R1gjEstFH0Qw0TB9mqj6afQDgSjay",
+"hold": [
+"CTRL"
+],
+"events": [
+[
+"KeyDown",
+"v"
+],
+[
+"KeyUp",
+"v"
+]
+],
+"dump": true
+},
+{
+"release": [
+"CTRL"
+]
+},
+{
+"cursorParty": "importCodeGo",
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"cursor": [
+1200,
+790
+],
+"dump": true
+},
+{
+"cursorParty": "appendNotReplace",
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"cursorParty": "importCodeIn",
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"hold": [
+"CTRL"
+],
+"events": [
+[
+"KeyDown",
+"a"
+],
+[
+"KeyUp",
+"a"
+]
+],
+"dump": true
+},
+{
+"release": [
+"CTRL"
+]
+},
+{
+"clipboard": "eJyzsa_IzVEoSy0qzszPs1Uy1DNQsrfjsglILMnwT3MqzcxJycxLBwr45ZekFusDGfpoUgCyhxVT",
+"hold": [
+"CTRL"
+],
+"events": [
+[
+"KeyDown",
+"v"
+],
+[
+"KeyUp",
+"v"
+]
+],
+"dump": true
+},
+{
+"release": [
+"CTRL"
+]
+},
+{
+"cursorParty": "importCodeGo",
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"cursor": [
+1200,
+790
+],
+"dump": true
+},
+{
+"cursorParty": "importCodeIn",
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"hold": [
+"CTRL"
+],
+"events": [
+[
+"KeyDown",
+"a"
+],
+[
+"KeyUp",
+"a"
+]
+],
+"dump": true
+},
+{
+"release": [
+"CTRL"
+]
+},
+{
+"clipboard": "eJyVkcFugzAMhu95iojLTgxYN2mboFXpYJehTm33AKF1OqsmoCRMRcrDD1CRut0qH-z4t_Ilv-PFuSL-A9pgrRIvug89DmpfH1AdE-9rl_vP3mLO4k9hv9cybZEGZWxo2_U5Oze1tnBIWykNV6KCxFu12oA3Z77v87HmH1ih5f2ZPbGlMcIYVHeGF0KfWBSGzOoW2OOL256Q6HWaMIPutkBypdEWLVlsCEG7dLnNnN-H7RpI3qkuBWVSwt4GMKbd0B_RwyNYTqKqRImEtmPRLGRS0CDNwgvxesDlqGEDBo29GZQpCVASjJ-6QB4myCS6N1GJI7hivbnp8jj4Y3ZvfjBtIfi3n1_UQ6F7",
+"hold": [
+"CTRL"
+],
+"events": [
+[
+"KeyDown",
+"v"
+],
+[
+"KeyUp",
+"v"
+]
+],
+"dump": true
+},
+{
+"release": [
+"CTRL"
+]
+},
+{
+"cursorParty": "importCodeGo",
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"cursor": [
+1200,
+790
+],
+"hold": [
+"CTRL"
+],
+"events": [
+[
+"KeyDown",
+"s"
+],
+[
+"KeyUp",
+"s"
+]
+],
+"dump": true,
+"file": "OccVortex.xml",
+"fileOut": "party-saved-curse.xml"
+},
+{
+"release": [
+"CTRL"
+]
+},
+{
+"cursor": [
+1200,
+790
+],
+"dump": true
+}
+]
+}

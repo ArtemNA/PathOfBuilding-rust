@@ -370,6 +370,9 @@ impl Control for DropDownControl {
     fn base(&self) -> &ControlBase {
         &self.base
     }
+    fn debug_value(&self, _g: &Gfx) -> Option<serde_json::Value> {
+        Some(serde_json::json!(self.sel_index.get()))
+    }
 
     fn is_mouse_over(&self, g: &Gfx) -> Option<bool> {
         Some(self.mouse_over(g).0)

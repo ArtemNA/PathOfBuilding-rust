@@ -24,6 +24,7 @@ pub mod display;
 pub mod engine;
 pub mod items_tab;
 pub mod lua;
+pub mod party_tab;
 pub mod save;
 pub mod shell;
 pub mod skills_tab;

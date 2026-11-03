@@ -151,6 +151,8 @@ pub struct SaveExtras {
     /// NotesTab: `controls.edit.buf` (the last text node, NotesTab.lua:75-82).
     pub notes: String,
     pub party: PartyState,
+    /// The file has a `<Party>`: `PartyTab:Load` ran (without it `lastContent.PartyMemberStats` stays nil, PartyTab.lua:28-37, :559).
+    pub party_section: bool,
     pub import: ImportState,
     pub tree_view: TreeViewState,
     /// CalcsTab:Load (:184-195): `subsection.collapsed` by `(section id, subsection id)` -- only the first section of an id.
@@ -161,6 +163,10 @@ pub struct SaveExtras {
     pub nil_second_weapon: Vec<f64>,
     /// `tradeQuery.statSortSelectionList` as `ItemsTab:Load` leaves it (:1350-1366); the Trade screen itself is U8.
     pub trade_search_weights: Vec<TradeWeight>,
+    /// No `ItemsTab:Load` ran: `statSortSelectionList` is nil and `Save` writes no `TradeSearchWeights` (ItemsTab.lua:1252, :1451).
+    pub no_trade_weights: bool,
+    /// No `SkillsTab:Load` ran and no edit: `Save` writes `tostring(nil)` (SkillsTab.lua:96, :577).
+    pub nil_default_gem_quality: bool,
 }
 
 /// One `statSort` of [`SaveExtras::trade_search_weights`].
@@ -181,6 +187,7 @@ impl Default for SaveExtras {
                 append: false,
                 show_advance_tools: false,
             },
+            party_section: false,
             import: ImportState::default(),
             tree_view: TreeViewState {
                 zoom_level: Some(3.0),
@@ -193,6 +200,8 @@ impl Default for SaveExtras {
             items_show_stat_differences: true,
             nil_second_weapon: Vec::new(),
             trade_search_weights: Vec::new(),
+            no_trade_weights: false,
+            nil_default_gem_quality: false,
         }
     }
 }
@@ -218,7 +227,10 @@ impl SaveExtras {
                         }
                     }
                 }
-                "Party" => x.party_load(node)?,
+                "Party" => {
+                    x.party_section = true;
+                    x.party_load(node)?;
+                }
                 // ImportTab.lua:742-757
                 "Import" => {
                     let a = |k: &str| node.attr(k).map(str::to_owned);
@@ -283,6 +295,14 @@ impl SaveExtras {
                 _ => {}
             }
         }
+        // ItemsTab's ctor set stays when no `<Items>` loads over it: `NewItemSet` leaves `useSecondWeaponSet` nil (ItemsTab.lua:1384)
+        // and `tradeQuery.statSortSelectionList` nil until `ItemsTab:Load` (:1252, :1451)
+        if !root.child_elements().any(|n| n.name == "Items") {
+            x.nil_second_weapon.push(1.0);
+            x.no_trade_weights = true;
+        }
+        // SkillsTab.lua:96 `self.defaultGemQuality = main.defaultGemQuality`: nil until `Load` (:536) or the edit (:145)
+        x.nil_default_gem_quality = !root.child_elements().any(|n| n.name == "Skills");
         // Build.lua:2244-2252: the first `<Import>`'s importLink
         x.import.build_import_link = root
             .child_elements()
@@ -864,7 +884,9 @@ fn save_items(inp: &SaveInput<'_>) -> Result<XmlElement, String> {
             );
         }
     }
-    push(&mut x, weights);
+    if !inp.extras.no_trade_weights {
+        push(&mut x, weights);
+    }
     Ok(x)
 }
 
@@ -963,7 +985,14 @@ fn save_skills(inp: &SaveInput<'_>) -> Result<XmlElement, String> {
         &[
             ("activeSkillSet", Some(ts(tab.active_skill_set_id))),
             ("defaultGemLevel", Some(tab.default_gem_level.clone())),
-            ("defaultGemQuality", Some(ts(tab.default_gem_quality))),
+            (
+                "defaultGemQuality",
+                Some(if inp.extras.nil_default_gem_quality {
+                    "nil".to_owned()
+                } else {
+                    ts(tab.default_gem_quality)
+                }),
+            ),
             ("sortGemsByDPS", Some(tb(m.sort_gems_by_dps.unwrap_or(true)))),
             ("showSupportGemTypes", Some(m.show_support_gem_types.clone())),
             ("sortGemsByDPSField", Some(m.sort_gems_by_dps_field.clone())),

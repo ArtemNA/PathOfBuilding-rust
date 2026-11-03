@@ -158,6 +158,8 @@ pub struct Main {
     pub error_reading_settings: Cell<bool>,
     pub accounts: RefCell<Accounts>,
     pub game_accounts: RefCell<IndexMap<String, Option<String>>>,
+    /// `main.lastExportWebsite` (ImportTab.lua:536): the session only, no setting holds it.
+    pub last_export_website: RefCell<Option<String>>,
     pub shared_item_list: RefCell<Vec<String>>,
     pub shared_item_set_list: RefCell<Vec<SharedItemSet>>,
     pub anchor_main: Rc<BareControl>,
@@ -322,6 +324,7 @@ impl Main {
             error_reading_settings: Cell::new(false),
             accounts: RefCell::new(Accounts::default()),
             game_accounts: RefCell::new(IndexMap::new()),
+            last_export_website: RefCell::new(None),
             shared_item_list: RefCell::new(Vec::new()),
             shared_item_set_list: RefCell::new(Vec::new()),
             anchor_main,
