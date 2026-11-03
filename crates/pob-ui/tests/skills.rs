@@ -699,6 +699,27 @@ fn gem_tooltips_over_the_shared_cache_equal_original() {
     );
 }
 
+/// Choosing the gems whose whole `BuildOutput` reads a detached main skill in the `GlobalCache` (`cached_sd`): a scene of its own, a process of its own (R48).
+#[test]
+fn real_gem_choice_equals_original() {
+    if oracle_record("real-select").is_none() {
+        eprintln!("SKIPPED real_gem_choice_equals_original: no fixtures/skills/real-select.json");
+        return;
+    }
+    let mut failures = Vec::new();
+    let compared = compare_scene("real-select", &mut failures);
+    eprintln!("dumps compared {compared}, differ {}", failures.len());
+    assert!(
+        failures.is_empty(),
+        "{}",
+        failures
+            .iter()
+            .map(|s| s.chars().take(900).collect::<String>())
+            .collect::<Vec<_>>()
+            .join("\n")
+    );
+}
+
 #[test]
 fn skills_states_equal_original() {
     if let Some(why) = missing_inputs() {
