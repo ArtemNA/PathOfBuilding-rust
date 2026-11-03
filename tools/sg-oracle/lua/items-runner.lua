@@ -54,6 +54,12 @@ do
 	end, 1)
 	writeAll(USER .. "/Path of Building/Builds/Spectre Test.xml", x)
 end
+-- ItemsTab.lua:1350-1366 and :1451-1469 over a public golden (the same edit as crates/pob-ui/tests/items.rs).
+do
+	local w = '<TradeSearchWeights><Stat stat="FullDPS" label="old label" weightMult="1.5"/><Stat stat="NoSuchStat" label="gone" weightMult="2"/><Stat stat="Life" label="zero" weightMult="0"/></TradeSearchWeights><TradeSearchWeights><Stat stat="TotalEHP" weightMult="0.125"/><Stat stat="Armour" label="not a number" weightMult="x"/></TradeSearchWeights>'
+	local x = readAll(POB_ROOT .. "spec/TestBuilds/3.13/OccVortex.xml"):gsub("</Items>", function() return w .. "</Items>" end, 1)
+	writeAll(USER .. "/Path of Building/Builds/Trade Weights Test.xml", x)
+end
 end
 writeBuilds()
 writeAll(USER .. "/Path of Building/Settings.xml", readAll(base .. "/scenes/tree/Settings.xml"))

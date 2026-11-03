@@ -67,6 +67,10 @@ impl Sandbox {
             )
             .expect("copy golden");
         }
+        // the same edit as items-runner.lua
+        let w = r#"<TradeSearchWeights><Stat stat="FullDPS" label="old label" weightMult="1.5"/><Stat stat="NoSuchStat" label="gone" weightMult="2"/><Stat stat="Life" label="zero" weightMult="0"/></TradeSearchWeights><TradeSearchWeights><Stat stat="TotalEHP" weightMult="0.125"/><Stat stat="Armour" label="not a number" weightMult="x"/></TradeSearchWeights></Items>"#;
+        let x = std::fs::read_to_string(format!("{}/spec/TestBuilds/3.13/OccVortex.xml", scene::pob_root())).expect("golden");
+        std::fs::write(builds.join("Trade Weights Test.xml"), x.replacen("</Items>", w, 1)).expect("weights build");
         for b in local_builds("items") {
             let src = format!("{BUILDS_329}{b}.xml");
             let src = if std::path::Path::new(&src).exists() {

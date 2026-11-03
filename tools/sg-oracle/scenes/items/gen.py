@@ -288,5 +288,11 @@ write('foulborn', [
  {"cursor": [1200, 790], "dump": True, "shot": "foulborn-check"},
  {"closeBuild": True},
 ])
+# TradeSearchWeights through Load and Save (the build is written by the runner)
+write('trade-weights', [
+ {"open": "Trade Weights Test"},
+ {"cursor": [1200, 790], "hold": ["CTRL"], "events": [["KeyDown", "s"], ["KeyUp", "s"]], "release": ["CTRL"], "dump": True, "file": "Trade Weights Test.xml", "fileOut": "trade-weights-save.xml"},
+ {"closeBuild": True},
+])
 write('real-input', [{"open": "OccVortex"}, {"waitAssets": True}, {"realInput": True}])
-json.dump(['base', 'display', 'equip', 'granted', 'editor', 'loadout', 'granted-group', 'coverage', 'timeless', 'foulborn'], open('tools/sg-oracle/scenes/items/index.json', 'w'))
+json.dump(['base', 'display', 'equip', 'granted', 'editor', 'loadout', 'granted-group', 'coverage', 'timeless', 'foulborn', 'trade-weights'], open('tools/sg-oracle/scenes/items/index.json', 'w'))

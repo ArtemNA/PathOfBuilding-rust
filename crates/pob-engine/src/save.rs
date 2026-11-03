@@ -159,6 +159,16 @@ pub struct SaveExtras {
     pub items_show_stat_differences: bool,
     /// The item sets `NewItemSet` made in this session: `useSecondWeaponSet` is nil, `Save` writes `tostring(nil)` (ItemsTab.lua:1384, :1438).
     pub nil_second_weapon: Vec<f64>,
+    /// `tradeQuery.statSortSelectionList` as `ItemsTab:Load` leaves it (:1350-1366); the Trade screen itself is U8.
+    pub trade_search_weights: Vec<TradeWeight>,
+}
+
+/// One `statSort` of [`SaveExtras::trade_search_weights`].
+#[derive(Clone, Debug, PartialEq)]
+pub struct TradeWeight {
+    pub label: String,
+    pub stat: Option<String>,
+    pub weight_mult: Option<f64>,
 }
 
 impl Default for SaveExtras {
@@ -182,6 +192,7 @@ impl Default for SaveExtras {
             calcs_collapsed: HashMap::new(),
             items_show_stat_differences: true,
             nil_second_weapon: Vec::new(),
+            trade_search_weights: Vec::new(),
         }
     }
 }
@@ -254,11 +265,18 @@ impl SaveExtras {
                     if let Some(s) = node.attr("showStatDifferences") {
                         x.items_show_stat_differences = s == "true";
                     }
+                    // :1350-1366: a stat that is not in `data.powerStatList` is dropped, the label is the list's
+                    let list = pob_calc::power::power_stat_list();
                     for tsw in node.child_elements().filter(|c| c.name == "TradeSearchWeights") {
-                        if tsw.child_elements().next().is_some() {
-                            return Err(
-                                "unimplemented: Classes/ItemsTab.lua:1297-1312 TradeSearchWeights stats (data.powerStatList)".into(),
-                            );
+                        for c in tsw.child_elements() {
+                            let stat = c.attr("stat").map(str::to_owned);
+                            if let Some(entry) = list.iter().find(|e| e.stat == stat) {
+                                x.trade_search_weights.push(TradeWeight {
+                                    label: entry.label.clone(),
+                                    stat,
+                                    weight_mult: attr_num(c, "weightMult"),
+                                });
+                            }
                         }
                     }
                 }
@@ -825,8 +843,28 @@ fn save_items(inp: &SaveInput<'_>) -> Result<XmlElement, String> {
         }
         push(&mut x, child);
     }
-    // :1398-1415 -- `statSortSelectionList` is `{ }` after Load (SaveExtras refuses stats)
-    push(&mut x, elem("TradeSearchWeights"));
+    // :1451-1469
+    let mut weights = elem("TradeSearchWeights");
+    for w in &inp.extras.trade_search_weights {
+        if let Some(mult) = w.weight_mult.filter(|m| *m > 0.0) {
+            // `s_format("%.2f", tostring(statSort.weightMult))`
+            let shown = pob_lua::tonumber(&ts(mult)).unwrap_or(mult);
+            let mult =
+                pob_lua::format::format("%.2f", &[pob_lua::format::Arg::Num(shown)]).map_err(|e| format!("ItemsTab.lua:1462: {e}"))?;
+            push(
+                &mut weights,
+                with(
+                    elem("Stat"),
+                    &[
+                        ("stat", w.stat.clone()),
+                        ("label", Some(w.label.clone())),
+                        ("weightMult", Some(mult)),
+                    ],
+                ),
+            );
+        }
+    }
+    push(&mut x, weights);
     Ok(x)
 }
 
