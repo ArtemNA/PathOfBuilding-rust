@@ -41,6 +41,11 @@ end
 for _, b in ipairs({ "Generals Perforate Zerker", "Dual Savior", "Dual Wield Cospris CoC", "Mirage Archer Toxic Rain", "OccVortex" }) do
 	writeAll(USER .. "/Path of Building/Builds/" .. b .. ".xml", readAll(POB_ROOT .. "spec/TestBuilds/3.13/" .. b .. ".xml"))
 end
+-- a golden of the oracle's fixtures, for `u5probe`
+do
+	local b = "Dual Wield Cospris CoC - Lethal Pride"
+	writeAll(USER .. "/Path of Building/Builds/" .. b .. ".xml", readAll(UPSTREAM.oracle .. "test/fixtures/" .. b .. ".xml"))
+end
 -- A public golden has no minions, mines or stages: OccVortex + three groups (the same edit as crates/pob-ui/tests/calcs.rs).
 do
 	local gem = '<Gem level="20" gemId="Metadata/Items/Gems/%s" skillId="%s" qualityId="Default" quality="0" enabled="true" nameSpec="%s"/>'
@@ -905,6 +910,7 @@ function runner:Step()
 		main:SetMode("BUILD", main.buildPath .. st.open .. ".xml", st.open)
 		local t0 = os.clock()
 		self:Frame()
+		assert(main.mode == "BUILD" and main.modes.BUILD.dbFileName, "open: no build " .. st.open) -- MINEFIELD R55
 		sc.perf[#sc.perf + 1] = { what = "open", build = st.open, ms = (os.clock() - t0) * 1000 }
 		return
 	end

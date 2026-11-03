@@ -293,6 +293,7 @@ function runner:Step()
 		main:SetMode("BUILD", main.buildPath .. st.open .. ".xml", st.open)
 		local t0 = os.clock()
 		self:Frame()
+		assert(main.mode == "BUILD" and main.modes.BUILD.dbFileName, "open: no build " .. st.open) -- MINEFIELD R55
 		sc.perf[#sc.perf + 1] = { what = "open", build = st.open, ms = (os.clock() - t0) * 1000 }
 		return
 	end

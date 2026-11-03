@@ -64,7 +64,8 @@ if (Test-Path $sg) { Remove-Item -Recurse -Force $sg }
 New-Item -ItemType Directory "$sg\out" | Out-Null
 Copy-Item "$here\lua\*.lua" $sg
 # The upstream root for the runners (`dofile(base .. "/upstream.lua")`) and scene image paths (`{POB}/...`).
-"return { root = `"$($up.Root)/`", sha = `"$($up.Sha)`" }" | Set-Content "$sg\upstream.lua" -Encoding ascii
+$oracleRoot = (Get-Content (Join-Path $here '..\upstream.json') -Raw | ConvertFrom-Json).oracleRoot
+"return { root = `"$($up.Root)/`", sha = `"$($up.Sha)`", oracle = `"$oracleRoot/`" }" | Set-Content "$sg\upstream.lua" -Encoding ascii
 if (Test-Path "$here\scenes") { Copy-Item "$here\scenes" "$sg\scenes" -Recurse }
 $shots = Join-Path $rt 'SimpleGraphic\Screenshots'
 if (Test-Path $shots) { Remove-Item -Recurse -Force $shots }

@@ -105,7 +105,19 @@ fn short_main_pass_on_the_corpus() {
                 runs += n;
             }
             Ok(Err(d)) if d.contains("whole") || d.contains("short") || d.contains("merge") => diffs.push(format!("{}: {d}", f.display())),
-            _ => skipped += 1,
+            Ok(Err(why)) => {
+                skipped += 1;
+                eprintln!("not run {}: {why}", f.display());
+            }
+            Err(p) => {
+                skipped += 1;
+                let why = p
+                    .downcast_ref::<String>()
+                    .map(String::as_str)
+                    .or_else(|| p.downcast_ref::<&str>().copied())
+                    .unwrap_or("panic");
+                eprintln!("panicked {}: {why}", f.display());
+            }
         }
     }
     eprintln!("builds {builds}, runs compared {runs}, not run {skipped}, differ {}", diffs.len());
