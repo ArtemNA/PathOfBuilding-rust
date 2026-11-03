@@ -216,7 +216,10 @@ impl ItemSlotControl {
     /// `ItemSlotClass:SetSelItemId(selItemId)`.
     pub fn set_sel_item_id(&self, id: f64) {
         let t = self.tab.upgrade().expect("itemsTab");
-        t.read(Engine::touch_misc);
+        // the same id changes nothing the calculator reads (`Populate` writes 0 to every empty socket on each call)
+        if self.sel_item_id.get() != id {
+            t.read(Engine::touch_misc);
+        }
         if let Some(n) = self.node_id {
             t.edit(|e| e.set_socket_item(n, id));
         } else {
@@ -1987,57 +1990,115 @@ fn new_manage_lists(g: &mut Gfx, tab: Weak<ItemsTab>) -> (Rc<ListControl<f64>>, 
 thread_local! {
     static UNIQUE_DB: std::cell::OnceCell<Vec<Rc<Item>>> = const { std::cell::OnceCell::new() };
     static RARE_DB: std::cell::OnceCell<Vec<Rc<Item>>> = const { std::cell::OnceCell::new() };
+    static UNIQUE_LOAD: RefCell<Option<DbLoad>> = const { RefCell::new(None) };
+    static RARE_LOAD: RefCell<Option<DbLoad>> = const { RefCell::new(None) };
 }
 
-/// `main.uniqueDB.list` (Main.lua:164-176): one item per name; the first run parses them, in the frame: upstream's coroutine is a loading screen for the same work.
-pub fn unique_db_items() -> Vec<Rc<Item>> {
-    UNIQUE_DB.with(|d| {
-        d.get_or_init(|| {
-            let j: serde_json::Value = pob_data::read_json("uniques.json").unwrap_or_else(|e| panic!("{e}"));
-            let mut list: IndexMap<String, Rc<Item>> = IndexMap::new();
-            for (_, raws) in j["byType"].as_object().into_iter().flatten() {
-                for raw in raws.as_array().into_iter().flatten() {
-                    let it = Item::parse_with(&crate::common::sanitise_text(raw.as_str().unwrap_or("")), Some("UNIQUE"), true);
-                    if it.base.is_some() {
-                        list.insert(it.name.clone(), Rc::new(it));
-                    }
-                }
+/// A database on its way: what `loadItemDBs` has yet to parse and the list so far.
+struct DbLoad {
+    raws: std::vec::IntoIter<String>,
+    list: IndexMap<String, Rc<Item>>,
+}
+
+fn unique_raws() -> Vec<String> {
+    let j: serde_json::Value = pob_data::read_json("uniques.json").unwrap_or_else(|e| panic!("{e}"));
+    let mut out = Vec::new();
+    for (_, raws) in j["byType"].as_object().into_iter().flatten() {
+        for raw in raws.as_array().into_iter().flatten() {
+            out.push(raw.as_str().unwrap_or("").to_string());
+        }
+    }
+    out
+}
+
+fn rare_raws() -> Vec<String> {
+    pob_data::read_json("rares.json").unwrap_or_else(|e| panic!("{e}"))
+}
+
+/// Main.lua:165-173.
+fn parse_unique(raw: &str, list: &mut IndexMap<String, Rc<Item>>) {
+    let it = Item::parse_with(&crate::common::sanitise_text(raw), Some("UNIQUE"), true);
+    if it.base.is_some() {
+        list.insert(it.name.clone(), Rc::new(it));
+    }
+}
+
+/// Main.lua:180-195.
+fn parse_rare(raw: &str, list: &mut IndexMap<String, Rc<Item>>) {
+    let mut it = Item::parse_with(&crate::common::sanitise_text(raw), Some("RARE"), true);
+    let Some(base) = it.base else { return };
+    if it.crafted {
+        if let Some(imp) = &base.implicit
+            && it.implicit_mod_lines.is_empty()
+        {
+            for (i, line) in imp.split('\n').filter(|l| !l.is_empty()).enumerate() {
+                it.implicit_mod_lines.push(pob_items::ModLine {
+                    line: line.to_string(),
+                    mod_tags: base.implicit_mod_types.get(i).cloned().unwrap_or_default(),
+                    ..Default::default()
+                });
             }
-            list.into_values().collect()
-        })
-        .clone()
-    })
+        }
+        it.craft();
+    }
+    list.insert(it.name.clone(), Rc::new(it));
+}
+
+type DbCell = std::thread::LocalKey<std::cell::OnceCell<Vec<Rc<Item>>>>;
+type LoadCell = std::thread::LocalKey<RefCell<Option<DbLoad>>>;
+
+/// One database, until it is done or `deadline` has passed. `true`: done.
+fn advance_db(
+    db: &'static DbCell,
+    load: &'static LoadCell,
+    raws: fn() -> Vec<String>,
+    parse: fn(&str, &mut IndexMap<String, Rc<Item>>),
+    deadline: Option<std::time::Instant>,
+) -> bool {
+    if db.with(|d| d.get().is_some()) {
+        return true;
+    }
+    let done = load.with_borrow_mut(|l| {
+        let l = l.get_or_insert_with(|| DbLoad {
+            raws: raws().into_iter(),
+            list: IndexMap::new(),
+        });
+        loop {
+            let Some(raw) = l.raws.next() else {
+                return Some(std::mem::take(&mut l.list));
+            };
+            parse(&raw, &mut l.list);
+            if deadline.is_some_and(|t| std::time::Instant::now() >= t) {
+                return None;
+            }
+        }
+    });
+    let Some(list) = done else { return false };
+    load.with_borrow_mut(|l| *l = None);
+    db.with(|d| {
+        let _ = d.set(list.into_values().collect());
+    });
+    true
+}
+
+/// `onFrameFuncs["LoadItems"]` (Main.lua:292-304, `loadItemDBs` :163-200): the databases parsed over the first frames of the program, the uniques first; parsed up to `budget` now, all of them
+/// without one. `true`: both are ready. A reader that comes earlier finishes its database itself ([`unique_db_items`], [`rare_db_items`]).
+pub fn load_item_dbs_step(budget: Option<std::time::Duration>) -> bool {
+    let deadline = budget.map(|b| std::time::Instant::now() + b);
+    advance_db(&UNIQUE_DB, &UNIQUE_LOAD, unique_raws, parse_unique, deadline)
+        && advance_db(&RARE_DB, &RARE_LOAD, rare_raws, parse_rare, deadline)
+}
+
+/// `main.uniqueDB.list` (Main.lua:164-176): one item per name.
+pub fn unique_db_items() -> Vec<Rc<Item>> {
+    advance_db(&UNIQUE_DB, &UNIQUE_LOAD, unique_raws, parse_unique, None);
+    UNIQUE_DB.with(|d| d.get().expect("the unique database").clone())
 }
 
 /// `main.rareDB.list` (Main.lua:180-197).
 pub fn rare_db_items() -> Vec<Rc<Item>> {
-    RARE_DB.with(|d| {
-        d.get_or_init(|| {
-            let j: Vec<String> = pob_data::read_json("rares.json").unwrap_or_else(|e| panic!("{e}"));
-            let mut list: IndexMap<String, Rc<Item>> = IndexMap::new();
-            for raw in &j {
-                let mut it = Item::parse_with(&crate::common::sanitise_text(raw), Some("RARE"), true);
-                let Some(base) = it.base else { continue };
-                if it.crafted {
-                    if let Some(imp) = &base.implicit
-                        && it.implicit_mod_lines.is_empty()
-                    {
-                        for (i, line) in imp.split('\n').filter(|l| !l.is_empty()).enumerate() {
-                            it.implicit_mod_lines.push(pob_items::ModLine {
-                                line: line.to_string(),
-                                mod_tags: base.implicit_mod_types.get(i).cloned().unwrap_or_default(),
-                                ..Default::default()
-                            });
-                        }
-                    }
-                    it.craft();
-                }
-                list.insert(it.name.clone(), Rc::new(it));
-            }
-            list.into_values().collect()
-        })
-        .clone()
-    })
+    advance_db(&RARE_DB, &RARE_LOAD, rare_raws, parse_rare, None);
+    RARE_DB.with(|d| d.get().expect("the rare database").clone())
 }
 
 /// `ItemDBControl`: the list and the controls of its filters.

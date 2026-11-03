@@ -36,59 +36,85 @@ thread_local! {
     static DESCRIPTIONS: RefCell<Option<HashMap<String, String>>> = const { RefCell::new(None) };
     static FLAVOUR: RefCell<Option<HashMap<String, Vec<String>>>> = const { RefCell::new(None) };
     static COSTS: RefCell<Option<Vec<(String, String, f64)>>> = const { RefCell::new(None) };
+    static PRELOAD: RefCell<Option<std::thread::JoinHandle<Preloaded>>> = const { RefCell::new(None) };
+}
+
+/// The files of the gem tooltips, read off the UI thread: nothing here depends on the build or on when it is read.
+struct Preloaded {
+    descriptions: HashMap<String, String>,
+    flavour: HashMap<String, Vec<String>>,
+    scopes: crate::stat_describer::Scopes,
+}
+
+/// Starts reading the tooltips' files; the first tooltip waits for what is not ready yet.
+pub fn start_preload(root: &str) {
+    let root = root.to_string();
+    let handle = std::thread::Builder::new()
+        .name("gem tooltip data".into())
+        .spawn(move || Preloaded {
+            descriptions: pob_data::skills::skill_descriptions().unwrap_or_else(|e| panic!("skills.json: {e}")),
+            flavour: load_flavour(&root),
+            scopes: crate::stat_describer::read_all_scopes(&root),
+        });
+    // without a thread each reader loads its file itself
+    PRELOAD.with_borrow_mut(|p| *p = handle.ok());
+}
+
+/// The results of [`start_preload`], once.
+pub(crate) fn join_preload() {
+    let Some(handle) = PRELOAD.with_borrow_mut(Option::take) else {
+        return;
+    };
+    let p = handle.join().unwrap_or_else(|e| std::panic::resume_unwind(e));
+    DESCRIPTIONS.with_borrow_mut(|d| *d = Some(p.descriptions));
+    FLAVOUR.with_borrow_mut(|d| *d = Some(p.flavour));
+    crate::stat_describer::install_scopes(p.scopes);
 }
 
 /// `grantedEffect.description` (pob-data keeps only what the calculation reads).
 fn description(id: &str) -> Option<String> {
+    join_preload();
     DESCRIPTIONS.with_borrow_mut(|d| {
-        d.get_or_insert_with(|| {
-            let j: serde_json::Value = pob_data::read_json("skills.json").unwrap_or_else(|e| panic!("skills.json: {e}"));
-            let mut m = HashMap::new();
-            if let Some(o) = j.as_object() {
-                for (k, v) in o {
-                    if let Some(s) = v["description"].as_str() {
-                        m.insert(k.clone(), s.to_string());
-                    }
-                }
-            }
-            m
-        })
-        .get(id)
-        .cloned()
+        d.get_or_insert_with(|| pob_data::skills::skill_descriptions().unwrap_or_else(|e| panic!("skills.json: {e}")))
+            .get(id)
+            .cloned()
     })
 }
 
-/// `grantedEffect.flavourText`: `data/skills.json` has no such field, the source lines of `Data/Skills/*.lua` do.
-fn flavour_text(id: &str) -> Option<Vec<String>> {
-    FLAVOUR.with_borrow_mut(|d| {
-        d.get_or_insert_with(|| {
-            let root = crate::launch::launch().cfg.script_path.clone();
-            let mut m = HashMap::new();
-            for file in [
-                "act_str", "act_dex", "act_int", "other", "sup_str", "sup_dex", "sup_int", "glove", "minion", "spectre",
-            ] {
-                let Ok(src) = std::fs::read(format!("{root}Data/Skills/{file}.lua")) else {
-                    continue;
-                };
-                let text = String::from_utf8_lossy(&src);
-                let mut cur: Option<String> = None;
-                for line in text.lines() {
-                    if let Some(rest) = line.strip_prefix("skills[\"") {
-                        cur = rest.split('"').next().map(str::to_string);
-                    } else if let (Some(rest), Some(id)) = (line.trim_start().strip_prefix("flavourText = "), &cur) {
-                        let table = rest.trim_end().trim_end_matches(',');
-                        if let Ok(v) = crate::lua_data::parse_return(format!("return {table}").as_bytes())
-                            && let Some(t) = v.as_tab()
-                        {
-                            m.insert(id.clone(), t.seq().iter().filter_map(|x| x.as_str().map(str::to_string)).collect());
-                        }
-                    }
+/// `data/skills.json` has no `flavourText`, the source lines of `Data/Skills/*.lua` do.
+fn load_flavour(root: &str) -> HashMap<String, Vec<String>> {
+    let mut m = HashMap::new();
+    for file in [
+        "act_str", "act_dex", "act_int", "other", "sup_str", "sup_dex", "sup_int", "glove", "minion", "spectre",
+    ] {
+        let Ok(src) = std::fs::read(format!("{root}Data/Skills/{file}.lua")) else {
+            continue;
+        };
+        let text = String::from_utf8_lossy(&src);
+        let mut cur: Option<String> = None;
+        for line in text.lines() {
+            if let Some(rest) = line.strip_prefix("skills[\"") {
+                cur = rest.split('"').next().map(str::to_string);
+            } else if let (Some(rest), Some(id)) = (line.trim_start().strip_prefix("flavourText = "), &cur) {
+                let table = rest.trim_end().trim_end_matches(',');
+                if let Ok(v) = crate::lua_data::parse_return(format!("return {table}").as_bytes())
+                    && let Some(t) = v.as_tab()
+                {
+                    m.insert(id.clone(), t.seq().iter().filter_map(|x| x.as_str().map(str::to_string)).collect());
                 }
             }
-            m
-        })
-        .get(id)
-        .cloned()
+        }
+    }
+    m
+}
+
+/// `grantedEffect.flavourText`.
+fn flavour_text(id: &str) -> Option<Vec<String>> {
+    join_preload();
+    FLAVOUR.with_borrow_mut(|d| {
+        d.get_or_insert_with(|| load_flavour(&crate::launch::launch().cfg.script_path))
+            .get(id)
+            .cloned()
     })
 }
 

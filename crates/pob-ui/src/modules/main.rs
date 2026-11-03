@@ -61,6 +61,9 @@ pub trait Mode {
     }
 }
 
+/// The item databases' share of a frame: the idle loop draws every 30 ms (`pob_gfx::window`), so it keeps drawing while they load.
+const ITEM_DB_SLICE: std::time::Duration = std::time::Duration::from_millis(15);
+
 /// `new("Control"):Control(nil, rect)`: a control without behaviour (anchors only).
 pub struct BareControl {
     pub base: ControlBase,
@@ -146,6 +149,8 @@ pub struct Main {
     pub input_events: RefCell<InputEvents>,
     pub view_port: Cell<Rect>,
     pub portrait_mode: Cell<bool>,
+    /// [`Main::load_background_data`]: 0 before the first frame's end, 1 while the item databases load, 2 after.
+    startup_frames: Cell<u8>,
     pub user_path: RefCell<Option<String>>,
     pub build_path: RefCell<String>,
     pub default_build_path: RefCell<String>,
@@ -327,6 +332,7 @@ impl Main {
             filter_build_list: RefCell::new(None),
             wiki_triggered: Cell::new(false),
             first_frame_done: Cell::new(false),
+            startup_frames: Cell::new(0),
         });
         MAIN_OBJ.with(|g| *g.borrow_mut() = Some(Rc::clone(&m)));
         m.sync_flags();
@@ -457,6 +463,23 @@ impl Main {
         self.modes.get(name.as_str()).cloned()
     }
 
+    /// What upstream has loaded by the time the program runs: the gem tooltips' files on their own thread, the item databases over the frames after the first one (`onFrameFuncs["LoadItems"]`).
+    fn load_background_data(&self) {
+        match self.startup_frames.get() {
+            0 => {
+                crate::gem_tooltip::start_preload(&launch().cfg.script_path);
+                self.startup_frames.set(1);
+            }
+            1 if crate::tabs::items::load_item_dbs_step(Some(ITEM_DB_SLICE)) => self.startup_frames.set(2),
+            _ => {}
+        }
+    }
+
+    /// `not (main.uniqueDB.loading or main.rareDB.loading)`.
+    pub fn item_dbs_ready(&self) -> bool {
+        self.startup_frames.get() == 2
+    }
+
     /// `main:OnFrame()` (Main.lua:379-493).
     pub fn on_frame(self: &Rc<Self>, f: &mut Frame<'_>) {
         let (screen_w, screen_h) = f.get_virtual_screen_size();
@@ -505,6 +528,7 @@ impl Main {
                 self.update_available_shown.set(true);
             }
         }
+        self.load_background_data();
         self.toasts.update_frame(screen_h);
         let total_toast_height = self.toasts.render(f, &events, &vp);
         self.main_bar_height.set(58.0 + total_toast_height);

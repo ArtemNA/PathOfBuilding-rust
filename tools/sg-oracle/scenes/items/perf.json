@@ -58,7 +58,146 @@
 {
 "release": [
 "CTRL"
+],
+"perfClick": "recalcAfterEquip"
+},
+{
+"cursor": [
+1200,
+790
 ]
+},
+{
+"cursorItemRow": [
+"itemList",
+2
+],
+"perfClick": "hoverAfterRecalc"
+},
+{
+"cursor": [
+1200,
+790
+]
+},
+{
+"cursorItemRow": [
+"itemList",
+2
+],
+"perfClick": "hoverAgainSame"
+},
+{
+"cursor": [
+1200,
+790
+]
+},
+{
+"cursorItemRow": [
+"itemList",
+3
+],
+"perfClick": "hoverOtherRow"
+},
+{
+"cursorItemRow": [
+"uniqueDB",
+6
+],
+"hold": [
+"CTRL"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"perfClick": "equipDB2"
+},
+{
+"release": [
+"CTRL"
+],
+"perfClick": "recalcAfterEquip2"
+},
+{
+"cursor": [
+1200,
+790
+]
+},
+{
+"cursorBuild": [
+"modeSkills"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"perfClick": "leaveTab"
+},
+{
+"cursorBuild": [
+"modeItems"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"perfClick": "openTab2"
+},
+{
+"closeBuild": true
+},
+{
+"open": "OccVortex"
+},
+{
+"cursorBuild": [
+"modeItems"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"perfClick": "openTabNewBuild"
+},
+{
+"cursor": [
+1200,
+790
+]
+},
+{
+"cursorItemRow": [
+"itemList",
+2
+],
+"perfClick": "hoverNewBuild"
 },
 {
 "closeBuild": true

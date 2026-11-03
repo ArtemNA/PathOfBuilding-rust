@@ -280,6 +280,10 @@ impl Engine {
         if let Some(s) = self.res_mut().env.ordered_slots.iter_mut().find(|s| s.slot_name == name) {
             s.sel_item_id = id;
         }
+        // `Populate` writes 0 to every empty socket on each call: the spec already says so
+        if self.result().env.spec.jewels.get(n).copied() == Some(id) {
+            return Ok(());
+        }
         let mut spec = (*self.result().env.spec).clone();
         spec.jewels.set(n, id);
         if id == old {

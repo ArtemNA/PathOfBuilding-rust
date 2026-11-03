@@ -58,7 +58,10 @@ struct Sandbox(PathBuf);
 
 impl Sandbox {
     fn new(name: &str) -> Self {
-        let root = std::env::temp_dir().join(format!("pob-ui-u2b-{}-{name}", std::process::id()));
+        // the tests run in parallel: one's `Drop` must not take the other's folder
+        static N: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+        let n = N.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let root = std::env::temp_dir().join(format!("pob-ui-u2b-{}-{n}-{name}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         let builds = root.join("Path of Building/Builds");
         std::fs::create_dir_all(builds.join("Merc")).expect("mkdir");
@@ -286,6 +289,8 @@ fn run(name: &str) -> Run {
     l.on_init(&mut gfx);
     assert!(l.prompt_msg.borrow().is_none(), "startup error: {:?}", l.prompt_msg.borrow());
     main().background.wait();
+    // the runners wait for `main.uniqueDB.loading` and `main.rareDB.loading` too
+    pob_ui::tabs::items::load_item_dbs_step(None);
     for _ in 0..4 {
         frame(&mut gfx, &l);
     }
