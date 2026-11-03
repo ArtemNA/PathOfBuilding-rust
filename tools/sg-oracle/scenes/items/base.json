@@ -1,0 +1,144 @@
+{
+"steps": [
+{
+"open": "Dual Wield Cospris CoC"
+},
+{
+"cursorBuild": [
+"modeItems"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true,
+"shot": "base-tab"
+},
+{
+"cursor": [
+1200,
+790
+],
+"dump": true
+},
+{
+"cursorItem": [
+"slot:Helmet"
+],
+"dump": true,
+"shot": "base-slot-tip"
+},
+{
+"cursorItemRow": [
+"itemList",
+2
+],
+"dump": true,
+"shot": "base-row-tip"
+},
+{
+"cursorItemRow": [
+"itemList",
+3
+],
+"dump": true
+},
+{
+"cursorItem": [
+"slot:Boots"
+],
+"dump": true
+},
+{
+"cursorItem": [
+"slot:Weapon 1"
+],
+"dump": true
+},
+{
+"cursorItem": [
+"weaponSwap2"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"cursorItem": [
+"slot:Weapon 1 Swap"
+],
+"dump": true
+},
+{
+"cursorItem": [
+"weaponSwap1"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"cursorItem": [
+"slot:Helmet"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true,
+"shot": "base-slot-drop"
+},
+{
+"cursor": [
+1200,
+790
+],
+"events": [
+[
+"KeyDown",
+"ESCAPE"
+]
+],
+"dump": true
+},
+{
+"cursorItemRow": [
+"uniqueDB",
+3
+],
+"dump": true,
+"shot": "base-db-tip"
+},
+{
+"closeBuild": true
+}
+]
+}

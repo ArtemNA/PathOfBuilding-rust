@@ -61,3 +61,6 @@
 /tools/sg-oracle/fixtures/config/
 /tools/sg-oracle/fixtures/audit/config-runner-*.json
 /tools/sg-oracle/scenes/config/local-*.json
+/tools/sg-oracle/fixtures/items/
+/tools/sg-oracle/fixtures/audit/items-runner-*.json
+/tools/sg-oracle/scenes/items/local-*.json

@@ -1,0 +1,497 @@
+{
+"steps": [
+{
+"open": "Generals Perforate Zerker"
+},
+{
+"waitAssets": true
+},
+{
+"cursor": [
+-100,
+-100
+],
+"time": 10000
+},
+{
+"cursor": [
+971,
+730
+]
+},
+{
+"hold": [
+"LEFTBUTTON"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+]
+]
+},
+{
+"release": [
+"LEFTBUTTON"
+],
+"events": [
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+]
+},
+{
+"waitAssets": true
+},
+{
+"events": [
+[
+"KeyDown",
+"RETURN"
+],
+[
+"KeyUp",
+"RETURN"
+]
+]
+},
+{
+"cursor": [
+-100,
+-100
+]
+},
+{
+"cursor": [
+690,
+786
+]
+},
+{
+"hold": [
+"LEFTBUTTON"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+]
+]
+},
+{
+"release": [
+"LEFTBUTTON"
+],
+"events": [
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+]
+},
+{
+"cursor": [
+742,
+139
+]
+},
+{
+"hold": [
+"LEFTBUTTON"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+]
+]
+},
+{
+"release": [
+"LEFTBUTTON"
+],
+"events": [
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+]
+},
+{
+"cursor": [
+742,
+169
+]
+},
+{
+"hold": [
+"LEFTBUTTON"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+]
+]
+},
+{
+"release": [
+"LEFTBUTTON"
+],
+"events": [
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+]
+},
+{
+"cursor": [
+-100,
+-100
+]
+},
+{
+"cursor": [
+742,
+185
+]
+},
+{
+"hold": [
+"LEFTBUTTON"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+]
+]
+},
+{
+"release": [
+"LEFTBUTTON"
+],
+"events": [
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+]
+},
+{
+"cursor": [
+742,
+228
+]
+},
+{
+"cursor": [
+742,
+228
+]
+},
+{
+"hold": [
+"LEFTBUTTON"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+]
+]
+},
+{
+"release": [
+"LEFTBUTTON"
+],
+"events": [
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+]
+},
+{
+"cursor": [
+742,
+323
+]
+},
+{
+"hold": [
+"LEFTBUTTON"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+]
+]
+},
+{
+"release": [
+"LEFTBUTTON"
+],
+"events": [
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+]
+},
+{
+"cursor": [
+742,
+366
+]
+},
+{
+"cursor": [
+742,
+366
+]
+},
+{
+"hold": [
+"LEFTBUTTON"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+]
+]
+},
+{
+"release": [
+"LEFTBUTTON"
+],
+"events": [
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+]
+},
+{
+"cursor": [
+742,
+323
+]
+},
+{
+"hold": [
+"LEFTBUTTON"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+]
+]
+},
+{
+"release": [
+"LEFTBUTTON"
+],
+"events": [
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+]
+},
+{
+"cursor": [
+742,
+405
+]
+},
+{
+"hold": [
+"LEFTBUTTON"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+]
+]
+},
+{
+"release": [
+"LEFTBUTTON"
+],
+"events": [
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+]
+},
+{
+"cursor": [
+-100,
+-100
+]
+},
+{
+"cursor": [
+720,
+254
+]
+},
+{
+"cursor": [
+720,
+254
+]
+},
+{
+"hold": [
+"LEFTBUTTON"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+]
+]
+},
+{
+"release": [
+"LEFTBUTTON"
+],
+"events": [
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+]
+},
+{
+"cursor": [
+-100,
+-100
+]
+},
+{
+"cursor": [
+620,
+300
+]
+},
+{
+"hold": [
+"LEFTBUTTON"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+]
+]
+},
+{
+"release": [
+"LEFTBUTTON"
+],
+"events": [
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+]
+},
+{
+"cursor": [
+-100,
+-100
+]
+},
+{
+"cursor": [
+550,
+672
+]
+},
+{
+"hold": [
+"LEFTBUTTON"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+]
+]
+},
+{
+"release": [
+"LEFTBUTTON"
+],
+"events": [
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+]
+},
+{
+"cursor": [
+-100,
+-100
+]
+},
+{
+"cursor": [
+800,
+470
+],
+"dump": true
+},
+{
+"cursor": [
+800,
+470
+]
+},
+{
+"hold": [
+"LEFTBUTTON"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON",
+true
+]
+]
+},
+{
+"release": [
+"LEFTBUTTON"
+],
+"events": [
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"cursor": [
+-100,
+-100
+],
+"dump": true
+},
+{
+"closeBuild": true
+}
+]
+}

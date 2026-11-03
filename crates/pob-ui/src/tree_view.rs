@@ -12,7 +12,7 @@ use pob_tree::lj_table::LjTable;
 use pob_tree::{NodeType, PassiveSpec, SpecNode};
 
 use crate::colors::color_code;
-use crate::control::Rect;
+use crate::control::{Control, Rect};
 use crate::host::{InputEvent, InputEvents, ipairs};
 use crate::modules::main::main;
 use crate::sg;
@@ -122,6 +122,8 @@ pub struct PassiveTreeView {
     pub unimplemented: Vec<String>,
     /// Test harness only: a sample of the `pairs(tree.nodes)`-dependent orders of one oracle process (see [`Self::set_order_sample`]).
     order_sample: Option<(Vec<u32>, Vec<String>)>,
+    /// Test harness only: `pairs(spec.subGraphs)` of the same process ([`Self::set_sub_graph_order_sample`]).
+    sub_graph_order_sample: Option<Vec<u32>>,
 }
 
 fn clamp_image(root: &str, path: &str) -> ImageHandle {
@@ -185,6 +187,7 @@ impl PassiveTreeView {
             cache: None,
             unimplemented: Vec::new(),
             order_sample: None,
+            sub_graph_order_sample: None,
         }
     }
 
@@ -225,6 +228,12 @@ impl PassiveTreeView {
     /// overlap order of that one screenshot, not a model. The app uses the model (no `root`), one of the orders the original can have.
     pub fn set_order_sample(&mut self, nodes: Vec<u32>, connectors: Vec<String>) {
         self.order_sample = Some((nodes, connectors));
+        self.cache = None;
+    }
+
+    /// `pairs(spec.subGraphs)` follows the sockets' order of that process too (two orders of 4 subgraphs in 8 runs): which of two overlapping subgraphs is on top.
+    pub fn set_sub_graph_order_sample(&mut self, ids: Vec<u32>) {
+        self.sub_graph_order_sample = Some(ids);
         self.cache = None;
     }
 
@@ -297,7 +306,10 @@ impl PassiveTreeView {
             tree_connectors = ranked.into_iter().map(|(_, t)| t).collect();
         }
         let views = spec.sub_graph_views();
-        let order = pob_tree::lj_table::pairs_order(&views.iter().map(|v| f64::from(v.id)).collect::<Vec<_>>());
+        let order = match &self.sub_graph_order_sample {
+            Some(s) => s.iter().map(|k| f64::from(*k)).collect(),
+            None => pob_tree::lj_table::pairs_order(&views.iter().map(|v| f64::from(v.id)).collect::<Vec<_>>()),
+        };
         let mut sub_graphs = Vec::new();
         for k in order {
             let Some(v) = views.iter().find(|v| f64::from(v.id) == k) else {
@@ -426,7 +438,13 @@ impl PassiveTreeView {
                         let l = if sg::is_key_down(f, "SHIFT") { -3.0 } else { -1.0 };
                         self.do_zoom(f, l, view_port);
                     }
-                    // `unimplemented`: :228-229 `itemLib.wiki.matchesKey(event.key)` -> `itemLib.wiki.open` (U6)
+                    // :228-229 `itemLib.wiki.open(self.hoverNode.name or self.hoverNode.dn)`
+                    "F1" => {
+                        if let Some(h) = self.hover_node {
+                            let name = engine.borrow().as_ref().expect("engine").spec_rc().nodes[h].dn().to_string();
+                            crate::tabs::items::wiki_open(f, &name);
+                        }
+                    }
                     _ => {}
                 },
                 InputEvent::KeyUp { key } => {
@@ -725,7 +743,16 @@ impl PassiveTreeView {
             let has_effects = art.nodes.get(&id).is_some_and(|x| x.has_mastery_effects);
             let can_tattoo = engine.borrow().as_ref().expect("engine").node_can_tattoo(id);
             if n.alloc && n.ty() == NodeType::Socket {
-                self.note("PassiveTreeView.lua:522-529 right click on a socket: the items tab (U6)");
+                // :522-529 jump to the item page and focus the item slot control
+                let b = crate::modules::main::main().build_mode.clone();
+                let tab = b.items_tab.borrow().clone();
+                if let Some(slot) = tab.as_ref().and_then(|t| t.sockets.borrow().get(&id).cloned())
+                    && slot.is_enabled(f)
+                {
+                    slot.drop.dropped.set(true);
+                    tab.as_ref().expect("itemsTab").host.select_control(f, Some(slot));
+                    *b.view_mode.borrow_mut() = "ITEMS".to_string();
+                }
             } else if can_tattoo {
                 crate::tabs::tree::modify_node_popup(f, id);
                 build_flag.set(true);

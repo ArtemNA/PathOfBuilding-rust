@@ -208,7 +208,7 @@ impl MinionSource {
 }
 
 /// `string:matchOrPattern(pattern)` (Common.lua:1038-1079); `None`: a pattern error (the `PCall`'s `err`).
-fn match_or_pattern(s: &str, pattern: &str) -> Option<bool> {
+pub fn match_or_pattern(s: &str, pattern: &str) -> Option<bool> {
     fn generate(pattern: &str) -> Option<Vec<String>> {
         // the subgroups: `pattern:gmatch("%b()")`
         let bytes = pattern.as_bytes();

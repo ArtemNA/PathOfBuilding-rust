@@ -29,6 +29,13 @@ pub fn find(s: &str, p: &str, site: &str) -> bool {
 }
 
 /// `s:find(p, 1, true)` -- 1-based inclusive `(start, end)`.
+pub fn find_pattern(s: &str, p: &str) -> Option<(usize, usize)> {
+    pob_lua::find(s.as_bytes(), p.as_bytes(), None, false)
+        .ok()
+        .flatten()
+        .map(|c| (c.0.saturating_sub(1), c.1))
+}
+
 pub fn find_plain(s: &str, p: &str) -> Option<(usize, usize)> {
     pob_lua::find(s.as_bytes(), p.as_bytes(), None, true)
         .expect("plain find cannot fail")

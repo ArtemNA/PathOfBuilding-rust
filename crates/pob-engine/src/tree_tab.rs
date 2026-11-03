@@ -1048,6 +1048,7 @@ impl Engine {
             .into_iter()
             .map(|(n, range)| pob_build::ModRangeModel { id: n as f64, range })
             .collect();
+        self.items_table_set(id);
         let m = self.model_mut();
         m.items.push(pob_build::ItemModel {
             id,

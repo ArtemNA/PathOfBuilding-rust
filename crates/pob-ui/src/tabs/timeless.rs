@@ -16,6 +16,7 @@ use crate::controls::edit::{EditArgs, EditControl};
 use crate::controls::list::{ByRef, ListControl, ListHooks};
 use crate::controls::popup::PopupDialog;
 use crate::controls::scroll_bar::SliderControl;
+use crate::undo::UndoHost;
 use crate::modules::main::{main, not_ported, note_not_ported};
 use crate::sg;
 use crate::tooltip::Tooltip;
@@ -692,7 +693,21 @@ impl ListHooks<Row> for ListH {
         if v.0.total > 0.0 {
             tooltip.add_line(g, 16.0, Some(&format!("^7Combined Node Weight: {}", ts(v.0.total))));
         }
-        note_not_ported("TimelessJewelListControl.lua:330-331 itemsTab:AddItemStatDifferences (U6)");
+        // :330-331 `itemsTab:AddItemStatDifferences(tooltip, jewel, jewel.base, socket)`
+        let tt = tab();
+        let text = {
+            let s = tt.timeless.shared.borrow();
+            jewel_item_text(&v.0, &s)
+        };
+        let b = main().build_mode.clone();
+        let items = b.items_tab.borrow().clone();
+        if let Some(items) = items {
+            let item = Rc::new(pob_items::Item::parse_with(&text, None, false));
+            if item.base.is_some() {
+                let socket = v.0.socket_id.or_else(|| tt.timeless.shared.borrow().socket.as_ref().map(|s| s.id)).filter(|i| *i != -1.0);
+                items.add_stat_differences(tooltip, g, &item, socket.map(|i| i as u32));
+            }
+        }
     }
 
     /// :335-352
@@ -703,17 +718,38 @@ impl ListHooks<Row> for ListH {
                 let s = t.timeless.shared.borrow();
                 jewel_item_text(&v.0, &s)
             };
+            // :338-339 `itemsTab:AddItem(item, true)`: no recalculation here
             let added = {
                 let b = main().build_mode.clone();
                 let mut eng = b.engine.borrow_mut();
-                eng.as_mut().expect("engine").add_item_unequipped(&text)
+                eng.as_mut().expect("engine").add_item(&pob_items::Item::parse_with(&text, None, false), None)
             };
-            added.unwrap_or_else(|e| panic!("{e}"));
-            if td(|t| t.socket_allocate) {
-                not_ported(
-                    g,
-                    "TimelessJewelListControl.lua:340-347 the socket of the new jewel (itemsTab.sockets: U6)",
-                );
+            let added = added.unwrap_or_else(|e| panic!("{e}"));
+            let b = main().build_mode.clone();
+            let items = b.items_tab.borrow().clone();
+            if td(|t| t.socket_allocate)
+                && let Some(items) = &items
+            {
+                // :340-347
+                let socket = v.0.socket_id.or_else(|| t.timeless.shared.borrow().socket.as_ref().map(|s| s.id)).filter(|i| *i != -1.0);
+                if let Some(n) = socket {
+                    let n = n as u32;
+                    let slot = items.sockets.borrow().get(&n).cloned();
+                    let ok = slot.as_ref().is_some_and(|s| {
+                        items.read(|e| {
+                            e.spec_rc().alloc_nodes.contains_key(&n) && e.item_by_id(added).is_some_and(|i| e.is_item_valid_for_slot(&i, &s.slot_name))
+                        })
+                    });
+                    if let (Some(s), true) = (slot, ok) {
+                        s.set_sel_item_id(added);
+                        b.build_flag.set(true);
+                    }
+                }
+            }
+            if let Some(items) = &items {
+                items.populate_slots(g);
+                items.add_undo_state(false);
+                items.sync_item_rows();
             }
             let l = format!("^xB2B2B2{}", v.0.label.borrow());
             *v.0.label.borrow_mut() = l;
@@ -2661,6 +2697,13 @@ fn install_socket_viewer(drop: &Rc<DropDownControl>, ids: Rc<Vec<f64>>) {
         sg::set_viewport(f, None);
         sg::set_draw_layer(f, None, 0);
     }));
+}
+
+/// `searchResults.tooltip` for the gate of the items tab.
+pub fn debug_results_tooltip(c: &ControlRef) -> Option<Vec<String>> {
+    let any: &dyn std::any::Any = &**c;
+    let l = any.downcast_ref::<ListControl<Row>>()?;
+    Some(l.tooltip.borrow().lines.iter().map(|x| x.text.clone().unwrap_or_else(|| "<sep>".to_string())).collect())
 }
 
 /// The `timeless` part of the `tabDump` of tree-runner.lua.

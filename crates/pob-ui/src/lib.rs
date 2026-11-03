@@ -15,6 +15,7 @@ pub mod host;
 pub mod launch;
 pub mod lua;
 pub mod gem_tooltip;
+pub mod item_tooltip;
 pub mod lua_data;
 pub mod modules;
 pub mod search;

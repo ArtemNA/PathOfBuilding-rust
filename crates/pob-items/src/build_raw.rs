@@ -42,6 +42,9 @@ const CATALYST_LIST: [&str; 12] = [
 pub struct ItemAffixes {
     name: &'static str,
     by_id: IndexMap<String, String>,
+    /// The data of the mods behind `by_id`.
+    pub(crate) values: IndexMap<String, &'static serde_json::Value>,
+    pub(crate) full: OnceLock<IndexMap<String, crate::craft::AffixMod>>,
 }
 
 impl ItemAffixes {
@@ -144,11 +147,13 @@ fn item_mods(cat: &'static str) -> &'static ItemAffixes {
         return a;
     }
     let mut by_id = IndexMap::new();
+    let mut values: IndexMap<String, &'static serde_json::Value> = IndexMap::new();
     match cat {
         "Item" => {
             for c in ITEM_MERGE_ORDER {
                 for (k, v) in mod_file(category_file(c)).iter() {
                     by_id.insert(k.clone(), affix_of(v));
+                    values.insert(k.clone(), v);
                 }
             }
         }
@@ -156,16 +161,23 @@ fn item_mods(cat: &'static str) -> &'static ItemAffixes {
             for (k, v) in mod_file(category_file("ItemExclusive")).iter() {
                 if k.starts_with("Divergent") {
                     by_id.insert(k.clone(), affix_of(v));
+                    values.insert(k.clone(), v);
                 }
             }
         }
         c => {
             for (k, v) in mod_file(category_file(c)).iter() {
                 by_id.insert(k.clone(), affix_of(v));
+                values.insert(k.clone(), v);
             }
         }
     }
-    let a: &'static ItemAffixes = Box::leak(Box::new(ItemAffixes { name: cat, by_id }));
+    let a: &'static ItemAffixes = Box::leak(Box::new(ItemAffixes {
+        name: cat,
+        by_id,
+        values,
+        full: OnceLock::new(),
+    }));
     m.insert(cat, a);
     a
 }
@@ -187,6 +199,16 @@ pub struct RareLikeUnique {
     pub affixes: ItemAffixes,
     pub prefix_limit: f64,
     pub suffix_limit: f64,
+    pub ignore_mod_type: bool,
+    /// `supportsCustomModifiers`: the ids of the sources it allows.
+    pub supports_custom_modifiers: Option<Vec<String>>,
+    /// `validBases`: the `tags` of each base.
+    pub valid_bases: Option<Vec<OrderedMap<bool>>>,
+}
+
+/// `data.itemMods.ItemExclusive` as full mods.
+pub fn item_exclusive_mods() -> &'static IndexMap<String, crate::craft::AffixMod> {
+    item_mods("ItemExclusive").mods()
 }
 
 /// `data.rareLikeUniques[title:lower()]`.
@@ -197,10 +219,11 @@ pub fn rare_like_unique(title_lower: &str) -> Option<&'static RareLikeUnique> {
         let mut out = IndexMap::new();
         for (title, v) in j.iter() {
             let mut by_id = IndexMap::new();
+            let mut values: IndexMap<String, &'static serde_json::Value> = IndexMap::new();
             for a in v.get("affixes").and_then(serde_json::Value::as_array).into_iter().flatten() {
                 let id = a.get("id").and_then(serde_json::Value::as_str).unwrap_or_default().to_owned();
                 let src = a.get("source").and_then(serde_json::Value::as_str).unwrap_or_default();
-                let table: &OrderedMap<serde_json::Value> = match src {
+                let table: &'static OrderedMap<serde_json::Value> = match src {
                     "veiledMods" => mod_file("veiled-mods.json"),
                     s => match s.strip_prefix("itemMods.") {
                         Some(c) => mod_file(category_file(c)),
@@ -208,6 +231,9 @@ pub fn rare_like_unique(title_lower: &str) -> Option<&'static RareLikeUnique> {
                     },
                 };
                 let name = table.get(&id).map(affix_of).unwrap_or_default();
+                if let Some(x) = table.get(&id) {
+                    values.insert(id.clone(), x);
+                }
                 by_id.insert(id, name);
             }
             let num = |k: &str| {
@@ -219,9 +245,25 @@ pub fn rare_like_unique(title_lower: &str) -> Option<&'static RareLikeUnique> {
             out.insert(
                 title.clone(),
                 RareLikeUnique {
-                    affixes: ItemAffixes { name, by_id },
+                    affixes: ItemAffixes {
+                        name,
+                        by_id,
+                        values,
+                        full: OnceLock::new(),
+                    },
                     prefix_limit: num("prefixLimit"),
                     suffix_limit: num("suffixLimit"),
+                    ignore_mod_type: v.get("ignoreModType").and_then(serde_json::Value::as_bool).unwrap_or(false),
+                    valid_bases: v.get("validBases").and_then(|x| x.get("bases")).and_then(serde_json::Value::as_array).map(|l| {
+                        l.iter()
+                            .filter_map(|b| b.get("base").and_then(|x| x.get("tags")))
+                            .filter_map(|tags| serde_json::from_value(tags.clone()).ok())
+                            .collect()
+                    }),
+                    supports_custom_modifiers: v
+                        .get("supportsCustomModifiers")
+                        .and_then(serde_json::Value::as_object)
+                        .map(|o| o.keys().cloned().collect()),
                 },
             );
         }

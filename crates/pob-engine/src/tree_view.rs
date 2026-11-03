@@ -30,10 +30,16 @@ fn signed(fmt: &str, v: f64) -> Result<String, String> {
 
 impl Engine {
     pub(crate) fn misc_calculator(&self) -> Result<std::cell::Ref<'_, MiscCalculator>, String> {
-        if self.misc.borrow().is_none() {
+        if self.misc.borrow().is_none() || self.misc_dirty.get() {
+            let old = self.misc.borrow().as_ref().map(|m| (m.base.clone(), m.session().main_merge()));
             let sess = CalcSession::new(Rc::new(self.model().clone()), CalculateOptions::default());
             sess.build_output(CalcMode::Main).map_err(|e| e.0)?;
-            let calc = sess.get_misc_calculator().map_err(|e| e.0)?;
+            let mut calc = sess.get_misc_calculator().map_err(|e| e.0)?;
+            if let Some((b, merge)) = old {
+                calc.base = b;
+                calc.session().set_main_merge(merge);
+            }
+            self.misc_dirty.set(false);
             *self.misc.borrow_mut() = Some(calc);
         }
         Ok(std::cell::Ref::map(self.misc.borrow(), |m| m.as_ref().expect("just made")))
@@ -257,8 +263,19 @@ impl Engine {
     }
 
     /// `calcFunc(override)` against `calcBase` as `AddStatComparesToTooltip` lines.
-    pub(crate) fn compare_override(&self, ov: CalcOverride, header: &str) -> Result<Vec<String>, String> {
+    pub(crate) fn compare_override(&self, mut ov: CalcOverride, header: &str) -> Result<Vec<String>, String> {
         let calc = self.misc_calculator()?;
+        // `env.flasks[override.toggleFlask]` (CalcSetup.lua:1368-1381) is a key by object, and this session parsed its own items: a live item is its twin there
+        let shared = calc.session().shared().map_err(|e| e.0)?;
+        for t in [&mut ov.toggle_flask, &mut ov.toggle_tincture] {
+            let twin = t.as_ref().and_then(|i| {
+                let id = i.id? as u64;
+                self.result().env.items.get(&id).is_some_and(|l| Rc::ptr_eq(l, i)).then(|| shared.items.get(&id).cloned())?
+            });
+            if twin.is_some() {
+                *t = twin;
+            }
+        }
         let run = calc.calc(&Rc::new(ov), None, self.view_mode_is_tree.get()).map_err(|e| e.0)?;
         let mut lines = Vec::new();
         self.add_stat_compares(&mut lines, &calc.base, &run, header, None)?;

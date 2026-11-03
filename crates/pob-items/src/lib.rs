@@ -9,6 +9,7 @@
 
 pub mod apply_range;
 pub mod build_raw;
+pub mod craft;
 pub mod item;
 pub mod lua;
 pub mod mod_tools;

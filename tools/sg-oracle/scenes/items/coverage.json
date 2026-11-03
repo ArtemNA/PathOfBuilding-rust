@@ -1,0 +1,419 @@
+{
+"steps": [
+{
+"open": "Dual Wield Cospris CoC"
+},
+{
+"cursorBuild": [
+"modeItems"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"cursorItem": [
+"slot:Flask 1"
+],
+"dump": true,
+"shot": "cover-flask-tip"
+},
+{
+"cursorChild": [
+"slot:Flask 1",
+"activate"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"cursor": [
+1200,
+790
+],
+"dump": true
+},
+{
+"cursorChild": [
+"slot:Flask 1",
+"activate"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"cursor": [
+1200,
+790
+],
+"dump": true
+},
+{
+"cursor": [
+1200,
+790
+],
+"clipboard": "Rarity: MAGIC\nDivine Life Flask\n",
+"hold": [
+"CTRL"
+],
+"events": [
+[
+"KeyDown",
+"v"
+],
+[
+"KeyUp",
+"v"
+]
+],
+"dump": true,
+"shot": "cover-flask"
+},
+{
+"release": [
+"CTRL"
+]
+},
+{
+"cursor": [
+1200,
+790
+],
+"clipboard": "Rarity: MAGIC\nAshbark Tincture\n",
+"hold": [
+"CTRL"
+],
+"events": [
+[
+"KeyDown",
+"v"
+],
+[
+"KeyUp",
+"v"
+]
+],
+"dump": true,
+"shot": "cover-tincture"
+},
+{
+"release": [
+"CTRL"
+]
+},
+{
+"cursor": [
+1200,
+790
+],
+"clipboard": "Rarity: UNIQUE\nFoulborn Mageblood\nHeavy Belt\nImplicits: 1\n+(30-50) to Strength\n+(30-50) to Dexterity\n+(15-25)% to Fire Resistance\n+(15-25)% to Cold Resistance\nMagic Utility Flasks cannot be Used\nMagic Utility Flask Effects cannot be removed\n{mutated}Rightmost 4 Magic Utility Flasks constantly apply their Flask Effects to you\n",
+"hold": [
+"CTRL"
+],
+"events": [
+[
+"KeyDown",
+"v"
+],
+[
+"KeyUp",
+"v"
+]
+],
+"dump": true,
+"shot": "cover-mutated"
+},
+{
+"release": [
+"CTRL"
+]
+},
+{
+"cursorItem": [
+"removeDisplayItem"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+]
+},
+{
+"cursor": [
+1200,
+790
+],
+"dump": true
+},
+{
+"cursorItemRow": [
+"uniqueDB",
+11
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+]
+},
+{
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON",
+true
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"cursor": [
+1200,
+790
+],
+"dump": true,
+"shot": "cover-foulborn-check"
+},
+{
+"cursor": [
+1200,
+790
+],
+"clipboard": "Rarity: RARE\nU6 Knot\nLarge Cluster Jewel\nCrafted: true\n",
+"hold": [
+"CTRL"
+],
+"events": [
+[
+"KeyDown",
+"v"
+],
+[
+"KeyUp",
+"v"
+]
+],
+"dump": true
+},
+{
+"release": [
+"CTRL"
+]
+},
+{
+"cursorItem": [
+"displayItemClusterJewelSkill"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"cursorPick": [
+"displayItemClusterJewelSkill",
+2
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true,
+"shot": "cover-cluster"
+},
+{
+"cursorItem": [
+"displayItemClusterJewelNodeCount",
+40,
+0
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"cursorItem": [
+"removeDisplayItem"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+]
+},
+{
+"cursor": [
+1200,
+790
+],
+"dump": true
+},
+{
+"cursorBuild": [
+"modeSkills"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+]
+},
+{
+"cursorSkillRow": 1,
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"cursorSkillCtl": "optimiseSockets",
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"cursor": [
+1200,
+790
+],
+"dump": true
+},
+{
+"cursorBuild": [
+"modeTree"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+]
+},
+{
+"waitAssets": true
+},
+{
+"treeOrder": "coverage-order"
+},
+{
+"cursorNode": 33989,
+"dump": true,
+"treeTip": true
+},
+{
+"events": [
+[
+"KeyDown",
+"RIGHTBUTTON"
+],
+[
+"KeyUp",
+"RIGHTBUTTON"
+]
+],
+"dump": true
+},
+{
+"cursor": [
+1200,
+790
+],
+"dump": true,
+"shot": "cover-socket-focus"
+},
+{
+"closeBuild": true
+}
+]
+}

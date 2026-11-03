@@ -1,0 +1,67 @@
+{
+"steps": [
+{
+"open": "OccVortex"
+},
+{
+"cursorBuild": [
+"modeItems"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"perfClick": "openTab"
+},
+{
+"cursor": [
+1200,
+790
+]
+},
+{
+"perf": 30
+},
+{
+"cursorItemRow": [
+"itemList",
+2
+],
+"perfClick": "hoverRow"
+},
+{
+"cursorItemRow": [
+"uniqueDB",
+5
+],
+"hold": [
+"CTRL"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"perfClick": "equipDB"
+},
+{
+"release": [
+"CTRL"
+]
+},
+{
+"closeBuild": true
+}
+]
+}

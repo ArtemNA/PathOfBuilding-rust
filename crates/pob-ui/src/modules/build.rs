@@ -159,6 +159,7 @@ pub struct BuildMode {
     pub calcs_tab: RefCell<Option<Rc<CalcsTab>>>,
     /// `self.skillsTab`.
     pub skills_tab: RefCell<Option<Rc<crate::tabs::skills::SkillsTab>>>,
+    pub items_tab: RefCell<Option<Rc<crate::tabs::items::ItemsTab>>>,
     /// `self.controls.breakdown`.
     pub breakdown: RefCell<Option<Rc<CalcBreakdownControl>>>,
     /// `self.overlayPanes`.
@@ -206,6 +207,7 @@ impl BuildMode {
             host: ControlHost::new(),
             calcs_tab: RefCell::new(None),
             skills_tab: RefCell::new(None),
+            items_tab: RefCell::new(None),
             breakdown: RefCell::new(None),
             overlay_panes: RefCell::new(Vec::new()),
             overlay_breakdown_control: RefCell::new(None),
@@ -360,6 +362,9 @@ impl BuildMode {
             t.undo.mod_flag.set(false);
         }
         if let Some(t) = self.skills_tab.borrow().as_ref() {
+            t.undo.mod_flag.set(false);
+        }
+        if let Some(t) = self.items_tab.borrow().as_ref() {
             t.undo.mod_flag.set(false);
         }
         match action.as_deref() {
@@ -570,6 +575,63 @@ impl BuildMode {
     }
 
     /// `buildMode:SyncLoadouts()` (Build.lua:771-896): the loadout list and the index to select.
+    /// Build.lua:320-357
+    fn open_new_loadout_popup(&self, g: &mut Gfx) {
+        let save: Rc<RefCell<Option<Rc<ButtonControl>>>> = Rc::new(RefCell::new(None));
+        let s1 = save.clone();
+        let edit = crate::controls::edit::EditControl::new(
+            g,
+            None,
+            rect(0.0, 40.0, 350.0, 20.0),
+            crate::controls::edit::EditArgs {
+                init: Some("New Loadout".to_string()),
+                limit: Some(100),
+                change_func: Some(Rc::new(move |_g: &mut Gfx, buf: &str, _: bool| {
+                    let ok = buf.chars().any(|c| !c.is_whitespace());
+                    if let Some(b) = s1.borrow().as_ref() {
+                        b.base.enabled.set(ok);
+                    }
+                })),
+                ..Default::default()
+            },
+        );
+        let me = self.me.clone();
+        let e2 = edit.clone();
+        let btn = ButtonControl::new(None, rect(-45.0, 70.0, 80.0, 20.0), "Save".to_string(), move |g| {
+            let s = me.upgrade().expect("buildMode");
+            let name = e2.buf.borrow().clone();
+            {
+                let mut eng = s.engine.borrow_mut();
+                let e = eng.as_mut().expect("engine");
+                let mut spec = e.new_spec_model();
+                spec.title = Some(name.clone());
+                e.push_spec(spec);
+                e.new_item_set(Some(&name), None);
+                e.new_skill_set(&name).unwrap_or_else(|er| panic!("{er}"));
+                let mut set = e.config_new_set();
+                set.title = Some(name.clone());
+                e.config_push_set(set);
+            }
+            s.sync_loadouts_pub(g);
+            s.mod_flag.set(true);
+            main().close_popup();
+        });
+        btn.base.enabled.set(false);
+        *save.borrow_mut() = Some(btn.clone());
+        let mut controls: IndexMap<String, ControlRef> = IndexMap::new();
+        controls.insert(
+            "label".into(),
+            LabelControl::new(None, rect(0.0, 20.0, 0.0, 16.0), "^7Enter name for this loadout:".to_string()),
+        );
+        controls.insert("edit".into(), edit);
+        controls.insert("save".into(), btn);
+        controls.insert(
+            "cancel".into(),
+            ButtonControl::new(None, rect(45.0, 70.0, 80.0, 20.0), "Cancel".to_string(), |_g| main().close_popup()),
+        );
+        main().open_popup(g, 370.0, 100.0, "Set Name", controls, Some("save"), Some("edit"), Some("cancel"), None);
+    }
+
     fn sync_loadouts(&self, g: &mut Gfx) {
         let (list, sel) = {
             let eng = self.engine.borrow();
@@ -909,11 +971,8 @@ impl BuildMode {
                         c.build_loadouts.set_sel(g, 1, false);
                     }
                     "^7^7New Loadout" => {
+                        s.open_new_loadout_popup(g);
                         c.build_loadouts.set_sel(g, 1, false);
-                        super::main::not_ported(
-                            g,
-                            "Modules/Build.lua:320-357 New Loadout (new spec / item / skill / config sets): U5-U7",
-                        );
                     }
                     _ => {
                         let same = {
@@ -927,23 +986,31 @@ impl BuildMode {
                                     let eng = s.engine.borrow();
                                     loadout_set_ids(eng.as_ref().expect("engine").model(), &value)
                                 };
-                                // Build.lua:405-416: the item and skill sets are U5, U6; a {link} loadout is not modelled
-                                let Some((spec_id, config_id)) = ids else {
-                                    c.build_loadouts.set_sel(g, 1, false);
-                                    super::main::not_ported(
-                                        g,
-                                        "Modules/Build.lua:408-413 switching loadouts (SetActiveItemSet / SetActiveSkillSet, {link}): U5-U6",
-                                    );
+                                // Build.lua:401-403 no exact match nor special grouping: bail
+                                let Some((spec_id, item_id, skill_id, config_id)) = ids else {
                                     return;
                                 };
-                                let (active_spec, active_config) = {
+                                let (active_spec, active_item, active_skill, active_config) = {
                                     let eng = s.engine.borrow();
                                     let e = eng.as_ref().expect("engine");
-                                    (e.model().tree.active_spec as usize, e.model().config.active_config_set)
+                                    (
+                                        e.model().tree.active_spec as usize,
+                                        e.active_item_set_id(),
+                                        e.skills_tab().active_skill_set_id,
+                                        e.model().config.active_config_set,
+                                    )
                                 };
                                 if spec_id != active_spec {
                                     let tab = s.tree_tab.borrow().clone().expect("treeTab");
                                     tab.set_active_spec(g, spec_id);
+                                }
+                                if item_id != active_item {
+                                    let tab = s.items_tab.borrow().clone().expect("itemsTab");
+                                    tab.set_active_item_set(g, item_id);
+                                }
+                                if skill_id != active_skill {
+                                    let tab = s.skills_tab.borrow().clone().expect("skillsTab");
+                                    tab.set_active_skill_set(g, skill_id);
                                 }
                                 if config_id != active_config {
                                     let tab = s.config_tab.borrow().clone().expect("configTab");
@@ -1415,7 +1482,7 @@ fn loadout_is_active(m: &pob_build::BuildModel, value: &str) -> Option<bool> {
     let spec_id = spec_ids.iter().position(|s| s == value).map(|i| i + 1);
     let active_spec = (m.tree.active_spec as usize).clamp(1, specs.len().max(1));
     if link.is_some() {
-        // `setSpecialLinks[linkMatch]["setId"]` (the {link} loadouts): not modelled yet
+        // a {link} loadout goes through `loadout_set_ids`
         return Some(false);
     }
     let spec_id = spec_id?;
@@ -1447,34 +1514,48 @@ fn loadout_is_active(m: &pob_build::BuildModel, value: &str) -> Option<bool> {
 }
 
 /// Build.lua:395-398: `(newSpecId, newConfigId)` when this loadout does not change the item or the skill set.
-fn loadout_set_ids(m: &pob_build::BuildModel, value: &str) -> Option<(usize, f64)> {
-    if lua::lmatch(value, "%{(%w+)%}").is_some() {
-        return None;
-    }
-    let spec_id = m.tree.specs.iter().position(|s| {
+fn loadout_set_ids(m: &pob_build::BuildModel, value: &str) -> Option<(usize, f64, f64, f64)> {
+    let link = lua::lmatch(value, "%{(%w+)%}");
+    // `setSpecialLinks[linkId].setId` (:811-846), and `setSpecialLinks[linkMatch]["setId"]` of a missing link is a Lua error
+    let link_of_sets = |titles: &[(f64, Option<String>)], link: &str| -> f64 {
+        for (id, t) in titles {
+            let t = t.clone().unwrap_or_else(|| "Default".into());
+            if let Some((ids, _)) = link_of(&t)
+                && ids.split(',').any(|x| x == link)
+            {
+                return *id;
+            }
+        }
+        panic!("Modules/Build.lua:368: attempt to index a nil value (field '?')");
+    };
+    let find_set = |titles: Vec<(f64, Option<String>)>| -> Option<f64> {
+        for (id, t) in &titles {
+            if t.as_deref().unwrap_or("Default") == value {
+                return Some(*id);
+            }
+            if let Some(l) = &link {
+                return Some(link_of_sets(&titles, l));
+            }
+        }
+        None
+    };
+    let specs: Vec<(f64, Option<String>)> = m.tree.specs.iter().enumerate().map(|(i, s)| ((i + 1) as f64, s.title.clone())).collect();
+    let mut spec_id = None;
+    for (i, s) in m.tree.specs.iter().enumerate() {
         let t = s.title.clone().unwrap_or_else(|| "Default".into());
-        spec_list_name(&s.tree_version, &t) == value
-    })? + 1;
-    let same_set = |one: bool, titles: Vec<(f64, Option<String>)>, active: f64| {
-        one || titles.iter().any(|(id, t)| t.as_deref().unwrap_or("Default") == value && *id == active)
-    };
-    if !same_set(
-        m.item_sets.len() == 1,
-        m.item_sets.iter().map(|s| (s.id, s.title.clone())).collect(),
-        m.active_item_set,
-    ) || !same_set(
-        m.skills.sets.len() <= 1,
-        m.skills.sets.iter().map(|s| (s.id, s.title.clone())).collect(),
-        m.skills.active_skill_set,
-    ) {
-        return None;
+        if spec_list_name(&s.tree_version, &t) == value {
+            spec_id = Some(i + 1);
+            break;
+        }
+        if let Some(l) = &link {
+            spec_id = Some(link_of_sets(&specs, l) as usize);
+            break;
+        }
     }
-    let config_id = if m.config.sets.len() <= 1 {
-        1.0
-    } else {
-        m.config.sets.iter().find(|s| s.title.as_deref().unwrap_or("Default") == value)?.id
-    };
-    Some((spec_id, config_id))
+    let item_id = if m.item_sets.len() == 1 { 1.0 } else { find_set(m.item_sets.iter().map(|s| (s.id, s.title.clone())).collect())? };
+    let skill_id = if m.skills.sets.len() == 1 { 1.0 } else { find_set(m.skills.sets.iter().map(|s| (s.id, s.title.clone())).collect())? };
+    let config_id = if m.config.sets.len() == 1 { 1.0 } else { find_set(m.config.sets.iter().map(|s| (s.id, s.title.clone())).collect())? };
+    Some((spec_id?, item_id, skill_id, config_id))
 }
 
 /// `treeVersions[v].display` with the `[...] ` prefix of a non-latest spec (Build.lua:812).
@@ -1677,6 +1758,8 @@ impl Mode for BuildMode {
         *self.breakdown.borrow_mut() = Some(breakdown);
         let skills = crate::tabs::skills::new_skills_tab(g, self.me.clone());
         *self.skills_tab.borrow_mut() = Some(skills);
+        let items = crate::tabs::items::ItemsTab::new(g, self.me.clone());
+        *self.items_tab.borrow_mut() = Some(items);
         self.overlay_panes.borrow_mut().clear();
         *self.overlay_breakdown_control.borrow_mut() = None;
         *self.breakdown_inputs.borrow_mut() = None;
@@ -1868,6 +1951,15 @@ impl Mode for BuildMode {
                 height: screen_h - 32.0,
             };
             tab.draw(f, &view_port, input_events);
+        } else if self.view_mode.borrow().as_str() == "ITEMS" {
+            let tab = self.items_tab.borrow().clone().expect("itemsTab");
+            let view_port = Rect {
+                x: side_bar_width,
+                y: 32.0,
+                width: screen_w - side_bar_width,
+                height: screen_h - 32.0,
+            };
+            tab.draw(f, &view_port, input_events);
         } else if matches!(self.view_mode.borrow().as_str(), "CONFIG" | "NOTES") {
             let view_port = Rect {
                 x: side_bar_width,
@@ -1904,7 +1996,8 @@ impl Mode for BuildMode {
         let notes_mod = self.notes_tab.borrow().as_ref().is_some_and(|t| t.mod_flag.get());
         let config_mod = self.config_tab.borrow().as_ref().is_some_and(|t| t.undo.mod_flag.get());
         let skills_mod = self.skills_tab.borrow().as_ref().is_some_and(|t| t.undo.mod_flag.get());
-        self.unsaved.set(self.mod_flag.get() || calcs_mod || notes_mod || config_mod || skills_mod);
+        let items_mod = self.items_tab.borrow().as_ref().is_some_and(|t| t.undo.mod_flag.get());
+        self.unsaved.set(self.mod_flag.get() || calcs_mod || notes_mod || config_mod || skills_mod || items_mod);
         sg::set_draw_layer(f, Some(5), 0);
         sg::set_draw_color(f, 0.2, 0.2, 0.2);
         sg::draw_rect(f, 0.0, 0.0, screen_w, 28.0);

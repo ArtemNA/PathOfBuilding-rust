@@ -84,6 +84,10 @@ impl PopupDialog {
     }
 
     /// `self.controls[name]`.
+    pub fn control_names(&self) -> Vec<String> {
+        self.host.controls_named().into_iter().map(|x| x.0).collect()
+    }
+
     pub fn control(&self, name: &str) -> ControlRef {
         self.host.get(name).unwrap_or_else(|| panic!("popup has no control '{name}'"))
     }

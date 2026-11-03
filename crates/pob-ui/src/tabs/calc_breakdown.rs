@@ -360,7 +360,7 @@ impl CalcBreakdownControl {
                 t.draw(f, cx, row_y, Some((cw, 12.0)), view_port);
             }
             BdHover::Item => {
-                note_not_ported("Classes/CalcBreakdownControl.lua:285/:431 itemsTab:AddItemTooltip: U6");
+                note_not_ported("Classes/CalcBreakdownControl.lua:285/:431 itemsTab:AddItemTooltip: the engine's row keeps no item");
             }
             BdHover::Node(Some((nx, ny))) => self.draw_node_viewer(f, view_port, (cx, cw, row_y), (*nx, *ny)),
             BdHover::Node(None) => {}

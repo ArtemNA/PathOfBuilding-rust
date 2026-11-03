@@ -277,6 +277,12 @@ fn add_node_name(view: &mut PassiveTreeView, g: &Gfx, e: &Engine, art: &TreeArt,
     }
 }
 
+/// `AddNodeName` from outside the view's tree tooltip (ItemsTab.lua:875, NotableDBControl.lua:247).
+pub fn add_node_name_pub(view: &mut PassiveTreeView, g: &Gfx, e: &Engine, node: &SpecNode) {
+    let art = view.art(&crate::launch::launch().cfg.script_path, &e.spec_rc().tree);
+    add_node_name(view, g, e, &art, node);
+}
+
 /// `addModInfoToTooltip` (:1543-1566).
 fn add_mod_info(view: &mut PassiveTreeView, g: &Gfx, node: &SpecNode, i: usize, text: &str, font_size_big: f64) {
     let Some(Some(m)) = node.mods().get(i) else { return };
@@ -321,7 +327,11 @@ fn add_node_tooltip(
             .and_then(|id| e.result().env.item(id).cloned())
             .is_some();
         if has_jewel {
-            view.note_unimplemented("PassiveTreeView.lua:1501 itemsTab:AddItemTooltip of the socketed jewel (U6)");
+            let jewel = spec.jewels.get(f64::from(node.id)).copied().and_then(|id| e.result().env.item(id).cloned());
+            let tab = crate::modules::main::main().build_mode.items_tab.borrow().clone();
+            if let (Some(jewel), Some(tab)) = (jewel, tab) {
+                tab.add_socket_tooltip(&mut view.tooltip, g, &jewel, node.id);
+            }
         } else {
             add_node_name(view, g, e, art, node);
         }

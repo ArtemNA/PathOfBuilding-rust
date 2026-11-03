@@ -74,6 +74,17 @@ pub struct SkillsCarry {
     pub from_item_marks: BTreeSet<String>,
     /// `grantedEffect.levels[level].cost = {}` (SkillsTab ProcessSocketGroup), as `(effect id, level)`.
     pub cost_wiped: Vec<(String, f64)>,
+    /// What the last MAIN initEnv merged into `build.skillsTab` (CalcSetup.lua:1468, MAIN only): a CALCULATOR / CALCS initEnv rebuilds the tab and merges these,
+    /// not its own: an `override` that takes an item off (`repSlotName` / `repItem`) leaves its socket group in upstream's shared table.
+    pub main_merge: Option<Rc<MainMerge>>,
+}
+
+/// `env.grantedSkills` and `env.explodeSources` of the last MAIN initEnv.
+#[derive(Debug)]
+pub struct MainMerge {
+    pub granted: Vec<crate::env::GrantedSkill>,
+    pub extra: Vec<crate::skills::GrantedSkillExtra>,
+    pub explode_sources: Vec<crate::skills_tab::ExplodeSource>,
 }
 
 /// One finished `calcs.perform`: the env and what perform made (`env.player.output` & co. live in [`PerformState`]).
@@ -454,9 +465,9 @@ impl CalcSession {
     /// branches that write display state onto shared tables and are read by no calc module (`node.finalModList` /
     /// `jewelRadiusData` :272-298, `superseded` :435/:445, `gemInstance.displayEffect`/`supportEffect` :1671-1696/:1786, the main
     /// skill write-back :1887, `displayLabel`/`displaySkillList` :1895-1913) -- plus :1452, the granted-skill merge into
-    /// `build.skillsTab`, MAIN only: the shared tab a CALCULATOR initEnv reads holds what the last MAIN merge left, which is what
-    /// rebuilding the tab and merging again gives. So CALCULATOR = the MAIN path with `buildBreakdown = false`, once a MAIN initEnv has
-    /// run in the session (else the merge would be one upstream does not do). CALCS (R8.6) is the same path with its own branches --
+    /// `build.skillsTab`, MAIN only: the shared tab a CALCULATOR initEnv reads holds what the last MAIN merge left, whatever the `override`
+    /// did to the items: the tab is rebuilt and merged with the inputs of that MAIN merge ([`SkillsCarry::main_merge`]). So CALCULATOR = the MAIN path with
+    /// `buildBreakdown = false`, once a MAIN initEnv has run in the session. CALCS (R8.6) is the same path with its own branches --
     /// `misc_buffMode` (CalcSetup.lua:565-583), `skill_number` (:1585), `mainActiveSkillCalcs` (:1882), the `*Calcs` gem fields
     /// (CalcActiveSkill.lua:250/623/649/694/736/924) -- and `buildBreakdown = true`; `displaySkillListCalcs` (:1912) is display state.
     pub fn init_env(&self, mode: CalcMode) -> Result<Env, SessionError> {
@@ -520,6 +531,13 @@ impl CalcSession {
                 }
             }
         }
+        if mode == CalcMode::Main {
+            self.core.carry.borrow_mut().main_merge = Some(Rc::new(MainMerge {
+                granted: env.granted_skills.clone(),
+                extra: env.granted_skills_extra.clone(),
+                explode_sources: env.explode_sources.clone(),
+            }));
+        }
         // :499-500
         env.mode = mode.as_str();
         env.build_breakdown = matches!(mode, CalcMode::Main | CalcMode::Calcs);
@@ -529,6 +547,16 @@ impl CalcSession {
         }
         self.core.log.borrow_mut().init_env_ms.push(t0.elapsed().as_secs_f64() * 1000.0);
         Ok((env, cached))
+    }
+
+    /// What the last MAIN initEnv merged ([`SkillsCarry::main_merge`]).
+    pub fn main_merge(&self) -> Option<Rc<MainMerge>> {
+        self.core.carry.borrow().main_merge.clone()
+    }
+
+    /// The merge another initEnv of this session sees: an edit of the items does not reach upstream's shared `socketGroupList` until the next MAIN.
+    pub fn set_main_merge(&self, merge: Option<Rc<MainMerge>>) {
+        self.core.carry.borrow_mut().main_merge = merge;
     }
 
     /// The session's [`BuildShared`], made on first use (a load error is returned, and retried by the next initEnv).
