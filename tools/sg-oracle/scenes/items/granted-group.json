@@ -1,0 +1,197 @@
+{
+"steps": [
+{
+"open": "Dual Wield Cospris CoC"
+},
+{
+"cursorBuild": [
+"modeSkills"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+]
+},
+{
+"cursorSkillRow": 0,
+"hold": [
+"CTRL"
+],
+"events": [
+[
+"KeyDown",
+"RIGHTBUTTON"
+],
+[
+"KeyUp",
+"RIGHTBUTTON"
+]
+]
+},
+{
+"release": [
+"CTRL"
+]
+},
+{
+"cursor": [
+1200,
+790
+]
+},
+{
+"cursorBuild": [
+"modeItems"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"cursor": [
+1200,
+790
+],
+"hold": [
+"CTRL"
+],
+"events": [
+[
+"KeyDown",
+"s"
+],
+[
+"KeyUp",
+"s"
+]
+],
+"dump": true,
+"file": "Dual Wield Cospris CoC.xml",
+"fileOut": "granted-group-1.xml"
+},
+{
+"release": [
+"CTRL"
+]
+},
+{
+"cursorItem": [
+"slot:Ring 1"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"cursorPick": [
+"slot:Ring 1",
+1
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"cursor": [
+1200,
+790
+],
+"dump": true
+},
+{
+"cursor": [
+1200,
+790
+],
+"dump": true
+},
+{
+"hold": [
+"CTRL"
+],
+"events": [
+[
+"KeyDown",
+"z"
+],
+[
+"KeyUp",
+"z"
+]
+],
+"dump": true
+},
+{
+"release": [
+"CTRL"
+]
+},
+{
+"cursor": [
+1200,
+790
+],
+"dump": true
+},
+{
+"cursor": [
+1200,
+790
+],
+"hold": [
+"CTRL"
+],
+"events": [
+[
+"KeyDown",
+"s"
+],
+[
+"KeyUp",
+"s"
+]
+],
+"dump": true,
+"file": "Dual Wield Cospris CoC.xml",
+"fileOut": "granted-group-2.xml"
+},
+{
+"release": [
+"CTRL"
+]
+},
+{
+"closeBuild": true
+}
+]
+}

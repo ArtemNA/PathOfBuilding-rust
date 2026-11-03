@@ -294,6 +294,9 @@ pub struct CheckBoxControl {
     #[allow(clippy::type_complexity)]
     pub change_func: RefCell<Option<Rc<dyn Fn(&mut Gfx, bool)>>>,
     pub border_func: RefCell<Option<Rc<dyn Fn() -> (f64, f64, f64)>>>,
+    /// `box.RealDraw = box.Draw; function box:Draw(...)`: what a caller draws first, at the control's position.
+    #[allow(clippy::type_complexity)]
+    pub before_draw: RefCell<Option<Rc<dyn Fn(&mut Frame<'_>, f64, f64)>>>,
     pub state: Cell<bool>,
     pub clicked: Cell<bool>,
 }
@@ -321,6 +324,7 @@ impl CheckBoxControl {
             label_right: Cell::new(false),
             change_func: RefCell::new(change_func),
             border_func: RefCell::new(None),
+            before_draw: RefCell::new(None),
             state: Cell::new(initial_state),
             clicked: Cell::new(false),
         })
@@ -360,6 +364,10 @@ impl Control for CheckBoxControl {
     /// CheckBoxControl.lua:38-88
     fn draw(&self, f: &mut Frame<'_>, view_port: &Rect, no_tooltip: bool) {
         let (x, y) = self.get_pos(f);
+        let before = self.before_draw.borrow().clone();
+        if let Some(b) = before {
+            b(f, x, y);
+        }
         let size = self.base.width.get(f);
         let enabled = self.is_enabled(f);
         let m_over = self.mouse_over(f);

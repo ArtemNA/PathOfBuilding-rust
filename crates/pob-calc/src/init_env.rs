@@ -2277,8 +2277,12 @@ fn init_env_core(
     // --- (18) the skill phase (:1453-1970) ------------------------------------------------------------------------------
     // (18-) the merge of the granted skills (:1448-1563, R6.3)
     if let Some(st) = env.skills.as_mut() {
-        st.merge_granted(&env.granted_skills, &env.granted_skills_extra, &env.explode_sources)
-            .map_err(InitEnvError)?;
+        // :1468 MAIN only: another mode sees what the last MAIN merge left
+        match carry.and_then(|c| c.main_merge.as_ref()).filter(|_| mode != "MAIN") {
+            Some(m) => st.merge_granted(&m.granted, &m.extra, &m.explode_sources),
+            None => st.merge_granted(&env.granted_skills, &env.granted_skills_extra, &env.explode_sources),
+        }
+        .map_err(InitEnvError)?;
     } else {
         env.unimplemented
             .push("CalcSetup.lua:1453-1946 skills: socket groups, supports, createActiveSkill, buildActiveSkillModList (P5)".into());

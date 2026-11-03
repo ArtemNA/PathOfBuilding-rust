@@ -1,0 +1,32 @@
+{
+"steps": [
+{
+"open": "Dual Wield Cospris CoC"
+},
+{
+"cursorBuild": [
+"modeItems"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"cursorItem": [
+"slot:Ring 1"
+],
+"dump": true
+},
+{
+"closeBuild": true
+}
+]
+}

@@ -484,6 +484,17 @@ impl TreeTab {
         let ver = engine_read(|e| e.spec_rc().tree_version.clone());
         self.show_convert.set(!ver.starts_with(latest_tree_version()));
         b.after_spec_change(g);
+        // :573-578 `if itemOrderList[1] then itemsTab:PopulateSlots()`, `specSelect.selIndex = specId`
+        let items_tab = b.items_tab.borrow().clone();
+        if let Some(it) = items_tab {
+            if !engine_read(|e| e.item_order().is_empty()) {
+                it.populate_slots(g);
+            }
+            let spec_select = it.spec_select.borrow().clone();
+            if let Some(s) = spec_select {
+                s.sel_index.set(engine_read(pob_engine::engine::Engine::active_spec));
+            }
+        }
         // `versionSelect:SelByValue(curSpec.treeVersion, 'value')`
         let ix = self
             .version_select

@@ -212,6 +212,11 @@ impl Engine {
     }
 
     /// `NewConfigSet()` (:1280-1300) without an id: the first free one. Not in `configSets` until [`Engine::config_insert_set`] (the Lua's Cancel removes it again).
+    /// `t_insert(configSetOrderList, set.id)` of `New Loadout` (Build.lua:341-343).
+    pub fn config_push_set(&mut self, set: ConfigSetModel) {
+        self.model_mut().config.sets.push(set);
+    }
+
     pub fn config_new_set(&self) -> ConfigSetModel {
         ConfigSetModel {
             id: self.config_free_id(),

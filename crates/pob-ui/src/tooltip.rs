@@ -34,8 +34,10 @@ pub struct TooltipLine {
     pub center: Option<bool>,
     /// `modLine and modLine.disabled`.
     pub mod_line_disabled: bool,
-    /// `background` (a path/handle): Tooltip.lua:609-636 is unimplemented.
+    /// `background` (a path).
     pub background: Option<String>,
+    /// `line.modLine`: which line of the item (the list, the index), for the click that toggles it (ItemsTab.lua:1584-1600).
+    pub mod_line: Option<(u8, usize)>,
     /// `bounds = { x, y, width, height }` (set by `CalculateColumns`).
     pub bounds: Option<Rect>,
     /// `separatorImage`.
@@ -62,6 +64,7 @@ enum DrawEntry {
         font: &'static str,
         text: String,
         strikethrough: bool,
+        background: Option<String>,
     },
     Rect {
         x: f64,
@@ -84,6 +87,34 @@ pub struct Tooltip {
     pub child_tooltips: Option<Vec<Tooltip>>,
     /// `self.recipe`: `SetRecipe` (a notable's oils).
     pub recipe: Option<Vec<String>>,
+    /// `self.foilType` (ItemsTab.lua:4281).
+    pub foil_type: Option<String>,
+    /// `self.influenceHeader1`, `self.influenceHeader2` (ItemsTab.lua:4053-4122).
+    pub influence_header: [Option<String>; 2],
+}
+
+/// `headerInfluence` (Tooltip.lua:60-76).
+fn header_influence(name: &str) -> String {
+    format!("Assets/{}icon.png", if name == "Foulborn" { "breach".to_string() } else { name.to_lowercase() })
+}
+
+/// `foilTypes` (Tooltip.lua:502-516).
+fn foil_color(name: Option<&str>) -> (f64, f64, f64) {
+    match name {
+        Some("Amethyst") => (0.9, 0.6, 1.0),
+        Some("Verdant") => (0.5, 1.0, 0.5),
+        Some("Ruby") => (1.0, 0.5, 0.6),
+        Some("Cobalt") => (0.6, 0.7, 1.0),
+        Some("Sunset") => (1.0, 1.0, 0.6),
+        Some("Aureate") => (1.0, 0.85, 0.2),
+        Some("Celestial Quartz") => (1.0, 0.7, 0.85),
+        Some("Celestial Ruby") => (0.8, 0.3, 0.2),
+        Some("Celestial Emerald") => (0.2, 0.6, 0.3),
+        Some("Celestial Aureate") => (0.8, 0.7, 0.2),
+        Some("Celestial Pearl") => (1.0, 0.85, 0.9),
+        Some("Celestial Amethyst") => (0.5, 0.6, 1.0),
+        _ => (0.6, 1.0, 0.5),
+    }
 }
 
 /// `headerConfigs[rarity]` (Tooltip.lua:45-59).
@@ -284,6 +315,8 @@ impl Tooltip {
             color: TooltipColor::Rgb(0.5, 0.3, 0.0),
             child_tooltips: None,
             recipe: None,
+            foil_type: None,
+            influence_header: [None, None],
         };
         t.clear(false);
         t
@@ -325,6 +358,15 @@ impl Tooltip {
         self.add_line_ex(g, size, text, None, false, None);
     }
 
+    /// `AddLine(size, text, font, modLine)`: the lines it adds know their `modLine`.
+    pub fn add_mod_line(&mut self, g: &Gfx, size: f64, text: &str, font: Option<&'static str>, disabled: bool, id: (u8, usize)) {
+        let from = self.lines.len();
+        self.add_line_ex(g, size, Some(text), font, disabled, None);
+        for l in &mut self.lines[from..] {
+            l.mod_line = Some(id);
+        }
+    }
+
     pub fn add_line_ex(
         &mut self,
         g: &Gfx,
@@ -353,6 +395,7 @@ impl Tooltip {
                 background: background.map(str::to_string),
                 bounds: None,
                 separator_image: None,
+                mod_line: None,
             };
             if let Some(max_width) = self.max_width {
                 for wrapped in wrap_string(g, line, size, max_width - H_PAD) {
@@ -474,6 +517,7 @@ impl Tooltip {
                     font,
                     text: title_text.clone(),
                     strikethrough: false,
+                    background: None,
                 });
                 cur_x += sg::draw_string_width(g, title_size, font, &title_text) + H_PAD / 2.0;
                 for (rn, name, text_w, icon_w) in oils {
@@ -486,6 +530,7 @@ impl Tooltip {
                         font,
                         text: rn,
                         strikethrough: false,
+                        background: None,
                     });
                     cur_x += text_w;
                     draw_stack.push(DrawEntry::Image {
@@ -523,6 +568,7 @@ impl Tooltip {
                     font,
                     text: text.clone(),
                     strikethrough: data.mod_line_disabled,
+                    background: data.background.clone(),
                 });
                 self.lines[i].bounds = Some(Rect::new(x + H_PAD / 2.0, y, tt_w - H_PAD, size + 2.0));
                 y += size + 2.0;
@@ -575,9 +621,13 @@ impl Tooltip {
                                 orig_x - old_base_x + new_base_x
                             };
                         }
-                        DrawEntry::Rect { x, w, .. } | DrawEntry::Image { x, w, .. } => {
+                        DrawEntry::Rect { x, w, .. } => {
                             *x = orig_x - old_base_x + new_base_x;
                             *w = extra_column_width - BORDER_WIDTH;
+                        }
+                        DrawEntry::Image { x, w, is_separator, .. } => {
+                            *x = orig_x - old_base_x + new_base_x;
+                            *w = extra_column_width - if *is_separator { H_PAD } else { BORDER_WIDTH };
                         }
                     }
                 }
@@ -657,7 +707,28 @@ impl Tooltip {
             let header_y = tt_y + BORDER_WIDTH;
             let header_total_width = tt_w - 2.0 * BORDER_WIDTH;
             let middle_area = (header_total_width - 2.0 * c.side_width).max(0.0);
+            let relic = self.tooltip_header.as_deref() == Some("RELIC");
+            let foil = foil_color(self.foil_type.as_deref());
+            let allow_icon = c.left.starts_with("Assets/itemsheader") && !c.left.contains("gem");
+            if relic {
+                sg::set_draw_color(f, foil.0, foil.1, foil.2);
+            }
             sg::draw_image(f, Some(&cached_image(c.left)), header_x, header_y, c.side_width, c.height, None);
+            if let (Some(h), true) = (&self.influence_header[0], allow_icon) {
+                sg::set_draw_color(f, 1.0, 1.0, 1.0);
+                sg::draw_image(
+                    f,
+                    Some(&cached_image(&header_influence(h))),
+                    header_x + 2.0,
+                    header_y + (c.height - c.height / 2.0) / 2.0,
+                    c.height / 2.0,
+                    c.height / 2.0,
+                    None,
+                );
+            }
+            if relic {
+                sg::set_draw_color(f, foil.0, foil.1, foil.2);
+            }
             if middle_area > 0.0 {
                 let mut draw_x = header_x + c.side_width;
                 let end_x = header_x + header_total_width - c.side_width;
@@ -680,6 +751,18 @@ impl Tooltip {
                 c.height,
                 None,
             );
+            if let (Some(h), true) = (&self.influence_header[1], allow_icon) {
+                sg::set_draw_color(f, 1.0, 1.0, 1.0);
+                sg::draw_image(
+                    f,
+                    Some(&cached_image(&header_influence(h))),
+                    header_x + header_total_width - c.height / 2.0 - 2.0,
+                    header_y + (c.height - c.height / 2.0) / 2.0,
+                    c.height / 2.0,
+                    c.height / 2.0,
+                    None,
+                );
+            }
         }
         let mut first_separator_skipped = false;
         let header_type = self.tooltip_header.as_deref().map(str::to_uppercase).unwrap_or_default();
@@ -716,7 +799,15 @@ impl Tooltip {
                     font,
                     text,
                     strikethrough,
+                    background,
                 } => {
+                    if let (Some(bg), true) = (background, flavour) {
+                        // :598-624 the colour survives the image
+                        let prev = f.get_draw_color();
+                        sg::set_draw_color_a(f, 1.0, 1.0, 1.0, 1.0);
+                        sg::draw_image(f, Some(&cached_image(bg)), tt_x + 4.0, *y - 5.0, tt_w - 8.0, *size + 10.0, None);
+                        sg::set_draw_color_a(f, f64::from(prev[0]), f64::from(prev[1]), f64::from(prev[2]), f64::from(prev[3]));
+                    }
                     sg::draw_string(f, *x, *y, Some(align), *size, font, text);
                     if *strikethrough {
                         let text_w = sg::draw_string_width(f, *size, font, text);
@@ -727,9 +818,6 @@ impl Tooltip {
                     }
                 }
             }
-        }
-        if show_flavour_text() && self.lines.iter().any(|l| l.background.is_some()) {
-            unimplemented!("Tooltip.lua:609-636: line background images (gems/items, U5/U6)");
         }
         self.set_color(f);
         for i in 0..=columns {

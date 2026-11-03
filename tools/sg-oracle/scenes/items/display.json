@@ -1,0 +1,237 @@
+{
+"steps": [
+{
+"open": "Dual Wield Cospris CoC"
+},
+{
+"cursorBuild": [
+"modeItems"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"cursorItemRow": [
+"itemList",
+4
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+]
+},
+{
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON",
+true
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true,
+"shot": "display-open"
+},
+{
+"cursor": [
+1200,
+790
+],
+"dump": true
+},
+{
+"cursorItem": [
+"removeDisplayItem"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"cursor": [
+1200,
+790
+],
+"clipboard": "Rarity: RARE\nU6 Loop\nCoral Ring\n+25 to maximum Life\n+10% to Fire Resistance\n",
+"hold": [
+"CTRL"
+],
+"events": [
+[
+"KeyDown",
+"v"
+],
+[
+"KeyUp",
+"v"
+]
+],
+"dump": true,
+"shot": "display-paste"
+},
+{
+"release": [
+"CTRL"
+]
+},
+{
+"cursorItem": [
+"addDisplayItem"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"cursor": [
+1200,
+790
+],
+"dump": true
+},
+{
+"hold": [
+"CTRL"
+],
+"events": [
+[
+"KeyDown",
+"z"
+],
+[
+"KeyUp",
+"z"
+]
+],
+"dump": true
+},
+{
+"release": [
+"CTRL"
+]
+},
+{
+"cursor": [
+1200,
+790
+],
+"dump": true
+},
+{
+"hold": [
+"CTRL"
+],
+"events": [
+[
+"KeyDown",
+"y"
+],
+[
+"KeyUp",
+"y"
+]
+],
+"dump": true
+},
+{
+"release": [
+"CTRL"
+]
+},
+{
+"cursor": [
+1200,
+790
+],
+"dump": true
+},
+{
+"hold": [
+"CTRL"
+],
+"events": [
+[
+"KeyDown",
+"d"
+],
+[
+"KeyUp",
+"d"
+]
+],
+"dump": true
+},
+{
+"release": [
+"CTRL"
+]
+},
+{
+"cursor": [
+1200,
+790
+],
+"dump": true
+},
+{
+"hold": [
+"CTRL"
+],
+"events": [
+[
+"KeyDown",
+"s"
+],
+[
+"KeyUp",
+"s"
+]
+],
+"dump": true,
+"file": "Dual Wield Cospris CoC.xml",
+"fileOut": "display-save.xml"
+},
+{
+"release": [
+"CTRL"
+]
+},
+{
+"closeBuild": true
+}
+]
+}

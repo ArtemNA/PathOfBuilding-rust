@@ -23,7 +23,7 @@ use crate::gem_tooltip::{add_socket_group_tooltip, skill_color};
 use crate::host::{ControlHost, InputEvent, InputEvents, ipairs};
 use crate::lua::tostring_num;
 use crate::modules::build::BuildMode;
-use crate::modules::main::{BareControl, main, not_ported, note_not_ported, sel_by_value};
+use crate::modules::main::{BareControl, main, sel_by_value};
 use crate::sg;
 use crate::tooltip::Tooltip;
 use crate::undo::{UndoHandler, UndoHost};
@@ -385,7 +385,13 @@ impl ListHooks<GroupRef> for SkillListHooks {
         let t = self.0.upgrade().expect("skillsTab");
         let Some(index) = l.get_hover_index(g) else { return };
         if key == "F1" {
-            note_not_ported("Classes/SkillListControl.lua:202-208 itemLib.wiki.openGem (U6)");
+            // :202-208 `itemLib.wiki.openGem`
+            let name = t.read(|e| e.socket_groups()[index - 1].gem_list.first().and_then(|g| g.gem_data.clone()));
+            if let Some(d) = name.as_deref().and_then(gem_of) {
+                let support = pob_data::skills::skills().get(&d.granted_effect_id).is_some_and(|x| x.support);
+                let n = if support { format!("{} Support", d.name) } else { d.name.clone() };
+                crate::tabs::items::wiki_open(g, &n);
+            }
         } else if key == "RIGHTBUTTON" {
             if sg::is_key_down(g, "CTRL") {
                 let state = t.read(|e| e.socket_groups()[index - 1].include_in_full_dps != Some(true));
@@ -1179,6 +1185,62 @@ impl SkillsTab {
         }
     }
 
+    /// SkillsTab.lua:256-289
+    fn optimise_sockets(&self, g: &mut Gfx) {
+        let Some((item, slot)) = self.selected_item() else { return };
+        let b = self.build();
+        let tab = b.items_tab.borrow().clone().expect("itemsTab");
+        tab.add_undo_state(false);
+        let Some(base) = item.base else { return };
+        // `getSocketCounts` (:246-255)
+        let mut it = (*item).clone();
+        let abyssal = it.sockets.iter().filter(|s| s.color == "A").count() as f64;
+        let mut max_sockets = base.socket_limit.unwrap_or(0.0) - abyssal;
+        let mut group_count = 0.0;
+        it.sockets.clear();
+        let skills = pob_data::skills::skills();
+        self.read(|e| {
+            for g2 in e.socket_groups() {
+                if g2.slot.as_deref() == Some(slot.as_str()) {
+                    for gem in &g2.gem_list {
+                        let ge = gem
+                            .granted_effect
+                            .as_ref()
+                            .and_then(|i| skills.get(i))
+                            .or_else(|| gem.gem_data.as_deref().and_then(gem_of).and_then(|d| skills.get(&d.granted_effect_id)));
+                        if let Some(ge) = ge
+                            && max_sockets > 0.0
+                        {
+                            let colour = match ge.color {
+                                Some(1.0) => "R",
+                                Some(2.0) => "G",
+                                Some(3.0) => "B",
+                                _ => "W",
+                            };
+                            it.sockets.push(pob_items::Socket {
+                                color: colour.to_string(),
+                                group: group_count,
+                            });
+                            max_sockets -= 1.0;
+                        }
+                    }
+                    group_count += 1.0;
+                }
+            }
+        });
+        for _ in 0..abyssal as usize {
+            group_count += 1.0;
+            it.sockets.push(pob_items::Socket {
+                color: "A".to_string(),
+                group: group_count,
+            });
+        }
+        it.build_and_parse_raw();
+        self.edit(|e| e.add_item(&it, None));
+        tab.populate_slots(g);
+        b.build_flag.set(true);
+    }
+
     /// `SkillSetListControl:OnSelDelete`'s confirm (SkillSetListControl.lua:106-121).
     fn confirm_delete_set(&self, g: &mut Gfx, index: usize, id: f64) {
         let title = self
@@ -1959,8 +2021,10 @@ pub fn new_skills_tab(g: &mut Gfx, build: Weak<BuildMode>) -> Rc<SkillsTab> {
                         Some("This will allow the skill to benefit from modifiers on the item that affect socketed gems."),
                     );
                 } else if let Some(slot) = slot {
-                    if t1().read(|e| e.slot_item(&slot)).is_some() {
-                        note_not_ported("Classes/SkillsTab.lua:198 itemsTab:AddItemTooltip (U6)");
+                    if let Some(item) = t1().read(|e| e.slot_item(&slot)) {
+                        let b = t1().build();
+                        let tab = b.items_tab.borrow().clone().expect("itemsTab");
+                        tab.add_slot_tooltip(tooltip, g, &item, &slot);
                     } else {
                         tooltip.add_line(g, 16.0, Some("No item is equipped in this slot."));
                     }
@@ -2035,11 +2099,9 @@ pub fn new_skills_tab(g: &mut Gfx, build: Weak<BuildMode>) -> Rc<SkillsTab> {
             anchor("LEFT", &slr, "RIGHT"),
             rect(4.0, 0.0, 120.0, 18.0),
             "Optimise Sockets".to_string(),
-            |g| {
-                not_ported(
-                    g,
-                    "Classes/SkillsTab.lua:256-289 Optimise Sockets (item:BuildAndParseRaw, a mutator of items): U6",
-                );
+            {
+                let t1 = t.clone();
+                move |g| t1().optimise_sockets(g)
             },
         );
         let t1 = t.clone();

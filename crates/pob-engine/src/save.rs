@@ -157,6 +157,8 @@ pub struct SaveExtras {
     pub calcs_collapsed: HashMap<(String, String), bool>,
     /// ItemsTab `showStatDifferences` (ctor true, :1323-1325).
     pub items_show_stat_differences: bool,
+    /// The item sets `NewItemSet` made in this session: `useSecondWeaponSet` is nil, `Save` writes `tostring(nil)` (ItemsTab.lua:1384, :1438).
+    pub nil_second_weapon: Vec<f64>,
 }
 
 impl Default for SaveExtras {
@@ -179,6 +181,7 @@ impl Default for SaveExtras {
             },
             calcs_collapsed: HashMap::new(),
             items_show_stat_differences: true,
+            nil_second_weapon: Vec::new(),
         }
     }
 }
@@ -722,6 +725,15 @@ fn save_import(x: &SaveExtras) -> XmlElement {
 
 // --- ItemsTab:Save (ItemsTab.lua:1329-1416) -------------------------------------------------------------------------------------------
 
+/// `tostring(itemSet.useSecondWeaponSet)`.
+fn second_weapon_attr(inp: &SaveInput<'_>, set: &pob_build::ItemSetModel) -> String {
+    if inp.extras.nil_second_weapon.contains(&set.id) {
+        "nil".to_string()
+    } else {
+        tb(set.use_second_weapon_set)
+    }
+}
+
 fn save_items(inp: &SaveInput<'_>) -> Result<XmlElement, String> {
     let (m, env) = (inp.model, &inp.res.env);
     let active_id = pob_build::active_item_set(m).id;
@@ -730,7 +742,7 @@ fn save_items(inp: &SaveInput<'_>) -> Result<XmlElement, String> {
         elem("Items"),
         &[
             ("activeItemSet", Some(ts(active_id))),
-            ("useSecondWeaponSet", Some(tb(active_set.use_second_weapon_set))),
+            ("useSecondWeaponSet", Some(second_weapon_attr(inp, active_set))),
             ("showStatDifferences", Some(tb(inp.extras.items_show_stat_differences))),
         ],
     );
@@ -767,7 +779,7 @@ fn save_items(inp: &SaveInput<'_>) -> Result<XmlElement, String> {
             &[
                 ("id", Some(ts(set.id))),
                 ("title", set.title.clone()),
-                ("useSecondWeaponSet", Some(tb(set.use_second_weapon_set))),
+                ("useSecondWeaponSet", Some(second_weapon_attr(inp, set))),
             ],
         );
         for slot in &env.ordered_slots {

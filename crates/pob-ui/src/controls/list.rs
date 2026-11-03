@@ -147,7 +147,10 @@ pub struct ListControl<V> {
     /// `"HORIZONTAL"` / `"VERTICAL"` / true → `Some`, false/nil → `None`.
     pub scroll: Option<&'static str>,
     pub scroll_h: bool,
-    pub is_mutable: bool,
+    pub is_mutable: Cell<bool>,
+    /// What a subclass does at the head of its `Draw`, before `ListControl.Draw` (NotableDBControl.lua:193-211).
+    #[allow(clippy::type_complexity)]
+    pub before_draw: RefCell<Option<Rc<dyn Fn(&Gfx)>>>,
     pub list: RefCell<Vec<V>>,
     pub force_tooltip: Cell<bool>,
     pub col_list: RefCell<Vec<Column>>,
@@ -236,7 +239,8 @@ impl<V: Clone + PartialEq + 'static> ListControl<V> {
                 row_height,
                 scroll,
                 scroll_h,
-                is_mutable,
+                is_mutable: Cell::new(is_mutable),
+                before_draw: RefCell::new(None),
                 list: RefCell::new(list),
                 force_tooltip: Cell::new(force_tooltip),
                 col_list: RefCell::new(vec![Column::default()]),
@@ -358,6 +362,10 @@ impl<V: Clone + PartialEq + 'static> Control for ListControl<V> {
 
     /// ListControl.lua:136-338
     fn draw(&self, f: &mut Frame<'_>, view_port: &Rect, no_tooltip: bool) {
+        let before = self.before_draw.borrow().clone();
+        if let Some(b) = before {
+            b(f);
+        }
         let (x, y) = self.get_pos(f);
         let (width, height) = self.get_size(f);
         let row_height = self.row_height;
@@ -412,7 +420,7 @@ impl<V: Clone + PartialEq + 'static> Control for ListControl<V> {
         }
         self.sel_drag_index.set(None);
         if (self.sel_drag_active.get() || self.other_drag_source.get())
-            && self.is_mutable
+            && self.is_mutable.get()
             && cursor_x >= x + 2.0
             && cursor_y >= y + 2.0
             && cursor_x < x + width - 20.0
@@ -611,7 +619,7 @@ impl<V: Clone + PartialEq + 'static> Control for ListControl<V> {
             sg::draw_rect(f, 0.0, line_y, width - 20.0, 1.0);
         }
         sg::set_viewport(f, None);
-        if self.sel_drag_active.get() && self.drag_target_list.borrow().is_some() && (!self.is_mutable || !self.mouse_over(f)) {
+        if self.sel_drag_active.get() && self.drag_target_list.borrow().is_some() && (!self.is_mutable.get() || !self.mouse_over(f)) {
             let (si, sv) = (
                 self.sel_index.get().expect("selIndex"),
                 self.sel_value.borrow().clone().expect("selValue"),
@@ -679,7 +687,7 @@ impl<V: Clone + PartialEq + 'static> Control for ListControl<V> {
                 }
             }
             if self.select_index(g, new_select) {
-                if (self.is_mutable || self.drag_target_list.borrow().is_some()) && self.is_shown(g) {
+                if (self.is_mutable.get() || self.drag_target_list.borrow().is_some()) && self.is_shown(g) {
                     self.sel_cx.set(cursor_x);
                     self.sel_cy.set(cursor_y);
                     self.sel_dragging.set(true);

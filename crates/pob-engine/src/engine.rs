@@ -35,6 +35,10 @@ pub struct Engine {
     points: crate::shell::PointDisplay,
     /// `calcsTab:GetMiscCalculator(build)` of this `outputRevision` (U3a: the node tooltip), made on demand.
     pub(crate) misc: std::cell::RefCell<Option<pob_calc::session::MiscCalculator>>,
+    /// The items changed after [`Engine::misc`] was made: upstream's `calcFunc` reads the live slots, its `calcBase` stays the one of the last `BuildOutput` (CalcsTab.lua:471).
+    pub(crate) misc_dirty: std::cell::Cell<bool>,
+    /// `itemsTab.items` as a LuaJIT table: its `pairs` order, made from the model's items on first use ([`Engine::items_pairs`]).
+    pub(crate) items_table: std::cell::RefCell<Option<pob_tree::lj_table::LjTable>>,
     /// `build.outputRevision` (Build.lua:1266): one per recalculation.
     output_revision: u64,
     /// `build.viewMode == "TREE"` (Calcs.lua:102).
@@ -93,6 +97,8 @@ impl Engine {
             stat_list: Default::default(),
             points: Default::default(),
             misc: std::cell::RefCell::new(None),
+            misc_dirty: std::cell::Cell::new(false),
+            items_table: std::cell::RefCell::new(None),
             output_revision: 1,
             view_mode_is_tree: std::cell::Cell::new(true),
             run_fresh: false,
@@ -181,6 +187,7 @@ impl Engine {
     /// `RefreshStatList` (boot.lua does not run it): `SkillDPS` stays in output order, the character level stays.
     pub fn recalc(&mut self) -> Result<(), String> {
         *self.misc.borrow_mut() = None;
+        self.misc_dirty.set(false);
         let shown = self.shown_effects();
         // A run touches only the active set's tables: the others stay what they were (a model's round trip would change e.g. `nameSpec` of a granted skill, SkillsTab.lua:492).
         let old_sets: Vec<pob_calc::SkillSet> = self
@@ -427,11 +434,15 @@ impl Engine {
         let main = self.model.main_socket_group;
         // The Lua keeps `spec.allocNodes` of the load: its `pairs` order (R24) and so the order of the tree's mods do not follow `SaveDB`'s sorted ids.
         let old: Vec<_> = self.model.tree.specs.iter().map(|s| s.nodes.clone()).collect();
-        self.model = pob_build::load_build_xml(&xml).map_err(|e| format!("XML: {e}"))?;
+        // `tostring(nil)` of `SkillsTab:Save`: upstream's live table still holds nil here, `load` would read a `false`
+        let live = xml.replace(" includeInFullDPS=\"nil\"", "");
+        self.model = pob_build::load_build_xml(&live).map_err(|e| format!("XML: {e}"))?;
         for (s, n) in self.model.tree.specs.iter_mut().zip(old) {
             s.nodes = n;
         }
+        let nil_second = std::mem::take(&mut self.extras.nil_second_weapon);
         self.extras = SaveExtras::from_xml(&xml)?;
+        self.extras.nil_second_weapon = nil_second;
         self.model.main_socket_group = main;
         Ok(())
     }
@@ -799,6 +810,7 @@ impl Engine {
             .into_iter()
             .map(|(n, range)| pob_build::ModRangeModel { id: n as f64, range })
             .collect();
+        self.items_table_set(id);
         self.model.items.push(pob_build::ItemModel {
             id,
             variant: item.variant,

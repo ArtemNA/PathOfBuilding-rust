@@ -177,6 +177,16 @@ impl ModLine {
             self.flags[i] = true;
         }
     }
+    /// `modLine[k] = true`.
+    pub fn set_flag_pub(&mut self, k: &str) {
+        self.set_flag(k);
+    }
+    /// `modLine[k] = v`.
+    pub fn set_flag_to(&mut self, k: &str, v: bool) {
+        if let Some(i) = line_flag_index(k) {
+            self.flags[i] = v;
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -533,7 +543,7 @@ fn unique_mod_stat_order() -> &'static (std::collections::HashMap<String, f64>, 
 
 /// Item.lua:72-87 `sortCraftedModLines`: fractured, then the rest by `order` (nil last), then crafted/custom, each
 /// group in source order (the comparator is total, so `table.sort` is deterministic here).
-fn sort_crafted_mod_lines(mod_lines: &mut Vec<ModLine>) {
+pub(crate) fn sort_crafted_mod_lines(mod_lines: &mut Vec<ModLine>) {
     let group = |m: &ModLine| -> u8 {
         if m.flag("crafted") || m.flag("custom") {
             3
@@ -657,6 +667,19 @@ impl Item {
         item
     }
 
+    /// `new("Item"):Item(raw, rarity, highQuality)` (Main.lua:166, :181).
+    pub fn parse_with(raw: &str, rarity: Option<&str>, high_quality: bool) -> Item {
+        let mut item = Item {
+            parse_mode: pob_parser::ParseMode::Full,
+            ..Item::default()
+        };
+        item.parse_raw(raw, rarity, high_quality);
+        if item.base.is_some() {
+            item.build_mod_list();
+        }
+        item
+    }
+
     fn list(&self, id: ListId) -> &Vec<ModLine> {
         match id {
             ListId::Enchant => &self.enchant_mod_lines,
@@ -737,14 +760,14 @@ impl Item {
 
     // --- Item.lua:340-410 ---------------------------------------------------------------------------------------
 
-    fn is_variant_group_option_eligible(&self, group_id: f64, variant_id: f64) -> bool {
+    pub fn is_variant_group_option_eligible(&self, group_id: f64, variant_id: f64) -> bool {
         let Some(versions) = self.variant_groups.get(&NumKey(group_id)).and_then(|g| g.get(&NumKey(variant_id))) else {
             return false;
         };
         versions.contains(&NumKey(0.0)) || set_has(versions, self.selected_version)
     }
 
-    fn get_variant_group_options(&self, group_id: f64, exclude_selected: bool) -> Vec<f64> {
+    pub fn get_variant_group_options(&self, group_id: f64, exclude_selected: bool) -> Vec<f64> {
         let mut options = Vec::new();
         if !self.variant_groups.contains_key(&NumKey(group_id)) {
             return options;
@@ -770,7 +793,7 @@ impl Item {
         options
     }
 
-    fn normalise_variant_selections(&mut self) {
+    pub fn normalise_variant_selections(&mut self) {
         match &self.version_list {
             Some(vl) if !vl.is_empty() => {
                 let n = vl.len() as f64;
@@ -2818,6 +2841,70 @@ impl Item {
     }
 
     /// Every mod line list in BuildModList order with the list name (for dumps).
+    /// `self.rangeLineList` (Item.lua:2568-2597): the positions (list id as in `mod_line_by_id`, index) of the lines with a slider or a mutation.
+    pub fn range_line_list(&self) -> Vec<(u8, usize)> {
+        let mut out = Vec::new();
+        for (lid, list) in [
+            (1u8, &self.enchant_mod_lines),
+            (2, &self.scourge_mod_lines),
+            (3, &self.implicit_mod_lines),
+            (4, &self.explicit_mod_lines),
+            (5, &self.crucible_mod_lines),
+        ] {
+            for (i, ml) in list.iter().enumerate() {
+                if ml.show_slider == Some(true) || (ml.mod_id.is_some() && ml.new_mod_id.is_some() && self.get_mod_line_variant_count(ml) > 0) {
+                    out.push((lid, i));
+                }
+            }
+        }
+        out
+    }
+
+    /// The lists by the ids of `range_line_list` and of a tooltip line: 1 enchant, 2 scourge, 3 implicit, 4 explicit, 5 crucible.
+    pub fn mod_line_by_id(&mut self, id: (u8, usize)) -> Option<&mut ModLine> {
+        match id.0 {
+            1 => self.enchant_mod_lines.get_mut(id.1),
+            2 => self.scourge_mod_lines.get_mut(id.1),
+            3 => self.implicit_mod_lines.get_mut(id.1),
+            4 => self.explicit_mod_lines.get_mut(id.1),
+            5 => self.crucible_mod_lines.get_mut(id.1),
+            _ => None,
+        }
+    }
+
+    /// `#self.modMagnitudeMods == 0`.
+    pub fn mod_magnitude_empty(&self) -> bool {
+        self.mod_magnitude_mods.is_empty()
+    }
+
+    /// `self[influence.key] = v`.
+    pub fn set_influence(&mut self, key: &str, v: bool) {
+        if let Some(i) = INFLUENCE_INFO.iter().position(|(k, _)| *k == key) {
+            self.influence[i] = v;
+        }
+    }
+
+    /// `new("Item"):Item()` + `item.name`, `item.base`, `item.baseName` (ItemsTab.lua:2682-2685).
+    pub fn new_crafted(name: &str, base: &'static ItemBase) -> Item {
+        Item {
+            parse_mode: pob_parser::ParseMode::Full,
+            name: name.to_owned(),
+            base: Some(base),
+            base_name: Some(name.to_owned()),
+            ..Item::default()
+        }
+    }
+
+    /// `self.rareLikeUnique.ignoreModType`.
+    pub fn ignore_mod_type(&self) -> bool {
+        self.rare_like_unique.is_some_and(|r| r.ignore_mod_type)
+    }
+
+    /// `ItemClass:ResetInfluence()` (Item.lua:102-106).
+    pub fn reset_influence(&mut self) {
+        self.influence = [false; 8];
+    }
+
     pub fn mod_line_lists(&self) -> [(&'static str, &Vec<ModLine>); 7] {
         [
             ("enchantModLines", &self.enchant_mod_lines),
@@ -2829,6 +2916,11 @@ impl Item {
             ("buffModLines", &self.buff_mod_lines),
         ]
     }
+}
+
+/// The strings of a list value (`jewelData.clusterJewelNotables`).
+pub fn value_strings(v: &Value) -> Vec<String> {
+    v.ipairs().iter().filter_map(|x| x.as_str().map(str::to_owned)).collect()
 }
 
 /// `weaponData[value.key] = value.value` for one `{ key = ..., value = ... }` LIST value.

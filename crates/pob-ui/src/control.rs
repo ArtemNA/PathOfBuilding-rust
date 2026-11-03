@@ -148,6 +148,13 @@ pub struct Anchor {
     pub collapse: bool,
 }
 
+/// `{ point, other, otherPoint, true }`: the anchor collapses when `other` is hidden (Control.lua:100-110).
+pub fn anchor_collapse(point: &'static str, other: &ControlRef, other_point: &'static str) -> Option<Anchor> {
+    let mut a = anchor(point, other, other_point)?;
+    a.collapse = true;
+    Some(a)
+}
+
 /// `anchor(point, other, otherPoint)`.
 pub fn anchor(point: &'static str, other: &ControlRef, other_point: &'static str) -> Option<Anchor> {
     Some(Anchor {

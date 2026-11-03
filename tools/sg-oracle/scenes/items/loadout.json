@@ -1,0 +1,210 @@
+{
+"steps": [
+{
+"open": "OccVortex"
+},
+{
+"cursorBuild": [
+"modeItems"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"cursorBuild": [
+"buildLoadouts"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"cursorBuildPick": [
+"buildLoadouts",
+4
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"cursorPopup": [
+"edit"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+],
+[
+"Char",
+"2"
+]
+],
+"dump": true
+},
+{
+"cursorPopup": [
+"save"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true,
+"shot": "loadout-new"
+},
+{
+"cursor": [
+1200,
+790
+],
+"dump": true
+},
+{
+"cursorBuild": [
+"buildLoadouts"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"cursorBuildPick": [
+"buildLoadouts",
+3
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"cursor": [
+1200,
+790
+],
+"dump": true
+},
+{
+"cursor": [
+1200,
+790
+],
+"dump": true,
+"shot": "loadout-switched"
+},
+{
+"cursorItem": [
+"setManage"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"cursorPopup": [
+"close"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"cursor": [
+1200,
+790
+],
+"hold": [
+"CTRL"
+],
+"events": [
+[
+"KeyDown",
+"s"
+],
+[
+"KeyUp",
+"s"
+]
+],
+"dump": true,
+"file": "OccVortex.xml",
+"fileOut": "loadout-save.xml"
+},
+{
+"release": [
+"CTRL"
+]
+},
+{
+"closeBuild": true
+}
+]
+}
