@@ -24,6 +24,7 @@ pub mod engine;
 pub mod lua;
 pub mod save;
 pub mod shell;
+pub mod skills_tab;
 pub mod stats;
 pub mod tree_tab;
 pub mod tree_view;

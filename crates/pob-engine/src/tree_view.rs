@@ -249,6 +249,13 @@ impl Engine {
         Ok(out)
     }
 
+    /// `AddStatComparesToTooltip(tooltip, base, cmp, header)` as lines.
+    pub(crate) fn stat_compare_lines(&self, base: &RunRef, cmp: &RunRef, header: &str) -> Result<Vec<String>, String> {
+        let mut lines = Vec::new();
+        self.add_stat_compares(&mut lines, base, cmp, header, None)?;
+        Ok(lines)
+    }
+
     /// `calcFunc(override)` against `calcBase` as `AddStatComparesToTooltip` lines.
     pub(crate) fn compare_override(&self, ov: CalcOverride, header: &str) -> Result<Vec<String>, String> {
         let calc = self.misc_calculator()?;

@@ -252,6 +252,9 @@ fn skill_data_num(sd: &indexmap::IndexMap<String, pob_mods::Value>, k: &str) -> 
 impl Engine {
     /// `build.mainSocketGroup` as the run left it (CalcSetup.lua:1586-1590 clamps it).
     pub fn main_socket_group(&self) -> f64 {
+        if let Some(v) = self.main_pending() {
+            return v;
+        }
         self.result()
             .env
             .skills

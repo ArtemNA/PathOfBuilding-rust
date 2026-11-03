@@ -26,6 +26,10 @@
 /tools/sg-oracle/fixtures/calcs/
 /tools/sg-oracle/fixtures/audit/calcs-runner-*.json
 /tools/sg-oracle/scenes/calcs/local-*.json
+# U5: the Skills tab's oracle (screenshots, states and saved files; personal scenes local-<n>)
+/tools/sg-oracle/fixtures/skills/
+/tools/sg-oracle/fixtures/audit/skills-runner-*.json
+/tools/sg-oracle/scenes/skills/local-*.json
 
 # Local only: everything the agents use (plan, rules, prompts, cards, notes) and everything personal
 /PLAN.md

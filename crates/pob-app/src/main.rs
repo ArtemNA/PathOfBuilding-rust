@@ -64,6 +64,7 @@ impl MainObject for Runner {
         if let Some(p) = &self.state_file {
             let mut s = pob_ui::tabs::tree::debug_input_state(frame);
             s["events"] = serde_json::json!(self.events);
+            s["skillsReal"] = pob_ui::tabs::skills::debug_input_state(frame);
             let tmp = format!("{p}.tmp");
             if std::fs::write(&tmp, s.to_string()).is_ok() {
                 let _ = std::fs::rename(&tmp, p);

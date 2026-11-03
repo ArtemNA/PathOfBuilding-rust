@@ -1452,6 +1452,7 @@ dependencies = [
  "image",
  "indexmap",
  "pob-build",
+ "pob-calc",
  "pob-data",
  "pob-engine",
  "pob-gfx",

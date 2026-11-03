@@ -98,6 +98,11 @@ pub trait ListHooks<V>: 'static {
         true
     }
     fn receive_drag(&self, list: &ListControl<V>, g: &mut Gfx, drag_type: &str, value: &V) {}
+    /// `:OnHoverKeyUp(key)` (ControlHost.lua:93-95).
+    fn has_on_hover_key_up(&self) -> bool {
+        false
+    }
+    fn on_hover_key_up(&self, list: &ListControl<V>, g: &mut Gfx, key: &str) {}
 }
 
 /// A member of `dragTargetList`: `CanReceiveDrag` (`nil` = accepts everything), `otherDragSource` (here a flag:
@@ -724,6 +729,14 @@ impl<V: Clone + PartialEq + 'static> Control for ListControl<V> {
             self.hooks.on_any_key_down(&self, g, key);
         }
         Some(self)
+    }
+
+    fn has_on_hover_key_up(&self) -> bool {
+        self.hooks.has_on_hover_key_up()
+    }
+
+    fn on_hover_key_up(&self, g: &mut Gfx, key: &str) {
+        self.hooks.on_hover_key_up(self, g, key);
     }
 
     fn has_on_key_up(&self) -> bool {
