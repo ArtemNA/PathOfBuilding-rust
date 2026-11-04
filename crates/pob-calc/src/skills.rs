@@ -89,13 +89,18 @@ pub struct DetachedSkill {
 /// R7.10b: a skill of a minion's `activeSkillList` (`minion.activeSkillList[j + 1]`, CalcActiveSkill.lua:878-934) as one index the
 /// offence / trigger code can address like a player skill: bit [`MINION_SKILL`] set, the owner (the player skill that has the minion,
 /// [`DETACHED`] included) in bits 20.., `j` in bits 0..20. Never an index of `activeSkillList` (walks over the list never see it, as upstream).
-pub const MINION_SKILL: usize = 1 << 62;
-const MINION_OWNER_DETACHED: usize = (1 << 40) - 1;
+/// Sized by `usize::BITS` for the 32-bit web build: there the owner field holds 10 bits, so at most 1 023 player skills can have a minion.
+pub const MINION_SKILL: usize = 1 << (usize::BITS - 2);
+/// The owner field's all-ones value is the code of [`DETACHED`], so a real owner has to stay below it.
+const MINION_OWNER_DETACHED: usize = (1 << (usize::BITS - 2 - 20)) - 1;
 
 /// The id of `owner.minion.activeSkillList[j + 1]`.
 pub fn minion_skill_id(owner: usize, j: usize) -> usize {
+    assert!(
+        (owner == DETACHED || owner < MINION_OWNER_DETACHED) && j < (1 << 20),
+        "minion skill id out of range"
+    );
     let code = if owner == DETACHED { MINION_OWNER_DETACHED } else { owner };
-    assert!(code <= MINION_OWNER_DETACHED && j < (1 << 20), "minion skill id out of range");
     MINION_SKILL | (code << 20) | j
 }
 
@@ -1223,4 +1228,49 @@ pub fn main_socket_group(st: &mut SkillsState) -> f64 {
     let n = st.tab.socket_group_list().len() as f64;
     st.build_main_socket_group = min2(max2(n, 1.0), st.build_main_socket_group);
     st.build_main_socket_group
+}
+
+#[cfg(test)]
+mod minion_id_tests {
+    use super::*;
+
+    #[test]
+    fn round_trips_at_the_field_limits() {
+        let last_j = (1 << 20) - 1;
+        for (owner, j) in [
+            (0, 0),
+            (5, 7),
+            (MINION_OWNER_DETACHED - 1, last_j),
+            (DETACHED, 0),
+            (DETACHED, last_j),
+        ] {
+            assert_eq!(minion_skill_parts(minion_skill_id(owner, j)), Some((owner, j)));
+        }
+    }
+
+    #[test]
+    fn plain_indices_are_not_minion_skills() {
+        for i in [0, 1, MINION_SKILL - 1, DETACHED] {
+            assert_eq!(minion_skill_parts(i), None);
+        }
+    }
+
+    #[test]
+    fn real_owner_ids_keep_their_layout_and_order() {
+        assert_eq!(minion_skill_id(5, 7), MINION_SKILL | (5 << 20) | 7);
+        assert!(minion_skill_id(MINION_OWNER_DETACHED - 1, 0) < minion_skill_id(DETACHED, 0));
+    }
+
+    /// Without the check this owner would decode as [`DETACHED`] and address the wrong skill.
+    #[test]
+    #[should_panic(expected = "minion skill id out of range")]
+    fn owner_equal_to_the_detached_code_is_refused() {
+        minion_skill_id(MINION_OWNER_DETACHED, 0);
+    }
+
+    #[test]
+    #[should_panic(expected = "minion skill id out of range")]
+    fn j_past_its_field_is_refused() {
+        minion_skill_id(0, 1 << 20);
+    }
 }
