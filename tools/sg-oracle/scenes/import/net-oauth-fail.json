@@ -1,0 +1,97 @@
+{
+"net": [
+{
+"url": "oauth",
+"oauth": {
+"code": "synthetic-code",
+"state": "wrong",
+"port": 49082
+}
+},
+{
+"url": "oauth",
+"oauth": {
+"code": "synthetic-code",
+"port": 49082
+}
+},
+{
+"url": "https://www.pathofexile.com/oauth/token",
+"error": "synthetic refused"
+}
+],
+"steps": [
+{
+"openNew": true
+},
+{
+"osTime": 1800000000
+},
+{
+"cursorBuild": "modeImport",
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"cursorImport": "authenticateButton",
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true,
+"clipboard": "fixed"
+},
+{
+"netDeliver": true,
+"clipboard": "fixed",
+"dump": true
+},
+{
+"cursorImport": "authenticateButton",
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true,
+"clipboard": "fixed"
+},
+{
+"netDeliver": true,
+"clipboard": "fixed",
+"dump": true
+},
+{
+"netDeliver": true,
+"dump": true
+},
+{
+"cursor": [
+1200,
+790
+],
+"osTime": 1800000100,
+"dump": true
+}
+]
+}

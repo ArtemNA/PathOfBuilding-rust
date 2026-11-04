@@ -1,0 +1,281 @@
+{
+"net": [
+{
+"url": "https://www.pathofexile.com/character-window/get-characters?accountName=Synth%231234&realm=pc",
+"code": 401,
+"header": "HTTP/1.1 401 X\r\n\r\n",
+"body": ""
+},
+{
+"url": "https://www.pathofexile.com/character-window/get-characters?accountName=Synth%231234&realm=pc",
+"code": 403,
+"header": "HTTP/1.1 403 X\r\n\r\n",
+"body": ""
+},
+{
+"url": "https://www.pathofexile.com/character-window/get-characters?accountName=Synth%231234&realm=pc",
+"code": 404,
+"header": "HTTP/1.1 404 X\r\n\r\n",
+"body": ""
+},
+{
+"url": "https://www.pathofexile.com/character-window/get-characters?accountName=Synth%231234&realm=pc",
+"code": 500,
+"header": "HTTP/1.1 500 X\r\n\r\n",
+"body": ""
+},
+{
+"url": "https://www.pathofexile.com/character-window/get-characters?accountName=Synth%231234&realm=pc",
+"error": "synthetic\nerror"
+},
+{
+"url": "https://www.pathofexile.com/character-window/get-characters?accountName=Synth%231234&realm=pc",
+"code": 200,
+"header": "HTTP/1.1 200 OK\r\n\r\n",
+"body": "not json"
+},
+{
+"url": "https://www.pathofexile.com/character-window/get-characters?accountName=Synth%231234&realm=pc",
+"code": 200,
+"header": "HTTP/1.1 200 OK\r\n\r\n",
+"body": "[]"
+},
+{
+"url": "https://www.pathofexile.com/character-window/get-characters?accountName=Synth%231234&realm=pc",
+"code": 200,
+"header": "HTTP/1.1 200 OK\r\n\r\n",
+"body": "[{\"name\":\"Synth Char\",\"realm\":\"pc\",\"class\":\"Necromancer\",\"league\":\"Standard\",\"level\":85},{\"name\":\"Another\",\"realm\":\"pc\",\"class\":\"Juggernaut\",\"league\":\"Hardcore\",\"level\":40},{\"name\":\"bystander\",\"realm\":\"pc\",\"class\":\"Witch\",\"league\":\"Standard\",\"level\":3},{\"name\":\"Elsewhere\",\"realm\":\"xbox\",\"class\":\"Witch\",\"league\":\"Standard\",\"level\":3},{\"name\":\"Odd One\",\"realm\":\"pc\",\"class\":\"Nonsense\",\"league\":\"Standard\",\"level\":3}]"
+},
+{
+"url": "https://www.pathofexile.com/account/view-profile/Synth%231234",
+"code": 500,
+"header": "HTTP/1.1 500 X\r\n\r\n",
+"body": ""
+}
+],
+"steps": [
+{
+"openNew": true
+},
+{
+"cursorBuild": "modeImport",
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"cursorImport": "siteAccountName",
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+]
+},
+{
+"events": [
+[
+"Char",
+"S"
+],
+[
+"Char",
+"y"
+],
+[
+"Char",
+"n"
+],
+[
+"Char",
+"t"
+],
+[
+"Char",
+"h"
+],
+[
+"Char",
+"#"
+],
+[
+"Char",
+"1"
+],
+[
+"Char",
+"2"
+],
+[
+"Char",
+"3"
+],
+[
+"Char",
+"4"
+]
+],
+"dump": true
+},
+{
+"cursorImport": "siteAccountNameGo",
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"netDeliver": true,
+"dump": true
+},
+{
+"cursorImport": "siteAccountNameGo",
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"netDeliver": true,
+"dump": true
+},
+{
+"cursorImport": "siteAccountNameGo",
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"netDeliver": true,
+"dump": true
+},
+{
+"cursorImport": "siteAccountNameGo",
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"netDeliver": true,
+"dump": true
+},
+{
+"cursorImport": "siteAccountNameGo",
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"netDeliver": true,
+"dump": true
+},
+{
+"cursorImport": "siteAccountNameGo",
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"netDeliver": true,
+"dump": true
+},
+{
+"cursorImport": "siteAccountNameGo",
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"netDeliver": true,
+"dump": true
+},
+{
+"cursorImport": "siteAccountNameGo",
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"netDeliver": true,
+"dump": true
+},
+{
+"netDeliver": true,
+"dump": true
+}
+]
+}

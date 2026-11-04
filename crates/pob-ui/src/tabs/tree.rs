@@ -1,7 +1,7 @@
 //! `Classes/TreeTab.lua` (upstream 3dbca4463): the controls under the tree view, the spec list, the popups (reset, convert, import/export,
 //! mastery, tattoo), the power report. The specs are `Engine`'s model; the undo lists (`spec.undo`, UndoHandler.lua) live here, one per spec.
 //!
-//! `unimplemented`: the network (poeurl in `OpenImportPopup` / `OpenExportPopup`: U8, the user's decision); `FindTimelessJewel` is `tabs::timeless`.
+//! `FindTimelessJewel` is `tabs::timeless`.
 
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
@@ -1614,7 +1614,16 @@ fn push_imported_spec(g: &mut Gfx, m: pob_build::SpecModel) {
     main().close_popup();
 }
 
-/// `OpenImportPopup` (:687-815): the tree links. poeurl: the network, U8.
+/// A gate's way to the two popups (the "Manage trees" popup has its buttons without names).
+pub fn debug_open_link_popup(g: &mut Gfx, export: bool) {
+    if export {
+        open_export_popup(g);
+    } else {
+        open_import_popup(g);
+    }
+}
+
+/// `OpenImportPopup` (:687-815): the tree links.
 fn open_import_popup(g: &mut Gfx) {
     let mut controls: IndexMap<String, ControlRef> = IndexMap::new();
     controls.insert(
@@ -1666,13 +1675,42 @@ fn open_import_popup(g: &mut Gfx) {
     controls.insert("edit".into(), edit.clone());
     controls.insert("msg".into(), msg.clone());
     let (n2, e2, m2) = (name, edit, msg);
+    let islot = import_slot.clone();
     let import = ButtonControl::new(None, rect(-45.0, 85.0, 80.0, 20.0), "Import".to_string(), move |g| {
         let tree_link = e2.buf.borrow().clone();
         if tree_link.is_empty() {
             return;
         }
         if tree_link.contains("poeurl.com/") {
-            crate::modules::main::not_ported(g, "TreeTab.lua:765-794 poeurl link: the network (U8, the user's decision)");
+            // :766-794
+            let button = islot.borrow().clone().expect("import");
+            button.base.enabled.set(false);
+            m2.label.set("Resolving PoEURL link...".to_string());
+            let l = crate::launch::launch();
+            let req = l.net_request(&tree_link, None, None, false);
+            let (m3, n3) = (m2.clone(), n2.clone());
+            l.launch_sub(pob_net::Job::Http(req), move |g, outcome| {
+                let redirect = match outcome {
+                    pob_net::Outcome::Http(Ok(r)) => r.redirect_url().filter(|u| !u.contains("poeurl.com/")),
+                    _ => None,
+                };
+                match redirect {
+                    None => {
+                        m3.label.set("^1Failed to resolve PoEURL link^7".to_string());
+                        button.base.enabled.set(true);
+                    }
+                    Some(link) => {
+                        let title = n3.buf.borrow().clone();
+                        let alt = lua_captures(&link, "tree/(%l+%-?%l*)");
+                        let v = lua_captures(&link, "tree/([0-9]+)%.([0-9]+)%.([0-9]+)/");
+                        let version = validate_tree_version(alt.as_ref().and_then(|a| a.first()).map(String::as_str), v.as_deref());
+                        match ok_or_panic(pob_engine::engine::Engine::decode_tree_url(&link, &version, &title)) {
+                            Err(err) => m3.label.set(format!("^1{err}^7")),
+                            Ok(m) => push_imported_spec(g, m),
+                        }
+                    }
+                }
+            });
             return;
         }
         if tree_link.contains("poeplanner.com/") {
@@ -1739,29 +1777,51 @@ fn open_export_popup(g: &mut Gfx) {
         "label".into(),
         LabelControl::new(None, rect(0.0, 20.0, 0.0, 16.0), "Passive tree link:".to_string()),
     );
-    controls.insert(
-        "edit".into(),
-        EditControl::new(
-            g,
-            None,
-            rect(0.0, 40.0, 350.0, 18.0),
-            EditArgs {
-                init: Some(tree_link.clone()),
-                filter: Some("%Z".into()),
-                ..Default::default()
-            },
-        ),
+    let edit = EditControl::new(
+        g,
+        None,
+        rect(0.0, 40.0, 350.0, 18.0),
+        EditArgs {
+            init: Some(tree_link.clone()),
+            filter: Some("%Z".into()),
+            ..Default::default()
+        },
     );
-    controls.insert(
-        "shrink".into(),
-        ButtonControl::new(None, rect(-90.0, 70.0, 140.0, 20.0), "Shrink with PoEURL".to_string(), |g| {
-            crate::modules::main::not_ported(g, "TreeTab.lua:823-836 poeurl shrink: the network (U8, the user's decision)");
-        }),
-    );
-    let link = tree_link;
+    controls.insert("edit".into(), edit.clone());
+    // :821 `treeLink`, an upvalue the callback writes and `Copy` reads
+    let link = Rc::new(RefCell::new(tree_link));
+    let shrink_slot: Rc<RefCell<Option<Rc<ButtonControl>>>> = Rc::new(RefCell::new(None));
+    let (l2, e2, s2) = (link.clone(), edit, shrink_slot.clone());
+    let shrink = ButtonControl::new(None, rect(-90.0, 70.0, 140.0, 20.0), "Shrink with PoEURL".to_string(), move |_g| {
+        // :823-836
+        let button = s2.borrow().clone().expect("shrink");
+        button.base.enabled.set(false);
+        button.label.set("Shrinking...".to_string());
+        let url = format!("http://poeurl.com/shrink.php?url={}", l2.borrow());
+        let (l3, e3) = (l2.clone(), e2.clone());
+        crate::launch::launch().download_page(&url, crate::launch::PageParams::default(), move |g, response, err| {
+            button.label.set("Done".to_string());
+            if err.is_some() || response.body.bytes().all(|b| b.is_ascii_whitespace()) {
+                main().open_message_popup(g, "PoEURL Shortener", "Failed to get PoEURL link. Try again later.");
+            } else {
+                let new_link = format!("http://poeurl.com/{}", response.body);
+                e3.set_text(g, &new_link, false);
+                *l3.borrow_mut() = new_link;
+                let popup = main().popups.borrow().first().cloned();
+                if let Some(p) = popup {
+                    let c: ControlRef = e3.clone();
+                    p.host.select_control(g, Some(c));
+                }
+            }
+        });
+    });
+    *shrink_slot.borrow_mut() = Some(shrink.clone());
+    controls.insert("shrink".into(), shrink);
     controls.insert(
         "copy".into(),
-        ButtonControl::new(None, rect(30.0, 70.0, 80.0, 20.0), "Copy".to_string(), move |g| g.copy(&link)),
+        ButtonControl::new(None, rect(30.0, 70.0, 80.0, 20.0), "Copy".to_string(), move |g| {
+            g.copy(&link.borrow())
+        }),
     );
     controls.insert(
         "done".into(),

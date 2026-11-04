@@ -645,6 +645,15 @@ impl ItemsTab {
         self.build().sync_loadouts_pub(g);
     }
 
+    /// `PopulateSlots`, `AddUndoState` after a character import (ImportTab.lua:1164-1165, :1481-1482) with what the engine changed in the slots and the sets.
+    pub fn after_import(&self, g: &mut Gfx) {
+        self.sync_gear_slots();
+        self.populate_slots(g);
+        self.update_sockets(g);
+        self.update_item_list(g);
+        self.add_undo_state(false);
+    }
+
     /// `slot.selItemId`, `slot.active` of the set.
     fn sync_gear_slots(&self) {
         let set = self.read(|e| e.active_item_set().clone());

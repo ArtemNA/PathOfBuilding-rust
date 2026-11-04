@@ -1,0 +1,79 @@
+{
+"net": [],
+"steps": [
+{
+"openNew": true
+},
+{
+"devMode": true
+},
+{
+"cursorBuild": "modeImport",
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"cursorImport": "importCodeIn",
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+]
+},
+{
+"clipboard": "{\"character\":{\"id\":\"synthchar\",\"name\":\"Synth Char\",\"realm\":\"pc\",\"class\":\"Marauder\",\"league\":\"Standard\",\"level\":85,\"experience\":1,\"equipment\":[],\"jewels\":[],\"passives\":{\"hashes\":[],\"hashes_ex\":[],\"mastery_effects\":{},\"skill_overrides\":{},\"bandit_choice\":null,\"pantheon_major\":null,\"pantheon_minor\":null,\"jewel_data\":{},\"alternate_ascendancy\":null},\"guardian\":[]}}",
+"hold": [
+"CTRL"
+],
+"events": [
+[
+"KeyDown",
+"v"
+],
+[
+"KeyUp",
+"v"
+]
+],
+"dump": true
+},
+{
+"release": [
+"CTRL"
+]
+},
+{
+"cursorImport": "importCodeGo",
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true,
+"perfClick": "charImport"
+},
+{
+"dump": true,
+"xml": true
+}
+]
+}

@@ -1,0 +1,79 @@
+{
+"net": [],
+"steps": [
+{
+"open": "OccVortex"
+},
+{
+"devMode": true
+},
+{
+"cursorBuild": "modeImport",
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"cursorImport": "importCodeIn",
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+]
+},
+{
+"clipboard": "{\"character\":{\"id\":\"synthchar\",\"name\":\"Synth Char\",\"realm\":\"pc\",\"class\":\"Necromancer\",\"league\":\"Standard\",\"level\":85,\"experience\":1,\"equipment\":[{\"id\":\"synth-body\",\"inventoryId\":\"BodyArmour\",\"frameType\":2,\"name\":\"Synth Shell\",\"typeLine\":\"Vaal Regalia\",\"ilvl\":84,\"influences\":{\"shaper\":true,\"elder\":true},\"corrupted\":true,\"properties\":[{\"name\":\"Quality\",\"values\":[[\"+20%\",1]],\"displayMode\":0},{\"name\":\"Energy Shield\",\"values\":[[\"400\",1]],\"displayMode\":0}],\"sockets\":[{\"group\":0,\"sColour\":\"B\"},{\"group\":0,\"sColour\":\"B\"},{\"group\":0,\"sColour\":\"B\"},{\"group\":1,\"sColour\":\"R\"},{\"group\":1,\"sColour\":\"G\"},{\"group\":2,\"sColour\":\"W\"}],\"socketedItems\":[{\"id\":\"synthgem0Arc\",\"name\":\"\",\"typeLine\":\"Arc\",\"ilvl\":0,\"socket\":0,\"frameType\":4,\"properties\":[{\"name\":\"Level\",\"values\":[[\"20\",0]]},{\"name\":\"Quality\",\"values\":[[\"+10%\",1]]}]},{\"id\":\"synthgem1Spell Echo Support\",\"name\":\"\",\"typeLine\":\"Spell Echo Support\",\"ilvl\":0,\"socket\":1,\"frameType\":4,\"properties\":[{\"name\":\"Level\",\"values\":[[\"19\",0]]},{\"name\":\"Quality\",\"values\":[[\"+0%\",1]]}],\"support\":true},{\"id\":\"synthgem2Controlled Destruction Support\",\"name\":\"\",\"typeLine\":\"Controlled Destruction Support\",\"ilvl\":0,\"socket\":2,\"frameType\":4,\"properties\":[{\"name\":\"Level\",\"values\":[[\"20\",0]]},{\"name\":\"Quality\",\"values\":[[\"+10%\",1]]}],\"support\":true},{\"id\":\"synthgem3Clarity\",\"name\":\"\",\"typeLine\":\"Clarity\",\"ilvl\":0,\"socket\":3,\"frameType\":4,\"properties\":[{\"name\":\"Level\",\"values\":[[\"5\",0]]},{\"name\":\"Quality\",\"values\":[[\"+0%\",1]]}]},{\"id\":\"synthgem4Enlighten Support\",\"name\":\"\",\"typeLine\":\"Enlighten Support\",\"ilvl\":0,\"socket\":4,\"frameType\":4,\"properties\":[{\"name\":\"Level\",\"values\":[[\"3\",0]]},{\"name\":\"Quality\",\"values\":[[\"+0%\",1]]}],\"support\":true},{\"id\":\"synthgem5Nonsense Gem\",\"name\":\"\",\"typeLine\":\"Nonsense Gem\",\"ilvl\":0,\"socket\":5,\"frameType\":4,\"properties\":[{\"name\":\"Level\",\"values\":[[\"20\",0]]},{\"name\":\"Quality\",\"values\":[[\"+10%\",1]]}]}],\"enchantMods\":[\"+24 to maximum Energy Shield\"],\"implicitMods\":[{\"description\":\"+30 to maximum Life\",\"flags\":{\"vestigial\":true}},\"+10% to Fire Resistance\"],\"fracturedMods\":[\"+20 to Strength\"],\"explicitMods\":[\"120% increased Energy Shield\",{\"description\":\"+50 to maximum Mana\",\"flags\":{\"crafted\":true}},{\"description\":\"+15% to all Elemental Resistances\\n+5 to Intelligence\",\"flags\":{\"mutated\":true}},{\"description\":\"+10 to Dexterity\",\"flags\":{\"fractured\":true}}],\"craftedMods\":[\"+12% to Cold Resistance\"],\"mutatedMods\":[\"+5 to Dexterity\"]},{\"id\":\"synth-wand\",\"inventoryId\":\"Weapon\",\"frameType\":3,\"name\":\"Abberath's Horn\",\"typeLine\":\"Goat's Horn\",\"ilvl\":70,\"properties\":[{\"name\":\"Quality\",\"values\":[[\"+12%\",1]],\"displayMode\":0}],\"requirements\":[{\"name\":\"Level\",\"values\":[[\"30\",0]],\"displayMode\":0}],\"sockets\":[{\"group\":0,\"sColour\":\"R\"},{\"group\":0,\"sColour\":\"R\"}],\"socketedItems\":[{\"id\":\"synthgem0Cleave of Rage\",\"name\":\"\",\"typeLine\":\"Cleave of Rage\",\"ilvl\":0,\"socket\":0,\"frameType\":4,\"properties\":[{\"name\":\"Level\",\"values\":[[\"20\",0]]},{\"name\":\"Quality\",\"values\":[[\"+10%\",1]]}],\"hybrid\":{\"baseTypeName\":\"Cleave of Rage\",\"isVaalGem\":false}},{\"id\":\"synthgem1Melee Physical Damage Support\",\"name\":\"\",\"typeLine\":\"Melee Physical Damage Support\",\"ilvl\":0,\"socket\":1,\"frameType\":4,\"properties\":[{\"name\":\"Level\",\"values\":[[\"20\",0]]},{\"name\":\"Quality\",\"values\":[[\"+10%\",1]]}],\"support\":true,\"builtInSupport\":\"Supported by Level 1 Added Fire Damage\"}],\"explicitMods\":[\"Adds 2 to 4 Physical Damage to Attacks\"]},{\"id\":\"synth-shield\",\"inventoryId\":\"Offhand\",\"frameType\":2,\"name\":\"Synth Guard\",\"typeLine\":\"Synthesised Titanium Spirit Shield\",\"ilvl\":80,\"synthesised\":true,\"properties\":[{\"name\":\"Energy Shield\",\"values\":[[\"100\",1]],\"displayMode\":0}],\"explicitMods\":[\"+20 to maximum Life\"]},{\"id\":\"synth-swap\",\"inventoryId\":\"Weapon2\",\"frameType\":1,\"name\":\"\",\"typeLine\":\"Heavy Crude Bow of the Bear\",\"ilvl\":3,\"properties\":[{\"name\":\"Quality\",\"values\":[[\"+3%\",1]],\"displayMode\":0}],\"sockets\":[{\"group\":0,\"sColour\":\"G\"}],\"socketedItems\":[{\"id\":\"synthgem0Puncture\",\"name\":\"\",\"typeLine\":\"Puncture\",\"ilvl\":0,\"socket\":0,\"frameType\":4,\"properties\":[{\"name\":\"Level\",\"values\":[[\"20\",0]]},{\"name\":\"Quality\",\"values\":[[\"+10%\",1]]}]}],\"explicitMods\":[\"+5 to Strength\"]},{\"id\":\"synth-swap2\",\"inventoryId\":\"Offhand2\",\"frameType\":0,\"name\":\"\",\"typeLine\":\"Rawhide Tower Shield\",\"ilvl\":2,\"properties\":[{\"name\":\"Armour\",\"values\":[[\"50\",1]],\"displayMode\":0}]},{\"id\":\"synth-boots\",\"inventoryId\":\"Boots\",\"frameType\":2,\"name\":\"Synth Tread\",\"typeLine\":\"Two-Toned Boots\",\"ilvl\":84,\"properties\":[{\"name\":\"Armour\",\"values\":[[\"100\",1]],\"displayMode\":0},{\"name\":\"Evasion Rating\",\"values\":[[\"100\",1]],\"displayMode\":0}],\"explicitMods\":[\"30% increased Movement Speed\"]},{\"id\":\"synth-helm\",\"inventoryId\":\"Helm\",\"frameType\":2,\"name\":\"Synth &lt;Crown&gt;\",\"typeLine\":\"<<set:MS>><<set:M>><<set:S>>Hubris Circlet\",\"ilvl\":86,\"searing\":true,\"tangled\":true,\"properties\":[{\"name\":\"Quality (Attack Modifiers)\",\"values\":[[\"+20%\",1]],\"displayMode\":0},{\"name\":\"Energy Shield\",\"values\":[[\"150\",1]],\"displayMode\":0},{\"name\":\"Ward\",\"values\":[[\"10\",1]],\"displayMode\":0}],\"scourgeMods\":[\"+5 to Strength\"],\"crucibleMods\":[\"+5 to Dexterity\"],\"explicitMods\":[\"+100 to maximum Energy Shield\"],\"flavourText\":[\"<default>{Allocates Sentinel if you have the matching modifier on Forbidden Flame}\",\"just words\"]},{\"id\":\"synth-gloves\",\"inventoryId\":\"Gloves\",\"frameType\":3,\"name\":\"Synth Mitts\",\"typeLine\":\"Vestigial Sorcerer Gloves\",\"ilvl\":70,\"vestigial\":true,\"split\":true,\"duplicated\":true,\"properties\":[{\"name\":\"Energy Shield\",\"values\":[[\"60\",1]],\"displayMode\":0}],\"requirements\":[{\"name\":\"Class:\",\"values\":[[\"Witch\",0]]},{\"name\":\"Level\",\"values\":[[\"60\",0]]}],\"explicitMods\":[\"+10 to Intelligence\"],\"foilVariation\":3},{\"id\":\"synth-amulet\",\"inventoryId\":\"Amulet\",\"frameType\":9,\"name\":\"Synth Relic\",\"typeLine\":\"Onyx Amulet\",\"ilvl\":80,\"isRelic\":true,\"implicitMods\":[\"+16 to all Attributes\"],\"explicitMods\":[\"+1 to Level of all Lightning Skill Gems\"]},{\"id\":\"synth-ring\",\"inventoryId\":\"Ring\",\"frameType\":2,\"name\":\"Synth Loop\",\"typeLine\":\"Coral Ring\",\"ilvl\":80,\"implicitMods\":[\"+25 to maximum Life\"],\"explicitMods\":[\"+30 to maximum Mana\"]},{\"id\":null,\"inventoryId\":\"Ring2\",\"frameType\":1,\"name\":\"\",\"typeLine\":\"Sapphire Ring of the Fox\",\"ilvl\":40,\"implicitMods\":[\"+25% to Cold Resistance\"],\"explicitMods\":[\"+5 to Dexterity\"]},{\"id\":\"synth-belt\",\"inventoryId\":\"Belt\",\"frameType\":2,\"name\":\"Synth Cord\",\"typeLine\":\"Stygian Vise\",\"ilvl\":80,\"sockets\":[{\"group\":0,\"sColour\":\"A\"}],\"socketedItems\":[{\"id\":\"synth-eye\",\"abyssJewel\":true,\"frameType\":2,\"name\":\"Synth Eye\",\"typeLine\":\"Hypnotic Eye Jewel\",\"ilvl\":80,\"socket\":0,\"explicitMods\":[\"+20 to maximum Mana\"]}],\"implicitMods\":[\"Has 1 Abyssal Socket\"]},{\"id\":\"synth-flask1\",\"inventoryId\":\"Flask\",\"x\":0,\"frameType\":1,\"name\":\"\",\"typeLine\":\"Seething Divine Life Flask of Staunching\",\"ilvl\":60,\"properties\":[{\"name\":\"Quality\",\"values\":[[\"+20%\",1]],\"displayMode\":0}],\"explicitMods\":[\"Removes Bleeding when you use a Flask\"]},{\"id\":\"synth-flask2\",\"inventoryId\":\"Flask\",\"x\":1,\"frameType\":0,\"name\":\"\",\"typeLine\":\"Quicksilver Flask\",\"ilvl\":30,\"properties\":[{\"name\":\"Quality\",\"values\":[[\"+5%\",1]],\"displayMode\":0}]},{\"id\":\"synth-ignored\",\"inventoryId\":\"MainInventory\",\"frameType\":0,\"name\":\"\",\"typeLine\":\"Scroll of Wisdom\",\"ilvl\":1},{\"id\":\"synth-nobase\",\"inventoryId\":\"Ring3\",\"frameType\":2,\"name\":\"Synth\",\"typeLine\":\"A Base That Does Not Exist\",\"ilvl\":1}],\"jewels\":[{\"id\":\"synth-jewel\",\"inventoryId\":\"PassiveJewels\",\"x\":0,\"frameType\":2,\"name\":\"Synth Spark\",\"typeLine\":\"Cobalt Jewel\",\"ilvl\":80,\"explicitMods\":[\"10% increased maximum Energy Shield\"]},{\"id\":\"synth-unique-jewel\",\"inventoryId\":\"PassiveJewels\",\"x\":1,\"frameType\":3,\"name\":\"Thread of Hope\",\"typeLine\":\"Crimson Jewel\",\"ilvl\":80,\"properties\":[{\"name\":\"Radius\",\"values\":[[\"Variable\",1]],\"displayMode\":0},{\"name\":\"Limited to\",\"values\":[[\"1\",1]],\"displayMode\":0}],\"explicitMods\":[\"Only affects Passives in Medium Ring\",\"Passives in Radius can be Allocated without being connected to your tree\",\"-20% to all Elemental Resistances\"]},{\"id\":\"synth-cluster\",\"inventoryId\":\"PassiveJewels\",\"x\":11,\"frameType\":2,\"name\":\"Synth Cluster\",\"typeLine\":\"Large Cluster Jewel\",\"ilvl\":84,\"enchantMods\":[\"Adds 8 Passive Skills\",\"2 Added Passive Skills are Jewel Sockets\",\"Added Small Passive Skills grant: 12% increased Fire Damage\"],\"explicitMods\":[\"1 Added Passive Skill is Prismatic Heart\",\"1 Added Passive Skill is Widespread Destruction\"]}],\"passives\":{\"hashes\":[57264,57226,33296,37569,21678,59650,1957,36774,36542,32210,9650,19374,739,17579,4397,8948,25222,6949,18866,21934,11420,7938,31875,27659,38176,1031,33755,21958,14021,55332,42760,36678,20987,52502,7960,12125],\"hashes_ex\":[70001,70002],\"mastery_effects\":{\"12125\":64381},\"skill_overrides\":{\"57264\":{\"name\":\"Tattoo of the Tawhoa Shaman\",\"icon\":\"Art/2DArt/SkillIcons/passives/LifeRecoupNode.png\",\"activeEffectImage\":\"Art/2DArt/UIImages/InGame/AncestralTrial/PassiveTreeTattoos/TawhoaTribePassiveBG.png\",\"isTattoo\":true,\"stats\":[\"5% chance to Poison on Hit\"]}},\"bandit_choice\":\"Alira\",\"pantheon_major\":\"Lunaris\",\"pantheon_minor\":\"Shakari\",\"jewel_data\":{\"11\":{\"type\":\"JewelPassiveTreeExpansionLarge\",\"subgraph\":{\"groups\":{\"expansion_7960\":{\"proxy\":\"43989\",\"nodes\":[\"70001\",\"70002\",\"70003\"]}},\"nodes\":{\"70001\":{\"group\":\"expansion_7960\",\"orbitIndex\":7,\"skill\":\"70001\"},\"70002\":{\"group\":\"expansion_7960\",\"orbitIndex\":9,\"skill\":\"70002\"},\"70003\":{\"group\":\"expansion_7960\",\"orbitIndex\":8,\"isMastery\":true,\"skill\":\"70003\"}}}}},\"alternate_ascendancy\":\"Farrul\"},\"guardian\":[{\"id\":\"synth-guard-body\",\"inventoryId\":\"BodyArmour\",\"frameType\":2,\"name\":\"Guard Shell\",\"typeLine\":\"Astral Plate\",\"ilvl\":80,\"properties\":[{\"name\":\"Armour\",\"values\":[[\"800\",1]],\"displayMode\":0}],\"explicitMods\":[\"+50 to maximum Life\"]},{\"id\":\"synth-guard-helm\",\"inventoryId\":\"Helm\",\"frameType\":2,\"name\":\"Guard Helm\",\"typeLine\":\"Eternal Burgonet\",\"ilvl\":80,\"properties\":[{\"name\":\"Armour\",\"values\":[[\"300\",1]],\"displayMode\":0}],\"explicitMods\":[\"+20 to maximum Life\"]}]}}",
+"hold": [
+"CTRL"
+],
+"events": [
+[
+"KeyDown",
+"v"
+],
+[
+"KeyUp",
+"v"
+]
+],
+"dump": true
+},
+{
+"release": [
+"CTRL"
+]
+},
+{
+"cursorImport": "importCodeGo",
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true,
+"perfClick": "charImport"
+},
+{
+"dump": true,
+"xml": true
+}
+]
+}

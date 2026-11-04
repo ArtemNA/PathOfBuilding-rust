@@ -111,7 +111,58 @@ fn xml_of(code: &str) -> String {
     }
 }
 
-fn dump(g: &Gfx, tp: &TestPlatform) -> Value {
+/// The fake transport of a scene (the same list as `import-runner.lua`): written by hand, no site was asked.
+struct NetScript(std::sync::Arc<pob_net::ScriptedTransport>);
+
+impl NetScript {
+    fn new(sc: &Value) -> Self {
+        let t = std::sync::Arc::new(pob_net::ScriptedTransport::default());
+        for r in sc["net"].as_array().into_iter().flatten() {
+            let url = r["url"].as_str().expect("url");
+            if url == "oauth" {
+                let o = &r["oauth"];
+                t.set_oauth(pob_net::OauthServerResult {
+                    code: o["code"].as_str().map(str::to_owned),
+                    err: o["err"].as_str().map(str::to_owned),
+                    state: o["state"].as_str().map(str::to_owned),
+                    port: o["port"].as_u64().unwrap_or(0) as u16,
+                });
+                continue;
+            }
+            let reply = match r["error"].as_str() {
+                Some(e) => Err(e.to_owned()),
+                None => Ok(pob_net::Reply {
+                    code: r["code"].as_u64().expect("code") as u32,
+                    header: r["header"].as_str().unwrap_or("").to_owned(),
+                    body: r["body"].as_str().unwrap_or("").as_bytes().to_vec(),
+                }),
+            };
+            t.add(url, reply);
+        }
+        Self(t)
+    }
+
+    /// `url|header|body`, the same as `netRecord` of the runner.
+    fn log(&self) -> Vec<String> {
+        self.0
+            .log
+            .lock()
+            .expect("log")
+            .iter()
+            .map(|r| {
+                let body = r.body.as_ref().map_or(String::new(), |b| String::from_utf8_lossy(b).into_owned());
+                let body = match body.find("code_verifier=") {
+                    Some(i) => format!("{}code_verifier=*", &body[..i]),
+                    None => body,
+                };
+                let body = if body.len() > 300 { "<long>".to_string() } else { body };
+                format!("{}|{}|{body}", r.url, r.header.as_deref().unwrap_or(""))
+            })
+            .collect()
+    }
+}
+
+fn dump(g: &Gfx, tp: &TestPlatform, net: &NetScript, want_xml: bool) -> Value {
     let m = main();
     let b = m.build_mode.clone();
     let mut d = serde_json::Map::new();
@@ -119,6 +170,19 @@ fn dump(g: &Gfx, tp: &TestPlatform) -> Value {
     d.insert("popups".into(), json!(m.popups.borrow().len()));
     if let Some(p) = m.popups.borrow().first() {
         d.insert("popupTitle".into(), json!(p.title.get(g)));
+        if let Some(c) = p.host.get("msg") {
+            d.insert("popupMsg".into(), c.debug_value(g).unwrap_or(Value::Null));
+        }
+        if let Some(c) = p.host.get("edit") {
+            d.insert("popupEdit".into(), c.debug_value(g).unwrap_or(Value::Null));
+        }
+        if let Some(c) = p.host.get("shrink") {
+            d.insert("popupShrink".into(), c.debug_value(g).unwrap_or(Value::Null));
+            d.insert("popupShrinkOn".into(), json!(c.is_enabled(g)));
+        }
+        if let Some(c) = p.host.get("import") {
+            d.insert("popupImportOn".into(), json!(c.is_enabled(g)));
+        }
     }
     let prompt = pob_ui::launch::launch().prompt_msg.borrow().clone().unwrap_or_else(|| "nil".into());
     d.insert("prompt".into(), json!(prompt));
@@ -126,6 +190,11 @@ fn dump(g: &Gfx, tp: &TestPlatform) -> Value {
         "clipboard".into(),
         json!(tp.state().clipboard.map_or_else(|| "nil".to_string(), |c| xml_of(&c))),
     );
+    d.insert("netLog".into(), json!(net.log()));
+    d.insert("netReal".into(), json!(0));
+    if want_xml {
+        d.insert("xml".into(), json!(b.save_db_text().expect("SaveDB").replace("\r\n", "\n")));
+    }
     if let Some(import) = b.import_tab.borrow().clone() {
         let party = b.party_tab.borrow().clone().expect("partyTab");
         let c = b.c();
@@ -262,6 +331,10 @@ fn run(name: &str) -> Run {
         version_branch: Some("?".into()),
         version_platform: Some("?".into()),
     });
+    let net = NetScript::new(&sc);
+    l.set_transport(net.0.clone());
+    l.hold_sub_scripts(true);
+    pob_ui::poe_api::set_os_time(None);
     l.on_init(&mut gfx);
     assert!(l.prompt_msg.borrow().is_none(), "startup error: {:?}", l.prompt_msg.borrow());
     main().background.wait();
@@ -350,6 +423,24 @@ fn run(name: &str) -> Run {
         if !st["token"].is_null() {
             main().accounts.borrow_mut().last_token = st["token"].as_str().map(str::to_owned);
         }
+        if !st["apiTokens"].is_null() {
+            let t = &st["apiTokens"];
+            let m = main();
+            let mut a = m.accounts.borrow_mut();
+            a.last_token = t["auth"].as_str().map(str::to_owned);
+            a.last_refresh_token = t["refresh"].as_str().map(str::to_owned);
+            a.token_expiry = t["expiry"].as_f64();
+        }
+        if let Some(t) = st["osTime"].as_f64() {
+            pob_ui::poe_api::set_os_time(Some(t));
+        }
+        if let Some(w) = st["treePopup"].as_str() {
+            pob_ui::tabs::tree::debug_open_link_popup(&mut gfx, w == "export");
+        }
+        if st["netDeliver"].as_bool() == Some(true) {
+            l.net.wait_idle();
+            l.poll_sub_scripts(&mut gfx);
+        }
         if let Some(d) = st["devMode"].as_bool() {
             l.dev_mode.set(d);
         }
@@ -404,7 +495,10 @@ fn run(name: &str) -> Run {
             out.perf.push((label.to_string(), t0.elapsed().as_secs_f64() * 1e3));
         }
         if st["dump"].as_bool() == Some(true) {
-            out.dumps.push(((i + 1) as u64, dump(&gfx, &tp)));
+            // the requests of this step have reached the transport (nothing is delivered before the next frame)
+            l.net.wait_idle();
+            out.dumps
+                .push(((i + 1) as u64, dump(&gfx, &tp, &net, st["xml"].as_bool() == Some(true))));
         }
         if let (Some(file), Some(file_out)) = (st["file"].as_str(), st["fileOut"].as_str()) {
             let p = format!("{}{file}", main().build_path.borrow());
@@ -477,6 +571,27 @@ fn first_diff(a: &Value, b: &Value, path: &str) -> Option<String> {
                 .enumerate()
                 .find_map(|(i, (v, w))| first_diff(v, w, &format!("{path}[{i}]")))
         }
+        (Value::String(x), Value::String(y)) if x != y && path == ".xml" => {
+            // a build: every line that differs (`PlayerStat`s are their own check, in `statBox`)
+            let keep = |s: &str| {
+                s.lines()
+                    .filter(|l| !l.contains("<PlayerStat ") && !l.contains("<MinionStat ") && !l.contains("<FullDPSSkill "))
+                    .map(str::to_owned)
+                    .collect::<Vec<_>>()
+            };
+            let (a, b) = (keep(x), keep(y));
+            let only_a: Vec<&String> = a.iter().filter(|l| !b.contains(l)).take(12).collect();
+            let only_b: Vec<&String> = b.iter().filter(|l| !a.contains(l)).take(12).collect();
+            let first = a.iter().zip(&b).position(|(p, q)| p != q);
+            let at = first.map(|i| (i, a[i].clone(), b[i].clone()));
+            (a != b).then(|| {
+                format!(
+                    "{path}: lines {}/{}: first {at:#?}, only the oracle {only_a:#?}, only ours {only_b:#?}",
+                    a.len(),
+                    b.len()
+                )
+            })
+        }
         (Value::String(x), Value::String(y)) if x != y => {
             let at = x.bytes().zip(y.bytes()).position(|(p, q)| p != q).unwrap_or(x.len().min(y.len()));
             let cut = |s: &str| s[s.floor_char_boundary(at.saturating_sub(60))..s.ceil_char_boundary((at + 60).min(s.len()))].to_string();
@@ -508,6 +623,100 @@ fn missing_inputs() -> Option<String> {
         .map(|n| format!("fixtures/import/{n}.json is absent (tools/sg-oracle/run.ps1 -Script import-runner.lua)"))
 }
 
+/// A saved login in the settings of the scene's sandbox would ask the network in `ImportTab`'s constructor: none of the scenes has one, and every fake transport logs what came.
+#[test]
+fn no_scene_reaches_the_real_network() {
+    // the default of a `Net` refuses and counts
+    let t = std::sync::Arc::new(pob_net::NoNetwork::default());
+    let n = pob_net::Net::new(t.clone());
+    n.spawn(pob_net::Job::Http(pob_net::Request::default())).expect("id");
+    n.wait_idle();
+    assert_eq!(t.attempts.load(std::sync::atomic::Ordering::SeqCst), 1);
+    // and this crate's tests never build the real one
+    let me = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/import.rs")).expect("this file");
+    assert!(!me.contains(concat!("Ureq", "Transport")));
+}
+
+/// Outside a gate the frame itself delivers (`OnSubFinished` between the frames), a callback that fails is a prompt and not a crash, and a failed network is the callback's error.
+#[test]
+fn the_frame_delivers_and_a_failed_callback_is_a_prompt() {
+    let sandbox = Sandbox::new("frame-delivers");
+    let tp = TestPlatform::new();
+    let mut gfx = Gfx::with_platform(&scene::fonts_dir(), scene::SCREEN, 1.0, Box::new(tp.clone())).expect("fonts");
+    let root = scene::pob_root();
+    let l = Launch::new(LaunchConfig {
+        user_path: Some(sandbox.0.to_string_lossy().replace('\\', "/")),
+        user_folder: "Path of Building".into(),
+        script_path: format!("{root}/src/"),
+        doc_path: format!("{root}/"),
+        version_number: "1.2.3".into(),
+        version_branch: None,
+        version_platform: None,
+    });
+    let net = std::sync::Arc::new(pob_net::ScriptedTransport::default());
+    net.add(
+        "u-ok",
+        Ok(pob_net::Reply {
+            code: 200,
+            header: "H".into(),
+            body: b"B".to_vec(),
+        }),
+    );
+    net.add(
+        "u-404",
+        Ok(pob_net::Reply {
+            code: 404,
+            ..Default::default()
+        }),
+    );
+    net.add(
+        "u-empty",
+        Ok(pob_net::Reply {
+            code: 200,
+            ..Default::default()
+        }),
+    );
+    net.add("u-down", Err("down".into()));
+    l.set_transport(net.clone());
+    l.on_init(&mut gfx);
+    main().background.wait();
+    let seen = Rc::new(std::cell::RefCell::new(Vec::new()));
+    for u in ["u-ok", "u-404", "u-empty", "u-down"] {
+        let s = seen.clone();
+        l.download_page(u, pob_ui::launch::PageParams::default(), move |_g, r, e| {
+            s.borrow_mut().push((u, r.body, e))
+        });
+    }
+    assert!(seen.borrow().is_empty(), "nothing comes before a frame");
+    l.net.wait_idle();
+    frame(&mut gfx, &l);
+    let mut got = seen.borrow().clone();
+    got.sort();
+    assert_eq!(
+        got,
+        [
+            ("u-404", String::new(), Some("Response code: 404".to_string())),
+            ("u-down", String::new(), Some("down".to_string())),
+            ("u-empty", String::new(), Some("No data returned".to_string())),
+            ("u-ok", "B".to_string(), None),
+        ]
+    );
+    assert_eq!(net.log.lock().expect("log")[0].user_agent, "Path of Building/1.2.3");
+    // Launch.lua:231-234
+    l.download_page("u-ok", pob_ui::launch::PageParams::default(), |_g, _r, _e| panic!("boom"));
+    l.net.wait_idle();
+    frame(&mut gfx, &l);
+    assert!(
+        l.prompt_msg
+            .borrow()
+            .as_deref()
+            .is_some_and(|p| p.contains("In download callback: boom")),
+        "{:?}",
+        l.prompt_msg.borrow()
+    );
+    pob_ui::modules::main::clear_main();
+}
+
 #[test]
 fn import_states_equal_original() {
     if let Some(why) = missing_inputs() {
@@ -530,7 +739,31 @@ fn import_states_equal_original() {
                 m.remove("file");
             }
             compared += 1;
-            if let Some(d) = first_diff(&without_code(norm(&s)), &without_code(norm(ours)), "") {
+            // the records of U8a have no field of the network: those fields are compared in the scenes of U8c
+            let mut ours = ours.clone();
+            if s.get("netLog").is_none()
+                && let Some(m) = ours.as_object_mut()
+            {
+                m.remove("netLog");
+                m.remove("netReal");
+                if let Some(i) = m.get_mut("import").and_then(Value::as_object_mut) {
+                    for k in [
+                        "oauthErr",
+                        "oauthLoading",
+                        "fetching",
+                        "charList",
+                        "leagueList",
+                        "siteCharList",
+                        "siteLeagueList",
+                    ] {
+                        i.remove(k);
+                    }
+                }
+            }
+            if let Some(n) = s.get("netReal") {
+                assert_eq!(n.as_i64(), Some(0), "{name} step {step}: the original's real network was called");
+            }
+            if let Some(d) = first_diff(&without_code(norm(&s)), &without_code(norm(&ours)), "") {
                 failures.push(format!("{name} step {step}: {d}"));
             }
         }
@@ -597,6 +830,32 @@ fn import_perf() {
     };
     eprintln!("oracle: {}", rec["perf"]);
     eprintln!("rust:   {:?}", run("perf").perf);
+    // U8c: a whole character, from the click to the end of the callback
+    if let Some(c) = oracle_record("char-new") {
+        eprintln!("oracle char-new: {}", c["perf"]);
+        eprintln!("rust   char-new: {:?}", run("char-new").perf);
+    }
+}
+
+/// Two screenshots of this port for the report (`tools/.scratch/u8c-shots/`): the list of a synthetic account and a synthetic character imported.
+#[test]
+#[ignore = "needs a wgpu adapter"]
+fn net_report_shots() {
+    let mut r = pob_gfx::Renderer::new_offscreen().expect("wgpu adapter");
+    let dir = PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/../../tools/.scratch/u8c-shots"));
+    std::fs::create_dir_all(&dir).expect("mkdir");
+    let (w, h) = scene::SCREEN;
+    for (scenario, shot, file) in [
+        ("net-account", "net-account-chars", "account.png"),
+        ("char-new", "char-new-tree", "character.png"),
+    ] {
+        for (s, list) in run(scenario).shots {
+            if s == shot {
+                let rgba = r.render_to_rgba(&list).expect("render");
+                scene::save(&scene::crop(&rgba, w, w, h), &dir.join(file));
+            }
+        }
+    }
 }
 
 /// Two screenshots of this port for the report (`tools/.scratch/u8a-shots/`): the Import and Party tabs on a public golden.
