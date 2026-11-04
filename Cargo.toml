@@ -28,3 +28,10 @@ float_cmp = "allow"
 
 [profile.release]
 debug = "line-tables-only"
+
+# tools/package.ps1. `panic` stays `unwind`: `PCall` is `catch_unwind` (crates/pob-ui/src/launch.rs).
+[profile.dist]
+inherits = "release"
+debug = false
+strip = true
+lto = "thin"

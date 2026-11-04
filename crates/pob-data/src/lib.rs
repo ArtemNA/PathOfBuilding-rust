@@ -1,7 +1,7 @@
 //! The converted PoB data (`data/*.json`, synced from pob-ts by `tools/sync-data.ps1`) as serde models with lazy loaders --
 //! the files phase R3 reads (`KNOWLEDGE/R3-ARCH.md` §1). Executable spec: pob-ts `src/data/*.ts`.
 //!
-//! * Root: `POB_DATA_DIR`, else `<workspace>/data`; the lock file is `data.lock` next to that directory.
+//! * Root: [`data_dir`]; the lock file is `data.lock` next to that directory.
 //! * First access to any file checks `data.lock` against `data/manifest.json` (sha256 + pobSha + converterVersion,
 //!   RUST-ARCH §8); a mismatch is a start-up error (`ensure_data`), and loaders panic with it.
 //! * Every loader parses its file once per process (`OnceLock`), except the mod cache: its `pob_mods::Mod`s hold `Rc`s, so
@@ -50,12 +50,9 @@ impl fmt::Display for DataError {
 
 impl std::error::Error for DataError {}
 
-/// `POB_DATA_DIR`, or `<workspace root>/data`.
+/// The one search of the data folder: [`pob_mods::data::data_dir`].
 pub fn data_dir() -> PathBuf {
-    match std::env::var_os("POB_DATA_DIR") {
-        Some(d) => PathBuf::from(d),
-        None => PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/../../data")),
-    }
+    pob_mods::data::data_dir()
 }
 
 /// `data.lock` beside the data directory.

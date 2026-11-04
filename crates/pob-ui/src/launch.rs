@@ -36,6 +36,8 @@ pub struct LaunchConfig {
     pub version_number: String,
     pub version_branch: Option<String>,
     pub version_platform: Option<String>,
+    /// Only `pob-app` sets it: the port's own version, shown before upstream's in the `Version:` line. `None` (the tests and runners): that line as in the original.
+    pub app_version: Option<String>,
 }
 
 impl LaunchConfig {
@@ -64,6 +66,11 @@ impl LaunchConfig {
             }
         }
     }
+}
+
+/// The check of the converted data at the start of the application, before any window: the message of what is wrong with it.
+pub fn check_data() -> Result<(), String> {
+    pob_data::ensure_data().map(|_| ()).map_err(|e| e.to_string())
 }
 
 /// `{ header = responseHeader, body = responseBody }` of `launch:DownloadPage`.

@@ -1,35 +1,96 @@
 //! Path of Building (Rust): opens the window and runs the ported `Launch.lua` / `Main.lua` (U2b: the build list; the
 //! build screen is U2c).
 //!   cargo run -p pob-app --release [-- --pob <PathOfBuilding checkout>] [--user-path <documents dir>] [--secs N] [--open <build name>]
-//! - `--pob`: the PoB checkout whose `src/` (tree assets), `runtime/SimpleGraphic/Fonts`, `manifest.xml`,
-//!   `changelog.txt` and `help.txt` are read (read-only; default `POB_ROOT`, else `pobRoot` of `tools/upstream.json`, UI-ARCH §10 п. 7).
+//! - The root whose `src/` (tree assets), `runtime/SimpleGraphic/Fonts`, `manifest.xml`, `changelog.txt` and `help.txt` are read
+//!   (read-only): the folder of the exe when these are there (the package, `tools/package.ps1`), then `--pob`, `POB_ROOT`, and
+//!   in a development tree `pobRoot` of the `tools/upstream.json` found above the exe (UI-ARCH §10 п. 7).
 //! - `--user-path`: replaces the "Documents" folder (`GetUserPath`); user data goes to
 //!   `<it>/Path of Building (Rust)/` (UI-ARCH §10 п. 2) — never into the original's `Documents\Path of Building`.
 //! - `--secs N`: closes the window after N seconds (smoke runs).
 //! - `--fps-log`: prints the `OnFrame` calls of every second to stderr (the idle measurement).
 //! - `--open <name>`: opens `<user data>/Builds/<name>.xml` at start (`main:SetMode("BUILD", ...)`, the idle measurement of the tree).
+//! - The `package` feature: no console window. Everything on stderr (`Downloading page`, the frame stats) then goes nowhere.
+
+#![cfg_attr(feature = "package", windows_subsystem = "windows")]
 
 use pob_gfx::window::{MainObject, WindowConfig};
 use pob_gfx::{Frame, Gfx};
 use pob_ui::launch::{App, LaunchConfig};
+use std::path::{Path, PathBuf};
 use std::time::Instant;
 
-/// `tools/upstream.json` (the ONE upstream config, R-UP), read at compile time for the default `--pob`.
-const UPSTREAM_JSON: &str = include_str!("../../../tools/upstream.json");
+/// The icon of the window (and, through build.rs, of the exe in the package).
+const WINDOW_ICON: &[u8] = include_bytes!("../assets/icon.png");
 
-/// `pobRoot` of `tools/upstream.json` (absolute, or relative to the repo root).
-fn default_pob_root() -> String {
-    let key = UPSTREAM_JSON.find("\"pobRoot\"").expect("tools/upstream.json: pobRoot");
-    let rest = &UPSTREAM_JSON[key + "\"pobRoot\"".len()..];
-    let open = rest.find('"').expect("pobRoot value");
-    let len = rest[open + 1..].find('"').expect("pobRoot value");
-    let p = std::path::PathBuf::from(&rest[open + 1..open + 1 + len]);
-    let p = if p.is_absolute() {
-        p
-    } else {
-        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..").join(p)
+/// The folder of the fonts under a root.
+const FONTS: &str = "runtime/SimpleGraphic/Fonts";
+
+/// What the application cannot start without under a root; `manifest.xml` is not here: without it the version is `?` (Launch.lua:24-26).
+fn is_root(dir: &Path) -> bool {
+    dir.join("src/TreeData").is_dir() && dir.join(FONTS).is_dir()
+}
+
+/// `pobRoot` of the `tools/upstream.json` nearest above `from` (absolute, or relative to the repo root).
+fn dev_pob_root(from: &Path) -> Option<PathBuf> {
+    from.ancestors().find_map(|dir| {
+        let text = std::fs::read_to_string(dir.join("tools/upstream.json")).ok()?;
+        let json: serde_json::Value = serde_json::from_str(&text).ok()?;
+        Some(dir.join(json.get("pobRoot")?.as_str()?))
+    })
+}
+
+/// The root to read from, or the message of why there is none.
+fn find_root(args: &[String]) -> Result<PathBuf, String> {
+    let exe_dir = std::env::current_exe().ok().and_then(|p| p.parent().map(Path::to_path_buf));
+    if let Some(dir) = exe_dir.as_deref().filter(|d| is_root(d)) {
+        return Ok(dir.to_path_buf());
+    }
+    let (root, source) = match (arg(args, "--pob"), std::env::var_os("POB_ROOT")) {
+        (Some(p), _) => (Some(PathBuf::from(p)), "--pob"),
+        (None, Some(p)) => (Some(PathBuf::from(p)), "POB_ROOT"),
+        (None, None) => (exe_dir.as_deref().and_then(dev_pob_root), "tools/upstream.json"),
     };
-    p.to_string_lossy().into_owned()
+    match root {
+        Some(root) if is_root(&root) => Ok(root),
+        Some(root) => Err(format!(
+            "The application's files were not found.\n\nNot next to the program, and {source} points to\n{}\nwhich has no src/TreeData or {FONTS}.\n\nKeep the program in its folder together with data, src and runtime.",
+            root.display()
+        )),
+        None => Err(format!(
+            "The application's files were not found.\n\nThe folder of the program has no src/TreeData or {FONTS}.\n\nKeep the program in its folder together with data, src and runtime."
+        )),
+    }
+}
+
+/// The title of an error box.
+const ERROR_TITLE: &str = pob_ui::launch::APP_NAME;
+
+#[cfg(windows)]
+#[allow(unsafe_code)]
+fn message_box(text: &str) {
+    use std::ffi::c_void;
+    #[link(name = "user32")]
+    unsafe extern "system" {
+        fn MessageBoxW(hwnd: *mut c_void, text: *const u16, caption: *const u16, kind: u32) -> i32;
+    }
+    /// `MB_OK | MB_ICONERROR`.
+    const KIND: u32 = 0x10;
+    let wide = |s: &str| s.encode_utf16().chain(std::iter::once(0)).collect::<Vec<u16>>();
+    let (text, caption) = (wide(text), wide(ERROR_TITLE));
+    // SAFETY: both strings are NUL-terminated and outlive the call; a null owner window is allowed.
+    unsafe {
+        MessageBoxW(std::ptr::null_mut(), text.as_ptr(), caption.as_ptr(), KIND);
+    }
+}
+
+#[cfg(not(windows))]
+fn message_box(_text: &str) {}
+
+/// An error that stops the start: shown in a window, because the package has no console.
+fn fatal(msg: &str) -> ! {
+    eprintln!("pob-app: {msg}");
+    message_box(msg);
+    std::process::exit(1);
 }
 
 /// The data folder of the Rust port (UI-ARCH §10 п. 2).
@@ -117,20 +178,21 @@ impl MainObject for Runner {
 fn arg(args: &[String], name: &str) -> Option<String> {
     args.iter()
         .position(|a| a == name)
-        .map(|i| args.get(i + 1).unwrap_or_else(|| panic!("{name} needs a value")).clone())
+        .map(|i| args.get(i + 1).unwrap_or_else(|| fatal(&format!("{name} needs a value"))).clone())
 }
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
-    let pob = arg(&args, "--pob")
-        .or_else(|| std::env::var("POB_ROOT").ok())
-        .unwrap_or_else(default_pob_root)
-        .replace('\\', "/");
+    let pob = find_root(&args).unwrap_or_else(|e| fatal(&e));
+    if let Err(e) = pob_ui::launch::check_data() {
+        fatal(&format!("The application's data could not be read.\n\n{e}"));
+    }
+    let pob = pob.to_string_lossy().replace('\\', "/");
     let pob = pob.trim_end_matches('/').to_string();
     let user_path = arg(&args, "--user-path")
         .map(|p| p.replace('\\', "/"))
         .or_else(pob_gfx::fs::get_user_path);
-    let secs = arg(&args, "--secs").map(|s| s.parse::<f64>().expect("--secs N"));
+    let secs = arg(&args, "--secs").map(|s| s.parse::<f64>().unwrap_or_else(|_| fatal("--secs needs a number")));
     let mut cfg = LaunchConfig {
         user_path,
         user_folder: USER_FOLDER.to_string(),
@@ -139,6 +201,7 @@ fn main() {
         version_number: "?".into(),
         version_branch: None,
         version_platform: None,
+        app_version: Some(env!("CARGO_PKG_VERSION").to_string()),
     };
     cfg.read_manifest(&format!("{pob}/manifest.xml"));
     let runner = Runner {
@@ -163,9 +226,9 @@ fn main() {
     let wcfg = WindowConfig {
         title: pob_ui::launch::APP_NAME.into(),
         size: (1280, 800),
-        fonts_dir: format!("{pob}/runtime/SimpleGraphic/Fonts").into(),
+        fonts_dir: format!("{pob}/{FONTS}").into(),
     };
-    match pob_gfx::run(runner, wcfg) {
+    match pob_gfx::window::run_with_icon(runner, wcfg, Some(WINDOW_ICON)) {
         Ok((_, stats)) => {
             let ms = |d: std::time::Duration| d.as_secs_f64() * 1e3;
             eprintln!(
@@ -175,9 +238,6 @@ fn main() {
                 stats.presented
             );
         }
-        Err(e) => {
-            eprintln!("pob-app: {e}");
-            std::process::exit(1);
-        }
+        Err(e) => fatal(&e.to_string()),
     }
 }

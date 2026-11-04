@@ -327,6 +327,7 @@ fn run(name: &str) -> Run {
         version_number: "?".into(),
         version_branch: Some("?".into()),
         version_platform: Some("?".into()),
+        app_version: None,
     });
     l.on_init(&mut gfx);
     assert!(l.prompt_msg.borrow().is_none(), "startup error: {:?}", l.prompt_msg.borrow());

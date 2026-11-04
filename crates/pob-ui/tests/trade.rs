@@ -297,6 +297,7 @@ fn run(name: &str) -> Run {
         version_number: "?".into(),
         version_branch: Some("?".into()),
         version_platform: Some("?".into()),
+        app_version: None,
     });
     let net = NetScript::new(&sc);
     l.set_transport(net.0.clone());

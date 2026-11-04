@@ -35,6 +35,7 @@ fn start(tag: &str) -> (Tmp, Gfx, TestPlatform, Rc<Launch>) {
         version_number: "1.2.3".into(),
         version_branch: None,
         version_platform: None,
+        app_version: None,
     });
     l.on_init(&mut gfx);
     (Tmp(dir), gfx, tp, l)
@@ -44,6 +45,45 @@ fn frame(gfx: &mut Gfx, l: &Rc<Launch>) {
     let mut f = gfx.begin_frame();
     l.on_frame(&mut f);
     f.finish();
+}
+
+/// The version of the window's "Version:" and of the network's User-Agent comes from `manifest.xml`; without one it is `?` (Launch.lua:24-26).
+#[test]
+fn manifest_gives_the_version_of_the_user_agent() {
+    let (dir, _gfx, _tp, l) = start("manifest");
+    assert_eq!(l.net_request("https://x", None, None, true).user_agent, "Path of Building/1.2.3");
+
+    let path = dir.0.join("manifest.xml");
+    std::fs::write(
+        &path,
+        "<?xml version='1.0' encoding='UTF-8'?>\n<PoBVersion>\n\t<Version number=\"2.67.2\" />\n</PoBVersion>\n",
+    )
+    .expect("manifest");
+    let mut cfg = l.cfg.clone();
+    cfg.read_manifest(&path.to_string_lossy());
+    assert_eq!(cfg.version_number, "2.67.2");
+    cfg.read_manifest(&dir.0.join("absent.xml").to_string_lossy());
+    assert_eq!(cfg.version_number, "?");
+}
+
+/// The application's two lines fit between About and the end of the side panel in the measured width, also with longer versions; `Dev Mode` on the upper row ends before them.
+#[test]
+fn version_lines_fit_the_side_panel() {
+    use pob_ui::modules::main::{VERSION_LINES_X, version_lines};
+    let (_dir, gfx, _tp, _l) = start("version-lines");
+    // the main anchor is at 4; the side panel's divider starts at 308
+    let left = 4.0 + VERSION_LINES_X;
+    for (app, up) in [("0.1.0", "2.67.2"), ("10.10.10", "10.100.10")] {
+        let (upper, lower) = version_lines(app, up);
+        for line in [upper, lower] {
+            let w = pob_ui::sg::draw_string_width(&gfx, 16.0, "VAR", &line);
+            println!("{line}: {w} px, ends at {}", left + w);
+            assert!(left + w <= 308.0, "{line}: {w}");
+        }
+    }
+    let dev = pob_ui::sg::draw_string_width(&gfx, 20.0, "VAR", "Dev Mode");
+    println!("Dev Mode: {dev} px, ends at {}", 4.0 + dev);
+    assert!(4.0 + dev < left, "Dev Mode: {dev}");
 }
 
 #[test]
