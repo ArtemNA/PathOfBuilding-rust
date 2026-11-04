@@ -118,7 +118,7 @@ pub struct SkillPart {
 }
 
 /// The raw `skills.json` record.
-#[derive(Deserialize)]
+#[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct RawEffect {
     id: String,
@@ -514,4 +514,19 @@ pub fn load_skills_fresh() -> Result<Skills, crate::DataError> {
     let raw: OrderedMap<RawEffect> = crate::read_json("skills.json")?;
     let shapes = crate::patches::skill_levels_shape()?;
     build(raw, shapes).map_err(|e| crate::DataError(format!("pob-data: {e}")))
+}
+
+#[cfg(test)]
+mod cache_gate {
+    use super::*;
+
+    /// `tests/bincache.rs` for this table, whose model is private.
+    #[test]
+    fn skills_table_equals_its_json() {
+        let text = std::fs::read_to_string(crate::data_dir().join("skills.json")).unwrap();
+        let json: OrderedMap<RawEffect> = serde_json::from_str(&text).unwrap();
+        let table = crate::bincache::Table::new(crate::bincache::encode_table(&text).unwrap()).unwrap();
+        let cached: OrderedMap<RawEffect> = table.read().unwrap();
+        assert!(format!("{json:?}") == format!("{cached:?}"));
+    }
 }

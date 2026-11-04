@@ -33,8 +33,13 @@ fn load_image(root: &str, version: &str, img_name: &str, flags: &[LoadFlag]) -> 
     };
     let handle = ImageHandle::new();
     // `handle:Load` of a missing file leaves an image without size: `DrawAsset` skips it.
-    let _ = handle.load(path, flags);
-    let (w, h) = handle.image_size();
+    let _ = handle.load_lazy(path, flags);
+    // an ASYNC image has no size yet (`DrawAsset` asks when it draws), and asking now would decode one that may never be drawn
+    let (w, h) = if flags.contains(&LoadFlag::Async) {
+        (0, 0)
+    } else {
+        handle.image_size()
+    };
     Rc::new(Asset {
         handle,
         width: Cell::new(f64::from(w)),
@@ -325,6 +330,10 @@ impl TreeArt {
                         no_query
                     };
                     let a = load_image(root, version, name, &[LoadFlag::Clamp]);
+                    if !name.contains("jewel-radius") && !name.contains("tattoo") {
+                        // the sheets of the first frame decode side by side; these two wait for the first thing that draws them
+                        a.handle.prefetch();
+                    }
                     (a.handle.clone(), a.width.get(), a.height.get())
                 })
                 .clone();
@@ -397,7 +406,7 @@ impl TreeArt {
                 .entry(file.to_string())
                 .or_insert_with(|| {
                     let h = ImageHandle::new();
-                    let _ = h.load(format!("{root}TreeData/legion/{file}"), &[]);
+                    let _ = h.load_lazy(format!("{root}TreeData/legion/{file}"), &[]);
                     let (w, ht) = h.image_size();
                     (h, f64::from(w), f64::from(ht))
                 })

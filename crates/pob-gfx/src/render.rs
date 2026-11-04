@@ -89,6 +89,7 @@ pub struct Renderer {
     verts: Vec<Vertex>,
     bytes: Vec<u8>,
     adapter_info: wgpu::AdapterInfo,
+    release_uploaded_pixels: bool,
 }
 
 impl Renderer {
@@ -101,10 +102,7 @@ impl Renderer {
     }
 
     /// The adapter (`POB_GFX_WARP=1` forces the software fallback, e.g. WARP on Windows).
-    pub fn request_adapter(
-        instance: &wgpu::Instance,
-        surface: Option<&wgpu::Surface<'_>>,
-    ) -> Result<wgpu::Adapter, RenderError> {
+    pub fn request_adapter(instance: &wgpu::Instance, surface: Option<&wgpu::Surface<'_>>) -> Result<wgpu::Adapter, RenderError> {
         pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
             power_preference: wgpu::PowerPreference::None,
             force_fallback_adapter: std::env::var_os("POB_GFX_WARP").is_some(),
@@ -114,20 +112,103 @@ impl Renderer {
         .map_err(|e| RenderError::NoAdapter(e.to_string()))
     }
 
-    pub fn new(
-        instance: &wgpu::Instance,
-        surface: Option<&wgpu::Surface<'_>>,
-        format: wgpu::TextureFormat,
-    ) -> Result<Self, RenderError> {
+    pub fn new(instance: &wgpu::Instance, surface: Option<&wgpu::Surface<'_>>, format: wgpu::TextureFormat) -> Result<Self, RenderError> {
         Self::with_adapter(&Self::request_adapter(instance, surface)?, format)
     }
 
     /// `format` = format of the presentation target (written by the blit pass).
     pub fn with_adapter(adapter: &wgpu::Adapter, format: wgpu::TextureFormat) -> Result<Self, RenderError> {
+        Ok(Self::from_core(RendererCore::new(adapter)?, format))
+    }
+
+    /// The window's path: the core comes from its own thread, the format from the surface afterwards.
+    pub fn from_core(core: RendererCore, format: wgpu::TextureFormat) -> Self {
+        let blit_pipeline = core.blit_pipeline(format);
+        let RendererCore {
+            device,
+            queue,
+            pipeline,
+            blit_shader: _,
+            blit_pl: _,
+            blit_layout,
+            tex_layout,
+            screen_buf,
+            screen_bind,
+            samplers,
+            adapter_info,
+        } = core;
+        Self {
+            device,
+            queue,
+            pipeline,
+            format,
+            blit_pipeline,
+            blit_layout,
+            frame: None,
+            tex_layout,
+            screen_buf,
+            screen_bind,
+            samplers,
+            textures: HashMap::new(),
+            vbuf: None,
+            ibuf: None,
+            verts: Vec::new(),
+            bytes: Vec::new(),
+            adapter_info,
+            release_uploaded_pixels: false,
+        }
+    }
+
+    /// Headless renderer for RGBA8 offscreen frames.
+    pub fn new_offscreen() -> Result<Self, RenderError> {
+        Self::new(&Self::new_instance(), None, FRAME_FORMAT)
+    }
+
+    /// The only renderer of the process: textures drop their CPU pixels once they are on the GPU.
+    pub fn release_uploaded_pixels(&mut self) {
+        self.release_uploaded_pixels = true;
+    }
+
+    /// Presents a surface texture rendered with [`Self::render`].
+    pub fn present(&self, tex: wgpu::SurfaceTexture) {
+        self.queue.present(tex);
+    }
+
+    pub fn device(&self) -> &wgpu::Device {
+        &self.device
+    }
+
+    pub fn format(&self) -> wgpu::TextureFormat {
+        self.format
+    }
+
+    pub fn adapter_info(&self) -> &wgpu::AdapterInfo {
+        &self.adapter_info
+    }
+}
+
+/// The slow part of a renderer (device, shaders, the main pipeline), free of `Rc`s: a thread can make it while the window's first frame prepares.
+pub struct RendererCore {
+    device: wgpu::Device,
+    queue: wgpu::Queue,
+    pipeline: wgpu::RenderPipeline,
+    blit_shader: wgpu::ShaderModule,
+    blit_pl: wgpu::PipelineLayout,
+    blit_layout: wgpu::BindGroupLayout,
+    tex_layout: wgpu::BindGroupLayout,
+    screen_buf: wgpu::Buffer,
+    screen_bind: wgpu::BindGroup,
+    samplers: [wgpu::Sampler; 4],
+    adapter_info: wgpu::AdapterInfo,
+}
+
+impl RendererCore {
+    pub(crate) fn new(adapter: &wgpu::Adapter) -> Result<Self, RenderError> {
         let adapter_info = adapter.get_info();
         let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
             label: Some("pob-gfx"),
             required_limits: wgpu::Limits::downlevel_defaults().using_resolution(adapter.limits()),
+            memory_hints: wgpu::MemoryHints::MemoryUsage,
             ..Default::default()
         }))
         .map_err(|e| RenderError::Device(e.to_string()))?;
@@ -227,31 +308,6 @@ impl Renderer {
             bind_group_layouts: &[Some(&blit_layout)],
             ..Default::default()
         });
-        let blit_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some("blit"),
-            layout: Some(&blit_pl),
-            vertex: wgpu::VertexState {
-                module: &blit_shader,
-                entry_point: Some("vs_main"),
-                compilation_options: Default::default(),
-                buffers: &[],
-            },
-            fragment: Some(wgpu::FragmentState {
-                module: &blit_shader,
-                entry_point: Some("fs_main"),
-                compilation_options: Default::default(),
-                targets: &[Some(wgpu::ColorTargetState {
-                    format,
-                    blend: None,
-                    write_mask: wgpu::ColorWrites::ALL,
-                })],
-            }),
-            primitive: wgpu::PrimitiveState::default(),
-            depth_stencil: None,
-            multisample: wgpu::MultisampleState::default(),
-            multiview_mask: None,
-            cache: None,
-        });
         let screen_buf = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("screen"),
             size: 16,
@@ -267,65 +323,84 @@ impl Renderer {
             }],
         });
         let sampler = |clamp: bool, nearest: bool| {
-            let mode = if clamp { wgpu::AddressMode::ClampToEdge } else { wgpu::AddressMode::Repeat };
-            let filter = if nearest { wgpu::FilterMode::Nearest } else { wgpu::FilterMode::Linear };
+            let mode = if clamp {
+                wgpu::AddressMode::ClampToEdge
+            } else {
+                wgpu::AddressMode::Repeat
+            };
+            let filter = if nearest {
+                wgpu::FilterMode::Nearest
+            } else {
+                wgpu::FilterMode::Linear
+            };
             device.create_sampler(&wgpu::SamplerDescriptor {
                 label: Some("pob-gfx"),
                 address_mode_u: mode,
                 address_mode_v: mode,
                 mag_filter: filter,
                 min_filter: filter,
-                mipmap_filter: if nearest { wgpu::MipmapFilterMode::Nearest } else { wgpu::MipmapFilterMode::Linear },
+                mipmap_filter: if nearest {
+                    wgpu::MipmapFilterMode::Nearest
+                } else {
+                    wgpu::MipmapFilterMode::Linear
+                },
                 // SimpleGraphic filters anisotropically, 16x, without mip levels (scene `u3a-aniso`, ratios 4..87: 0 pixels differ at 16, 647 at 8):
                 // uniformly scaled quads look bilinear, stretched ones (connectors, tooltip header tiles) do not.
                 anisotropy_clamp: if nearest { 1 } else { 16 },
                 ..Default::default()
             })
         };
-        let samplers = [sampler(false, false), sampler(false, true), sampler(true, false), sampler(true, true)];
-        Ok(Self {
+        let samplers = [
+            sampler(false, false),
+            sampler(false, true),
+            sampler(true, false),
+            sampler(true, true),
+        ];
+        Ok(RendererCore {
             device,
             queue,
             pipeline,
-            format,
-            blit_pipeline,
+            blit_shader,
+            blit_pl,
             blit_layout,
-            frame: None,
             tex_layout,
             screen_buf,
             screen_bind,
             samplers,
-            textures: HashMap::new(),
-            vbuf: None,
-            ibuf: None,
-            verts: Vec::new(),
-            bytes: Vec::new(),
             adapter_info,
         })
     }
 
-    /// Headless renderer for RGBA8 offscreen frames.
-    pub fn new_offscreen() -> Result<Self, RenderError> {
-        Self::new(&Self::new_instance(), None, FRAME_FORMAT)
+    fn blit_pipeline(&self, format: wgpu::TextureFormat) -> wgpu::RenderPipeline {
+        self.device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("blit"),
+            layout: Some(&self.blit_pl),
+            vertex: wgpu::VertexState {
+                module: &self.blit_shader,
+                entry_point: Some("vs_main"),
+                compilation_options: Default::default(),
+                buffers: &[],
+            },
+            fragment: Some(wgpu::FragmentState {
+                module: &self.blit_shader,
+                entry_point: Some("fs_main"),
+                compilation_options: Default::default(),
+                targets: &[Some(wgpu::ColorTargetState {
+                    format,
+                    blend: None,
+                    write_mask: wgpu::ColorWrites::ALL,
+                })],
+            }),
+            primitive: wgpu::PrimitiveState::default(),
+            depth_stencil: None,
+            multisample: wgpu::MultisampleState::default(),
+            multiview_mask: None,
+            cache: None,
+        })
     }
+}
 
-    /// Presents a surface texture rendered with [`Self::render`].
-    pub fn present(&self, tex: wgpu::SurfaceTexture) {
-        self.queue.present(tex);
-    }
-
-    pub fn device(&self) -> &wgpu::Device {
-        &self.device
-    }
-
-    pub fn format(&self) -> wgpu::TextureFormat {
-        self.format
-    }
-
-    pub fn adapter_info(&self) -> &wgpu::AdapterInfo {
-        &self.adapter_info
-    }
-
+impl Renderer {
     fn upload(&mut self, t: &Rc<Texture>) {
         if self.textures.contains_key(&t.id()) {
             return;
@@ -352,7 +427,7 @@ impl Renderer {
                 origin: wgpu::Origin3d::ZERO,
                 aspect: wgpu::TextureAspect::All,
             },
-            t.pixels(),
+            &t.pixels().expect("a texture without a GPU copy keeps its pixels"),
             wgpu::TexelCopyBufferLayout {
                 offset: 0,
                 bytes_per_row: Some(4 * t.width),
@@ -360,6 +435,9 @@ impl Renderer {
             },
             size,
         );
+        if self.release_uploaded_pixels {
+            t.release_pixels();
+        }
         let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
         let sampler = &self.samplers[usize::from(t.clamp) * 2 + usize::from(t.nearest)];
         let bind = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
@@ -430,7 +508,9 @@ impl Renderer {
     /// Draws `list` into the window `target`: main pass into the y-up frame texture, then the flipping blit.
     pub fn render(&mut self, list: &DrawList, target: &wgpu::TextureView) {
         self.draw_frame(list);
-        let mut enc = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("blit") });
+        let mut enc = self
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("blit") });
         {
             let mut pass = enc.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("blit"),
@@ -492,7 +572,9 @@ impl Renderer {
             self.queue.write_buffer(self.vbuf.as_ref().expect("vbuf"), 0, &self.bytes);
             self.queue.write_buffer(self.ibuf.as_ref().expect("ibuf"), 0, &indices);
         }
-        let mut enc = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("pob-gfx") });
+        let mut enc = self
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("pob-gfx") });
         {
             let mut pass = enc.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("pob-gfx"),
@@ -566,7 +648,9 @@ impl Renderer {
             usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
             mapped_at_creation: false,
         });
-        let mut enc = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("readback") });
+        let mut enc = self
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("readback") });
         enc.copy_texture_to_buffer(
             wgpu::TexelCopyTextureInfo {
                 texture: target,

@@ -68,7 +68,7 @@ fn mod_cache_counts() {
     assert_eq!(c.len(), 23_201);
     assert_eq!((both, mods_only, extra_only, empty), (1096, 19_299, 2785, 21));
     assert_eq!(mods_total, 23_334);
-    assert_eq!(c.malformed_dropped, 0);
+    assert_eq!(c.malformed_dropped(), 0);
     let orphan_records = c.entries.iter().filter(|e| !e.orphan_tags.is_empty()).count();
     assert_eq!(orphan_records, 3);
     let e = c
