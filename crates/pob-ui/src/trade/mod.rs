@@ -2216,9 +2216,7 @@ impl ListHooks<usize> for WeightList {
 /// The `pcall` of `PullCXData` (:170-247).
 fn currency_exchange(stat: &Json, json: &Json) -> Result<BTreeMap<String, BTreeMap<String, f64>>, String> {
     let root = launch().cfg.script_path.clone();
-    let path = format!("{root}Data/CurrencyNames.lua");
-    let src = std::fs::read(&path).map_err(|e| format!("{path}: {e}"))?;
-    let names = crate::lua_data::parse_return(&src)?;
+    let names = crate::src_cache::read_lua(&root, "Data/CurrencyNames.lua")?;
     let mut id_map: HashMap<String, String> = HashMap::new();
     for (k, v) in &names.as_tab().ok_or("CurrencyNames")?.fields {
         if let (crate::lua_data::LuaKey::Str(k), Some(v)) = (k, v.as_str()) {

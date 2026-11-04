@@ -25,6 +25,15 @@ pub fn pob_root() -> String {
     norm(&if p.is_absolute() { p } else { repo.join(p) })
 }
 
+/// The `src/` the application reads in a test: `POB_PACKAGE_SRC` is the `src/` of a package (`tools/package.ps1`: no `.lua`, one copy of each file), the check of that reading path.
+#[allow(dead_code)]
+pub fn script_path() -> String {
+    match std::env::var_os("POB_PACKAGE_SRC") {
+        Some(v) => format!("{}/", Path::new(&v).to_string_lossy().replace('\\', "/").trim_end_matches('/')),
+        None => format!("{}/src/", pob_root()),
+    }
+}
+
 /// The oracle's fixed window (scene-runner.lua: `vid_last 1280,800,…`).
 pub const SCREEN: (u32, u32) = (1280, 800);
 

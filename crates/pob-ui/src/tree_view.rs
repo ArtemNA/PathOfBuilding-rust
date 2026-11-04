@@ -173,7 +173,7 @@ pub struct PassiveTreeView {
 
 fn clamp_image(root: &str, path: &str) -> ImageHandle {
     let h = ImageHandle::new();
-    let _ = h.load(format!("{root}{path}"), &[LoadFlag::Clamp]);
+    let _ = h.load(crate::src_cache::resolve(root, path), &[LoadFlag::Clamp]);
     h
 }
 

@@ -23,7 +23,7 @@ OutputBaseFilename=pob-rust-{#MyVersion}-windows-x64-setup
 SetupIconFile={#IconFile}
 UninstallDisplayIcon={app}\{#MyExe}
 UninstallDisplayName={#MyName}
-; The dictionary must span the copies of a file between tree versions (294 of 945 MB): with the 32 MB of lzma2/max the installer is 599 MB instead of 292
+; The dictionary spans what is alike between tree versions. With the copies in the package it took the installer from 599 MB (the 32 MB of lzma2/max) to 292; without them (tools/package.ps1 keeps one of each) it is 290, this size not measured again
 Compression=lzma2/ultra64
 LZMADictionarySize=131072
 LZMAUseSeparateProcess=yes

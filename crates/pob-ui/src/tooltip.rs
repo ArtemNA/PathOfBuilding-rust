@@ -270,7 +270,7 @@ fn image_of(path: &str, flags: &[pob_gfx::LoadFlag]) -> ImageHandle {
             .or_insert_with(|| {
                 let h = ImageHandle::new();
                 let root = crate::launch::launch().cfg.script_path.clone();
-                let _ = h.load(format!("{root}{path}"), flags);
+                let _ = h.load(crate::src_cache::resolve(&root, path), flags);
                 h
             })
             .clone()

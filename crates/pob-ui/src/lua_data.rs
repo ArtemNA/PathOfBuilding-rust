@@ -254,6 +254,15 @@ impl Parser<'_> {
 pub fn parse_return(src: &[u8]) -> Result<LuaVal, String> {
     let at = src.windows(6).position(|w| w == b"return").ok_or("no return")?;
     let mut p = Parser { s: src, i: at + 6 };
+    p.skip_ws();
+    // `local tree={ ... }return tree` (the first word after `return` is a name, and `return` itself came after the table)
+    let name_end = src[p.i..].iter().position(|c| !(c.is_ascii_alphanumeric() || *c == b'_')).map_or(src.len(), |n| p.i + n);
+    let name = &src[p.i..name_end];
+    if name.first().is_some_and(u8::is_ascii_alphabetic) && !matches!(name, b"true" | b"false" | b"nil") {
+        let local = [b"local ", name, b"="].concat();
+        let start = src.windows(local.len()).position(|w| w == local).ok_or("return of an unknown name")?;
+        p.i = start + local.len();
+    }
     p.value()
 }
 
@@ -271,5 +280,12 @@ mod tests {
         assert!(matches!(t.get("b"), Some(LuaVal::Bool(true))));
         assert_eq!(t.get_num(0.5).unwrap().as_tab().unwrap().num("x"), Some(1.0));
         assert_eq!(t.fields.len(), 4);
+    }
+
+    #[test]
+    fn reads_a_table_returned_by_name() {
+        let v = parse_return(b"local tree={[\"a\"]=1}return tree").unwrap();
+        assert_eq!(v.as_tab().unwrap().num("a"), Some(1.0));
+        assert!(parse_return(b"local x={}return tree").is_err());
     }
 }

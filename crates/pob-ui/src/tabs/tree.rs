@@ -20,6 +20,7 @@ use crate::controls::drop_down::{DropDownControl, DropItem};
 use crate::controls::edit::{EditArgs, EditControl};
 use crate::controls::list::{ByRef, Column, ListControl, ListHooks};
 use crate::host::{ControlHost, InputEvent, InputEvents};
+use crate::lua_data::{LuaKey, LuaTab, LuaVal};
 use crate::modules::main::{BareControl, main};
 use crate::sg;
 use crate::tooltip::Tooltip;
@@ -63,16 +64,33 @@ fn latest_tree_version() -> &'static str {
 
 /// `treeVersions[ver].url` (GameVersions.lua; the data patch does not export it): read from the original's `GameVersions.lua`.
 fn tree_version_url(root: &str, ver: &str) -> String {
-    let text = std::fs::read_to_string(format!("{root}GameVersions.lua")).unwrap_or_default();
-    let key = format!("[\"{ver}\"] = {{");
-    text.find(&key)
-        .and_then(|p| {
-            let rest = &text[p..];
-            let u = rest.find("url = \"")? + 7;
-            let e = rest[u..].find('"')?;
-            Some(rest[u..u + e].to_string())
-        })
-        .unwrap_or_default()
+    let v = crate::src_cache::product(root, VERSION_URLS_KEY, make_version_urls).unwrap_or_else(|e| panic!("{e}"));
+    v.as_tab().and_then(|t| t.str(ver)).unwrap_or_default().to_string()
+}
+
+/// The table of [`make_version_urls`] in `src.cache`.
+pub const VERSION_URLS_KEY: &str = "GameVersions.lua#urls";
+
+/// Every `["<ver>"] = {` of `GameVersions.lua` -> the first `url = "..."` after it.
+pub fn make_version_urls(root: &str) -> Result<LuaVal, String> {
+    let text = std::fs::read_to_string(format!("{root}GameVersions.lua")).map_err(|e| format!("GameVersions.lua: {e}"))?;
+    let mut fields = Vec::new();
+    for (p, _) in text.match_indices("[\"") {
+        let rest = &text[p + 2..];
+        let Some(e) = rest.find("\"] = {") else { continue };
+        let ver = &rest[..e];
+        if ver.contains(['\n', '"']) || fields.iter().any(|(k, _)| matches!(k, LuaKey::Str(s) if &**s == ver)) {
+            continue;
+        }
+        let url = rest.find("url = \"").and_then(|u| {
+            let u = u + 7;
+            Some(&rest[u..u + rest[u..].find('"')?])
+        });
+        if let Some(url) = url {
+            fields.push((LuaKey::Str(ver.into()), LuaVal::Str(url.into())));
+        }
+    }
+    Ok(LuaVal::Table(Rc::new(LuaTab { arr: Vec::new(), fields })))
 }
 
 /// One `spec` of the undo mixin (UndoHandler.lua): `undo[1]` is the current state.
@@ -1580,9 +1598,26 @@ fn strip_version(link: &str) -> String {
 
 /// `poePlannerVersions` (GameVersions.lua:229), read from the checkout as [`tree_version_url`] reads the urls: the data patch does not export it.
 fn poe_planner_versions(root: &str) -> HashMap<u32, String> {
-    let text = std::fs::read_to_string(format!("{root}GameVersions.lua")).unwrap_or_default();
-    let mut out = HashMap::new();
-    let Some(p) = text.find("poePlannerVersions = {") else { return out };
+    let v = crate::src_cache::product(root, PLANNER_KEY, make_planner_versions).unwrap_or_else(|e| panic!("{e}"));
+    let rows = v.as_tab().map_or(&[][..], |t| &t.fields[..]);
+    rows.iter()
+        .filter_map(|(k, v)| match (k, v.as_str()) {
+            (LuaKey::Num(k), Some(v)) => Some((*k as u32, v.to_string())),
+            _ => None,
+        })
+        .collect()
+}
+
+/// The table of [`make_planner_versions`] in `src.cache`.
+pub const PLANNER_KEY: &str = "GameVersions.lua#planner";
+
+/// The rows of `poePlannerVersions`.
+pub fn make_planner_versions(root: &str) -> Result<LuaVal, String> {
+    let text = std::fs::read_to_string(format!("{root}GameVersions.lua")).map_err(|e| format!("GameVersions.lua: {e}"))?;
+    let mut out = Vec::new();
+    let Some(p) = text.find("poePlannerVersions = {") else {
+        return Ok(LuaVal::Table(Rc::new(LuaTab::default())));
+    };
     for line in text[p..].lines().skip(1) {
         let line = line.trim();
         if line.starts_with('}') {
@@ -1592,10 +1627,10 @@ fn poe_planner_versions(root: &str) -> HashMap<u32, String> {
         if let Some(c) = lua_captures(line, r#"^%[(%d+)%] = "([^"]+)""#)
             && let Ok(k) = c[0].parse::<u32>()
         {
-            out.insert(k, c[1].clone());
+            out.push((LuaKey::Num(f64::from(k)), LuaVal::Str(c[1].as_str().into())));
         }
     }
-    out
+    Ok(LuaVal::Table(Rc::new(LuaTab { arr: Vec::new(), fields: out })))
 }
 
 /// What `decodeTreeLink` and `decodePoePlannerTreeLink` share after the decode (:702-710, :720-729).

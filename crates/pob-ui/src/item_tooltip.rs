@@ -15,6 +15,7 @@ use pob_mods::ModType;
 
 use crate::colors::color_code;
 use crate::common::{not_supported_mod_tooltips, show_flavour_text};
+use crate::lua_data::{LuaKey, LuaTab, LuaVal};
 use crate::modules::main::{Main, main};
 use crate::sg;
 use crate::tooltip::{Tooltip, TooltipColor};
@@ -209,40 +210,70 @@ fn flavour_table(name: &str) -> Option<Vec<(String, Vec<String>)>> {
     FLAVOUR.with(|f| {
         f.get_or_init(|| {
             let root = crate::launch::launch().cfg.script_path.clone();
-            let text = std::fs::read_to_string(format!("{root}Data/FlavourText.lua")).unwrap_or_default();
+            let v = crate::src_cache::product(&root, FLAVOUR_KEY, make_flavour).unwrap_or_else(|e| panic!("{e}"));
             let mut out: HashMap<String, Vec<(String, Vec<String>)>> = HashMap::new();
-            let (mut id, mut nm, mut lines) = (None, None, Vec::new());
-            let quoted = |s: &str| {
-                let a = s.find('"')?;
-                let b = s.rfind('"')?;
-                (b > a).then(|| s[a + 1..b].replace("\\\"", "\"").replace("\\\\", "\\"))
-            };
-            let mut in_text = false;
-            for l in text.lines() {
-                let t = l.trim();
-                if let Some(v) = t.strip_prefix("id = ") {
-                    id = quoted(v);
-                } else if let Some(v) = t.strip_prefix("name = ") {
-                    nm = quoted(v);
-                } else if t.starts_with("text = {") {
-                    in_text = true;
-                    lines = Vec::new();
-                } else if in_text {
-                    if t.starts_with('}') {
-                        in_text = false;
-                        if let (Some(n), Some(i)) = (nm.take(), id.take()) {
-                            out.entry(n).or_default().push((i, std::mem::take(&mut lines)));
-                        }
-                    } else if let Some(q) = quoted(t) {
-                        lines.push(q);
-                    }
-                }
+            let strs = |t: &LuaTab| t.arr.iter().filter_map(|l| l.as_str().map(str::to_string)).collect::<Vec<_>>();
+            for (name, rows) in &v.as_tab().expect("the flavour text is a table").fields {
+                let (LuaKey::Str(name), Some(rows)) = (name, rows.as_tab()) else { continue };
+                let rows = rows.arr.iter().filter_map(LuaVal::as_tab);
+                let rows = rows.filter_map(|r| {
+                    let id = r.get_num(1.0)?.as_str()?.to_string();
+                    Some((id, strs(r.get_num(2.0)?.as_tab()?)))
+                });
+                out.insert(name.to_string(), rows.collect());
             }
             out
         })
         .get(name)
         .cloned()
     })
+}
+
+/// The table of [`make_flavour`] in `src.cache`.
+pub const FLAVOUR_KEY: &str = "Data/FlavourText.lua#lines";
+
+/// `name` -> rows `{ id, { lines } }` in file order, from the source lines of `Data/FlavourText.lua`.
+pub fn make_flavour(root: &str) -> Result<LuaVal, String> {
+    let text = std::fs::read_to_string(format!("{root}Data/FlavourText.lua")).unwrap_or_default();
+    let mut out: indexmap::IndexMap<String, Vec<(String, Vec<String>)>> = indexmap::IndexMap::new();
+    let (mut id, mut nm, mut lines) = (None, None, Vec::new());
+    let quoted = |s: &str| {
+        let a = s.find('"')?;
+        let b = s.rfind('"')?;
+        (b > a).then(|| s[a + 1..b].replace("\\\"", "\"").replace("\\\\", "\\"))
+    };
+    let mut in_text = false;
+    for l in text.lines() {
+        let t = l.trim();
+        if let Some(v) = t.strip_prefix("id = ") {
+            id = quoted(v);
+        } else if let Some(v) = t.strip_prefix("name = ") {
+            nm = quoted(v);
+        } else if t.starts_with("text = {") {
+            in_text = true;
+            lines = Vec::new();
+        } else if in_text {
+            if t.starts_with('}') {
+                in_text = false;
+                if let (Some(n), Some(i)) = (nm.take(), id.take()) {
+                    out.entry(n).or_default().push((i, std::mem::take(&mut lines)));
+                }
+            } else if let Some(q) = quoted(t) {
+                lines.push(q);
+            }
+        }
+    }
+    let list = |arr: Vec<LuaVal>| LuaVal::Table(Rc::new(LuaTab { arr, fields: Vec::new() }));
+    let fields = out
+        .into_iter()
+        .map(|(n, rows)| {
+            let rows = rows.into_iter().map(|(i, ls)| {
+                list(vec![LuaVal::Str(i.into()), list(ls.into_iter().map(|l| LuaVal::Str(l.into())).collect())])
+            });
+            (LuaKey::Str(n.into()), list(rows.collect()))
+        })
+        .collect();
+    Ok(LuaVal::Table(Rc::new(LuaTab { arr: Vec::new(), fields })))
 }
 
 /// `self.build:AddRequirementsToTooltip` (Build.lua:2185-2221).

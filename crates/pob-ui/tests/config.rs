@@ -303,7 +303,7 @@ fn run(name: &str) -> Run {
     let l = Launch::new(LaunchConfig {
         user_path: Some(sandbox.0.to_string_lossy().replace('\\', "/")),
         user_folder: "Path of Building".into(),
-        script_path: format!("{root}/src/"),
+        script_path: scene::script_path(),
         doc_path: format!("{root}/"),
         version_number: "?".into(),
         version_branch: Some("?".into()),

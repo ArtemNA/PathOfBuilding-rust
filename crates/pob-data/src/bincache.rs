@@ -20,7 +20,7 @@ const MAGIC: &[u8; 8] = b"POBDATA\n";
 const FORMAT: u32 = 2;
 
 /// A damaged table is the JSON too, not a panic on the row a lazy reader reaches later. Not a security check: the file is the user's.
-fn checksum(bytes: &[u8]) -> u64 {
+pub fn checksum(bytes: &[u8]) -> u64 {
     const PRIME: u64 = 0x0000_0100_0000_01b3;
     let mut h = 0xcbf2_9ce4_8422_2325_u64 ^ bytes.len() as u64;
     let (words, rest) = bytes.as_chunks::<8>();
@@ -50,7 +50,7 @@ pub fn cache_path(dir: &Path) -> PathBuf {
 
 // --- writing --------------------------------------------------------------------------------------------------------------
 
-fn put_var(out: &mut Vec<u8>, mut v: u64) {
+pub fn put_var(out: &mut Vec<u8>, mut v: u64) {
     while v >= 0x80 {
         out.push(v as u8 | 0x80);
         v >>= 7;
@@ -218,16 +218,23 @@ pub fn table_files(dir: &Path) -> Result<Vec<String>, DataError> {
 pub fn write_cache(dir: &Path, manifest_sha256: &str, out: &Path) -> Result<usize, DataError> {
     let files = table_files(dir)?;
     let mut tables = Vec::with_capacity(files.len());
-    for rel in &files {
-        let path = dir.join(rel);
+    for rel in files {
+        let path = dir.join(&rel);
         let text = std::fs::read_to_string(&path).map_err(|e| DataError(format!("pob-data: {}: {e}", path.display())))?;
-        tables.push(encode_table(&text).map_err(|e| DataError(format!("{rel}: {e}")))?);
+        let table = encode_table(&text).map_err(|e| DataError(format!("{rel}: {e}")))?;
+        tables.push((rel, table));
     }
+    write_tables(MAGIC, &tables, manifest_sha256, out)?;
+    Ok(tables.len())
+}
+
+/// A cache file of `tables` (name, bytes) for `manifest_sha256`, written through a temporary file beside `out`: the layout of `data.cache`, whatever the form of the tables is.
+pub fn write_tables(magic: &[u8; 8], tables: &[(String, Vec<u8>)], manifest_sha256: &str, out: &Path) -> Result<(), DataError> {
     let mut dirent = Vec::new();
-    let head_len = MAGIC.len() + 4 + 4 + 8 + 4 + manifest_sha256.len();
-    let dir_len: usize = files.iter().map(|r| 4 + r.len() + 24).sum();
+    let head_len = magic.len() + 4 + 4 + 8 + 4 + manifest_sha256.len();
+    let dir_len: usize = tables.iter().map(|(r, _)| 4 + r.len() + 24).sum();
     let mut offset = (head_len + dir_len) as u64;
-    for (rel, t) in files.iter().zip(&tables) {
+    for (rel, t) in tables {
         dirent.extend_from_slice(&(rel.len() as u32).to_le_bytes());
         dirent.extend_from_slice(rel.as_bytes());
         dirent.extend_from_slice(&offset.to_le_bytes());
@@ -236,21 +243,20 @@ pub fn write_cache(dir: &Path, manifest_sha256: &str, out: &Path) -> Result<usiz
         offset += t.len() as u64;
     }
     let mut bytes = Vec::with_capacity(offset as usize);
-    bytes.extend_from_slice(MAGIC);
+    bytes.extend_from_slice(magic);
     bytes.extend_from_slice(&FORMAT.to_le_bytes());
     bytes.extend_from_slice(&(manifest_sha256.len() as u32).to_le_bytes());
     bytes.extend_from_slice(manifest_sha256.as_bytes());
     bytes.extend_from_slice(&offset.to_le_bytes());
-    bytes.extend_from_slice(&(files.len() as u32).to_le_bytes());
+    bytes.extend_from_slice(&(tables.len() as u32).to_le_bytes());
     bytes.extend_from_slice(&dirent);
-    for t in &tables {
+    for (_, t) in tables {
         bytes.extend_from_slice(t);
     }
     let tmp = out.with_extension("cache.tmp");
     let io = |e: std::io::Error| DataError(format!("pob-data: {}: {e}", out.display()));
     std::fs::write(&tmp, &bytes).map_err(io)?;
-    std::fs::rename(&tmp, out).map_err(io)?;
-    Ok(files.len())
+    std::fs::rename(&tmp, out).map_err(io)
 }
 
 // --- reading --------------------------------------------------------------------------------------------------------------
@@ -265,12 +271,17 @@ pub struct CacheFile {
 impl CacheFile {
     /// `None`: not there, or not the cache of `manifest_sha256` (the JSON then).
     pub fn open(path: &Path, manifest_sha256: &str) -> Option<CacheFile> {
+        Self::open_as(path, MAGIC, manifest_sha256)
+    }
+
+    /// [`Self::open`] of a cache whose tables have another form, told apart by `want_magic`.
+    pub fn open_as(path: &Path, want_magic: &[u8; 8], manifest_sha256: &str) -> Option<CacheFile> {
         let mut f = std::fs::File::open(path).ok()?;
         let file_len = f.metadata().ok()?.len();
-        let mut head = vec![0u8; MAGIC.len() + 8 + manifest_sha256.len() + 8 + 4];
+        let mut head = vec![0u8; want_magic.len() + 8 + manifest_sha256.len() + 8 + 4];
         f.read_exact(&mut head).ok()?;
-        let (magic, rest) = head.split_at(MAGIC.len());
-        if magic != MAGIC {
+        let (magic, rest) = head.split_at(want_magic.len());
+        if magic != want_magic {
             return None;
         }
         let u32_at = |b: &[u8], i: usize| b[i..i + 4].try_into().ok().map(u32::from_le_bytes);
@@ -309,15 +320,24 @@ impl CacheFile {
 
     /// The table of `<data>/<rel>`, if the cache has it and it can be read.
     pub fn table(&self, rel: &str) -> Option<Table> {
+        Table::new(self.raw(rel)?.ok()?)
+    }
+
+    /// The bytes of a table: `None` if the cache has no such table, an error if it cannot be read or its checksum differs.
+    pub fn raw(&self, rel: &str) -> Option<Result<Vec<u8>, String>> {
         let &(at, len, sum) = self.tables.get(rel)?;
-        let mut f = std::fs::File::open(&self.path).ok()?;
-        f.seek(SeekFrom::Start(at)).ok()?;
-        let mut bytes = vec![0u8; len as usize];
-        f.read_exact(&mut bytes).ok()?;
-        if checksum(&bytes) != sum {
-            return None;
-        }
-        Table::new(bytes)
+        let read = || -> Result<Vec<u8>, String> {
+            let io = |e: std::io::Error| format!("{}: {e}", self.path.display());
+            let mut f = std::fs::File::open(&self.path).map_err(io)?;
+            f.seek(SeekFrom::Start(at)).map_err(io)?;
+            let mut bytes = vec![0u8; len as usize];
+            f.read_exact(&mut bytes).map_err(io)?;
+            if checksum(&bytes) != sum {
+                return Err(format!("{}: the checksum of '{rel}' differs: the file is damaged", self.path.display()));
+            }
+            Ok(bytes)
+        };
+        Some(read())
     }
 
     pub fn table_names(&self) -> impl Iterator<Item = &str> {
@@ -347,7 +367,7 @@ pub struct Table {
     root: usize,
 }
 
-fn get_var(bytes: &[u8], pos: &mut usize) -> Option<u64> {
+pub fn get_var(bytes: &[u8], pos: &mut usize) -> Option<u64> {
     let (mut v, mut shift) = (0u64, 0u32);
     loop {
         let b = *bytes.get(*pos)?;

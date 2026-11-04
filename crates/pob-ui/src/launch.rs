@@ -70,7 +70,8 @@ impl LaunchConfig {
 
 /// The check of the converted data at the start of the application, before any window: the message of what is wrong with it.
 pub fn check_data() -> Result<(), String> {
-    pob_data::ensure_data().map(|_| ()).map_err(|e| e.to_string())
+    let dir = pob_data::ensure_data().map_err(|e| e.to_string())?;
+    crate::src_cache::check(dir)
 }
 
 /// `{ header = responseHeader, body = responseBody }` of `launch:DownloadPage`.

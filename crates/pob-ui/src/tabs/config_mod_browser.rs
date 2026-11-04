@@ -15,7 +15,7 @@ use crate::controls::basic::{ButtonControl, LabelControl};
 use crate::controls::edit::{EditArgs, EditControl};
 use crate::controls::list::{ByRef, ListControl, ListHooks};
 use crate::launch::launch;
-use crate::lua_data::{LuaVal, parse_return};
+use crate::lua_data::LuaVal;
 use crate::modules::main::main;
 use crate::tooltip::Tooltip;
 use crate::undo::UndoHost;
@@ -121,10 +121,9 @@ fn add_item_mod(set: &mut HashMap<String, ModEntry>, cache: &mut HashMap<String,
 
 /// `data.beastCraft`: not among the converted `data/` files; Data/BeastCraft.lua is a table of constants.
 fn add_beast_craft(set: &mut HashMap<String, ModEntry>, cache: &mut HashMap<String, (String, bool)>) {
-    let path = format!("{}Data/BeastCraft.lua", launch().cfg.script_path);
-    let src = std::fs::read(&path).unwrap_or_else(|e| panic!("{path}: {e}"));
-    let LuaVal::Table(t) = parse_return(&src).unwrap_or_else(|e| panic!("{path}: {e}")) else {
-        panic!("{path}: no table");
+    let root = launch().cfg.script_path.clone();
+    let LuaVal::Table(t) = crate::src_cache::read_lua(&root, "Data/BeastCraft.lua").unwrap_or_else(|e| panic!("{e}")) else {
+        panic!("Data/BeastCraft.lua: no table");
     };
     for (_, m) in &t.fields {
         let LuaVal::Table(m) = m else { continue };

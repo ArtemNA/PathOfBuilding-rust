@@ -10,7 +10,8 @@ use pob_gfx::{ImageHandle, LoadFlag};
 use pob_tree::lj_table::LjTable;
 use pob_tree::{NodeType, PassiveTree, TreeNode};
 
-use crate::lua_data::{LuaKey, LuaTab, LuaVal, parse_return};
+use crate::lua_data::{LuaKey, LuaTab, LuaVal};
+use crate::src_cache;
 
 /// `tree.assets[name]` / a `spriteMap[name][type]` entry: `{ handle, width, height, [1..4] = texture coordinates }`.
 pub struct Asset {
@@ -25,11 +26,11 @@ pub type AssetRef = Rc<Asset>;
 
 /// `PassiveTree:LoadImage` (:909-933), without the download branch (`main.allowTreeDownload` is never set).
 fn load_image(root: &str, version: &str, img_name: &str, flags: &[LoadFlag]) -> AssetRef {
-    let direct = format!("{root}TreeData/{img_name}");
-    let path = if std::path::Path::new(&direct).is_file() {
-        direct
+    let direct = format!("TreeData/{img_name}");
+    let path = if src_cache::is_file(root, &direct) {
+        src_cache::resolve(root, &direct)
     } else {
-        format!("{root}TreeData/{version}/{img_name}")
+        src_cache::resolve(root, &format!("TreeData/{version}/{img_name}"))
     };
     let handle = ImageHandle::new();
     // `handle:Load` of a missing file leaves an image without size: `DrawAsset` skips it.
@@ -206,11 +207,10 @@ fn sprite(sheet: &ImageHandle, sheet_w: f64, sheet_h: f64, x: f64, y: f64, w: f6
     })
 }
 
-fn read_lua(path: &str) -> Result<Rc<LuaTab>, String> {
-    let bytes = std::fs::read(path).map_err(|e| format!("{path}: {e}"))?;
-    match parse_return(&bytes).map_err(|e| format!("{path}: {e}"))? {
+fn read_lua(root: &str, rel: &str) -> Result<Rc<LuaTab>, String> {
+    match src_cache::read_lua(root, rel)? {
         LuaVal::Table(t) => Ok(t),
-        _ => Err(format!("{path}: not a table")),
+        _ => Err(format!("{rel}: not a table")),
     }
 }
 
@@ -228,14 +228,14 @@ impl TreeArt {
     pub fn load(root: &str, tree: &PassiveTree) -> Result<TreeArt, String> {
         let version = tree.tree_version.as_str();
         let version_num = tree.version_num;
-        let src = read_lua(&format!("{root}TreeData/{version}/tree.lua"))?;
+        let src = read_lua(root, &format!("TreeData/{version}/tree.lua"))?;
 
         // :234-258 the assets
         let own_assets = src.tab("assets").cloned();
         let assets_tab = match own_assets {
             Some(a) => a,
             None => {
-                let t = read_lua(&format!("{root}TreeData/3_19/Assets.lua"))?;
+                let t = read_lua(root, "TreeData/3_19/Assets.lua")?;
                 t.tab("assets").ok_or("3_19/Assets.lua: no assets")?.clone()
             }
         };
@@ -291,7 +291,7 @@ impl TreeArt {
         let skill_sprites = match src.tab("skillSprites").or_else(|| src.tab("sprites")) {
             Some(s) => s.clone(),
             None => {
-                sprites_file = read_lua(&format!("{root}TreeData/{version}/sprites.lua"))?;
+                sprites_file = read_lua(root, &format!("TreeData/{version}/sprites.lua"))?;
                 sprites_file
                     .tab("sprites")
                     .or_else(|| sprites_file.tab("skillSprites"))
@@ -400,13 +400,13 @@ impl TreeArt {
         }
 
         // :389-435 legion sheets
-        let legion = read_lua(&format!("{root}TreeData/legion/tree-legion.lua"))?;
+        let legion = read_lua(root, "TreeData/legion/tree-legion.lua")?;
         let mut legion_sheet = |file: &str| -> (ImageHandle, f64, f64) {
             sheets
                 .entry(file.to_string())
                 .or_insert_with(|| {
                     let h = ImageHandle::new();
-                    let _ = h.load_lazy(format!("{root}TreeData/legion/{file}"), &[]);
+                    let _ = h.load_lazy(src_cache::resolve(root, &format!("TreeData/legion/{file}")), &[]);
                     let (w, ht) = h.image_size();
                     (h, f64::from(w), f64::from(ht))
                 })

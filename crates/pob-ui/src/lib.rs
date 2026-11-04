@@ -23,6 +23,8 @@ pub mod poe_api;
 pub mod rate_limiter;
 pub mod search;
 pub mod sg;
+pub mod src_cache;
+pub mod src_cache_gen;
 pub mod stat_describer;
 pub mod tabs;
 pub mod tooltip;
