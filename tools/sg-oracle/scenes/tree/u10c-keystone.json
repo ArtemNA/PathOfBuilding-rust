@@ -1,0 +1,1413 @@
+{
+"steps": [
+{
+"open": "Generals Perforate Zerker"
+},
+{
+"waitAssets": true
+},
+{
+"cursor": [
+-100,
+-100
+],
+"time": 10000
+},
+{
+"cursor": [
+971,
+730
+]
+},
+{
+"hold": [
+"LEFTBUTTON"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+]
+]
+},
+{
+"release": [
+"LEFTBUTTON"
+],
+"events": [
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true,
+"tab": true
+},
+{
+"waitAssets": true
+},
+{
+"treeOrder": "order-u10c-ks"
+},
+{
+"events": [
+[
+"KeyDown",
+"RETURN"
+],
+[
+"KeyUp",
+"RETURN"
+]
+],
+"dump": true,
+"tab": true
+},
+{
+"cursor": [
+-100,
+-100
+],
+"dump": true,
+"tab": true
+},
+{
+"cursor": [
+690,
+786
+]
+},
+{
+"hold": [
+"LEFTBUTTON"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+]
+]
+},
+{
+"release": [
+"LEFTBUTTON"
+],
+"events": [
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true,
+"tab": true
+},
+{
+"cursorPopup": "jewelSelect"
+},
+{
+"hold": [
+"LEFTBUTTON"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+]
+]
+},
+{
+"release": [
+"LEFTBUTTON"
+],
+"events": [
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true,
+"tab": true
+},
+{
+"cursorPopupRow": [
+"jewelSelect",
+1
+]
+},
+{
+"hold": [
+"LEFTBUTTON"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+]
+]
+},
+{
+"release": [
+"LEFTBUTTON"
+],
+"events": [
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true,
+"tab": true
+},
+{
+"cursorPopup": "conquerorSelect"
+},
+{
+"hold": [
+"LEFTBUTTON"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+]
+]
+},
+{
+"release": [
+"LEFTBUTTON"
+],
+"events": [
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true,
+"tab": true
+},
+{
+"cursorPopupRow": [
+"conquerorSelect",
+1
+],
+"dump": true,
+"tab": true
+},
+{
+"cursorPopupRow": [
+"conquerorSelect",
+2
+],
+"dump": true,
+"tab": true,
+"shot": "u10c-ks-1-2"
+},
+{
+"cursorPopupRow": [
+"conquerorSelect",
+3
+],
+"dump": true,
+"tab": true
+},
+{
+"cursorPopupRow": [
+"conquerorSelect",
+4
+],
+"dump": true,
+"tab": true
+},
+{
+"cursorPopupRow": [
+"conquerorSelect",
+1
+]
+},
+{
+"hold": [
+"LEFTBUTTON"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+]
+]
+},
+{
+"release": [
+"LEFTBUTTON"
+],
+"events": [
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true,
+"tab": true
+},
+{
+"cursorPopup": "conquerorSelect",
+"dump": true,
+"tab": true
+},
+{
+"cursor": [
+-100,
+-100
+],
+"dump": true,
+"tab": true
+},
+{
+"cursorPopup": "jewelSelect"
+},
+{
+"hold": [
+"LEFTBUTTON"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+]
+]
+},
+{
+"release": [
+"LEFTBUTTON"
+],
+"events": [
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true,
+"tab": true
+},
+{
+"cursorPopupRow": [
+"jewelSelect",
+2
+]
+},
+{
+"hold": [
+"LEFTBUTTON"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+]
+]
+},
+{
+"release": [
+"LEFTBUTTON"
+],
+"events": [
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true,
+"tab": true
+},
+{
+"cursorPopup": "conquerorSelect"
+},
+{
+"hold": [
+"LEFTBUTTON"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+]
+]
+},
+{
+"release": [
+"LEFTBUTTON"
+],
+"events": [
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true,
+"tab": true
+},
+{
+"cursorPopupRow": [
+"conquerorSelect",
+1
+],
+"dump": true,
+"tab": true
+},
+{
+"cursorPopupRow": [
+"conquerorSelect",
+2
+],
+"dump": true,
+"tab": true,
+"shot": "u10c-ks-2-2"
+},
+{
+"cursorPopupRow": [
+"conquerorSelect",
+3
+],
+"dump": true,
+"tab": true
+},
+{
+"cursorPopupRow": [
+"conquerorSelect",
+4
+],
+"dump": true,
+"tab": true
+},
+{
+"cursorPopupRow": [
+"conquerorSelect",
+1
+]
+},
+{
+"hold": [
+"LEFTBUTTON"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+]
+]
+},
+{
+"release": [
+"LEFTBUTTON"
+],
+"events": [
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true,
+"tab": true
+},
+{
+"cursorPopup": "conquerorSelect",
+"dump": true,
+"tab": true
+},
+{
+"cursor": [
+-100,
+-100
+],
+"dump": true,
+"tab": true
+},
+{
+"cursorPopup": "jewelSelect"
+},
+{
+"hold": [
+"LEFTBUTTON"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+]
+]
+},
+{
+"release": [
+"LEFTBUTTON"
+],
+"events": [
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true,
+"tab": true
+},
+{
+"cursorPopupRow": [
+"jewelSelect",
+3
+]
+},
+{
+"hold": [
+"LEFTBUTTON"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+]
+]
+},
+{
+"release": [
+"LEFTBUTTON"
+],
+"events": [
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true,
+"tab": true
+},
+{
+"cursorPopup": "conquerorSelect"
+},
+{
+"hold": [
+"LEFTBUTTON"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+]
+]
+},
+{
+"release": [
+"LEFTBUTTON"
+],
+"events": [
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true,
+"tab": true
+},
+{
+"cursorPopupRow": [
+"conquerorSelect",
+1
+],
+"dump": true,
+"tab": true
+},
+{
+"cursorPopupRow": [
+"conquerorSelect",
+2
+],
+"dump": true,
+"tab": true
+},
+{
+"cursorPopupRow": [
+"conquerorSelect",
+3
+],
+"dump": true,
+"tab": true
+},
+{
+"cursorPopupRow": [
+"conquerorSelect",
+4
+],
+"dump": true,
+"tab": true
+},
+{
+"cursorPopupRow": [
+"conquerorSelect",
+1
+]
+},
+{
+"hold": [
+"LEFTBUTTON"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+]
+]
+},
+{
+"release": [
+"LEFTBUTTON"
+],
+"events": [
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true,
+"tab": true
+},
+{
+"cursorPopup": "conquerorSelect",
+"dump": true,
+"tab": true
+},
+{
+"cursor": [
+-100,
+-100
+],
+"dump": true,
+"tab": true
+},
+{
+"cursorPopup": "jewelSelect"
+},
+{
+"hold": [
+"LEFTBUTTON"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+]
+]
+},
+{
+"release": [
+"LEFTBUTTON"
+],
+"events": [
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true,
+"tab": true
+},
+{
+"cursorPopupRow": [
+"jewelSelect",
+4
+]
+},
+{
+"hold": [
+"LEFTBUTTON"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+]
+]
+},
+{
+"release": [
+"LEFTBUTTON"
+],
+"events": [
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true,
+"tab": true
+},
+{
+"cursorPopup": "conquerorSelect"
+},
+{
+"hold": [
+"LEFTBUTTON"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+]
+]
+},
+{
+"release": [
+"LEFTBUTTON"
+],
+"events": [
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true,
+"tab": true
+},
+{
+"cursorPopupRow": [
+"conquerorSelect",
+1
+],
+"dump": true,
+"tab": true
+},
+{
+"cursorPopupRow": [
+"conquerorSelect",
+2
+],
+"dump": true,
+"tab": true
+},
+{
+"cursorPopupRow": [
+"conquerorSelect",
+3
+],
+"dump": true,
+"tab": true
+},
+{
+"cursorPopupRow": [
+"conquerorSelect",
+4
+],
+"dump": true,
+"tab": true,
+"shot": "u10c-ks-4-4"
+},
+{
+"cursorPopupRow": [
+"conquerorSelect",
+1
+]
+},
+{
+"hold": [
+"LEFTBUTTON"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+]
+]
+},
+{
+"release": [
+"LEFTBUTTON"
+],
+"events": [
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true,
+"tab": true
+},
+{
+"cursorPopup": "conquerorSelect",
+"dump": true,
+"tab": true
+},
+{
+"cursor": [
+-100,
+-100
+],
+"dump": true,
+"tab": true
+},
+{
+"cursorPopup": "jewelSelect"
+},
+{
+"hold": [
+"LEFTBUTTON"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+]
+]
+},
+{
+"release": [
+"LEFTBUTTON"
+],
+"events": [
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true,
+"tab": true
+},
+{
+"cursorPopupRow": [
+"jewelSelect",
+5
+]
+},
+{
+"hold": [
+"LEFTBUTTON"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+]
+]
+},
+{
+"release": [
+"LEFTBUTTON"
+],
+"events": [
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true,
+"tab": true
+},
+{
+"cursorPopup": "conquerorSelect"
+},
+{
+"hold": [
+"LEFTBUTTON"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+]
+]
+},
+{
+"release": [
+"LEFTBUTTON"
+],
+"events": [
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true,
+"tab": true
+},
+{
+"cursorPopupRow": [
+"conquerorSelect",
+1
+],
+"dump": true,
+"tab": true
+},
+{
+"cursorPopupRow": [
+"conquerorSelect",
+2
+],
+"dump": true,
+"tab": true
+},
+{
+"cursorPopupRow": [
+"conquerorSelect",
+3
+],
+"dump": true,
+"tab": true
+},
+{
+"cursorPopupRow": [
+"conquerorSelect",
+4
+],
+"dump": true,
+"tab": true
+},
+{
+"cursorPopupRow": [
+"conquerorSelect",
+1
+]
+},
+{
+"hold": [
+"LEFTBUTTON"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+]
+]
+},
+{
+"release": [
+"LEFTBUTTON"
+],
+"events": [
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true,
+"tab": true
+},
+{
+"cursorPopup": "conquerorSelect",
+"dump": true,
+"tab": true
+},
+{
+"cursor": [
+-100,
+-100
+],
+"dump": true,
+"tab": true
+},
+{
+"cursorPopup": "jewelSelect"
+},
+{
+"hold": [
+"LEFTBUTTON"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+]
+]
+},
+{
+"release": [
+"LEFTBUTTON"
+],
+"events": [
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true,
+"tab": true
+},
+{
+"cursorPopupRow": [
+"jewelSelect",
+6
+]
+},
+{
+"hold": [
+"LEFTBUTTON"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+]
+]
+},
+{
+"release": [
+"LEFTBUTTON"
+],
+"events": [
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true,
+"tab": true
+},
+{
+"cursorPopup": "conquerorSelect"
+},
+{
+"hold": [
+"LEFTBUTTON"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+]
+]
+},
+{
+"release": [
+"LEFTBUTTON"
+],
+"events": [
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true,
+"tab": true
+},
+{
+"cursorPopupRow": [
+"conquerorSelect",
+1
+],
+"dump": true,
+"tab": true
+},
+{
+"cursorPopupRow": [
+"conquerorSelect",
+2
+],
+"dump": true,
+"tab": true
+},
+{
+"cursorPopupRow": [
+"conquerorSelect",
+3
+],
+"dump": true,
+"tab": true
+},
+{
+"cursorPopupRow": [
+"conquerorSelect",
+4
+],
+"dump": true,
+"tab": true
+},
+{
+"cursorPopupRow": [
+"conquerorSelect",
+1
+]
+},
+{
+"hold": [
+"LEFTBUTTON"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+]
+]
+},
+{
+"release": [
+"LEFTBUTTON"
+],
+"events": [
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true,
+"tab": true
+},
+{
+"cursorPopup": "conquerorSelect",
+"dump": true,
+"tab": true
+},
+{
+"cursor": [
+-100,
+-100
+],
+"dump": true,
+"tab": true
+},
+{
+"cursorPopup": "jewelSelect"
+},
+{
+"hold": [
+"LEFTBUTTON"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+]
+]
+},
+{
+"release": [
+"LEFTBUTTON"
+],
+"events": [
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true,
+"tab": true
+},
+{
+"cursorPopupRow": [
+"jewelSelect",
+7
+]
+},
+{
+"hold": [
+"LEFTBUTTON"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+]
+]
+},
+{
+"release": [
+"LEFTBUTTON"
+],
+"events": [
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true,
+"tab": true
+},
+{
+"cursorPopup": "conquerorSelect",
+"dump": true,
+"tab": true,
+"shot": "u10c-ks-body"
+},
+{
+"cursor": [
+-100,
+-100
+],
+"dump": true,
+"tab": true
+},
+{
+"cursorPopup": "jewelSelect"
+},
+{
+"hold": [
+"LEFTBUTTON"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+]
+]
+},
+{
+"release": [
+"LEFTBUTTON"
+],
+"events": [
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true,
+"tab": true
+},
+{
+"cursorPopupRow": [
+"jewelSelect",
+8
+]
+},
+{
+"hold": [
+"LEFTBUTTON"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+]
+]
+},
+{
+"release": [
+"LEFTBUTTON"
+],
+"events": [
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true,
+"tab": true
+},
+{
+"cursorPopup": "conquerorSelect",
+"dump": true,
+"tab": true
+},
+{
+"cursor": [
+-100,
+-100
+],
+"dump": true,
+"tab": true
+},
+{
+"cursorPopup": "jewelSelect"
+},
+{
+"hold": [
+"LEFTBUTTON"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+]
+]
+},
+{
+"release": [
+"LEFTBUTTON"
+],
+"events": [
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true,
+"tab": true
+},
+{
+"cursorPopupRow": [
+"jewelSelect",
+9
+]
+},
+{
+"hold": [
+"LEFTBUTTON"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+]
+]
+},
+{
+"release": [
+"LEFTBUTTON"
+],
+"events": [
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true,
+"tab": true
+},
+{
+"cursorPopup": "conquerorSelect",
+"dump": true,
+"tab": true
+},
+{
+"cursor": [
+-100,
+-100
+],
+"dump": true,
+"tab": true
+},
+{
+"cursorPopup": "jewelSelect"
+},
+{
+"hold": [
+"LEFTBUTTON"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+]
+]
+},
+{
+"release": [
+"LEFTBUTTON"
+],
+"events": [
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true,
+"tab": true
+},
+{
+"cursorPopupRow": [
+"jewelSelect",
+10
+]
+},
+{
+"hold": [
+"LEFTBUTTON"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+]
+]
+},
+{
+"release": [
+"LEFTBUTTON"
+],
+"events": [
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true,
+"tab": true
+},
+{
+"cursorPopup": "conquerorSelect",
+"dump": true,
+"tab": true
+},
+{
+"cursor": [
+-100,
+-100
+],
+"dump": true,
+"tab": true
+},
+{
+"cursorPopup": "jewelSelect"
+},
+{
+"hold": [
+"LEFTBUTTON"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+]
+]
+},
+{
+"release": [
+"LEFTBUTTON"
+],
+"events": [
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true,
+"tab": true
+},
+{
+"cursorPopupRow": [
+"jewelSelect",
+11
+]
+},
+{
+"hold": [
+"LEFTBUTTON"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+]
+]
+},
+{
+"release": [
+"LEFTBUTTON"
+],
+"events": [
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true,
+"tab": true
+},
+{
+"cursorPopup": "conquerorSelect",
+"dump": true,
+"tab": true
+},
+{
+"cursor": [
+-100,
+-100
+],
+"dump": true,
+"tab": true
+}
+]
+}

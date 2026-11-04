@@ -1,0 +1,43 @@
+{
+"steps": [
+{
+"open": "Generals Perforate Zerker"
+},
+{
+"waitAssets": true
+},
+{
+"cursor": [
+-100,
+-100
+],
+"time": 10000
+},
+{
+"treeOrder": "order-u10c-dev"
+},
+{
+"devAlt": true
+},
+{
+"cursor": [
+-100,
+-100
+],
+"dump": true,
+"tab": true,
+"shot": "u10c-tree-dev-colours"
+},
+{
+"devAlt": false
+},
+{
+"cursor": [
+-100,
+-100
+],
+"dump": true,
+"tab": true
+}
+]
+}

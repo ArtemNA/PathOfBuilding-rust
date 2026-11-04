@@ -9,7 +9,7 @@ use std::rc::Rc;
 
 use indexmap::IndexMap;
 use pob_calc::env::CalcOverride;
-use pob_calc::env_used::{EnvUsed, env_used};
+use pob_calc::env_used::{EnvUsed, EnvUsedMods, env_used, env_used_mods};
 use pob_calc::pob_build::{BuildModel, ConfigSetModel, ConfigState, CustomModsBlockModel, InputValue};
 
 use crate::engine::Engine;
@@ -39,6 +39,8 @@ const GATE_COUNT: usize = 14;
 #[derive(Default)]
 pub struct ConfigGates {
     used: Option<EnvUsed>,
+    /// The mods of the tables, for the dev-mode tooltip only.
+    mods: Option<EnvUsedMods>,
     memo: [HashMap<String, bool>; GATE_COUNT],
 }
 
@@ -360,6 +362,48 @@ impl Engine {
     /// `mainOutput[stat]` as a number (the two tooltip functions, ConfigOptions.lua:61-72).
     pub fn main_output_num(&self, stat: &str) -> f64 {
         self.result().perform.player.output.num(stat)
+    }
+
+    /// The `launch.devModeAlt` part of one `if*` tooltip (ConfigTab.lua:408-622), for one name: nil when the table has no such name. The mods are collected only here, once per run.
+    pub fn config_dev_tooltip(&self, kind: ConfigGate, opt: &str) -> Option<String> {
+        use pob_calc::env_used::UsedTable as T;
+        let env = &self.result().env;
+        let tables: &[T] = match kind {
+            ConfigGate::Cond => &[T::Conditions],
+            ConfigGate::MinionCond => &[T::MinionConditions],
+            ConfigGate::EnemyCond => &[T::EnemyConditions],
+            ConfigGate::Mult => &[T::Multipliers],
+            ConfigGate::EnemyMult => &[T::EnemyMultipliers],
+            // :535-546
+            ConfigGate::Stat => &[T::PerStats, T::EnemyMultipliers],
+            ConfigGate::TagType => &[T::TagTypes],
+            ConfigGate::Mod => &[T::Mods],
+            // :471-477
+            ConfigGate::CondTrue => {
+                let db = env.player.borrow().mod_db.clone();
+                let d = db.borrow();
+                let state = d.conditions.get(opt).map_or("nil", |v| if *v { "true" } else { "false" });
+                return Some(format!("Condition state: {opt}={state}"));
+            }
+            _ => return None,
+        };
+        let mut g = self.config_gates.borrow_mut();
+        let mods = g.mods.get_or_insert_with(|| env_used_mods(env));
+        let mut out: Option<String> = None;
+        for table in tables {
+            for m in mods.get(*table, opt).unwrap_or_default() {
+                let source = m
+                    .source
+                    .as_deref()
+                    .expect("Classes/ConfigTab.lua:418: attempt to concatenate field 'source' (a nil value)");
+                let text = format!("{}|{source}", pob_mods::format::format_mod(m));
+                out = Some(match out {
+                    Some(o) => format!("{o}\n{text}"),
+                    None => text,
+                });
+            }
+        }
+        out
     }
 
     /// One `if*` test over `mainEnv` (ConfigTab.lua:382-662), for one name.

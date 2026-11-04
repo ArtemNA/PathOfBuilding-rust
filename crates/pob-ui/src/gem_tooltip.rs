@@ -353,10 +353,16 @@ fn add_common(
         .expect("Modules/StatDescriber.lua:15: attempt to concatenate local 'scopeName' (a nil value)");
     let (lines, map) = describe_stats(&list, scope, false);
     for l in lines {
-        let known = map
+        let source = map
             .get(&l)
-            .is_some_and(|s| skills.stat_map(ge, s).unwrap_or_else(|er| panic!("{er}")).is_some());
-        if known {
+            .and_then(|s| skills.stat_map(ge, s).unwrap_or_else(|er| panic!("{er}")).map(|e| (s, e)));
+        if let Some((stat, source)) = source {
+            // GemTooltip.lua:190-199
+            let l = if crate::launch::launch().dev_mode_alt.get() {
+                format!("{l} ^2{}", source_dev_text(stat, &source))
+            } else {
+                l
+            };
             line(t, &format!("{}{l}", cc("MAGIC")));
         } else {
             // GemTooltip.lua:202-204
@@ -371,6 +377,27 @@ fn add_common(
             }
             line(t, &x);
         }
+    }
+}
+
+/// GemTooltip.lua:191-197. `source[1].value = lineMap[line]` writes to the shared map in the Lua; here a copy is formatted, the map stays as it is (dev mode only).
+fn source_dev_text(stat: &str, source: &pob_data::skill_stat_map::StatMapEntry) -> String {
+    use pob_data::skill_stat_map::{ModElem, SkillMod};
+    let Some(first) = source.mods.first() else {
+        return stat.to_string();
+    };
+    match first {
+        ModElem::Mod(SkillMod::Mod(m)) => {
+            if m.value.truthy() {
+                pob_mods::format::format_mod(m)
+            } else {
+                let mut m = m.clone();
+                m.value = pob_mods::Value::str(stat);
+                pob_mods::format::format_mod(&m)
+            }
+        }
+        ModElem::Mod(SkillMod::Malformed(_)) => unimplemented!("Classes/GemTooltip.lua:196 formatMod of a malformed mod"),
+        ModElem::Group { .. } => unimplemented!("Classes/GemTooltip.lua:196 formatMod of a group of mods"),
     }
 }
 

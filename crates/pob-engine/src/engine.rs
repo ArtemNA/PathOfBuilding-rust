@@ -757,7 +757,8 @@ impl Engine {
     /// `NormaliseQuality`; `AddDisplayItem(true)`: the first free id, appended to `itemOrderList`), equipped in `slot_name` (one of
     /// ItemsTab.lua:37 `baseSlots`; Weapon 1/2 go to the Swap slot with `useSecondWeaponSet`), `PopulateSlots`, recalc. Returns the item id.
     /// The model gets the item as `ItemsTab:Save` would write it (`BuildRaw` + `ModRange`s). `CopyAnointsAndEldritchImplicits`
-    /// (ItemsTab.lua:1906-1945) is not ported: when it would look at an equipped item it is an explicit error.
+    /// (ItemsTab.lua:1959-1998) is not ported on this path: when it would look at an equipped item it is an explicit error. This is the API of the
+    /// oracle's `engine_addItemText`, called by tests only; the window goes through `ItemsTab::copy_anoints_ex` of pob-ui (ItemsTab.lua:2005, TradeQuery.lua:1098).
     pub fn add_item_text(&mut self, text: &str, slot_name: &str) -> Result<f64, String> {
         const BASE_SLOTS: [&str; 18] = [
             "Weapon 1",
@@ -825,7 +826,7 @@ impl Engine {
             && env.item(s.sel_item_id).is_some()
         {
             return Err(format!(
-                "unimplemented: Classes/ItemsTab.lua:1906-1945 CopyAnointsAndEldritchImplicits from the equipped '{item_type}' item"
+                "unimplemented: Classes/ItemsTab.lua:1959-1998 CopyAnointsAndEldritchImplicits from the equipped '{item_type}' item"
             ));
         }
         item.normalise_quality();

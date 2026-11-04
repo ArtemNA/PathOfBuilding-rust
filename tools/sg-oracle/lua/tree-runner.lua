@@ -232,7 +232,7 @@ local function tabDump(b)
 			q.timeless = { jewelSel = pc.jewelSelect.selIndex, conquerorSel = pc.conquerorSelect.selIndex, conquerors = labels(pc.conquerorSelect), socketSel = pc.socketSelect.selIndex, sockets = labels(pc.socketSelect),
 				nodeSel = pc.nodeSelect.selIndex or "nil", nodes = labels(pc.nodeSelect), fallbackModes = labels(pc.fallbackWeightsList), slider1 = pc.nodeSliderValue.label, slider2 = pc.nodeSlider2Value.label, slider3 = pc.nodeSlider3Value.label,
 				slider2Label = pc.nodeSlider2Label.label, slider2Enabled = pc.nodeSlider2.enabled ~= false, searchList = pc.searchList.buf, searchListFallback = pc.searchListFallback.buf, fallbackShown = pc.searchListFallback.shown and true or false,
-				results = rows, resultSel = pc.searchResults.selIndex or "nil", highlight = pc.searchResults.highlightIndex or "nil", tradeEnabled = pc.searchTradeButton.enabled and true or false, tradeLabel = pc.searchTradeButton.label, tradeUrl = timelessTradeUrl(), leagues = pc.searchTradeLeagueSelect.list[1] and labels(pc.searchTradeLeagueSelect) or nil, msg = pc.msg.label ~= "" and pc.msg.label or nil,
+				results = rows, resultSel = pc.searchResults.selIndex or "nil", highlight = pc.searchResults.highlightIndex or "nil", tradeEnabled = pc.searchTradeButton.enabled and true or false, tradeLabel = pc.searchTradeButton.label, conquerorTip = (function() local t = pc.conquerorSelect.tooltip if t and t.lines[1] then local l = { } for i, x in ipairs(t.lines) do l[i] = x.text or "<sep>" end return { lines = l, header = t.tooltipHeader } end end)(), tradeUrl = timelessTradeUrl(), leagues = pc.searchTradeLeagueSelect.list[1] and labels(pc.searchTradeLeagueSelect) or nil, msg = pc.msg.label ~= "" and pc.msg.label or nil,
 				protect = boxes, filter = pc.socketFilter.state and true or false, distance = td.socketFilterDistance or 0, jewelSocket = td.jewelSocket.id }
 		end
 		d.popup = q
@@ -429,6 +429,12 @@ function runner:Step()
 		sc.perf[#sc.perf + 1] = { what = "spec", ms = (os.clock() - t0) * 1000 }
 		return
 	end
+	if st.devAlt ~= nil then
+		-- U10c: `launch.devMode` and the ALT key: the debugging lines and colours of the tree
+		launch.devMode = st.devAlt
+		held["ALT"] = st.devAlt or nil
+		return
+	end
 	if st.netLeagues then
 		local q = pendingPages
 		pendingPages = { }
@@ -571,11 +577,18 @@ function runner:Step()
 		local w, h = c:GetSize()
 		cursorX, cursorY = math.floor(x + w / 2), math.floor(y + h / 2)
 	end
+	if st.cursorPopupRow then
+		-- U10c: { control of the popup, 1-based row of its open list } (the same as config-runner.lua)
+		local c = main.popups[1].controls[st.cursorPopupRow[1]]
+		local x, y = c:GetPos()
+		local w, h = c:GetSize()
+		cursorX, cursorY = math.floor(x + w / 2), y + h + 2 + (st.cursorPopupRow[2] - 1) * (h - 4) + 4
+	end
 	if st.cursorNode then
 		-- the screen position of a node (PassiveTreeView.lua:281-287) in the 968x712 view of a latest-tree build
 		local b = main.modes.BUILD
 		local v, n = b.treeTab.viewer, b.spec.nodes[st.cursorNode]
-		local W, H = 968, 712
+		local W, H = 968, st.viewH or 712 -- U10c: the heat map's controls take a second line
 		local scale = math.min(W, H) / b.spec.tree.size * v.zoom
 		cursorX, cursorY = math.floor(n.x * scale + v.zoomX + 312 + W / 2), math.floor(n.y * scale + v.zoomY + 32 + H / 2)
 	end
@@ -592,7 +605,12 @@ function runner:Step()
 				if st.cursorFind == "compareOnly" or (x > 320 and x < 1270 and y > 40 and y < 736) then best = { id = id, x = x, y = y } end
 			end
 		end
-		if st.cursorFind == "clusterSocket" then
+		if st.cursorFind == "freeNotable" or st.cursorFind == "freeNormal" or st.cursorFind == "allocNormal" then
+			-- U10c: the smallest id of a kind of node in the view
+			for id, n in pairs(spec.nodes) do
+				if (st.cursorFind == "allocNormal") == (n.alloc and true or false) and n.type == (st.cursorFind == "freeNotable" and "Notable" or "Normal") and not n.ascendancyName and id < 65536 then take(id, n) end
+			end
+		elseif st.cursorFind == "clusterSocket" then
 			for id, n in pairs(spec.nodes) do if n.alloc and n.expansionJewel and id < 65536 then take(id, n) end end
 		else
 			for id, c in pairs(cmp.nodes) do

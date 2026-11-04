@@ -1,0 +1,87 @@
+{
+"steps": [
+{
+"open": "Dev Test"
+},
+{
+"devAlt": true
+},
+{
+"cursor": [
+-100,
+-100
+]
+},
+{
+"devTexts": "u10c-dev-texts-7"
+},
+{
+"devAlt": false
+},
+{
+"cursor": [
+-100,
+-100
+]
+},
+{
+"devTexts": "u10c-off-texts-7"
+},
+{
+"cursorBuild": "modeConfig",
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON",
+false
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+]
+},
+{
+"devAlt": true
+},
+{
+"cursor": [
+-100,
+-100
+]
+},
+{
+"scrollVar": "useSiphoningCharges"
+},
+{
+"cursorVar": "useSiphoningCharges",
+"dump": true,
+"shot": "u10c-cfg-mult"
+},
+{
+"scrollVar": "minionsConditionFullLife"
+},
+{
+"cursorVar": "minionsConditionFullLife",
+"dump": true,
+"shot": "u10c-cfg-minion"
+},
+{
+"scrollVar": "multiplierPoisonOnEnemy"
+},
+{
+"cursorVar": "multiplierPoisonOnEnemy",
+"dump": true
+},
+{
+"devAlt": false
+},
+{
+"cursor": [
+-100,
+-100
+],
+"dump": true
+}
+]
+}

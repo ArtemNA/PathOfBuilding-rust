@@ -69,6 +69,18 @@ fn spectre_test() -> String {
     x
 }
 
+/// U10c: the minion as the main skill and custom mods for the `if*` keys no golden reaches (the same edit as config-runner.lua).
+fn dev_test() -> String {
+    let x = spectre_test();
+    let at = x.find("mainSocketGroup=\"").expect("mainSocketGroup") + "mainSocketGroup=\"".len();
+    let end = at + x[at..].find('"').expect("quote");
+    let x = format!("{}1{}", &x[..at], &x[end..]);
+    let at = x.find("<Config").expect("Config");
+    let end = at + x[at..].find('>').expect(">") + 1;
+    let i = r#"<CustomModifierBlock title="T0">1% increased Damage per Siphoning Charge</CustomModifierBlock><CustomModifierBlock title="T1">1% increased Damage per Summoned Totem</CustomModifierBlock><CustomModifierBlock title="T2">10% increased Damage against enemies affected by 2 or more poisons</CustomModifierBlock><CustomModifierBlock title="T3">Minions deal 10% increased Damage while on Full Life</CustomModifierBlock>"#;
+    format!("{}{i}{}", &x[..end], &x[end..])
+}
+
 /// A loadout over a second tree and a second config set (the same edit as config-runner.lua).
 fn loadout_test() -> String {
     let x = std::fs::read_to_string(format!("{}/spec/TestBuilds/3.13/OccVortex.xml", scene::pob_root())).expect("golden");
@@ -135,6 +147,7 @@ impl Sandbox {
         }
         std::fs::write(builds.join("Spectre Test.xml"), spectre_test()).expect("write");
         std::fs::write(builds.join("Loadout Test.xml"), loadout_test()).expect("write");
+        std::fs::write(builds.join("Dev Test.xml"), dev_test()).expect("write");
         std::fs::copy(
             scene::oracle_dir().join("scenes/tree/Settings.xml"),
             root.join("Path of Building/Settings.xml"),
@@ -260,6 +273,21 @@ struct Run {
     perf: Vec<(String, f64)>,
     files: HashMap<String, String>,
     rows: HashMap<String, Vec<String>>,
+    dev_texts: Vec<(String, Value, std::collections::BTreeMap<String, usize>)>,
+}
+
+/// The lines of a tooltip text in a fixed order: the mods of different names come in the order of `pairs(modDB.mods)`, one of the process (R13).
+fn sorted_lines(v: &Value) -> Value {
+    let Some(m) = v.as_object() else { return v.clone() };
+    Value::Object(
+        m.iter()
+            .map(|(k, t)| {
+                let mut lines: Vec<&str> = t.as_str().unwrap_or_default().split('\n').collect();
+                lines.sort_unstable();
+                (k.clone(), json!(lines))
+            })
+            .collect(),
+    )
 }
 
 fn run(name: &str) -> Run {
@@ -296,6 +324,7 @@ fn run(name: &str) -> Run {
         perf: Vec::new(),
         files: HashMap::new(),
         rows: HashMap::new(),
+        dev_texts: Vec::new(),
     };
     // R13: `pairs(value.sources)` of the oracle's process, per step
     let mut source_order: HashMap<u64, Vec<String>> = HashMap::new();
@@ -334,6 +363,22 @@ fn run(name: &str) -> Run {
                 frame(&mut gfx, &l);
             }
             out.perf.push(("frame".into(), t0.elapsed().as_secs_f64() * 1e3 / n as f64));
+            continue;
+        }
+        // U10c: `launch.devMode` and the ALT key
+        if let Some(on) = st["devAlt"].as_bool() {
+            pob_ui::launch::launch().dev_mode.set(on);
+            gfx.input(RawEvent::Key {
+                key: pob_gfx::input::PhysKey::Alt,
+                pressed: on,
+            });
+            continue;
+        }
+        // U10c: `tooltipText` of every var
+        if let Some(n) = st["devTexts"].as_str() {
+            let tab = main().build_mode.config_tab.borrow().clone().expect("configTab");
+            let (texts, branches) = tab.debug_tooltip_texts();
+            out.dev_texts.push((n.to_string(), texts, branches));
             continue;
         }
         if let Some(c) = st["cursor"].as_array() {
@@ -478,6 +523,7 @@ fn config_states_equal_original() {
     }
     let mut failures = Vec::new();
     let mut compared = 0;
+    let mut dev_branches: std::collections::BTreeMap<String, std::collections::BTreeMap<String, usize>> = Default::default();
     for name in scenario_names() {
         let rec = oracle_record(&name).expect("record");
         let r = run(&name);
@@ -520,6 +566,16 @@ fn config_states_equal_original() {
                 ));
             }
         }
+        for (n, texts, branches) in &r.dev_texts {
+            let p = scene::oracle_dir().join(format!("fixtures/config/{n}.json"));
+            let oracle: Value =
+                serde_json::from_str(&std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("{}: {e}", p.display()))).expect("texts");
+            eprintln!("{n}: {} vars with a text, the if* keys that gave one: {branches:?}", oracle.as_object().map_or(0, serde_json::Map::len));
+            *dev_branches.entry(n.clone()).or_default() = branches.clone();
+            if let Some(d) = first_diff(&sorted_lines(&oracle), &sorted_lines(texts), n) {
+                failures.push(format!("{name}: {d}"));
+            }
+        }
         for (file, text) in &r.files {
             let p = scene::oracle_dir().join(format!("fixtures/config/{file}"));
             // Lua writes in text mode (CRLF)
@@ -541,6 +597,14 @@ fn config_states_equal_original() {
         }
     }
     eprintln!("dumps compared {compared}, differ {}", failures.len());
+    // U10c: every `if*` key with a dev tooltip and data gave a text somewhere, or the comparison above proves nothing about it
+    if !dev_branches.is_empty() {
+        for gate in ["Cond", "MinionCond", "EnemyCond", "CondTrue", "Mult", "EnemyMult", "Stat", "TagType", "Mod"] {
+            let n: usize = dev_branches.values().filter_map(|b| b.get(gate)).sum();
+            eprintln!("dev tooltip of {gate}: {n} vars");
+            assert!(n > 0 || std::env::var("POB_CONFIG_SCENES").is_ok(), "no scene shows the dev tooltip of {gate}");
+        }
+    }
     assert!(
         failures.is_empty(),
         "{} differences, the first 300:\n{}",

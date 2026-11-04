@@ -1,0 +1,31 @@
+{
+"steps": [
+{
+"open": "OccVortex"
+},
+{
+"devAlt": true
+},
+{
+"cursor": [
+-100,
+-100
+]
+},
+{
+"devTexts": "u10c-dev-texts-5"
+},
+{
+"devAlt": false
+},
+{
+"cursor": [
+-100,
+-100
+]
+},
+{
+"devTexts": "u10c-off-texts-5"
+}
+]
+}
