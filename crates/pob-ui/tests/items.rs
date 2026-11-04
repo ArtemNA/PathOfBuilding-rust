@@ -335,6 +335,7 @@ fn run(name: &str) -> Run {
     let sandbox = Sandbox::new(name);
     pob_ui::tabs::item_popups::set_affix_order_sample(None);
     pob_ui::tabs::items::set_shared_slot_order_sample(None);
+    pob_engine::items_tab::set_jewel_order_sample(None);
     let tp = TestPlatform::new();
     let mut gfx = Gfx::with_platform(&scene::fonts_dir(), scene::SCREEN, 1.0, Box::new(tp.clone())).expect("fonts");
     gfx.set_dpi_scale_override_percent(100);
@@ -396,6 +397,18 @@ fn run(name: &str) -> Run {
             let view = view.as_mut().expect("view");
             view.set_order_sample(ids, conns);
             view.set_sub_graph_order_sample(subs);
+            continue;
+        }
+        // R13: `pairs` over the copy of `spec.jewels` in this oracle process: the winner of a node two Abyss jewels share
+        if let Some(o) = st["jewelOrder"].as_str() {
+            let rec = oracle_record(o).unwrap_or_else(|| panic!("fixtures/items/{o}.json"));
+            let nodes = rec["nodes"]
+                .as_array()
+                .expect("nodes")
+                .iter()
+                .map(|v| v.as_f64().expect("id") as u32)
+                .collect();
+            pob_engine::items_tab::set_jewel_order_sample(Some(nodes));
             continue;
         }
         // U10: `launch.devMode` and the ALT key

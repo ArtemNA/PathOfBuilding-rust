@@ -48,6 +48,8 @@ pub struct Engine {
     /// `build.spec` after a tree mutator: the Lua's object lives on over the recalculations (`ResetNodes` keeps the cluster subgraphs until the next
     /// graph rebuild, TreeTab.lua:137-138), the run's own spec is a fresh load of the model. `None`: the run's is the live one.
     live_spec: Option<Rc<pob_tree::PassiveSpec>>,
+    /// A socketed jewel changed under its id and `live_spec` was not rebuilt since: it has the old conquests, a load of the model would have the new ones. The runs read `live_spec` then.
+    conquests_kept: bool,
     /// `specList[i]` of the specs left in this session (parallel to `model.tree.specs`, grown on need): the Lua keeps the objects, and which of the equal shortest
     /// paths a node has follows the history of the object's `allocNodes` table.
     pub(crate) spec_objects: Vec<Option<Rc<pob_tree::PassiveSpec>>>,
@@ -76,13 +78,14 @@ fn run(
     model: &BuildModel,
     live: Option<&pob_tree::PassiveSpec>,
     export_party: bool,
+    kept: Option<Rc<pob_tree::PassiveSpec>>,
 ) -> Result<(CalculateResult, pob_calc::CalcRun), String> {
     let opts = CalculateOptions {
         live_alloc_pairs: live.map(|l| l.alloc_table_pairs().into_iter().map(f64::from).collect()),
         export_party,
         ..CalculateOptions::default()
     };
-    pob_calc::calculate::calculate_model(Rc::new(model.clone()), opts).map_err(|e| e.0)
+    pob_calc::calculate::calculate_model_live(Rc::new(model.clone()), opts, kept).map_err(|e| e.0)
 }
 
 impl Engine {
@@ -91,7 +94,7 @@ impl Engine {
         let mut model = pob_build::load_build_xml(xml).map_err(|e| format!("XML: {e}"))?;
         crate::calcs_tab::with_default_input(&mut model);
         let extras = SaveExtras::from_xml(xml)?;
-        let (res, calcs) = run(&model, None, extras.import.export_party)?;
+        let (res, calcs) = run(&model, None, extras.import.export_party, None)?;
         let mut e = Engine {
             model,
             extras,
@@ -108,6 +111,7 @@ impl Engine {
             view_mode_is_tree: std::cell::Cell::new(true),
             run_fresh: false,
             live_spec: None,
+            conquests_kept: false,
             spec_objects: Vec::new(),
             config_controls: None,
             config_gates: Default::default(),
@@ -204,7 +208,7 @@ impl Engine {
         self.skills_live = None;
         self.main_pending = None;
         self.output_revision += 1;
-        (self.res, self.calcs) = run(&self.model, self.live_spec.as_deref(), self.extras.import.export_party)?;
+        (self.res, self.calcs) = run(&self.model, self.live_spec.as_deref(), self.extras.import.export_party, self.kept_spec())?;
         *self.config_gates.borrow_mut() = Default::default();
         if let Some(l) = &self.live_spec {
             self.res.env.spec = l.clone();
@@ -518,6 +522,7 @@ impl Engine {
         sm.overrides = keep;
         let spec = Rc::new(spec);
         self.live_spec = Some(spec.clone());
+        self.conquests_kept = false;
         self.res.env.spec = spec;
     }
 
@@ -534,6 +539,23 @@ impl Engine {
     /// `build.spec` is the kept object `spec`: the next run keeps it.
     pub(crate) fn set_live_spec(&mut self, spec: Option<Rc<pob_tree::PassiveSpec>>) {
         self.live_spec = spec;
+        self.conquests_kept = false;
+    }
+
+    /// `build.spec` lives on with the conquests it has: see [`Engine::conquests_kept`].
+    pub(crate) fn keep_live_conquests(&mut self) {
+        self.conquests_kept = true;
+    }
+
+    fn kept_spec(&self) -> Option<Rc<pob_tree::PassiveSpec>> {
+        self.live_spec.clone().filter(|_| self.conquests_kept)
+    }
+
+    /// A session over `model`. The usual path loads the spec from the model.
+    pub(crate) fn calc_session(&self, model: BuildModel) -> pob_calc::CalcSession {
+        let sess = pob_calc::CalcSession::new(Rc::new(model), CalculateOptions::default());
+        sess.set_live_spec(self.kept_spec());
+        sess
     }
 
     /// The tree view's left click on an unallocated node (PassiveTreeView.lua:514): `spec:AllocNode(node, altPath)` and `build.buildFlag =

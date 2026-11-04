@@ -3,7 +3,6 @@
 
 use std::rc::Rc;
 
-use pob_calc::CalculateOptions;
 use pob_calc::env::{CalcOverride, OverrideNode};
 use pob_calc::session::{CalcMode, CalcSession, MiscCalculator, RunRef};
 use pob_lua::format::{Arg, format};
@@ -45,7 +44,7 @@ impl Engine {
     pub(crate) fn misc_calculator(&self) -> Result<std::cell::Ref<'_, MiscCalculator>, String> {
         if self.misc.borrow().is_none() || self.misc_dirty.get() {
             let old = self.misc.borrow().as_ref().map(|m| (m.base.clone(), m.session().main_merge()));
-            let sess = CalcSession::new(Rc::new(self.model().clone()), CalculateOptions::default());
+            let sess = self.calc_session(self.model().clone());
             main_pass_for_calculator(&sess)?;
             let mut calc = sess.get_misc_calculator().map_err(|e| e.0)?;
             if let Some((b, merge)) = old {

@@ -181,13 +181,22 @@ fn export_party_of(xml: &str) -> bool {
 /// model alone): `buildOutput(MAIN)` + `EstimatePlayerProgress` as [`calculate_with`], then `buildOutput(CALCS)` in the same session -- its
 /// writes to the shared tab state (`calcsInput.skill_number`, `mainActiveSkillCalcs`, the gems' `*Calcs` fields) are what `SaveDB` reads.
 pub fn calculate_model(model: Rc<pob_build::BuildModel>, opts: CalculateOptions) -> Result<(CalculateResult, CalcRun), CalcError> {
-    let (res, calcs) = calculate_session_modes(model, CalculateOptions { skills: true, ..opts }, 0.0, true)?;
+    calculate_model_live(model, opts, None)
+}
+
+/// [`calculate_model`] over a live `build.spec` ([`CalcSession::set_live_spec`]).
+pub fn calculate_model_live(
+    model: Rc<pob_build::BuildModel>,
+    opts: CalculateOptions,
+    live_spec: Option<Rc<pob_tree::PassiveSpec>>,
+) -> Result<(CalculateResult, CalcRun), CalcError> {
+    let (res, calcs) = calculate_session_modes(model, CalculateOptions { skills: true, ..opts }, 0.0, true, live_spec)?;
     Ok((res, calcs.expect("the CALCS run was requested")))
 }
 
 /// [`calculate_with`] with the skill phase: `CalcSession::build_output(MAIN)` + `EstimatePlayerProgress`.
 fn calculate_session(model: Rc<pob_build::BuildModel>, opts: CalculateOptions, load_ms: f64) -> Result<CalculateResult, CalcError> {
-    Ok(calculate_session_modes(model, opts, load_ms, false)?.0)
+    Ok(calculate_session_modes(model, opts, load_ms, false, None)?.0)
 }
 
 fn calculate_session_modes(
@@ -195,10 +204,12 @@ fn calculate_session_modes(
     opts: CalculateOptions,
     load_ms: f64,
     with_calcs: bool,
+    live_spec: Option<Rc<pob_tree::PassiveSpec>>,
 ) -> Result<(CalculateResult, Option<CalcRun>), CalcError> {
     // `CalcSession::new` parses the items (`build.itemsTab`): that is loading the build, not `buildOutput`.
     let t0 = Instant::now();
     let session = CalcSession::new(model, opts);
+    session.set_live_spec(live_spec);
     let load_ms = load_ms + ms(t0);
     let t1 = Instant::now();
     let out = session.build_output(CalcMode::Main)?;

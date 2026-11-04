@@ -406,6 +406,30 @@ fn run(name: &str) -> Run {
             frame(&mut gfx, &l);
             continue;
         }
+        if let Some(o) = st["treeOrder"].as_str() {
+            // the overlap order of this oracle process (R27, R31)
+            let rec = oracle_record(o).unwrap_or_else(|| panic!("fixtures/import/{o}.json"));
+            let ids = |k: &str| -> Vec<u32> {
+                rec[k]
+                    .as_array()
+                    .expect("ids")
+                    .iter()
+                    .map(|v| v.as_f64().expect("id") as u32)
+                    .collect()
+            };
+            let conns = rec["connectors"]
+                .as_array()
+                .expect("connectors")
+                .iter()
+                .map(|v| v.as_str().expect("c").to_string())
+                .collect();
+            let build = main().build_mode.clone();
+            let mut view = build.tree_view.borrow_mut();
+            let view = view.as_mut().expect("view");
+            view.set_order_sample(ids("nodes"), conns);
+            view.set_sub_graph_order_sample(ids("subGraphs"));
+            continue;
+        }
         if st["openNew"].as_bool() == Some(true) {
             main().set_mode("BUILD", vec![ModeArg::Bool(false), ModeArg::Str("Unnamed build".into())]);
             frame(&mut gfx, &l);
@@ -984,6 +1008,7 @@ fn import_pixels_equal_original() {
         return;
     }
     let mut r = pob_gfx::Renderer::new_offscreen().expect("wgpu adapter");
+    let lossy_sizes = lossy_sheet_sizes();
     let mut failures = Vec::new();
     let mut shots = 0;
     for name in scenario_names() {
@@ -1002,6 +1027,10 @@ fn import_pixels_equal_original() {
             if d.bad == 0 {
                 continue;
             }
+            let (_, other) = classify_bad(&rgba, &oracle, &list, &lossy_sizes);
+            if other == 0 && d.text_bad == 0 {
+                continue;
+            }
             let out = scene::out_dir();
             scene::save(&heat, &out.join(format!("{shot}.heat.png")));
             scene::save(&scene::crop(&rgba, w, w, h), &out.join(format!("{shot}.ours.png")));
@@ -1011,4 +1040,64 @@ fn import_pixels_equal_original() {
     eprintln!("shots {shots}");
     assert!(shots > 0, "nothing compared");
     assert!(failures.is_empty(), "the tabs differ from the original:\n{}", failures.join("\n"));
+}
+
+/// The sizes of the lossy sheets (jpg/webp, tests/tree.rs).
+fn lossy_sheet_sizes() -> std::collections::HashSet<(u32, u32)> {
+    let root = PathBuf::from(scene::pob_root()).join("src/TreeData");
+    let mut out = std::collections::HashSet::new();
+    let mut stack = vec![root];
+    while let Some(d) = stack.pop() {
+        for e in std::fs::read_dir(&d).into_iter().flatten().flatten() {
+            let p = e.path();
+            if p.is_dir() {
+                stack.push(p);
+            } else if p.extension().is_some_and(|x| x == "jpg" || x == "webp")
+                && let Ok(s) = image::image_dimensions(&p)
+            {
+                out.insert(s);
+            }
+        }
+    }
+    out
+}
+
+const LOSSY_MAX_DELTA: u8 = 4;
+
+/// tests/tree.rs `classify_bad`: a pixel off by at most 4 under a jpg/webp sheet is the class of the decoders.
+fn classify_bad(
+    rgba: &[u8],
+    oracle: &image::RgbaImage,
+    list: &DrawList,
+    lossy_sizes: &std::collections::HashSet<(u32, u32)>,
+) -> (usize, usize) {
+    let (w, h) = scene::SCREEN;
+    let mut under = vec![false; (w * h) as usize];
+    for c in &list.commands {
+        if lossy_sizes.contains(&(c.texture.width, c.texture.height)) {
+            let (x0, x1) = c.pos.iter().fold((f32::MAX, f32::MIN), |a, p| (a.0.min(p[0]), a.1.max(p[0])));
+            let (y0, y1) = c.pos.iter().fold((f32::MAX, f32::MIN), |a, p| (a.0.min(p[1]), a.1.max(p[1])));
+            for y in (y0.max(0.0) as u32)..(y1.max(0.0).ceil() as u32).min(h) {
+                for x in (x0.max(0.0) as u32)..(x1.max(0.0).ceil() as u32).min(w) {
+                    under[(y * w + x) as usize] = true;
+                }
+            }
+        }
+    }
+    let (mut lossy, mut other) = (0, 0);
+    for y in 0..h {
+        for x in 0..w {
+            let i = ((y * w + x) * 4) as usize;
+            let o = oracle.get_pixel(x, y).0;
+            let d = (0..3).map(|k| rgba[i + k].abs_diff(o[k])).max().unwrap_or(0);
+            if d > 2 {
+                if under[(y * w + x) as usize] && d <= LOSSY_MAX_DELTA {
+                    lossy += 1;
+                } else {
+                    other += 1;
+                }
+            }
+        }
+    }
+    (lossy, other)
 }

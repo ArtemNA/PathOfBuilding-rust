@@ -743,6 +743,30 @@ fn real_gem_choice_equals_original() {
     );
 }
 
+/// The whole gem list with its colours: which gems it computes follows `hasGlobalEffect`, which `statMap`'s `__index` sets the first time a calculation asks for a stat (Data.lua:1033-1041, R48),
+/// so the list depends on the scenes before it in the process (575 rows without a colour alone, 573 after the others). A scene of its own, a process of its own: 6 processes alike.
+#[test]
+fn whole_gem_list_equals_original() {
+    if oracle_record(WHOLE_GEM_LIST).is_none() {
+        eprintln!("SKIPPED whole_gem_list_equals_original: no fixtures/skills/{WHOLE_GEM_LIST}.json");
+        return;
+    }
+    let mut failures = Vec::new();
+    let compared = compare_scene(WHOLE_GEM_LIST, &mut failures);
+    eprintln!("dumps compared {compared}, differ {}", failures.len());
+    assert!(
+        failures.is_empty(),
+        "{}",
+        failures
+            .iter()
+            .map(|s| s.chars().take(900).collect::<String>())
+            .collect::<Vec<_>>()
+            .join("\n")
+    );
+}
+
+const WHOLE_GEM_LIST: &str = "u10-gem";
+
 #[test]
 fn skills_states_equal_original() {
     if let Some(why) = missing_inputs() {
@@ -754,7 +778,7 @@ fn skills_states_equal_original() {
     let mut failures = Vec::new();
     let mut compared = 0;
     for name in scenario_names() {
-        if only.as_ref().is_some_and(|o| *o != name) {
+        if name == WHOLE_GEM_LIST || only.as_ref().is_some_and(|o| *o != name) {
             continue;
         }
         compared += compare_scene(&name, &mut failures);

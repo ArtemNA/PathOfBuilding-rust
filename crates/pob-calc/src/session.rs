@@ -256,6 +256,8 @@ pub struct SessionCore {
     items: RefCell<Option<IndexMap<u64, Rc<Item>>>>,
     /// `build.spec` + the loaded `build.skillsTab`, made by the first initEnv (R7-perf).
     shared: RefCell<Option<Rc<BuildShared>>>,
+    /// [`CalcSession::set_live_spec`].
+    live_spec: RefCell<Option<Rc<pob_tree::PassiveSpec>>>,
     cache: RefCell<GlobalCache>,
     carry: RefCell<SkillsCarry>,
     log: RefCell<SessionLog>,
@@ -409,6 +411,7 @@ impl CalcSession {
                 opts,
                 items: RefCell::new(Some(items)),
                 shared: RefCell::new(None),
+                live_spec: RefCell::new(None),
                 cache: RefCell::new(GlobalCache::default()),
                 carry: RefCell::new(SkillsCarry::default()),
                 log: RefCell::new(SessionLog::default()),
@@ -420,6 +423,12 @@ impl CalcSession {
                 main_multipliers_used: RefCell::new(None),
             }),
         }
+    }
+
+    /// `build.spec` when loading the model would give another one: a socketed jewel changed under its id and upstream's spec keeps the old conquests until its next
+    /// `BuildAllDependsAndPaths` (ItemsTab.lua:1770, PassiveSpec.lua:1137). Before the first initEnv. Without it the session loads the spec from the model.
+    pub fn set_live_spec(&self, spec: Option<Rc<pob_tree::PassiveSpec>>) {
+        *self.core.live_spec.borrow_mut() = spec;
     }
 
     /// The session an env was built by (`None` for an env made outside a session, or after the session is gone).
@@ -571,6 +580,9 @@ impl CalcSession {
             .clone()
             .expect("the items are moved into BuildShared only once it exists");
         let mut s = BuildShared::new(&self.core.build, items, self.core.opts.parse_mode)?;
+        if let Some(live) = self.core.live_spec.borrow().as_ref() {
+            s.spec = live.clone();
+        }
         if let Some(keys) = &self.core.opts.live_alloc_pairs {
             let mut spec = (*s.spec).clone();
             spec.live_alloc_pairs = Some(keys.clone());

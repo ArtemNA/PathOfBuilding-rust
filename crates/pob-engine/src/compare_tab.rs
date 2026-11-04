@@ -3,11 +3,9 @@
 
 use std::rc::Rc;
 
-use pob_calc::CalculateOptions;
 use pob_calc::env::CalcOverride;
 use pob_calc::pob_build::{self, BuildModel, SocketGroupModel};
 use pob_calc::power::{PowerStat, get_from_output};
-use pob_calc::session::CalcSession;
 
 use crate::calcs::{CalcsActor, Entry};
 use crate::engine::Engine;
@@ -77,7 +75,7 @@ impl Engine {
     pub fn compare_edited_impact(&self, edit: impl FnOnce(&mut BuildModel), stat: &PowerStat) -> Result<f64, String> {
         let mut m = self.model().clone();
         edit(&mut m);
-        let sess = CalcSession::new(Rc::new(m), CalculateOptions::default());
+        let sess = self.calc_session(m);
         crate::tree_view::main_pass_for_calculator(&sess)?;
         let calc = sess.get_misc_calculator().map_err(|e| e.0)?;
         let value = get_from_output(&calc.base.borrow().state.player.output, stat);
@@ -117,7 +115,7 @@ impl Engine {
 
     /// :3998-4028: `getMiscCalculator` made anew at every hover, `calcFunc(override)`, `AddStatComparesToTooltip`: the base is of the live slots, not of the last `BuildOutput`.
     pub fn compare_fresh_lines(&self, ov: CalcOverride, header: &str) -> Result<Vec<String>, String> {
-        let sess = CalcSession::new(Rc::new(self.model().clone()), CalculateOptions::default());
+        let sess = self.calc_session(self.model().clone());
         crate::tree_view::main_pass_for_calculator(&sess)?;
         let calc = sess.get_misc_calculator().map_err(|e| e.0)?;
         let run = calc.calc(&Rc::new(ov), None, self.view_mode_is_tree.get()).map_err(|e| e.0)?;

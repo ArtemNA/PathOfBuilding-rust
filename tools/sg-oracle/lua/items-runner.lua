@@ -827,6 +827,13 @@ function runner:Step()
 		writeAll(OUT .. st.legionLines .. ".json", json.encode({ pobSha = UPSTREAM.sha, lines = lines }, { indent = true }) .. "\n")
 		return
 	end
+	if st.jewelOrder then
+		-- R13: the sockets as `pairs` walks the copy of `spec.jewels` that buildSpecForJewelComparison reads (ItemsTab.lua:4201, PassiveSpec.lua:1136): the keys are all there, so a socket's new value keeps the order
+		local nodes = { }
+		for id in pairs(copyTable(main.modes.BUILD.spec.jewels, true)) do nodes[#nodes + 1] = id end
+		writeAll(OUT .. st.jewelOrder .. ".json", json.encode({ nodes = nodes }) .. "\n")
+		return
+	end
 	if st.treeOrder then
 		local b = main.modes.BUILD
 		local ids, groups, conns, subs = { }, { }, { }, { }

@@ -482,6 +482,16 @@ function runner:Step()
 		self:Frame()
 		return
 	end
+	if st.treeOrder then
+		-- R27: the overlap order of this process, for crates/pob-ui/tests/import.rs
+		local b = main.modes.BUILD
+		local ids, conns, subs = { }, { }, { }
+		for id in pairs(b.spec.nodes) do ids[#ids + 1] = id end
+		for _, c in ipairs(b.spec.tree.connectors) do conns[#conns + 1] = c.nodeId1 .. "-" .. c.nodeId2 .. ":" .. c.type end
+		for id in pairs(b.spec.subGraphs) do subs[#subs + 1] = id end
+		writeAll(OUT .. st.treeOrder .. ".json", json.encode({ nodes = ids, connectors = conns, subGraphs = subs }) .. "\n")
+		return
+	end
 	if st.openNew then
 		main:SetMode("BUILD", false, "Unnamed build")
 		self:Frame()

@@ -509,8 +509,8 @@ write('u10-abyss-jewel', [
  *TO_TREE,
  *TIPS,
  tab,
- # no comparison lines: Zorath in another socket over a node of the jewel in this one is D13 (the last of `pairs(self.jewels)`, MINEFIELD)
- *ctrl("d"),
+ # Zorath in another socket over a node of the jewel in this one: the last of `pairs(copyTable(spec.jewels))` wins it, an order of the process (R13): +12 and +21 Intelligence, 3 + 3 of 6 processes
+ {"jewelOrder": "u10-abyss-jewels"},
  {"cursor": [1200, 790], "dump": True},
  {"cursorItem": [ABYSS_SOCKET], "dump": True},
  {"cursor": [1200, 790], "clipboard": ZORATH},
@@ -527,6 +527,84 @@ write('u10-abyss-jewel', [
  {"cursor": [1200, 790], "dump": True},
  {"cursorItem": [ABYSS_SOCKET], "dump": True},
  *TO_TREE,
+ *TIPS,
+ tab,
+ {"cursor": [1200, 790]},
+ *ctrl("z"),
+ {"cursor": [1200, 790], "dump": True},
+ *TO_TREE,
+ *TIPS,
+ {"closeBuild": True},
+])
+# U10b: an equipped jewel edited under its id: `BuildAllDependsAndPaths` reads `itemsTab.items` (PassiveSpec.lua:1137, :1155), so the next rebuild sees the new jewel.
+# Abyss: AddItem rebuilds nothing (ItemsTab.lua:1770), a node's click does. Timeless: AddItem rebuilds (:1770-1774).
+LP_KAOM = "Rarity: UNIQUE\nLethal Pride\nTimeless Jewel\nLeague: Legion\nLimited to: 1 Historic\nRadius: Large\nImplicits: 0\nCommanded leadership over 10000 warriors under Kaom\nPassives in radius are Conquered by the Karui\nHistoric\n"
+LP_AKOYA = "Rarity: UNIQUE\nLethal Pride\nTimeless Jewel\nLeague: Legion\nLimited to: 1 Historic\nRadius: Large\nImplicits: 0\nCommanded leadership over 9000 warriors under Akoya\nPassives in radius are Conquered by the Karui\nHistoric\n"
+def jewel_in_socket(text, order):
+    return [
+     {"open": "Generals Perforate Zerker"},
+     {"waitAssets": True},
+     *press(971, 730),
+     {"waitAssets": True},
+     {"cursor": [-100, -100], "events": [["KeyDown", "RETURN"], ["KeyUp", "RETURN"]]},
+     tab,
+     paste(text),
+     {"cursor": [800, 600], "events": wheel("WHEELUP", 80), "dump": True},
+     {"cursor": [800, 600]},
+     tap("addDisplayItem"),
+     {"cursor": [1200, 790], "dump": True},
+     {"cursorItem": [ABYSS_SOCKET], "events": click(), "dump": True},
+     {"cursorPick": [ABYSS_SOCKET, ABYSS_ROW_TECROD], "events": click(), "dump": True},
+     {"cursor": [1200, 790], "dump": True},
+     *TO_TREE,
+     {"treeOrder": order},
+     {"cursor": [796, 388], "events": wheel("WHEELDOWN", 5)},
+     {"cursor": [800, 400]},
+     {"hold": ["LEFTBUTTON"], "events": [["KeyDown", "LEFTBUTTON"]]},
+     {"cursor": [602, 103]},
+     {"release": ["LEFTBUTTON"], "events": [["KeyUp", "LEFTBUTTON"]]},
+     {"cursorNode": 33287, "events": wheel("WHEELUP", 4)},
+     *TIPS,
+    ]
+def edit_item(text):
+    return [
+     tab,
+     {"cursor": [1200, 790], "clipboard": text},
+     # the list shows 19 rows: scrolled to its end, the last of them is the new item
+     {"cursorItemRow": ["itemList", 19], "events": wheel("WHEELDOWN", 12), "dump": True},
+     {"cursorItemRow": ["itemList", 19], "events": click()},
+     {"events": [["KeyDown", "LEFTBUTTON", True], ["KeyUp", "LEFTBUTTON"]], "dump": True},
+     {"cursor": [1200, 790], "dump": True},
+     tap("editDisplayItem"),
+     {"cursorPopup": ["edit"], "events": click(), "dump": True},
+     {"hold": ["CTRL"], "events": [["KeyDown", "a"], ["KeyUp", "a"], ["KeyDown", "v"], ["KeyUp", "v"]], "dump": True},
+     {"release": ["CTRL"]},
+     ptap("save"),
+     {"cursor": [1200, 790], "dump": True},
+     tap("addDisplayItem"),
+     {"cursor": [1200, 790], "dump": True},
+     *TO_TREE,
+    ]
+# The calculation keeps the old conquest until the next rebuild as well (279,408.2, not 311,447.5).
+write('u10b-jewel-edit', [
+ *jewel_in_socket(TECROD, "u10b-edit-order"),
+ *edit_item(TECROD.replace("4000", "3000")),
+ *TIPS,
+ {"cursorNode": 33287, "events": click(), "dump": True},
+ *TIPS,
+ tab,
+ {"cursor": [1200, 790]},
+ *ctrl("z"),
+ {"cursor": [1200, 790], "dump": True},
+ *TO_TREE,
+ *TIPS,
+ {"cursorNode": 33287, "events": click(), "dump": True},
+ *TIPS,
+ {"closeBuild": True},
+])
+write('u10b-timeless-edit', [
+ *jewel_in_socket(LP_KAOM, "u10b-edit-order2"),
+ *edit_item(LP_AKOYA),
  *TIPS,
  tab,
  {"cursor": [1200, 790]},
@@ -611,7 +689,7 @@ write('u10-rare-like', [
  ptap("close"),
  {"closeBuild": True},
 ])
-U10 = ['u10-crafting', 'u10-rare-like', 'u10-version', 'u10-dev', 'u10-abyss-jewel', 'u10-implicit', 'u10-crucible', 'u10-corrupt', 'u10-restrict', 'u10-sets', 'u10-minion']
+U10 = ['u10-crafting', 'u10-rare-like', 'u10-version', 'u10-dev', 'u10-abyss-jewel', 'u10b-jewel-edit', 'u10b-timeless-edit', 'u10-implicit', 'u10-crucible', 'u10-corrupt', 'u10-restrict', 'u10-sets', 'u10-minion']
 write('perf', [
  {"open": "OccVortex"},
  {"cursorBuild": ["modeItems"], "events": click(), "perfClick": "openTab"},

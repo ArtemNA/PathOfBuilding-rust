@@ -27,11 +27,15 @@
 "waitAssets": true
 },
 {
+"treeOrder": "uri-404-order"
+},
+{
 "cursor": [
 1200,
 790
 ],
-"dump": true
+"dump": true,
+"shot": "uri-404"
 }
 ],
 "uri": "pob://pobcodes/abc123"
