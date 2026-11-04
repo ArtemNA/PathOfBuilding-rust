@@ -274,36 +274,12 @@ fn oc1_oc4_equal_luajit_on_six_goldens() {
             }
             continue;
         }
-        // R7.9: Dual Savior's first nested run (`calcs.buildActiveSkill` Double Strike) is built by The Saviour's `compareFunc` INSIDE the top
-        // perform, which the session hook does not reach -- it is compared on its reproduction ([`repro_nested`], the first nested
-        // `buildActiveSkill` of the session log), as `oc1_oc4_equal_luajit_on_all_offence_runs` does.
-        let repro: Option<RustRun> = nested
-            .then(|| {
-                let want_mode = cps["OC1"].get("envMode").and_then(Json::as_str).unwrap_or("MAIN");
-                let seen = hits.get("OC1").is_some_and(|v| v.iter().any(|h| h.nested && h.mode == want_mode));
-                if seen {
-                    return None;
-                }
-                let (_, _, bas) = rust_runs(g.name);
-                let (mode, uuid, flags) = bas.into_iter().find(|(m, _, _)| m.as_str() == want_mode)?;
-                println!("{}: first nested run {} {uuid} compared on its reproduction", g.name, mode.as_str());
-                repro_nested(g.name, mode, &uuid, &flags)
-                    .into_iter()
-                    .find(|r| r.limited && r.uuid == uuid)
-            })
-            .flatten();
         for cp in CPS {
             let w = &cps[cp];
             let want_mode = w.get("envMode").and_then(Json::as_str).unwrap_or("MAIN");
-            let repro_hit = repro.as_ref().and_then(|r| r.oc.get(cp)).map(|s| Hit {
-                nested: true,
-                mode: "MAIN",
-                snap: s.clone(),
-            });
-            let hit = repro_hit.as_ref().or_else(|| {
-                hits.get(cp)
-                    .and_then(|v| v.iter().find(|h| h.nested == nested && h.mode == want_mode))
-            });
+            let hit = hits
+                .get(cp)
+                .and_then(|v| v.iter().find(|h| h.nested == nested && h.mode == want_mode));
             let Some(hit) = hit else {
                 all_bad.push(format!("{}: {cp} no Rust hit (nested {nested}, mode {want_mode})", g.name));
                 continue;
@@ -405,49 +381,22 @@ fn session_of(name: &str) -> CalcSession {
     CalcSession::new(Rc::new(model), CalculateOptions::default())
 }
 
-/// A `calcs.buildActiveSkill` Rust made from INSIDE a perform (`depth >= 1`): `(mode, target uuid, limitedProcessingFlags)`.
-type NestedBas = (CalcMode, String, Vec<String>);
-
-fn rust_runs(name: &str) -> (Vec<RustRun>, Vec<String>, Vec<NestedBas>) {
+fn rust_runs(name: &str) -> (Vec<RustRun>, Vec<String>) {
     let sess = session_of(name);
     let mut notes = Vec::new();
     let runs = hooked_runs(&sess, |s| {
         let out = s.build_output(CalcMode::Main).unwrap_or_else(|e| panic!("{name}: {e:?}"));
         notes = out.run.borrow().env.unimplemented.clone();
     });
-    let nested = sess
-        .log()
-        .bas
-        .iter()
-        .filter(|b| b.depth >= 1)
-        .map(|b| (b.mode, b.target_uuid.clone(), b.limited.clone()))
-        .collect();
-    (runs, notes, nested)
-}
-
-/// R7.8: the session hook reaches only the OUTERMOST perform (`CalcSession::perform_inner` takes it for the frame), so a run that
-/// `calcs.triggers` builds inside the top perform (`findTriggerSkill` -> `calcs.buildActiveSkill`; Cospris: Cyclone) makes no hook
-/// calls. Such a run is REPRODUCED for the comparison: a fresh session of the same build, `initEnv(MAIN)` (the parent env of the nested
-/// call is the top MAIN env, `limitedSkills` nil), then the same `buildActiveSkill(env, mode, skill, uuid, flags)` with the hook on --
-/// the same inputs as the nested call (a fresh initEnv + perform). Only for a LuaJIT run nested in a perform (`depth >= 2`) that the
-/// Rust session log shows was built from inside a perform.
-fn repro_nested(name: &str, mode: CalcMode, uuid: &str, limited: &[String]) -> Vec<RustRun> {
-    let sess = session_of(name);
-    hooked_runs(&sess, |s| {
-        let env = s.init_env(CalcMode::Main).unwrap_or_else(|e| panic!("{name}: initEnv {e:?}"));
-        let n = env.skills.as_ref().map_or(0, |st| st.active_skill_list.len());
-        let i = (0..n)
-            .find(|&i| cache_skill_uuid(&env, i) == uuid)
-            .unwrap_or_else(|| panic!("{name}: no skill {uuid}"));
-        s.build_active_skill(&env, mode, i, Some(uuid), limited)
-            .unwrap_or_else(|e| panic!("{name}: buildActiveSkill {e:?}"));
-    })
+    (runs, notes)
 }
 
 /// Runs `f` with a hook on `sess` that records every player offence call it sees.
 fn hooked_runs(sess: &CalcSession, f: impl FnOnce(&CalcSession)) -> Vec<RustRun> {
     let runs: Rc<RefCell<Vec<RustRun>>> = Rc::default();
     let r2 = runs.clone();
+    // The runs open now: a nested perform can start before the outer offence ends (R7-hook)
+    let mut open: Vec<usize> = Vec::new();
     sess.set_hook(Some(Box::new(
         move |cp: Checkpoint, env: &Env, player: &ActorState, _: &ActorState| {
             let mut v = r2.borrow_mut();
@@ -467,6 +416,7 @@ fn hooked_runs(sess: &CalcSession, f: impl FnOnce(&CalcSession)) -> Vec<RustRun>
                         ordinal,
                         oc: BTreeMap::new(),
                     });
+                    open.push(v.len() - 1);
                 }
                 Checkpoint::Oc1 | Checkpoint::Oc2 | Checkpoint::Oc3 | Checkpoint::Oc4 | Checkpoint::Oc5 | Checkpoint::Oc6 => {
                     let k = match cp {
@@ -477,7 +427,11 @@ fn hooked_runs(sess: &CalcSession, f: impl FnOnce(&CalcSession)) -> Vec<RustRun>
                         Checkpoint::Oc5 => "OC5",
                         _ => "OC6",
                     };
-                    v.last_mut().expect("OcEntry before OC").oc.insert(k, snap(env, player));
+                    let at = *open.last().expect("OcEntry before OC");
+                    v[at].oc.insert(k, snap(env, player));
+                    if k == "OC6" {
+                        open.pop();
+                    }
                 }
                 _ => {}
             }
@@ -489,42 +443,17 @@ fn hooked_runs(sess: &CalcSession, f: impl FnOnce(&CalcSession)) -> Vec<RustRun>
 }
 
 /// Compares every matched run; returns (differences / unexplained gaps, totals
-/// `[LuaJIT, Rust, matched, OC1 ok, OC2 ok, OC3 ok, OC4 ok, OC5 ok, OC6 ok, diff lines, not run, of the Rust runs reproduced]`).
-fn compare_all() -> (Vec<String>, [usize; 12]) {
+/// `[LuaJIT, Rust, matched, OC1 ok, OC2 ok, OC3 ok, OC4 ok, OC5 ok, OC6 ok, diff lines, not run]`).
+fn compare_all() -> (Vec<String>, [usize; 11]) {
     let mut bad = Vec::new();
     let mut unexecuted = Vec::new();
     println!(
         "golden | LuaJIT player runs | Rust runs | matched | OC1 ok | OC2 ok | OC3 ok | OC4 ok | OC5 ok | OC6 ok | differences | Rust did not run"
     );
-    let mut tot = [0usize; 12];
+    let mut tot = [0usize; 11];
     for g in GOLDEN_BUILDS {
         let (lj, main) = lj_runs(g.name);
-        let (mut rs, notes, nested_bas) = rust_runs(g.name);
-        // R7.8: runs built inside a perform are invisible to the session hook -- reproduced ([`repro_nested`])
-        let mut repro = 0;
-        for l in &lj {
-            let seen = rs
-                .iter()
-                .any(|r| r.mode == l.mode && r.uuid == l.uuid && r.limited == l.limited && r.ordinal == l.ordinal);
-            let bas = nested_bas.iter().find(|(m, u, _)| m.as_str() == l.mode && *u == l.uuid);
-            if seen || l.depth < 2 || !l.limited {
-                continue;
-            }
-            let Some((mode, uuid, flags)) = bas else { continue };
-            let again = repro_nested(g.name, *mode, uuid, flags);
-            if let Some(mut r) = again
-                .into_iter()
-                .find(|r| r.mode == l.mode && r.uuid == l.uuid && r.limited && r.ordinal == 1)
-            {
-                println!(
-                    "{}: LuaJIT run seq {} ({} {}, depth {}) built inside a perform by Rust (session log) -- compared on its reproduction",
-                    g.name, l.seq, l.mode, l.uuid, l.depth
-                );
-                r.ordinal = l.ordinal;
-                rs.push(r);
-                repro += 1;
-            }
-        }
+        let (rs, notes) = rust_runs(g.name);
         let (mut matched, mut ndiff, mut nun) = (0, 0, 0);
         let mut oks = [0usize; 6];
         let mut used = BTreeSet::new();
@@ -615,14 +544,13 @@ fn compare_all() -> (Vec<String>, [usize; 12]) {
             oks[5],
             ndiff,
             nun,
-            repro,
         ]) {
             *t += x;
         }
     }
     println!(
-        "TOTAL | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} (Rust runs reproduced: {})",
-        tot[0], tot[1], tot[2], tot[3], tot[4], tot[5], tot[6], tot[7], tot[8], tot[9], tot[10], tot[11]
+        "TOTAL | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {}",
+        tot[0], tot[1], tot[2], tot[3], tot[4], tot[5], tot[6], tot[7], tot[8], tot[9], tot[10]
     );
     for u in &unexecuted {
         println!("unexecuted by Rust: {u}");
@@ -646,14 +574,14 @@ fn oc1_oc4_equal_luajit_on_all_offence_runs() {
 /// (:1057-1065) from OC2 on.
 const MINION_CLASS: [&str; 3] = ["output.Minion:", "output.ActiveMinionLimit:", "output.SummonedMinionsPerCast:"];
 
-/// Pins the measured state so it cannot drift silently. R7.9 (`calcs.mirages`): 82 / 82 / 82, OC1-OC6 82/82 equal, 0 difference lines, 0
+/// Pins the measured state so it cannot drift silently. R7-hook: the session hook reaches nested performs, 82 / 82 / 82 with no reproduction, the same numbers. R7.9 (`calcs.mirages`): 82 / 82 / 82, OC1-OC6 82/82 equal, 0 difference lines, 0
 /// not run; 4 runs compared on their reproduction (Cyclone of both Cospris goldens, Dual Savior's Double Strike built by The Saviour's
 /// `compareFunc` and Generals' Perforate built by General's Cry -- each a `buildActiveSkill` inside the top perform); the 9 runs the mirage
 /// gate stopped before R7.9 now run, the mirages' own CALCULATOR performs hooked directly (they run with the caller's hook).
 /// R7.10 (minion actors): 82 / 73 / 73, OC1-OC6 73/73 equal, 0 difference lines
 /// (the 64 lines of the R7.10 class closed). R7.8 (`calcs.triggers` ported): 82 LuaJIT player offence runs, 73 Rust runs (all
 /// matched; 2 of them -- Cyclone of both Cospris goldens, built by `findTriggerSkill` inside the top perform -- compared on their
-/// reproduction, [`repro_nested`]), 9 not run (the recorded mirage gates), OC1-OC6 69/73 equal; the 64 difference lines are all the R7.10
+/// reproduction), 9 not run (the recorded mirage gates), OC1-OC6 69/73 equal; the 64 difference lines are all the R7.10
 /// class ([`MINION_CLASS`]) on the 4 nested minion runs (Generals' Summon Ice Golem joined: its CWDT dispatch is ported). New against
 /// R7.7: Cospris x2 top Ice Spear + 5 tail runs each (12), Generals 3 and Mirage 2 tail runs whose dispatch is "cast when damage taken".
 /// R7.7: 82 / 56 / 56 / 53 x6 / 48 lines / 26 not run, the 48 lines the same class on 3 runs
@@ -664,7 +592,7 @@ const MINION_CLASS: [&str; 3] = ["output.Minion:", "output.ActiveMinionLimit:", 
 #[test]
 fn offence_runs_state_is_pinned() {
     let (bad, tot) = compare_all();
-    assert_eq!(tot, [82, 82, 82, 82, 82, 82, 82, 82, 82, 0, 0, 4], "{}", bad.join("\n"));
+    assert_eq!(tot, [82, 82, 82, 82, 82, 82, 82, 82, 82, 0, 0], "{}", bad.join("\n"));
     assert_eq!(bad.len(), 0, "unexplained gaps or differences:\n{}", bad.join("\n"));
     let other: Vec<&String> = bad.iter().filter(|l| !MINION_CLASS.iter().any(|c| l.contains(c))).collect();
     assert!(other.is_empty(), "differences outside the R7.10 minion class:\n{other:?}");

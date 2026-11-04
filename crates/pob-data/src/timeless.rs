@@ -740,40 +740,6 @@ pub fn read_abyss_jewel_lut(
     }
     Ok(affected)
 }
-// --- what `data.describeStats` says of the legion passives ---------------------------------------------------------------------
-
-/// `data.describeStats({ [stat] = 100, others = 0 }, "stat_descriptions")[1]` of the legion passives with several stats (TreeTab.lua:2006). `Data/StatDescriptions` is not ported: the only asker is
-/// `Generate`, so these lines are taken from the original (`tools/sg-oracle/lua/tree-runner.lua`, step `legionLines`) and pinned to the PoB commit of `data.lock`.
-const LEGION_STAT_LINES: &str = include_str!("legion_stat_lines.json");
-
-/// The line of `stat` of the legion passive `id`; `None` where it has no such stat.
-pub fn legion_stat_line(id: &str, stat: &str) -> Result<Option<&'static str>, DataError> {
-    #[derive(Deserialize)]
-    struct Lines {
-        #[serde(rename = "pobSha")]
-        pob_sha: String,
-        lines: HashMap<String, HashMap<String, String>>,
-    }
-    static L: OnceLock<Result<Lines, DataError>> = OnceLock::new();
-    let l = L
-        .get_or_init(|| {
-            let l: Lines =
-                serde_json::from_str(LEGION_STAT_LINES).map_err(|e| DataError(format!("pob-data: legion_stat_lines.json: {e}")))?;
-            let dir = ensure_data()?;
-            let lock = verify_lock(dir, &lock_path(dir))?;
-            if l.pob_sha != lock.pob_sha {
-                return Err(DataError(format!(
-                    "pob-data: legion_stat_lines.json was taken from PoB {}, data.lock has {} -- re-take it: tools/sg-oracle/run.ps1 -Script tree-runner.lua -ScriptArgs legion-lines",
-                    l.pob_sha, lock.pob_sha
-                )));
-            }
-            Ok(l)
-        })
-        .as_ref()
-        .map_err(Clone::clone)?;
-    Ok(l.lines.get(id).and_then(|m| m.get(stat)).map(String::as_str))
-}
-
 // --- legion passives ------------------------------------------------------------------------------------------------------
 
 /// One `stats[key]` entry of a legion node/addition.

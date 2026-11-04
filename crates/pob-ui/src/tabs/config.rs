@@ -1007,6 +1007,7 @@ impl ConfigTab {
 
     /// :1008-1022
     pub fn update_controls(&self, g: &mut Gfx) {
+        self.e_mut(Engine::config_update_control_placeholders);
         for v in &self.vars {
             let Some(var) = &v.data.var else { continue };
             let (input, placeholder) = self.e(|e| {

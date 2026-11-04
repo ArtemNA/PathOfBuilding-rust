@@ -51,18 +51,24 @@ fn main() {
     for g in GOLDEN_BUILDS {
         xml_to_env(&std::fs::read_to_string(g.xml_path()).expect("xml"));
     }
-    println!("build | XML->env warm median (min-max) ms | init_env only median (min-max) ms");
+    println!("build | XML->env warm median (min-max) ms | init_env only median (min-max) ms | XML parse + model | spec | items");
     for g in GOLDEN_BUILDS {
         let xml = std::fs::read_to_string(g.xml_path()).expect("xml");
         let mut full = Vec::new();
         let mut init = Vec::new();
+        let (mut parse, mut specs, mut parsed) = (Vec::new(), Vec::new(), Vec::new());
         for _ in 0..RUNS {
             let t = Instant::now();
             xml_to_env(&xml);
             full.push(t.elapsed().as_secs_f64() * 1e3);
 
+            let t = Instant::now();
             let model = Rc::new(load_build_xml(&xml).expect("xml"));
+            parse.push(t.elapsed().as_secs_f64() * 1e3);
+            let t = Instant::now();
             let spec = PassiveSpec::load_mode(active_spec(&model), pob_calc::ParseMode::CacheOnly).expect("spec");
+            specs.push(t.elapsed().as_secs_f64() * 1e3);
+            let t = Instant::now();
             let mut items = IndexMap::new();
             for im in &model.items {
                 let item = Item::parse(&im.raw, &item_options(im, pob_calc::ParseMode::CacheOnly));
@@ -70,6 +76,7 @@ fn main() {
                     items.insert(im.id as u64, Rc::new(item));
                 }
             }
+            parsed.push(t.elapsed().as_secs_f64() * 1e3);
             let t = Instant::now();
             let env = init_env(
                 model,
@@ -85,6 +92,12 @@ fn main() {
         }
         let (fm, fa, fb) = stats(full);
         let (im, ia, ib) = stats(init);
-        println!("{} | {fm:.3} ({fa:.3}-{fb:.3}) | {im:.3} ({ia:.3}-{ib:.3})", g.name);
+        println!(
+            "{} | {fm:.3} ({fa:.3}-{fb:.3}) | {im:.3} ({ia:.3}-{ib:.3}) | {:.3} | {:.3} | {:.3}",
+            g.name,
+            stats(parse).0,
+            stats(specs).0,
+            stats(parsed).0
+        );
     }
 }

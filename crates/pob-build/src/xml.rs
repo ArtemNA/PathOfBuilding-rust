@@ -177,7 +177,17 @@ pub fn parse_xml_bytes(input: &[u8]) -> Result<Vec<RawXmlNode>, XmlError> {
     loop {
         let top = stack.last_mut().expect("the bottom frame is never popped");
         let ie;
-        if let Some(caps) = match_(s, CDATA_PAT, Some(i as i64))? {
+        // CDATA_PAT reaches only `<` as its literal: everything before it is `%s` or `[^<]`, so without `<![CDATA[` at the first `<` it cannot match
+        let may_be_cdata = s[i - 1..]
+            .iter()
+            .position(|&c| c == b'<')
+            .is_some_and(|at| s[i - 1 + at..].starts_with(b"<![CDATA["));
+        let cdata = if may_be_cdata {
+            match_(s, CDATA_PAT, Some(i as i64))?
+        } else {
+            None
+        };
+        if let Some(caps) = cdata {
             // :43-50 CDATA section
             let (content, cdata) = (cap(s, &caps, 0), cap(s, &caps, 1));
             if has_non_space(content) {

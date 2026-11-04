@@ -242,6 +242,23 @@ fn set_placeholder_dance() {
     assert_eq!(s.enemy_level, 10.0);
 }
 
+/// `UpdateControls` (ConfigTab.lua:1011-1014): the set's placeholder reaches the control; a var the set has none of keeps what the control shows.
+#[test]
+fn update_controls_placeholder() {
+    let mut s = ConfigState::new();
+    let mut w = Vec::new();
+    s.set_placeholder("enemyDamageRollRange", &ConfigValue::Num(70.0), &mut w);
+    s.set_placeholder("enemyArmour", &ConfigValue::Num(5.0), &mut w);
+    // what a switch to another set does to the tables: the controls stay
+    s.placeholder.clear();
+    s.placeholder.insert("enemyDamageRollRange".into(), ConfigValue::Num(50.0));
+    assert_eq!(s.control_placeholder("enemyDamageRollRange"), Some(ConfigValue::Str("70".into())));
+    s.update_control_placeholders();
+    assert_eq!(s.control_placeholder("enemyDamageRollRange"), Some(ConfigValue::Str("50".into())));
+    assert_eq!(s.control_placeholder("enemyArmour"), Some(ConfigValue::Str("5".into())));
+    assert!(w.is_empty());
+}
+
 /// Legacy `input.customMods` (ConfigTab.lua:1188-1202) and custom blocks: parseMod hits only, source `Custom:<title>`.
 #[test]
 fn custom_mods_blocks() {
