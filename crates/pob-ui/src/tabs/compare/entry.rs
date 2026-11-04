@@ -75,7 +75,7 @@ impl CompareEntry {
         if let Some(p) = self.primary.upgrade()
             && let Some(e) = p.engine.borrow().as_ref()
         {
-            e.touch_misc();
+            e.wipe_misc_cache();
         }
         self.b
             .engine

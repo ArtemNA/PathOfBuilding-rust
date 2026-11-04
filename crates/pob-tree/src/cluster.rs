@@ -573,7 +573,8 @@ impl PassiveSpec {
                 parent_socket,
                 entrance: None,
                 group: (0.0, 0.0),
-                node_orbit: cj.size_index + 1.0,
+                // :2001 `oo = { }`: a keystone's group returns (:2124) before the flag is set (:2134), it has no orbit art
+                node_orbit: -1.0,
                 links: Vec::new(),
             },
         );
@@ -607,6 +608,7 @@ impl PassiveSpec {
             let idx = self.push_subgraph_node(node);
             self.sub_graphs[&node_id].nodes.push(idx);
             self.link_nodes(idx, parent_socket);
+            self.sub_graphs[&node_id].links.push((idx, parent_socket));
             self.sub_graphs[&node_id].entrance = Some(idx);
             self.insert_index(idx)?;
             if self.add_to_allocated_subgraph_nodes(node_id) {
@@ -626,6 +628,7 @@ impl PassiveSpec {
 
         // Initialise orbit flags (`subGraph.group.oo`, display only)
         let node_orbit = cj.size_index + 1.0;
+        self.sub_graphs[&node_id].node_orbit = node_orbit;
 
         // :2103-2117 Process list of notables
         let sort_order = &cluster_jewels().notable_sort_order;

@@ -1182,7 +1182,7 @@ impl CompareTab {
     pub fn import_build(&self, g: &mut Gfx, xml: &str, label: &str) -> bool {
         // CompareEntry.lua:183 `wipeGlobalCache()`
         if let Some(e) = self.primary().engine.borrow().as_ref() {
-            e.touch_misc();
+            e.wipe_misc_cache();
         }
         match CompareEntry::new(g, xml, label, self.primary.clone()) {
             Ok(e) => {
@@ -1365,7 +1365,7 @@ impl CompareTab {
         if self.primary_revision.replace(rev) != rev {
             for e in self.entries.borrow().iter() {
                 if let Some(en) = e.b.engine.borrow().as_ref() {
-                    en.touch_misc();
+                    en.wipe_misc_cache();
                 }
             }
         }
