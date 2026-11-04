@@ -20,7 +20,10 @@ pub struct CompareEntry {
 /// - `<Party>` has no saver (:119-129, `self.partyTab` is a stub with an empty list and actor);
 /// - nothing runs `EstimatePlayerProgress` (Build.lua:910): `characterLevel` stays the XML's, also in auto mode.
 fn entry_xml(xml: &str) -> String {
-    let mut s = xml.replace("characterLevelAutoMode=\"true\"", "characterLevelAutoMode=\"false\"");
+    // `exportParty`: `self.partyTab` is that stub, no flag on it (the Link branch of CalcPerform.lua:2737 reads it)
+    let mut s = xml
+        .replace("characterLevelAutoMode=\"true\"", "characterLevelAutoMode=\"false\"")
+        .replace("exportParty=\"true\"", "exportParty=\"false\"");
     if let Some(a) = s.find("<Party") {
         let rest = &s[a..];
         let end = match (rest.find("/>"), rest.find('>'), rest.find("</Party>")) {
