@@ -34,6 +34,7 @@ fn opts() -> CalculateOptions {
         // R6.3: the "= pob-ts" gates run without the skill phase (pob-ts has none)
         skills: false,
         live_alloc_pairs: None,
+        export_party: false,
     }
 }
 
@@ -231,6 +232,7 @@ fn perf_defence() {
         // R6.3: the "= pob-ts" gates run without the skill phase (pob-ts has none)
         skills: false,
         live_alloc_pairs: None,
+        export_party: false,
     };
     for g in GOLDEN_BUILDS {
         let _ = run_with(g.name, o.clone());

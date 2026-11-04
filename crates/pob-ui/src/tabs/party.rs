@@ -1,5 +1,5 @@
 //! `Classes/PartyTab.lua` (U8a). The edit buffers live on the controls (what `Save` writes, `Engine::party_state`); what `ParseBuffs` left in `actor` / `enemyModList` is the engine's
-//! (`pob_engine::party_tab`): an edit reaches the calc only through Import or "Rebuild All", as in the Lua. The export of buffs (`exportBuffs`, :996-1047) is the step R-party-export.
+//! (`pob_engine::party_tab`): an edit reaches the calc only through Import or "Rebuild All", as in the Lua. The export of buffs (`exportBuffs`, :996-1047) is `pob_calc::perform::exports`, written by `SaveDB`.
 
 use std::cell::{Cell, RefCell};
 use std::rc::{Rc, Weak};
@@ -66,6 +66,7 @@ struct LastContent {
     link: String,
     enemy_cond: String,
     enemy_mods: String,
+    enable_export_buffs: bool,
     show_advanced_tools: bool,
 }
 
@@ -559,6 +560,12 @@ impl PartyTab {
             link: buf(&self.edit_links),
             enemy_cond: buf(&self.enemy_cond),
             enemy_mods: buf(&self.enemy_mods),
+            enable_export_buffs: self.build.upgrade().is_some_and(|b| {
+                b.engine
+                    .borrow()
+                    .as_ref()
+                    .is_some_and(pob_engine::engine::Engine::import_export_party)
+            }),
             show_advanced_tools: self.show_advance_tools.state.get(),
         }
     }
@@ -901,6 +908,7 @@ impl PartyTab {
                 || last.party_member_stats != now.party_member_stats
                 || last.enemy_cond != now.enemy_cond
                 || last.enemy_mods != now.enemy_mods
+                || last.enable_export_buffs != now.enable_export_buffs
                 || last.show_advanced_tools != now.show_advanced_tools,
         );
         drop(last);

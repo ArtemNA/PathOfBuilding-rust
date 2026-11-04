@@ -1,0 +1,67 @@
+	<Party ShowAdvanceTools="false" append="false" destination="All">
+		<ExportedBuffs name="PartyMemberStats">
+			MovementSpeedMod|percent|max=189
+		</ExportedBuffs>
+		<ExportedBuffs name="Aura">
+			Anger
+103
+155|Skill:Anger|FireMax|BASE|-|Spell|type=GlobalEffect/effectType=Aura
+109|Skill:Anger|FireMin|BASE|-|Attack|type=GlobalEffect/effectType=Aura
+155|Skill:Anger|FireMax|BASE|-|Attack|type=GlobalEffect/effectType=Aura
+109|Skill:Anger|FireMin|BASE|-|Spell|type=GlobalEffect/effectType=Aura
+---
+Hatred
+100
+16|Spectre:Hatred - Perfect Hydra|ColdDamage|MORE|-|-|type=GlobalEffect/effectType=Aura
+20|Spectre:Hatred - Perfect Hydra|PhysicalDamageGainAsCold|BASE|-|-|type=GlobalEffect/effectType=Aura
+---
+Lightning Golem Wrath
+100
+4|Skill:LightningGolemWrath|LightningMin|BASE|-|Attack|type=GlobalEffect/effectType=Aura
+33|Skill:LightningGolemWrath|LightningMax|BASE|-|Attack|type=GlobalEffect/effectType=Aura
+2|Skill:LightningGolemWrath|LightningMin|BASE|-|Spell|type=GlobalEffect/effectType=Aura
+20|Skill:LightningGolemWrath|LightningMax|BASE|-|Spell|type=GlobalEffect/effectType=Aura
+---
+Pride
+100
+33|Skill:AzmeriDemonPhysicalDamageAura|PhysicalDamageTaken|MORE|-|-|type=GlobalEffect/effectType=AuraDebuff
+---
+		</ExportedBuffs>
+		<ExportedBuffs name="Curse">
+			--- Curse Limit ---
+2
+		</ExportedBuffs>
+		<ExportedBuffs name="EnemyConditions">
+			Condition:AgainstDamageOverTime
+Condition:AlreadyBrittle
+Condition:AlreadyChilled
+Condition:AlreadySapped
+Condition:AlreadyScorched
+Condition:AlreadyShocked
+Condition:Bleeding
+Condition:Burning
+Condition:ChampionIntimidate
+Condition:Chilled
+Condition:ChilledConfig
+Condition:HitByLightningDamage
+Condition:Ignited
+Condition:PinnacleBoss
+Condition:Poisoned
+Condition:RareOrUnique
+		</ExportedBuffs>
+		<ExportedBuffs name="EnemyMods">
+			ActionSpeed
+-30|15 Mania Stacks|ActionSpeed|INC|-|-|type=GlobalEffect/effectType=Debuff,type=Condition/var=AfflictedByMania
+ChaosResist
+-20|Tree:27096|ChaosResist|BASE|-|-|-
+ColdResist
+-20|Tree:27096|ColdResist|BASE|-|-|-
+Damage
+-10|Tree:47630|Damage|INC|-|-|-
+DamageTaken
+60|15 Mania Stacks|DamageTaken|INC|-|-|type=GlobalEffect/effectType=Debuff,type=Condition/var=AfflictedByMania
+LightningResist
+25|Tree:39085|LightningResist|BASE|-|-|type=Condition/var=HitByLightningDamage
+-50|Tree:39085|LightningResist|BASE|-|-|type=Condition/neg=true/var=HitByLightningDamage,type=Condition/varList={HitByFireDamage,HitByColdDamage}
+		</ExportedBuffs>
+	</Party>

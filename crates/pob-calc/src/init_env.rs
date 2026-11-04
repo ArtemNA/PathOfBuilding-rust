@@ -1101,6 +1101,8 @@ fn init_env_core(
         calc_override: ov.cloned(),
         // PartyTab:Load (PartyTab.lua:516-558) -- a Lua error there fails the build load
         party: Rc::new(crate::party::PartyTab::load(&build.party_imported_buffs).map_err(InitEnvError)?),
+        enable_export_buffs: false,
+        buff_exports: None,
         spec,
     };
     // The config apply closures this port has no entry for (R3.5): visible, not silent.

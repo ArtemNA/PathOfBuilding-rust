@@ -924,9 +924,27 @@ fn save_party(inp: &SaveInput<'_>) -> Result<XmlElement, String> {
             push(&mut x, c);
         }
     }
-    // :612-654 `exportBuffs` returns "" unless `enableExportBuffs` (ImportTab `exportParty`)
-    if inp.extras.import.export_party {
-        return Err("unimplemented: Classes/PartyTab.lua:612-654 ExportedBuffs (buffExports of CalcPerform.lua:2207)".into());
+    // :612-654 `exportBuffs` returns "" unless `enableExportBuffs` (ImportTab `exportParty`) and a run has called `setBuffExports`: the last is the CALCS run (pob_calc `perform::exports`)
+    if inp.extras.import.export_party
+        && let Some(exports) = inp.calcs_env.and_then(|e| e.buff_exports.as_ref())
+    {
+        use pob_calc::perform::exports::BuffType;
+        for (ty, name) in [
+            (BuffType::PlayerMods, "PartyMemberStats"),
+            (BuffType::Aura, "Aura"),
+            (BuffType::Curse, "Curse"),
+            (BuffType::Warcry, "Warcry Skills"),
+            (BuffType::Link, "Link Skills"),
+            (BuffType::EnemyConditions, "EnemyConditions"),
+            (BuffType::EnemyMods, "EnemyMods"),
+        ] {
+            let t = exports.export(ty);
+            if !t.is_empty() {
+                let mut c = with(elem("ExportedBuffs"), &[("name", Some(name.to_owned()))]);
+                text(&mut c, &t);
+                push(&mut x, c);
+            }
+        }
     }
     Ok(with(
         x,

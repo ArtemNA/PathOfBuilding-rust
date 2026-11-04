@@ -541,6 +541,7 @@ impl CalcSession {
         // :499-500
         env.mode = mode.as_str();
         env.build_breakdown = matches!(mode, CalcMode::Main | CalcMode::Calcs);
+        env.enable_export_buffs = self.core.opts.export_party;
         env.session = Rc::downgrade(&self.core);
         if mode == CalcMode::Main {
             self.core.main_init_done.set(true);

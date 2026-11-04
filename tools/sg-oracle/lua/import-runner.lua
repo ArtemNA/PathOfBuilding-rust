@@ -27,7 +27,7 @@ for _, d in ipairs({ "out", "out/import", "user", "user/Path of Building", "user
 end
 local LOCAL_BUILDS = dofile(base .. "/local-builds.lua") -- personal builds, not in git
 -- Every scene starts from the same files (a scene saves).
-local function writeBuilds()
+local function writeBuilds(scene)
 	for _, b in ipairs(LOCAL_BUILDS.import or { }) do
 		local src = BUILDS .. b .. ".xml"
 		local f = realOpen(src, "rb")
@@ -38,6 +38,23 @@ local function writeBuilds()
 		writeAll(USER .. "/Path of Building/Builds/" .. b .. ".xml", readAll(POB_ROOT .. "spec/TestBuilds/3.13/" .. b .. ".xml"))
 	end
 	writeAll(USER .. "/Path of Building/Builds/party-attack-full.xml", readAll(FIXTURE .. "party-attack-full.xml"))
+	-- R-party-export: a synthetic build with `Export Support` only in its own scene, the folder of the others stays what their shots hold (the same in crates/pob-ui/tests/import.rs)
+	for _, b in ipairs({ "px-auras", "px-auras-enemies", "px-warcry", "px-warcry-minion", "px-links", "px-links-minion", "px-mines", "px-spectre", "px-reaper", "px-bare" }) do
+		local path = USER .. "/Path of Building/Builds/" .. b .. ".xml"
+		if scene == b then
+			writeAll(path, readAll("../../../../crates/pob-engine/tests/fixtures/party-export/" .. b .. ".xml"))
+		else
+			os.remove(path)
+		end
+	end
+	for _, b in ipairs(LOCAL_BUILDS.party_export or { }) do
+		local path = USER .. "/Path of Building/Builds/" .. b .. ".xml"
+		if scene == "local-party-export" then
+			writeAll(path, readAll("../../fixtures/import/local-builds/" .. b .. ".xml"))
+		else
+			os.remove(path)
+		end
+	end
 end
 writeBuilds()
 writeAll(USER .. "/Path of Building/Settings.xml", readAll(base .. "/scenes/tree/Settings.xml"))
@@ -368,7 +385,7 @@ function runner:Step()
 		if not name then return self:Finish() end
 		clipboard = nil
 		main.lastExportWebsite = nil -- the session's: every scene of the port is a new session
-		writeBuilds()
+		writeBuilds(name)
 		self.sc = { name = name, def = json.decode(readAll(base .. "/scenes/import/" .. name .. ".json"), 1, json.null), step = 0, dumps = { }, shots = { }, perf = { } }
 		netReplies, netQueue, netLog, osTimeFixed = { }, { }, { }, nil
 		main.api = new("PoEAPI"):PoEAPI(nil, nil, nil)

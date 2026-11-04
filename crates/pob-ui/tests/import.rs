@@ -30,6 +30,24 @@ const FIXTURE: &str = concat!(
     "/../pob-calc/tests/fixtures/party-synth/party-attack-full.xml"
 );
 
+/// R-party-export: the synthetic builds with `Export Support` (the same list in `import-runner.lua`).
+const EXPORT_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../pob-engine/tests/fixtures/party-export/");
+const EXPORT_BUILDS: [&str; 10] = [
+    "px-auras",
+    "px-auras-enemies",
+    "px-warcry",
+    "px-warcry-minion",
+    "px-links",
+    "px-links-minion",
+    "px-mines",
+    "px-spectre",
+    "px-reaper",
+    "px-bare",
+];
+
+/// The scene of the personal build with `Export Support` (`party_export` of `builds/local-builds.json`, not in git).
+const LOCAL_EXPORT_SCENE: &str = "local-party-export";
+
 /// A list of personal builds from the local `builds/local-builds.json` (not in git); empty without it.
 fn local_builds(key: &str) -> Vec<String> {
     let p = concat!(env!("CARGO_MANIFEST_DIR"), "/../../builds/local-builds.json");
@@ -74,6 +92,16 @@ impl Sandbox {
             .expect("copy golden");
         }
         std::fs::copy(FIXTURE, builds.join("party-attack-full.xml")).expect("copy fixture");
+        // R-party-export: only in its own scene, the folder of the others stays what their shots hold
+        if EXPORT_BUILDS.contains(&name) {
+            std::fs::copy(format!("{EXPORT_DIR}{name}.xml"), builds.join(format!("{name}.xml"))).expect("copy fixture");
+        }
+        if name == LOCAL_EXPORT_SCENE {
+            for b in local_builds("party_export") {
+                let src = scene::oracle_dir().join(format!("fixtures/import/local-builds/{b}.xml"));
+                std::fs::copy(&src, builds.join(format!("{b}.xml"))).expect("copy build");
+            }
+        }
         for b in local_builds("import") {
             let src = format!("{BUILDS}{b}.xml");
             let src = if std::path::Path::new(&src).exists() {
@@ -552,6 +580,17 @@ fn scenario_names() -> Vec<String> {
             eprintln!("SKIPPED scene {n}: no scene or fixture");
         }
     }
+    if !local_builds("party_export").is_empty() {
+        if scene::oracle_dir()
+            .join(format!("scenes/import/{LOCAL_EXPORT_SCENE}.json"))
+            .exists()
+            && oracle_record(LOCAL_EXPORT_SCENE).is_some()
+        {
+            names.push(LOCAL_EXPORT_SCENE.to_owned());
+        } else {
+            eprintln!("SKIPPED scene {LOCAL_EXPORT_SCENE}: no scene or fixture");
+        }
+    }
     names
 }
 
@@ -623,10 +662,47 @@ fn first_diff(a: &Value, b: &Value, path: &str) -> Option<String> {
     }
 }
 
+/// R13: the lines of one buff in `<ExportedBuffs>` come from `pairs` over its level's stats, their order differs between processes of the original (R-party-export): each run of mod lines of
+/// a buff section sorted, on both sides. The rest of the text stays as it is.
+fn sort_exported_mods(text: &str) -> String {
+    if !text.contains("<ExportedBuffs") {
+        return text.to_string();
+    }
+    let mut out: Vec<&str> = Vec::new();
+    let mut run: Vec<&str> = Vec::new();
+    let mut on = false;
+    for l in text.split('\n') {
+        if l.contains("<ExportedBuffs") {
+            on = ["\"Aura\"", "\"Curse\"", "\"Warcry Skills\"", "\"Link Skills\""]
+                .iter()
+                .any(|n| l.contains(n));
+        } else if l.contains("</ExportedBuffs") {
+            on = false;
+        }
+        if on && l.matches('|').count() >= 5 {
+            run.push(l);
+            continue;
+        }
+        run.sort_unstable();
+        out.append(&mut run);
+        out.push(l);
+    }
+    out.join("\n")
+}
+
 /// The field of a generated code: its text differs with the zlib stream, `generated` holds the XML.
 fn without_code(mut v: Value) -> Value {
     if let Some(o) = v["import"]["controls"]["generateCodeOut"].as_object_mut() {
         o.remove("value");
+    }
+    for p in [&["xml"][..], &["clipboard"][..], &["import", "generated"][..]] {
+        let mut slot = &mut v;
+        for k in p {
+            slot = &mut slot[*k];
+        }
+        if let Some(s) = slot.as_str() {
+            *slot = Value::from(sort_exported_mods(s));
+        }
     }
     v
 }
@@ -788,7 +864,8 @@ fn import_states_equal_original() {
             let oracle = std::fs::read_to_string(&p)
                 .unwrap_or_else(|e| panic!("{}: {e}", p.display()))
                 .replace("\r\n", "\n");
-            if oracle != *text {
+            let (oracle, text) = (sort_exported_mods(&oracle), sort_exported_mods(text));
+            if oracle != text {
                 let at = oracle.lines().zip(text.lines()).position(|(a, b)| a != b);
                 let line = at.map(|i| (oracle.lines().nth(i).map(str::to_owned), text.lines().nth(i).map(str::to_owned)));
                 failures.push(format!(
