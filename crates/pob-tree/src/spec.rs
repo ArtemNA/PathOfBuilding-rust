@@ -1,7 +1,7 @@
 //! `Classes/PassiveSpec.lua` -- the subset a calculation needs (pob-ts `src/tree/spec.ts`, CALC-ARCH §3): which nodes a
 //! build has allocated, and with what mods. Cluster-jewel subgraphs are `crate::cluster` (R5.5a): their nodes are owned
-//! spec nodes appended after the Init nodes. Tattoos (`hashOverrides`) are `crate::tattoo`. Other jewels (abyss/Intuitive Leap)
-//! and the URL format are P5; each is listed in `unimplemented`. Node paths (`pathDist`/`path`, R8.7) are [`PassiveSpec::build_paths`].
+//! spec nodes appended after the Init nodes. Tattoos (`hashOverrides`) are `crate::tattoo`, conquests `crate::timeless`. Other jewels
+//! (Intuitive Leap) and the URL format are P5; each is listed in `unimplemented`. Node paths (`pathDist`/`path`, R8.7) are [`PassiveSpec::build_paths`].
 //!
 //! A spec node is upstream's `setmetatable({ linked = {}, power = {} }, treeNode)`: a view onto the tree node that only grows
 //! own fields when the mastery branch of `BuildAllDependsAndPaths` writes them. `ReplaceNode(old, treeNode)` assigns the
@@ -981,10 +981,11 @@ impl PassiveSpec {
 
     /// :1092-1600, the R3 subset: reset dependencies, restore nodes from the tree, the timeless-jewel conquests (R5.5c,
     /// `crate::timeless`), apply mastery selections and the four counters, then prune every allocated node with no path to a
-    /// start node. Errors: what upstream raises in the conquest half (and its unported abyss branch).
+    /// start node. Errors: what upstream raises in the conquest half.
     pub fn build_all_depends_and_paths(&mut self) -> Result<(), TreeError> {
         let mut visited: Vec<usize> = Vec::new();
-        // :1110-1140 -- the abyss conquests (an error, out of scope) and the radius jewels of `self.jewels`.
+        // :1133-1163 -- the abyss conquests and the radius jewels of `self.jewels`.
+        let abyss_conquests = self.gather_abyss_conquests()?;
         let radius_jewels = self.gather_radius_jewels()?;
 
         // :1141-1209 -- one pass over every node (ascending id, then the subgraph nodes, D13).
@@ -1011,8 +1012,11 @@ impl PassiveSpec {
             if !unallocated_mastery {
                 self.replace_node(i);
             }
-            // :1167 `node.conqueredBy = abyssConquests[id]` (nil -- see gather_radius_jewels), then :1169-1203.
-            self.nodes[i].conquered_by = self.radius_conquest(i, &radius_jewels);
+            // :1191 `node.conqueredBy = abyssConquests[id]`, then a radius jewel over it (:1193-1213).
+            let id = self.nodes[i].id;
+            self.nodes[i].conquered_by = self
+                .radius_conquest(i, &radius_jewels)
+                .or_else(|| abyss_conquests.get(&id).cloned());
             self.nodes[i].intuitive_leap_likes_affecting = self.radius_intuitive_leaps(i, &radius_jewels);
             if self.nodes[i].alloc {
                 self.nodes[i].depends.push(i); // :1207 "All nodes depend on themselves"
