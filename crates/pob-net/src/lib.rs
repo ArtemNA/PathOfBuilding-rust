@@ -224,6 +224,7 @@ pub struct Net {
     running: Arc<AtomicUsize>,
     cancelled: Mutex<HashSet<u64>>,
     spawn_fails: AtomicBool,
+    inline: AtomicBool,
 }
 
 impl Default for Net {
@@ -243,6 +244,7 @@ impl Net {
             running: Arc::new(AtomicUsize::new(0)),
             cancelled: Mutex::new(HashSet::new()),
             spawn_fails: AtomicBool::new(false),
+            inline: AtomicBool::new(false),
         }
     }
 
@@ -257,6 +259,13 @@ impl Net {
         }
         let id = self.next.fetch_add(1, Ordering::SeqCst) as u64;
         let transport = self.transport.lock().expect("transport").clone();
+        if self.inline.load(Ordering::SeqCst)
+            && let Job::Http(req) = &job
+        {
+            let outcome = Outcome::Http(transport.perform(req));
+            let _ = self.tx.send(Event::Finished(id, outcome));
+            return Some(id);
+        }
         let tx = self.tx.clone();
         let running = self.running.clone();
         running.fetch_add(1, Ordering::SeqCst);
@@ -325,6 +334,11 @@ impl Net {
         while self.running() > 0 {
             std::thread::sleep(Duration::from_millis(1));
         }
+    }
+
+    /// A gate's deterministic order: requests are answered in the order they were made, on this thread (a real sub-script races with the others).
+    pub fn set_inline(&self, on: bool) {
+        self.inline.store(on, Ordering::SeqCst);
     }
 
     /// A test of `LaunchSubScript` returning nil.

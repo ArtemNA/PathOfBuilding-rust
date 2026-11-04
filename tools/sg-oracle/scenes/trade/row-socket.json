@@ -1,0 +1,196 @@
+{
+"net": [
+{
+"url": "https://www.pathofexile.com/api/trade/data/leagues",
+"code": 200,
+"header": "HTTP/1.1 200 OK\r\n\r\n",
+"body": "{\"result\":[{\"id\":\"Standard\",\"realm\":\"pc\",\"text\":\"Standard\"},{\"id\":\"Hardcore\",\"realm\":\"pc\",\"text\":\"Hardcore\"},{\"id\":\"Synth League\",\"realm\":\"pc\",\"text\":\"Synth League\"},{\"id\":\"Hardcore Synth League\",\"realm\":\"pc\",\"text\":\"Hardcore Synth League\"},{\"id\":\"Standard\",\"realm\":\"xbox\",\"text\":\"Standard\"},{\"id\":\"Hardcore\",\"realm\":\"xbox\",\"text\":\"Hardcore\"},{\"id\":\"Standard\",\"realm\":\"sony\",\"text\":\"Standard\"},{\"id\":\"Sony Only\",\"realm\":\"sony\",\"text\":\"Sony Only\"}]}"
+},
+{
+"url": "https://www.pathofexile.com/api/trade/data/static",
+"code": 200,
+"header": "HTTP/1.1 200 OK\r\n\r\n",
+"body": "{\"result\":[{\"id\":\"Currency\",\"label\":\"Currency\",\"entries\":[{\"id\":\"sep\",\"text\":\"\"},{\"id\":\"chaos\",\"text\":\"Chaos Orb\"},{\"id\":\"divine\",\"text\":\"Divine Orb\"},{\"id\":\"exalted\",\"text\":\"Exalted Orb\"},{\"id\":\"unknowncoin\",\"text\":\"No Such Currency\"}]}]}"
+},
+{
+"url": "https://web.poecdn.com/api/currency-exchange/1799996400",
+"code": 200,
+"header": "HTTP/1.1 200 OK\r\n\r\n",
+"body": "{\"markets\":[{\"league\":\"Standard\",\"market_pair\":[\"Metadata/Items/Currency/CurrencyRerollRare\",\"Metadata/Items/Currency/CurrencyModValues\"],\"lowest_ratio\":{\"Metadata/Items/Currency/CurrencyRerollRare\":200,\"Metadata/Items/Currency/CurrencyModValues\":1},\"highest_stock\":{\"Metadata/Items/Currency/CurrencyRerollRare\":5000,\"Metadata/Items/Currency/CurrencyModValues\":40}},{\"league\":\"Standard\",\"market_pair\":[\"Metadata/Items/Currency/CurrencyAddModToRare\",\"Metadata/Items/Currency/CurrencyRerollRare\"],\"lowest_ratio\":{\"Metadata/Items/Currency/CurrencyAddModToRare\":1,\"Metadata/Items/Currency/CurrencyRerollRare\":12},\"highest_stock\":{\"Metadata/Items/Currency/CurrencyAddModToRare\":100,\"Metadata/Items/Currency/CurrencyRerollRare\":900}},{\"league\":\"Standard\",\"market_pair\":[\"Metadata/Items/Currency/CurrencyAddModToRare\",\"Metadata/Items/Currency/CurrencyRerollRare\"],\"lowest_ratio\":{\"Metadata/Items/Currency/CurrencyAddModToRare\":1,\"Metadata/Items/Currency/CurrencyRerollRare\":15},\"highest_stock\":{\"Metadata/Items/Currency/CurrencyAddModToRare\":10,\"Metadata/Items/Currency/CurrencyRerollRare\":90}},{\"league\":\"Empty League\",\"market_pair\":[\"Metadata/Items/Currency/CurrencyAddModToRare\",\"Metadata/Items/Currency/CurrencyRerollRare\"],\"lowest_ratio\":{\"Metadata/Items/Currency/CurrencyAddModToRare\":1,\"Metadata/Items/Currency/CurrencyRerollRare\":12},\"highest_stock\":{\"Metadata/Items/Currency/CurrencyAddModToRare\":1,\"Metadata/Items/Currency/CurrencyRerollRare\":9}}]}"
+},
+{
+"url": "https://www.pathofexile.com/api/trade/search/Standard",
+"code": 200,
+"header": "HTTP/1.1 200 OK\r\n\r\n",
+"body": "{\"id\":\"first\",\"total\":1,\"result\":[\"x\"]}"
+},
+{
+"url": "https://www.pathofexile.com/api/trade/search/Synth%20League",
+"code": 200,
+"header": "HTTP/1.1 200 OK\r\nX-Rate-Limit-Policy: trade-search-request-limit\r\nX-Rate-Limit-Rules: Ip,Account\r\nX-Rate-Limit-Ip: 8:10:60,15:60:120,60:300:1800\r\nX-Rate-Limit-Ip-State: 1:10:0,1:60:0,1:300:0\r\nX-Rate-Limit-Account: 30:5:60\r\nX-Rate-Limit-Account-State: 1:5:0\r\n\r\n",
+"body": "{\"id\":\"r1\",\"total\":25,\"result\":[\"h1\"]}"
+},
+{
+"url": "https://www.pathofexile.com/api/trade/fetch/*",
+"code": 200,
+"header": "HTTP/1.1 200 OK\r\nX-Rate-Limit-Policy: trade-fetch-request-limit\r\nX-Rate-Limit-Rules: Ip,Account\r\nX-Rate-Limit-Ip: 8:10:60,15:60:120,60:300:1800\r\nX-Rate-Limit-Ip-State: 1:10:0,1:60:0,1:300:0\r\nX-Rate-Limit-Account: 30:5:60\r\nX-Rate-Limit-Account-State: 1:5:0\r\n\r\n",
+"body": "{\"result\":[{\"id\":\"j0\",\"item\":{\"rarity\":\"Rare\",\"name\":\"Synth Spark\",\"typeLine\":\"Cobalt Jewel\",\"ilvl\":80,\"explicitMods\":[{\"description\":\"10% increased maximum Life\"},{\"description\":\"20% increased Spell Damage\"}],\"pseudoMods\":[{\"description\":\"Sum: 9\"}]},\"listing\":{\"price\":{\"amount\":2,\"currency\":\"chaos\",\"type\":\"~price\"},\"whisper\":\"@Synth hello\",\"account\":{\"name\":\"SynthSeller\"}}}]}"
+}
+],
+"steps": [
+{
+"open": "OccVortex"
+},
+{
+"osTime": 1800000000
+},
+{
+"apiTokens": {
+"auth": "synthetic-access",
+"refresh": "synthetic-refresh",
+"expiry": 1900000000
+}
+},
+{
+"cursorBuild": "modeItems",
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"cursorItems": "priceDisplayItem",
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"netDeliver": true,
+"dump": true
+},
+{
+"dump": true
+},
+{
+"netDeliver": true,
+"dump": true
+},
+{
+"netDeliver": true,
+"dump": true
+},
+{
+"popupDropSel": [
+"league",
+"Synth League"
+],
+"dump": true
+},
+{
+"netDeliver": true,
+"dump": true
+},
+{
+"dump": true
+},
+{
+"cursorPopup": "bestButton16",
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"cursorPopup": "generateQuery",
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"dump": true
+},
+{
+"netDeliver": true,
+"dump": true
+},
+{
+"dump": true
+},
+{
+"netDeliver": true,
+"dump": true
+},
+{
+"dump": true
+},
+{
+"netDeliver": true,
+"dump": true
+},
+{
+"dump": true
+},
+{
+"cursorPopup": "importButton16",
+"dump": true
+},
+{
+"cursorPopup": "importButton16",
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true,
+"xml": true
+},
+{
+"events": [
+[
+"KeyDown",
+"ESCAPE"
+],
+[
+"KeyUp",
+"ESCAPE"
+]
+],
+"dump": true
+}
+]
+}

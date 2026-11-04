@@ -1,0 +1,342 @@
+{
+"net": [
+{
+"url": "https://www.pathofexile.com/api/trade/data/leagues",
+"code": 200,
+"header": "HTTP/1.1 200 OK\r\n\r\n",
+"body": "{\"result\":[{\"id\":\"Standard\",\"realm\":\"pc\",\"text\":\"Standard\"},{\"id\":\"Hardcore\",\"realm\":\"pc\",\"text\":\"Hardcore\"},{\"id\":\"Synth League\",\"realm\":\"pc\",\"text\":\"Synth League\"},{\"id\":\"Hardcore Synth League\",\"realm\":\"pc\",\"text\":\"Hardcore Synth League\"},{\"id\":\"Standard\",\"realm\":\"xbox\",\"text\":\"Standard\"},{\"id\":\"Hardcore\",\"realm\":\"xbox\",\"text\":\"Hardcore\"},{\"id\":\"Standard\",\"realm\":\"sony\",\"text\":\"Standard\"},{\"id\":\"Sony Only\",\"realm\":\"sony\",\"text\":\"Sony Only\"}]}"
+}
+],
+"steps": [
+{
+"open": "Dual Savior"
+},
+{
+"osTime": 1800000000
+},
+{
+"cursorBuild": "modeCompare",
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"compareImport": [
+"Mirage Archer Toxic Rain",
+"Mirage"
+]
+},
+{
+"cursorCompare": "subTabItems",
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"compareScrollX": 300
+},
+{
+"compareItemButton": [
+1,
+"buy"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true,
+"shot": "buy-compare"
+},
+{
+"netDeliver": true,
+"dump": true
+},
+{
+"cursorPopup": "search",
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"events": [
+[
+"KeyDown",
+"ESCAPE"
+],
+[
+"KeyUp",
+"ESCAPE"
+]
+],
+"dump": true
+},
+{
+"compareItemButton": [
+2,
+"buy"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"netDeliver": true,
+"dump": true
+},
+{
+"events": [
+[
+"KeyDown",
+"ESCAPE"
+],
+[
+"KeyUp",
+"ESCAPE"
+]
+],
+"dump": true
+},
+{
+"compareItemButton": [
+3,
+"buy"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"netDeliver": true,
+"dump": true
+},
+{
+"events": [
+[
+"KeyDown",
+"ESCAPE"
+],
+[
+"KeyUp",
+"ESCAPE"
+]
+],
+"dump": true
+},
+{
+"compareItemButton": [
+4,
+"buy"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"netDeliver": true,
+"dump": true
+},
+{
+"events": [
+[
+"KeyDown",
+"ESCAPE"
+],
+[
+"KeyUp",
+"ESCAPE"
+]
+],
+"dump": true
+},
+{
+"compareItemButton": [
+5,
+"buy"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"netDeliver": true,
+"dump": true
+},
+{
+"events": [
+[
+"KeyDown",
+"ESCAPE"
+],
+[
+"KeyUp",
+"ESCAPE"
+]
+],
+"dump": true
+},
+{
+"compareItemButton": [
+6,
+"buy"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"netDeliver": true,
+"dump": true
+},
+{
+"events": [
+[
+"KeyDown",
+"ESCAPE"
+],
+[
+"KeyUp",
+"ESCAPE"
+]
+],
+"dump": true
+},
+{
+"compareItemButton": [
+7,
+"buy"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"netDeliver": true,
+"dump": true
+},
+{
+"events": [
+[
+"KeyDown",
+"ESCAPE"
+],
+[
+"KeyUp",
+"ESCAPE"
+]
+],
+"dump": true
+},
+{
+"compareItemButton": [
+8,
+"buy"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"netDeliver": true,
+"dump": true
+},
+{
+"events": [
+[
+"KeyDown",
+"ESCAPE"
+],
+[
+"KeyUp",
+"ESCAPE"
+]
+],
+"dump": true
+}
+]
+}

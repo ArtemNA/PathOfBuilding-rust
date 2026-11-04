@@ -64,6 +64,8 @@ pub struct ButtonControl {
     pub label: PropCell<String>,
     pub on_click: RefCell<Callback>,
     pub on_hover: RefCell<Option<Rc<dyn Fn(&Gfx)>>>,
+    /// An `onHover` that draws (TradeQuery.lua:1129-1140).
+    pub on_hover_frame: RefCell<Option<Rc<dyn Fn(&mut Frame<'_>)>>>,
     pub force_tooltip: Cell<bool>,
     pub clicked: Cell<bool>,
     pub image: RefCell<Option<ImageHandle>>,
@@ -87,6 +89,7 @@ impl ButtonControl {
             label: PropCell::new(label),
             on_click: RefCell::new(Rc::new(on_click)),
             on_hover: RefCell::new(None),
+            on_hover_frame: RefCell::new(None),
             force_tooltip: Cell::new(false),
             clicked: Cell::new(false),
             image: RefCell::new(None),
@@ -241,6 +244,10 @@ impl Control for ButtonControl {
                 sg::set_draw_layer(f, None, 0);
             }
             let on_hover = self.on_hover.borrow().clone();
+            if let Some(h) = on_hover {
+                h(f);
+            }
+            let on_hover = self.on_hover_frame.borrow().clone();
             if let Some(h) = on_hover {
                 h(f);
             }

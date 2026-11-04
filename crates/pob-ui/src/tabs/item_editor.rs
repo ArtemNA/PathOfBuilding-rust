@@ -154,8 +154,16 @@ impl Panel {
             anchor("LEFT", &rr, "RIGHT"),
             rect(8.0, 0.0, 100.0, 20.0),
             "Buy similar".to_string(),
-            |g| {
-                not_ported(g, "Classes/ItemsTab.lua:356-357 buySimilar.openPopup (the network, U8)");
+            {
+                let t1 = t.clone();
+                move |g: &mut Gfx| {
+                    // :356-357
+                    let tab = t1();
+                    let Some(item) = tab.display_item.borrow().clone() else { return };
+                    let slot = tab.get_comparison_slot_name_for_item(g, &item);
+                    let build = tab.build();
+                    crate::trade::buy_similar::open_popup(g, item, slot, &build);
+                }
             },
         );
         let d1 = disp.clone();
@@ -1387,10 +1395,44 @@ impl ItemsTab {
         f(Rc::make_mut(rc))
     }
 
-    /// `ItemsTab:CopyAnointsAndEldritchImplicits(newItem, copyEldritchImplicits, overwrite, sourceSlotName)` (:1959-1998).
     fn copy_anoints(&self, it: &mut Item, copy_eldritch: bool) {
+        self.copy_anoints_ex(it, copy_eldritch, false, None);
+    }
+
+    /// `ItemsTab:GetComparisonSlotNameForItem(item)` (:2601-2614).
+    pub fn get_comparison_slot_name_for_item(&self, g: &Gfx, item: &Item) -> String {
+        if let Some(id) = item.id
+            && let Some((slot, _)) = self.equipped_slot(id)
+        {
+            return slot.slot_name.clone();
+        }
+        if item.ty.as_deref() == Some("Jewel") {
+            let ordered: Vec<_> = self
+                .slots
+                .borrow()
+                .values()
+                .cloned()
+                .chain(self.sockets.borrow().values().cloned())
+                .collect();
+            for s in ordered {
+                if !s.inactive.get()
+                    && s.sel_item_id.get() == 0.0
+                    && crate::control::Control::is_shown(&*s, g)
+                    && self.read(|e| e.is_item_valid_for_slot(item, &s.slot_name))
+                {
+                    return s.slot_name.clone();
+                }
+            }
+        }
+        item.get_primary_slot()
+    }
+
+    /// `ItemsTab:CopyAnointsAndEldritchImplicits(newItem, copyEldritchImplicits, overwrite, sourceSlotName)` (:1959-1998).
+    pub(crate) fn copy_anoints_ex(&self, it: &mut Item, copy_eldritch: bool, overwrite: bool, source_slot: Option<&str>) {
         let base = it.base.expect("base");
-        let ty = if base.weapon.is_some() {
+        let ty = if let Some(s) = source_slot {
+            s.to_string()
+        } else if base.weapon.is_some() {
             "Weapon 1".to_string()
         } else {
             base.ty.clone()
@@ -1405,7 +1447,7 @@ impl ItemsTab {
             return;
         }
         let Some(cur) = self.read(|e| e.item_by_id(sel)) else { return };
-        if is_anointable(it) && it.enchant_mod_lines.is_empty() && sel > 0.0 && cur.enchant_mod_lines.len() == 1 {
+        if is_anointable(it) && (it.enchant_mod_lines.is_empty() || overwrite) && sel > 0.0 && cur.enchant_mod_lines.len() == 1 {
             it.enchant_mod_lines.clone_from(&cur.enchant_mod_lines);
         }
         for (k, _) in &INFLUENCE_INFO[..6] {
@@ -1417,7 +1459,7 @@ impl ItemsTab {
         if copy_eldritch
             && ["Helmet", "Body Armour", "Gloves", "Boots"].contains(&base.ty.as_str())
             && ["NORMAL", "MAGIC", "RARE"].contains(&it.rarity.as_str())
-            && it.implicit_mod_lines.is_empty()
+            && (it.implicit_mod_lines.is_empty() || overwrite)
             && modifiable
             && (cur.influence("cleansing") || cur.influence("tangle"))
         {
@@ -1425,7 +1467,8 @@ impl ItemsTab {
             it.set_influence("tangle", cur.influence("tangle"));
             it.set_influence("cleansing", cur.influence("cleansing"));
         }
-        if (base.weapon.is_some() || base.ty == "Body Armour") && it.enchant_mod_lines.is_empty() && sel > 0.0 && modifiable {
+        if (base.weapon.is_some() || base.ty == "Body Armour") && (it.enchant_mod_lines.is_empty() || overwrite) && sel > 0.0 && modifiable
+        {
             it.enchant_mod_lines.clone_from(&cur.enchant_mod_lines);
         }
         it.build_and_parse_raw();

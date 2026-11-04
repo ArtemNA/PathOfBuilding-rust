@@ -21,6 +21,7 @@ pob-items = { path = "../pob-items" }
 pob-parser.workspace = true
 pob-mods = { path = "../pob-mods" }
 indexmap.workspace = true
+flate2 = "1"
 
 [dev-dependencies]
 serde_json.workspace = true

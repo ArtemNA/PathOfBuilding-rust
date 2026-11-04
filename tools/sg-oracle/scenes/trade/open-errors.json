@@ -1,0 +1,74 @@
+{
+"net": [
+{
+"url": "https://www.pathofexile.com/api/trade/data/leagues",
+"error": "synthetic failure"
+},
+{
+"url": "https://www.pathofexile.com/api/trade/data/static",
+"code": 500,
+"header": "HTTP/1.1 500 X\r\n\r\n",
+"body": ""
+},
+{
+"url": "https://www.pathofexile.com/api/trade/search/Standard",
+"code": 403,
+"header": "HTTP/1.1 403 X\r\n\r\n",
+"body": ""
+}
+],
+"steps": [
+{
+"open": "OccVortex"
+},
+{
+"osTime": 1800000000
+},
+{
+"cursorBuild": "modeItems",
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"cursorItems": "priceDisplayItem",
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"netDeliver": true,
+"dump": true
+},
+{
+"dump": true
+},
+{
+"netDeliver": true,
+"dump": true
+},
+{
+"netDeliver": true,
+"dump": true
+},
+{
+"dump": true
+}
+]
+}
