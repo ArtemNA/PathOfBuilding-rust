@@ -12,8 +12,7 @@
 //!
 //! Tattoos (`<Override>`, `hashOverrides`, R-tattoo) are in [`tattoo`]: the tattoo passives of the tree and their ReplaceNode in the spec.
 //!
-//! Not ported (explicit `unimplemented` lists on `PassiveTree`/`PassiveSpec`): abyss jewels, URL specs,
-//! display-only assets.
+//! Not ported (explicit `unimplemented` lists on `PassiveTree`/`PassiveSpec`): URL specs, display-only assets.
 
 #![forbid(unsafe_code)]
 

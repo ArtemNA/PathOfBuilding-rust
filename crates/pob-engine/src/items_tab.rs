@@ -298,6 +298,8 @@ impl Engine {
             return Ok(());
         }
         let items = self.result().env.items.clone();
+        // `self.build.itemsTab.items[itemId]`: the jewel just set is read through the live items table
+        spec.set_jewel_items(pob_calc::init_env::spec_jewels_of(&spec.jewels, &items).map_err(|e| e.0)?);
         let lookup = move |id: f64| crate::tree_tab::cluster_lookup(&items, id);
         spec.build_cluster_jewel_graphs(&lookup).map_err(|e| e.0)?;
         self.write_spec_to_model(spec);
@@ -641,12 +643,15 @@ impl Engine {
         Ok(pob_calc::power::get_from_output(&r.state.player.output, stat))
     }
 
-    /// `buildSpecForJewelComparison(itemsTab, compareSlot, replacementItem)` (ItemsTab.lua:4216-4243): a spec with the jewel in the socket, its depends and paths built anew.
+    /// `buildSpecForJewelComparison(itemsTab, compareSlot, replacementItem)` (ItemsTab.lua:4216-4243): a copy of the live spec with the jewel in the socket, its depends and paths built
+    /// anew. The copy keeps the subgraph nodes (:4168-4182): no `BuildClusterJewelGraphs`, replacing a cluster jewel leaves its passives allocated.
     pub fn spec_for_jewel_comparison(&self, node_id: u32, item: Option<Rc<Item>>) -> Result<Rc<pob_tree::PassiveSpec>, String> {
-        let mut sm = pob_build::active_spec(self.model()).clone();
+        let mut s = (*self.result().env.spec).clone();
         let mut items = self.result().env.items.clone();
         let n = f64::from(node_id);
-        sm.jewels.0.retain(|(k, _)| *k != n);
+        if item.is_none() {
+            s.jewels.0.retain(|(k, _)| *k != n);
+        }
         if let Some(it) = item {
             let id = it
                 .id
@@ -662,11 +667,10 @@ impl Engine {
                     self.items_table_remove(t);
                     t
                 });
-            sm.jewels.set(n, id);
+            s.jewels.set(n, id);
         }
-        let jewels = pob_calc::init_env::spec_jewels_of(&sm.jewels, &items).map_err(|e| e.0)?;
-        let mut s = pob_tree::PassiveSpec::load_mode_jewels(&sm, pob_calc::ParseMode::Full, jewels).map_err(|e| e.0)?;
-        pob_calc::init_env::post_load_spec(&mut s, &items).map_err(|e| e.0)?;
+        s.set_jewel_items(pob_calc::init_env::spec_jewels_of(&s.jewels, &items).map_err(|e| e.0)?);
+        s.build_all_depends_and_paths().map_err(|e| e.0)?;
         Ok(Rc::new(s))
     }
 

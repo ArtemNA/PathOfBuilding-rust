@@ -3,22 +3,33 @@
 //! and what becomes of them (:1222-1406: `ReplaceNode` :1697, `NodeAdditionOrReplacementFromString` :2402,
 //! `ReconnectNodeToClassStart` :1722), line for line. The LUTs are pob-data's (`pob_data::timeless::read_lut`).
 //!
-//! Out of scope: abyss conquests (jewel types 7-11, `data.readAbyssJewelLUT`/`resolveAbyssJewelComponent`, :1110-1127 and
-//! :1253-1268) -- an explicit error; Intuitive Leap-like bookkeeping of the radius pass (P5).
+//! Abyss conquests (jewel types 7-11): `abyssConquests` (:1133-1150, read before the nodes are reset, as Zorath follows the current
+//! allocation) and the components of each conquered node (:1277-1293, `data.resolveAbyssJewelComponent`). Out of scope: Intuitive
+//! Leap-like bookkeeping of the radius pass (P5).
 //!
 //! D13 -- the `pairs` walks of the conquest:
-//! * `pairs(self.jewels)` building `radiusJewels` (:1130): only decides which jewel wins a node two conquering jewels share; that
-//!   case is recorded in `unimplemented` instead of being resolved silently.
+//! * `pairs(self.jewels)` building `radiusJewels` (:1154) and `abyssConquests` (:1136): only decides which jewel wins a node two
+//!   conquering jewels share; that case is recorded in `unimplemented` instead of being resolved silently. The order is of the process
+//!   (20 processes, 19 orders of the 57 keys; of two sockets 16 + 4), so the file's order here.
+//! * `pairs(readAbyssJewelLUT(..))` (:1142) and `pairs(ascendancyOffsets)` (helper :257): every key is written once, the result is
+//!   only looked up by node id, the order leaves no trace.
+//! * `pairs(changedNode.stats)` (:1285, string keys, R13): the exporter's order here. It decides a line only where two stats share a
+//!   pattern: `abyss_ghastly_small_attribute35` and `abyss_special_small_attribute35`, both `(2-3)` on both lines, whose lines take the
+//!   roll of the stat `pairs` gives first.
 //! * `pairs(additions)` (:1324, Glorious Vanity "Might/Legacy of the Vaal"): the additions are appended in this order, so it
 //!   decides the order of `sd`/`mods`/`modList`. Ascending id is NOT it (the synthetic GV build: 4 of 23 notables differ), so the
 //!   order is LuaJIT's own -- `crate::lj_table` models `lj_tab.c` for this table (corpus: `tests/timeless_pairs.rs`, 4 000/4 000)
 //!   and `pob-calc/tests/timeless_luajit.rs` checks the GV build against LuaJIT.
 //! * `pairs(addition.stats)` (:1327): no non-abyss addition has two stats (`tools/lua-corpus/export-legion.ts` survey: 0).
 
+use std::collections::HashMap;
 use std::rc::Rc;
 
 use indexmap::IndexMap;
-use pob_data::timeless::{LegionStat, abyss_notable_names, legion_passives, read_lut, timeless_jewel_additions, timeless_jewel_type};
+use pob_data::timeless::{
+    AbyssComponent, LegionStat, abyss_notable_names, legion_passives, read_abyss_jewel_lut, read_lut, timeless_jewel_additions,
+    timeless_jewel_type,
+};
 use pob_data::wire::OrderedMap;
 use pob_lua::pattern::{Repl, gsub, match_};
 use pob_lua::tostring_num;
@@ -187,6 +198,8 @@ pub struct ConqueredBy {
     pub id: f64,
     pub conqueror_type: String,
     pub conqueror_id: ConquerorId,
+    /// `abyssConquests[id].modification` (:1146): only on the per-node table of an Abyss conquest, the item's own has none.
+    pub modification: Option<Rc<Vec<AbyssComponent>>>,
 }
 
 impl ConqueredBy {
@@ -212,6 +225,7 @@ impl ConqueredBy {
             id,
             conqueror_type: ty.to_owned(),
             conqueror_id: cid,
+            modification: None,
         }))
     }
 }
@@ -314,34 +328,79 @@ impl PassiveSpec {
         self.jewel_items.iter().find(|(id, _)| *id == item_id).map(|(_, j)| j)
     }
 
-    /// :1110-1140 -- the abyss conquests (out of scope: an explicit error) and the radius jewels (`pairs(self.jewels)`).
+    /// `data.readAbyssJewelLUT(seed, socketId, 11, path)` (helper :241-272): the nodes of the path, then the node a Zorath seed selects
+    /// in every ascendancy. `pairs(ascendancyOffsets)` is walked here over the ascendancies of this tree's nodes: the other sections
+    /// of the file name nodes this tree does not have (measured on 40 trees of `data/tree`, not on `2_6`, whose nodes are in another format), so `self.nodes` cannot hold them.
+    fn read_zorath(&self, seed: f64, socket: u32) -> Result<IndexMap<u32, Vec<AbyssComponent>>, TreeError> {
+        let data_err = |e: pob_data::DataError| TreeError(e.0);
+        // `GetShortestPathToClassStart` nil: `jewelType ~= 11 or not path` gives `{ }`
+        let Some(path) = self.shortest_path_to_class_start(socket) else {
+            return Ok(IndexMap::new());
+        };
+        // An ascendancy no file section has: the path alone.
+        let mut out = read_abyss_jewel_lut(seed, socket, 11, Some(&path), Some("")).map_err(data_err)?;
+        let mut names: Vec<&str> = self.tree.nodes.iter().filter_map(|n| n.ascendancy_name.as_deref()).collect();
+        names.sort_unstable();
+        names.dedup();
+        for name in names {
+            out.extend(read_abyss_jewel_lut(seed, socket, 11, Some(&[]), Some(name)).map_err(data_err)?);
+        }
+        Ok(out)
+    }
+
+    /// :1133-1150 `abyssConquests`: node id -> the node's conquest. Read before the nodes are reset.
+    pub(crate) fn gather_abyss_conquests(&mut self) -> Result<HashMap<u32, Rc<ConqueredBy>>, TreeError> {
+        let mut out: HashMap<u32, Rc<ConqueredBy>> = HashMap::new();
+        let mut shared = false;
+        for &(socket_id, item_id) in &self.jewels.0 {
+            let Some(jewel) = self.jewel_item(item_id).cloned() else { continue };
+            let Some(cb) = &jewel.conquered_by else { continue };
+            let Some(jewel_type) = jewel_type_by_conqueror(&cb.conqueror_type).filter(|&t| t >= 7) else {
+                continue;
+            };
+            let Some(socket) = crate::tree::as_id(socket_id).filter(|s| self.alloc_nodes.contains_key(s)) else {
+                continue;
+            };
+            // :1140 `not (self.nodes[socketId].expansionJewel and self.nodes[socketId].expansionJewel.parent)` -- no abyss conquest
+            // from a cluster socket (3dbca4463 #10347)
+            let in_cluster_socket = self.node_idx(socket).is_some_and(|i| {
+                self.nodes[i]
+                    .tree_node()
+                    .expansion_jewel
+                    .as_ref()
+                    .is_some_and(|e| e.parent.is_some())
+            });
+            if in_cluster_socket || jewel.limit_disabled {
+                continue;
+            }
+            let affected = if jewel_type == 11 {
+                self.read_zorath(cb.id, socket)?
+            } else {
+                read_abyss_jewel_lut(cb.id, socket, jewel_type, None, None).map_err(|e| TreeError(e.0))?
+            };
+            for (node_id, modification) in affected {
+                let conquest = Rc::new(ConqueredBy {
+                    modification: Some(Rc::new(modification)),
+                    ..(**cb).clone()
+                });
+                shared |= out.insert(node_id, conquest).is_some();
+            }
+        }
+        // D13: the winner of a shared node is the last in `pairs(self.jewels)`, of the process upstream (R13; `Populate` writes the empty sockets in the order of `pairs(self.slots)`).
+        if shared {
+            self.unimplemented.push(format!(
+                "D13 {SPEC}:1136: two Abyss jewels over one node -- it goes to the last in pairs(self.jewels), an order of the process upstream; here the order of the file"
+            ));
+        }
+        Ok(out)
+    }
+
+    /// :1153-1163 -- the radius jewels (`pairs(self.jewels)`).
     pub(crate) fn gather_radius_jewels(&mut self) -> Result<Vec<RadiusJewel>, TreeError> {
         let mut out = Vec::new();
         for &(socket_id, item_id) in &self.jewels.0 {
             let Some(jewel) = self.jewel_item(item_id).cloned() else { continue };
             let allocated = crate::tree::as_id(socket_id).is_some_and(|s| self.alloc_nodes.contains_key(&s));
-            // :1140 `not (self.nodes[socketId].expansionJewel and self.nodes[socketId].expansionJewel.parent)` -- no abyss conquest
-            // from a cluster socket (3dbca4463 #10347)
-            let in_cluster_socket = || {
-                crate::tree::as_id(socket_id).and_then(|s| self.node_idx(s)).is_some_and(|i| {
-                    self.nodes[i]
-                        .tree_node()
-                        .expansion_jewel
-                        .as_ref()
-                        .is_some_and(|e| e.parent.is_some())
-                })
-            };
-            if let Some(cb) = &jewel.conquered_by
-                && jewel_type_by_conqueror(&cb.conqueror_type).is_some_and(|t| t >= 7)
-                && allocated
-                && !in_cluster_socket()
-                && !jewel.limit_disabled
-            {
-                return Err(TreeError(format!(
-                    "unimplemented: {SPEC}:1134-1151 abyss conquest ({} jewel in socket {socket_id}; data.readAbyssJewelLUT)",
-                    cb.conqueror_type
-                )));
-            }
             if jewel.jewel_radius_index.is_some() && allocated && jewel.has_jewel_data && !jewel.limit_disabled {
                 let socket = crate::tree::as_id(socket_id)
                     .and_then(|s| self.node_idx(s))
@@ -526,7 +585,13 @@ impl PassiveSpec {
                 .map_err(|e| TreeError(e.0))
         };
         if jewel_type >= 7 && ty != NodeType::Mastery {
-            return Err(err(1253, "unimplemented: abyss conquest (data.resolveAbyssJewelComponent)"));
+            let modification = cb
+                .modification
+                .clone()
+                .ok_or_else(|| err(1278, "bad argument #1 to 'ipairs' (table expected, got nil)"))?;
+            for component in modification.iter() {
+                self.apply_abyss_component(i, component, legion, additions_base)?;
+            }
         } else if ty == NodeType::Notable {
             let tbl = lut(1275)?;
             if tbl.is_empty() {
@@ -668,6 +733,43 @@ impl PassiveSpec {
         self.reconnect_node_to_class_start(i)
     }
 
+    /// :1278-1293, one component: `resolveAbyssJewelComponent` (helper :51-57; type 1 replaces the node, type 2 adds to it), each line
+    /// with its rolls filled in. Another type or an id with no legion entry only prints "Unhandled Abyss component ID".
+    fn apply_abyss_component(
+        &mut self,
+        i: usize,
+        component: &AbyssComponent,
+        legion: &Legion,
+        additions_base: f64,
+    ) -> Result<(), TreeError> {
+        let id = f64::from(component.id);
+        let (sd, stats, replaces_node): (&[String], &OrderedMap<LegionStat>, bool) = match component.ty {
+            1 => {
+                let Some(ln) = lua_slice_index(&legion.nodes, id + 1.0 - additions_base) else {
+                    return Ok(());
+                };
+                self.replace_with_legion(i, ln);
+                (&ln.sd, ln.stat_defs, true)
+            }
+            2 => {
+                let Some(addition) = lua_slice_index(&legion.additions, id + 1.0) else {
+                    return Ok(());
+                };
+                (&addition.sd, addition.stats, false)
+            }
+            _ => return Ok(()),
+        };
+        for (stat_index, line) in sd.iter().enumerate() {
+            let mut line = line.clone();
+            for (key, stat_mod) in stats.iter() {
+                line = replace_helper(&line, key, stat_mod, lua_index(&component.rolls, stat_mod.index))?;
+            }
+            let text = if replaces_node { line } else { format!(" \n{line}") };
+            self.node_addition_or_replacement(i, &text, replaces_node && stat_index == 0);
+        }
+        Ok(())
+    }
+
     /// :1697-1720 `ReplaceNode(old, legionNode)`.
     fn replace_with_legion(&mut self, i: usize, ln: &Rc<LegionNode>) {
         let node = &mut self.nodes[i];
@@ -778,5 +880,10 @@ impl PassiveSpec {
 
 /// `t[k]` of a Lua array (1-based) with a number key; nil outside.
 fn lua_index(t: &[f64], k: f64) -> Option<f64> {
-    (k >= 1.0 && k.fract() == 0.0).then(|| t.get(k as usize - 1).copied()).flatten()
+    lua_slice_index(t, k).copied()
+}
+
+/// `t[k]` of a Lua array (1-based) with a number key, by reference.
+fn lua_slice_index<T>(t: &[T], k: f64) -> Option<&T> {
+    (k >= 1.0 && k.fract() == 0.0).then(|| t.get(k as usize - 1)).flatten()
 }

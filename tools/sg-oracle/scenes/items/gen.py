@@ -215,6 +215,69 @@ write('timeless', _tl + [
  {"cursor": [-100, -100], "dump": True},
  {"closeBuild": True},
 ])
+# R-abyss-conquest: Abyss jewels through the tab on the converted golden: the comparison in the sockets (ItemsTab.lua:4216, :4984), the conquered tree, the node tooltips
+TECROD = "Rarity: UNIQUE\nFestering Vengeance\nMurderous Eye Jewel\nLeague: Abyss\nLimited to: 1 Historic\nImplicits: 0\nSubjugating 4000 souls in the thrall of Tecrod\nPassives affected are Conquered by the Abyssal\nHistoric\n"
+ZORATH = "Rarity: UNIQUE\nReclaimed Malevolence\nAssembled Eye Jewel\nLeague: Abyss\nLimited to: 1 Historic\nImplicits: 0\nBinding 4000 souls to phylacteries to sustain Zorath\nPassives affected are Conquered by the Abyssal\nHistoric\n"
+ABYSS_SOCKET = "slot:Jewel 26725"
+ABYSS_ROW_TECROD, ABYSS_ROW_ZORATH = 7, 8 # their rows in the socket's list
+def press(x, y): return [{"cursor": [x, y]}, {"hold": ["LEFTBUTTON"], "events": [["KeyDown", "LEFTBUTTON"]]}, {"release": ["LEFTBUTTON"], "events": [["KeyUp", "LEFTBUTTON"]]}]
+def wheel(k, n): return [["KeyUp", k]] * n
+write('abyss', [
+ {"open": "Generals Perforate Zerker"},
+ {"waitAssets": True},
+ *press(971, 730), # Copy + Convert to the latest
+ {"waitAssets": True},
+ {"cursor": [-100, -100], "events": [["KeyDown", "RETURN"], ["KeyUp", "RETURN"]]},
+ tab,
+ paste(TECROD),
+ {"cursor": [1200, 790], "dump": True, "shot": "abyss-display"}, # the comparison in every socket: wider than the tab, which snaps to its end (ItemsTab.lua:1502)
+ {"cursor": [800, 600], "events": wheel("WHEELUP", 80), "dump": True},
+ {"cursor": [800, 600]}, # a control's place follows the scroll one frame later
+ tap("addDisplayItem"),
+ {"cursor": [1200, 790], "dump": True},
+ # no shots over the socket list: its preview of the tree covers text, so a lossy pixel of the preview (delta 3) counts as text in the pixel gate; the tooltips are in the states
+ {"cursorItem": [ABYSS_SOCKET], "dump": True},
+ {"cursorItem": [ABYSS_SOCKET], "events": click(), "dump": True},
+ {"cursorPick": [ABYSS_SOCKET, ABYSS_ROW_TECROD], "dump": True},
+ {"cursorPick": [ABYSS_SOCKET, ABYSS_ROW_TECROD], "events": click(), "dump": True},
+ {"cursor": [1200, 790], "dump": True},
+ {"cursorItem": [ABYSS_SOCKET], "dump": True},
+ {"cursorBuild": ["modeTree"], "events": click()},
+ {"waitAssets": True},
+ {"treeOrder": "abyss-order"},
+ {"cursor": [796, 388], "events": wheel("WHEELDOWN", 5)},
+ # the golden's saved view is off the tree: drag it back
+ {"cursor": [800, 400]},
+ {"hold": ["LEFTBUTTON"], "events": [["KeyDown", "LEFTBUTTON"]]},
+ {"cursor": [602, 103]},
+ {"release": ["LEFTBUTTON"], "events": [["KeyUp", "LEFTBUTTON"]]},
+ {"cursorNode": 33287, "events": wheel("WHEELUP", 4)},
+ {"cursor": [-100, -100], "dump": True, "shot": "abyss-tree"},
+ {"cursorNode": 33287, "dump": True, "treeTip": True, "shot": "abyss-tip-notable"},
+ {"cursorNode": 3644, "dump": True, "treeTip": True, "shot": "abyss-tip-normal"},
+ {"cursorNode": 57279, "dump": True, "treeTip": True, "shot": "abyss-tip-keystone"},
+ {"cursorNode": 26725, "dump": True, "treeTip": True, "shot": "abyss-tip-socket"},
+ {"cursor": [-100, -100], "dump": True},
+ tab,
+ paste(ZORATH),
+ {"cursor": [1200, 790], "dump": True, "shot": "abyss-display-zorath"},
+ {"cursor": [800, 600], "events": wheel("WHEELUP", 80), "dump": True},
+ {"cursor": [800, 600]}, # a control's place follows the scroll one frame later
+ tap("addDisplayItem"),
+ {"cursor": [1200, 790], "dump": True},
+ {"cursorItem": [ABYSS_SOCKET], "events": click(), "dump": True},
+ {"cursorPick": [ABYSS_SOCKET, ABYSS_ROW_ZORATH], "dump": True},
+ {"cursorPick": [ABYSS_SOCKET, ABYSS_ROW_ZORATH], "events": click(), "dump": True},
+ {"cursor": [1200, 790], "dump": True},
+ {"cursorBuild": ["modeTree"], "events": click()},
+ {"waitAssets": True},
+ {"cursor": [796, 388], "events": wheel("WHEELDOWN", 4)},
+ {"cursor": [-100, -100], "dump": True, "shot": "abyss-zorath-tree"},
+ {"cursorNode": 9271, "events": wheel("WHEELUP", 3)},
+ {"cursorNode": 9271, "dump": True, "treeTip": True, "shot": "abyss-zorath-ascend"},
+ {"cursor": [-100, -100], "dump": True},
+ {"closeBuild": True},
+])
 write('perf', [
  {"open": "OccVortex"},
  {"cursorBuild": ["modeItems"], "events": click(), "perfClick": "openTab"},
@@ -295,4 +358,4 @@ write('trade-weights', [
  {"closeBuild": True},
 ])
 write('real-input', [{"open": "OccVortex"}, {"waitAssets": True}, {"realInput": True}])
-json.dump(['base', 'display', 'equip', 'granted', 'editor', 'loadout', 'granted-group', 'coverage', 'timeless', 'foulborn', 'trade-weights'], open('tools/sg-oracle/scenes/items/index.json', 'w'))
+json.dump(['base', 'display', 'equip', 'granted', 'editor', 'loadout', 'granted-group', 'coverage', 'timeless', 'abyss', 'foulborn', 'trade-weights'], open('tools/sg-oracle/scenes/items/index.json', 'w'))
