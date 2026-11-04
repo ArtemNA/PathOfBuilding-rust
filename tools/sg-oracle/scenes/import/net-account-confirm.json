@@ -1,0 +1,214 @@
+{
+"net": [
+{
+"url": "https://www.pathofexile.com/character-window/get-characters?accountName=Synth%231234&realm=pc",
+"code": 200,
+"header": "HTTP/1.1 200 OK\r\n\r\n",
+"body": "[{\"name\":\"Synth Char\",\"realm\":\"pc\",\"class\":\"Necromancer\",\"league\":\"Standard\",\"level\":85},{\"name\":\"Another\",\"realm\":\"pc\",\"class\":\"Juggernaut\",\"league\":\"Hardcore\",\"level\":40},{\"name\":\"bystander\",\"realm\":\"pc\",\"class\":\"Witch\",\"league\":\"Standard\",\"level\":3},{\"name\":\"Elsewhere\",\"realm\":\"xbox\",\"class\":\"Witch\",\"league\":\"Standard\",\"level\":3},{\"name\":\"Odd One\",\"realm\":\"pc\",\"class\":\"Nonsense\",\"league\":\"Standard\",\"level\":3}]"
+},
+{
+"url": "https://www.pathofexile.com/account/view-profile/Synth%231234",
+"code": 200,
+"header": "HTTP/1.1 200 OK\r\n\r\n",
+"body": "<a href=\"/account/view-profile/Synth-1234/characters\">x</a>"
+},
+{
+"url": "https://www.pathofexile.com/character-window/get-passive-skills?accountName=Synth%231234&character=Another&realm=pc",
+"error": "synthetic\nfailure"
+},
+{
+"url": "https://www.pathofexile.com/character-window/get-items?accountName=Synth%231234&character=Another&realm=pc",
+"code": 200,
+"header": "HTTP/1.1 200 OK\r\n\r\n",
+"body": "false"
+},
+{
+"url": "https://www.pathofexile.com/character-window/get-passive-skills?accountName=Synth%231234&character=Another&realm=pc",
+"code": 200,
+"header": "HTTP/1.1 200 OK\r\n\r\n",
+"body": "{\"hashes\":[57264,57226,33296,37569,21678,59650,1957,36774,36542,32210,9650,19374,739,17579,4397,8948,25222,6949,18866,21934,11420,7938,31875,27659,38176,1031,33755,21958,14021,55332,42760,36678,20987,52502,7960,12125],\"hashes_ex\":[70001,70002],\"mastery_effects\":{\"12125\":64381},\"skill_overrides\":{\"57264\":{\"name\":\"Tattoo of the Tawhoa Shaman\",\"icon\":\"Art/2DArt/SkillIcons/passives/LifeRecoupNode.png\",\"activeEffectImage\":\"Art/2DArt/UIImages/InGame/AncestralTrial/PassiveTreeTattoos/TawhoaTribePassiveBG.png\",\"isTattoo\":true,\"stats\":[\"5% chance to Poison on Hit\"]}},\"bandit_choice\":null,\"pantheon_major\":null,\"pantheon_minor\":null,\"jewel_data\":{\"11\":{\"type\":\"JewelPassiveTreeExpansionLarge\",\"subgraph\":{\"groups\":{\"expansion_7960\":{\"proxy\":\"43989\",\"nodes\":[\"70001\",\"70002\",\"70003\"]}},\"nodes\":{\"70001\":{\"group\":\"expansion_7960\",\"orbitIndex\":7,\"skill\":\"70001\"},\"70002\":{\"group\":\"expansion_7960\",\"orbitIndex\":9,\"skill\":\"70002\"},\"70003\":{\"group\":\"expansion_7960\",\"orbitIndex\":8,\"isMastery\":true,\"skill\":\"70003\"}}}}},\"alternate_ascendancy\":2,\"items\":[{\"id\":\"synth-jewel\",\"inventoryId\":\"PassiveJewels\",\"x\":0,\"frameType\":2,\"name\":\"Synth Spark\",\"typeLine\":\"Cobalt Jewel\",\"ilvl\":80,\"explicitMods\":[\"10% increased maximum Energy Shield\"]},{\"id\":\"synth-unique-jewel\",\"inventoryId\":\"PassiveJewels\",\"x\":1,\"frameType\":3,\"name\":\"Thread of Hope\",\"typeLine\":\"Crimson Jewel\",\"ilvl\":80,\"properties\":[{\"name\":\"Radius\",\"values\":[[\"Variable\",1]],\"displayMode\":0},{\"name\":\"Limited to\",\"values\":[[\"1\",1]],\"displayMode\":0}],\"explicitMods\":[\"Only affects Passives in Medium Ring\",\"Passives in Radius can be Allocated without being connected to your tree\",\"-20% to all Elemental Resistances\"]},{\"id\":\"synth-cluster\",\"inventoryId\":\"PassiveJewels\",\"x\":11,\"frameType\":2,\"name\":\"Synth Cluster\",\"typeLine\":\"Large Cluster Jewel\",\"ilvl\":84,\"enchantMods\":[\"Adds 8 Passive Skills\",\"2 Added Passive Skills are Jewel Sockets\",\"Added Small Passive Skills grant: 12% increased Fire Damage\"],\"explicitMods\":[\"1 Added Passive Skill is Prismatic Heart\",\"1 Added Passive Skill is Widespread Destruction\"]}]}"
+}
+],
+"steps": [
+{
+"open": "OccVortex"
+},
+{
+"cursorBuild": "modeImport",
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"cursorImport": "siteAccountName",
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+]
+},
+{
+"events": [
+[
+"Char",
+"S"
+],
+[
+"Char",
+"y"
+],
+[
+"Char",
+"n"
+],
+[
+"Char",
+"t"
+],
+[
+"Char",
+"h"
+],
+[
+"Char",
+"#"
+],
+[
+"Char",
+"1"
+],
+[
+"Char",
+"2"
+],
+[
+"Char",
+"3"
+],
+[
+"Char",
+"4"
+]
+],
+"dump": true
+},
+{
+"cursorImport": "siteAccountNameGo",
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"netDeliver": true,
+"dump": true
+},
+{
+"netDeliver": true,
+"dump": true
+},
+{
+"cursorImport": "siteCharImportTree",
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"cursorPopup": "confirm",
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"netDeliver": true,
+"dump": true
+},
+{
+"cursorImport": "siteCharImportItems",
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"netDeliver": true,
+"dump": true
+},
+{
+"cursorImport": "siteCharImportTree",
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"cursorPopup": "confirm",
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"netDeliver": true,
+"dump": true,
+"xml": true
+}
+]
+}

@@ -47,7 +47,7 @@ pub enum DbFile {
 }
 
 impl DbFile {
-    fn path(&self) -> Option<&str> {
+    pub fn path(&self) -> Option<&str> {
         match self {
             Self::Path(p) => Some(p),
             _ => None,
@@ -176,6 +176,8 @@ pub struct BuildMode {
     pub config_tab: RefCell<Option<Rc<crate::tabs::config::ConfigTab>>>,
     pub notes_tab: RefCell<Option<Rc<crate::tabs::notes::NotesTab>>>,
     pub compare_tab: RefCell<Option<Rc<crate::tabs::compare::CompareTab>>>,
+    pub import_tab: RefCell<Option<Rc<crate::tabs::import::ImportTab>>>,
+    pub party_tab: RefCell<Option<Rc<crate::tabs::party::PartyTab>>>,
     pub db_file_name: RefCell<DbFile>,
     pub build_name: RefCell<Option<String>>,
     pub db_file_sub_path: RefCell<Option<String>>,
@@ -221,6 +223,8 @@ impl BuildMode {
             config_tab: RefCell::new(None),
             notes_tab: RefCell::new(None),
             compare_tab: RefCell::new(None),
+            import_tab: RefCell::new(None),
+            party_tab: RefCell::new(None),
             db_file_name: RefCell::new(DbFile::Nil),
             build_name: RefCell::new(None),
             db_file_sub_path: RefCell::new(None),
@@ -323,20 +327,38 @@ impl BuildMode {
     }
 
     /// `buildMode:SaveDBFile()` (Build.lua:2304-2333).
-    pub fn save_db_file(&self, g: &mut Gfx) -> bool {
-        let Some(path) = self.db_file_name.borrow().path().map(str::to_string) else {
-            self.open_save_as_popup(g);
-            return false;
-        };
+    /// `self:SaveDB(fileName)` (Build.lua:2277-2301) with what the savers do first.
+    pub fn save_db_text(&self) -> Result<String, String> {
         // NotesTab:Save (NotesTab.lua:84-87)
         if let Some(t) = self.notes_tab.borrow().as_ref() {
             t.before_save();
+        }
+        if let Some(t) = self.party_tab.borrow().as_ref() {
+            t.sync();
         }
         // `viewMode = self.viewMode` (Build.lua:1012)
         if let Some(e) = self.engine.borrow_mut().as_mut() {
             e.set_view_mode(&self.view_mode.borrow());
         }
-        let xml = match self.engine.borrow().as_ref().expect("engine").save_xml() {
+        self.engine.borrow().as_ref().expect("engine").save_xml()
+    }
+
+    /// `self.dbFileName`, `self.buildName` as `Init` takes them (ImportTab.lua:652).
+    pub fn init_args(&self) -> (ModeArg, ModeArg) {
+        let db = match &*self.db_file_name.borrow() {
+            DbFile::Path(p) => ModeArg::Str(p.clone()),
+            DbFile::False | DbFile::Nil => ModeArg::Bool(false),
+        };
+        let name = self.build_name.borrow().clone().map_or(ModeArg::Bool(false), ModeArg::Str);
+        (db, name)
+    }
+
+    pub fn save_db_file(&self, g: &mut Gfx) -> bool {
+        let Some(path) = self.db_file_name.borrow().path().map(str::to_string) else {
+            self.open_save_as_popup(g);
+            return false;
+        };
+        let xml = match self.save_db_text() {
             Ok(x) => x,
             Err(e) => {
                 launch().show_err_msg(&format!("Error saving '{path}': {e}"));
@@ -358,6 +380,9 @@ impl BuildMode {
             t.undo.mod_flag.set(false);
         }
         if let Some(t) = self.notes_tab.borrow().as_ref() {
+            t.reset_mod_flags();
+        }
+        if let Some(t) = self.party_tab.borrow().as_ref() {
             t.reset_mod_flags();
         }
         if let Some(t) = self.config_tab.borrow().as_ref() {
@@ -450,14 +475,15 @@ impl BuildMode {
             "label".into(),
             LabelControl::new(None, rect(0.0, 20.0, 0.0, 16.0), "^7Enter new build name:".to_string()),
         );
-        // `not self.dbFileName and main.predefinedBuildName or (self.buildName or self.dbFileName):gsub(…)` (predefinedBuildName: U8)
-        let init = {
+        // `not self.dbFileName and main.predefinedBuildName or (self.buildName or self.dbFileName):gsub(…)`
+        let predefined = main().predefined_build_name.borrow().clone().filter(|_| self.db_file_name.borrow().path().is_none());
+        let init = predefined.unwrap_or_else(|| {
             let bn = self.build_name.borrow().clone();
             let src = bn
                 .or_else(|| self.db_file_name.borrow().path().map(str::to_string))
                 .unwrap_or_default();
             lua::gsub(&src, "[\\/:%*%?\"<>|%c]", "-")
-        };
+        });
         let ub = update_build_name.clone();
         let edit = EditControl::new(
             g,
@@ -1052,6 +1078,15 @@ impl BuildMode {
             "IMPORT",
         );
         let mi_r: ControlRef = mode_import.clone();
+        // Build.lua:442-445
+        let bi = bm.clone();
+        *mode_import.on_click.borrow_mut() = Rc::new(move |g: &mut Gfx| {
+            *bi().view_mode.borrow_mut() = "IMPORT".to_string();
+            let tab = bi().import_tab.borrow().clone();
+            if let Some(t) = tab {
+                t.try_fetch_character_list(g);
+            }
+        });
         let mode_notes = mode_button(anchor("LEFT", &mi_r, "RIGHT"), rect(4.0, 0.0, 58.0, 20.0), "Notes", "NOTES");
         let mode_config = mode_button(
             anchor("TOPRIGHT", &asb, "TOPLEFT"),
@@ -1677,9 +1712,33 @@ impl Mode for BuildMode {
             _ => DbFile::Nil,
         };
         let build_name = args.get(1).and_then(ModeArg::as_str).map(str::to_string);
-        if args.get(2).is_some() {
-            unimplemented!("Modules/Build.lua:89-95 buildXML (import of a build code / link) — U8");
-        }
+        // Build.lua:89-94 `LoadDB(buildXML, "Unnamed build")`: the build on screen stays until the new one has loaded (the frame goes on over its tabs)
+        let build_xml = args.get(2).and_then(ModeArg::as_str).map(str::to_string);
+        let imported = match &build_xml {
+            None => None,
+            Some(x) => {
+                let parsed = match pob_build::parse_xml_document(x) {
+                    Err(e) => Err(format!("^1{e}")),
+                    Ok(doc) => match doc.first() {
+                        Some(pob_build::XmlNode::Element(e)) if e.name == "PathOfBuilding" => Engine::load_xml(x).map_err(|e| format!("^1{e}")),
+                        _ => Err("^1Error parsing 'Unnamed build': 'PathOfBuilding' root element missing".to_string()),
+                    },
+                };
+                match parsed {
+                    Ok(e) => Some(e),
+                    Err(msg) => {
+                        *self.db_file_name.borrow_mut() = db.clone();
+                        *self.build_name.borrow_mut() = build_name.clone();
+                        if let Some(e) = self.engine.borrow_mut().as_mut() {
+                            e.set_level_of_failed_init(main().s.borrow().default_char_level.unwrap_or(1.0).clamp(1.0, 100.0));
+                        }
+                        launch().show_err_msg(&msg);
+                        self.close_build(g);
+                        return;
+                    }
+                }
+            }
+        };
         *self.db_file_name.borrow_mut() = db.clone();
         *self.build_name.borrow_mut() = build_name.clone();
         let m = main();
@@ -1700,6 +1759,7 @@ impl Mode for BuildMode {
         self.initialised.set(false);
         // LoadDBFile / LoadDB (Build.lua:2222-2275): the XML into the engine (the tabs' Load + BuildOutput + RefreshStatList)
         let xml = match &db {
+            _ if imported.is_some() => None,
             DbFile::Path(p) => {
                 f_con_printf(g, &format!("Loading '{p}'..."));
                 match pob_build::read_build_file(std::path::Path::new(p)) {
@@ -1720,17 +1780,24 @@ impl Mode for BuildMode {
                 pob_data::tree::tree_versions().expect("GameVersions").latest_tree_version
             )),
         };
-        let engine = match Engine::load_xml(&xml.unwrap_or_default()) {
-            Ok(e) => e,
-            Err(e) => {
-                launch().show_err_msg(&format!("^1{e}"));
-                self.close_build(g);
-                return;
-            }
+        let mut engine = match imported {
+            Some(e) => e,
+            None => match Engine::load_xml(&xml.unwrap_or_default()) {
+                Ok(e) => e,
+                Err(e) => {
+                    launch().show_err_msg(&format!("^1{e}"));
+                    self.close_build(g);
+                    return;
+                }
+            },
         };
+        // Build.lua:67 `self.importLink = importLink`: the link of a build that came from a site wins over the one in its XML (:2247)
+        if let Some(link) = args.get(4).and_then(ModeArg::as_str) {
+            engine.import_set_build_link(link);
+        }
         *self.target_version.borrow_mut() = Some(engine.model().target_version.clone());
-        // `self.modFlag = false` after LoadDBFile (Build.lua:100; `true` only for a buildXML import, :94 -- U8)
-        self.mod_flag.set(false);
+        // Build.lua:94 / :100
+        self.mod_flag.set(build_xml.is_some());
         if engine.model().target_version != LIVE_TARGET_VERSION {
             *self.target_version.borrow_mut() = None;
             unimplemented!("Modules/Build.lua:106-110 OpenConversionPopup (a build for another game version)");
@@ -1754,7 +1821,9 @@ impl Mode for BuildMode {
             Some(Rc::new(move |g: &mut Gfx| w.upgrade().expect("buildMode").clear_display_stat(g)));
         self.host.add("breakdown", breakdown.clone());
         *self.calcs_tab.borrow_mut() = Some(tab);
-        // Build.lua:609-611
+        // Build.lua:608-611
+        *self.import_tab.borrow_mut() = Some(crate::tabs::import::ImportTab::new(g, self.me.clone()));
+        *self.party_tab.borrow_mut() = Some(crate::tabs::party::PartyTab::new(g, self.me.clone()));
         *self.notes_tab.borrow_mut() = Some(crate::tabs::notes::NotesTab::new(g, self.me.clone()));
         *self.config_tab.borrow_mut() = Some(crate::tabs::config::ConfigTab::new(g, self.me.clone()));
         *self.compare_tab.borrow_mut() = Some(crate::tabs::compare::CompareTab::new(g, self.me.clone()));
@@ -1848,8 +1917,11 @@ impl Mode for BuildMode {
                 }
             } else if sg::is_key_down(f, "CTRL") {
                 match key.as_str() {
-                    // `importTab:SelectControl(importTab.controls.importCodeIn)`: U8
-                    "i" => *self.view_mode.borrow_mut() = "IMPORT".into(),
+                    "i" => {
+                        *self.view_mode.borrow_mut() = "IMPORT".into();
+                        let tab = self.import_tab.borrow().clone();
+                        tab.expect("importTab").select_import_code(f);
+                    }
                     "s" => {
                         self.save_db_file(f);
                         input_events[id] = None;
@@ -1972,6 +2044,20 @@ impl Mode for BuildMode {
                 height: screen_h - 32.0,
             };
             tab.draw(f, &view_port, input_events);
+        } else if matches!(self.view_mode.borrow().as_str(), "IMPORT" | "PARTY") {
+            let view_port = Rect {
+                x: side_bar_width,
+                y: 32.0,
+                width: screen_w - side_bar_width,
+                height: screen_h - 32.0,
+            };
+            if self.view_mode.borrow().as_str() == "IMPORT" {
+                let tab = self.import_tab.borrow().clone().expect("importTab");
+                tab.draw(f, &view_port, input_events);
+            } else {
+                let tab = self.party_tab.borrow().clone().expect("partyTab");
+                tab.draw(f, &view_port, input_events);
+            }
         } else if matches!(self.view_mode.borrow().as_str(), "CONFIG" | "NOTES") {
             let view_port = Rect {
                 x: side_bar_width,
@@ -2006,10 +2092,11 @@ impl Mode for BuildMode {
         }
         let calcs_mod = self.calcs_tab.borrow().as_ref().is_some_and(|t| t.undo.mod_flag.get());
         let notes_mod = self.notes_tab.borrow().as_ref().is_some_and(|t| t.mod_flag.get());
+        let party_mod = self.party_tab.borrow().as_ref().is_some_and(|t| t.mod_flag.get());
         let config_mod = self.config_tab.borrow().as_ref().is_some_and(|t| t.undo.mod_flag.get());
         let skills_mod = self.skills_tab.borrow().as_ref().is_some_and(|t| t.undo.mod_flag.get());
         let items_mod = self.items_tab.borrow().as_ref().is_some_and(|t| t.undo.mod_flag.get());
-        self.unsaved.set(self.mod_flag.get() || calcs_mod || notes_mod || config_mod || skills_mod || items_mod);
+        self.unsaved.set(self.mod_flag.get() || calcs_mod || notes_mod || party_mod || config_mod || skills_mod || items_mod);
         sg::set_draw_layer(f, Some(5), 0);
         sg::set_draw_color(f, 0.2, 0.2, 0.2);
         sg::draw_rect(f, 0.0, 0.0, screen_w, 28.0);

@@ -141,7 +141,7 @@ fn moved_index(cur: f64, from: f64, to: f64) -> f64 {
 }
 
 /// SkillsTab.lua:1464-1475 over the live list.
-fn rebuild_imbued(tab: &mut SkillsTab) {
+pub(crate) fn rebuild_imbued(tab: &mut SkillsTab) {
     let data = pob_data::gems::gems();
     let mut out = indexmap::IndexMap::new();
     for sg in tab.socket_group_list() {
@@ -177,7 +177,7 @@ impl Engine {
         self.skills_tab().socket_group_list()
     }
 
-    fn edit_skills<R>(&mut self, f: impl FnOnce(&mut SkillsTab, &Skills) -> Result<R, String>) -> Result<R, String> {
+    pub(crate) fn edit_skills<R>(&mut self, f: impl FnOnce(&mut SkillsTab, &Skills) -> Result<R, String>) -> Result<R, String> {
         let skills = self.skill_data();
         let mut tab = match self.take_skills_live() {
             Some(t) => t,
@@ -631,6 +631,7 @@ impl Engine {
 
     /// `controls.defaultQuality`: `m_min(tonumber(buf) or 0, 23)`.
     pub fn set_default_gem_quality(&mut self, buf: Option<f64>) -> Result<(), String> {
+        self.extras_mut().nil_default_gem_quality = false;
         self.edit_skills(|t, _| {
             t.default_gem_quality = pob_lua::number::min2(buf.unwrap_or(0.0), 23.0);
             Ok(())

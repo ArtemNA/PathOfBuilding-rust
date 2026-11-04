@@ -1,0 +1,313 @@
+{
+"net": [
+{
+"url": "http://poeurl.com/abc",
+"code": 200,
+"header": "HTTP/1.1 200 OK\r\n\r\n",
+"body": "x"
+},
+{
+"url": "http://poeurl.com/abc",
+"code": 302,
+"header": "HTTP/1.1 302 Found\r\nLocation: http://poeurl.com/loop\r\n\r\n",
+"body": ""
+},
+{
+"url": "http://poeurl.com/abc",
+"code": 302,
+"header": "HTTP/1.1 302 Found\r\nLocation: https://www.pathofexile.com/passive-skill-tree/3.29.0/AAAA\r\n\r\n",
+"body": ""
+},
+{
+"url": "http://poeurl.com/shrink.php?url=*",
+"code": 200,
+"header": "",
+"body": "short1"
+},
+{
+"url": "http://poeurl.com/shrink.php?url=*",
+"code": 200,
+"header": "",
+"body": "   "
+}
+],
+"steps": [
+{
+"open": "OccVortex"
+},
+{
+"treePopup": "import",
+"dump": true
+},
+{
+"cursorPopup": "name",
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+]
+},
+{
+"events": [
+[
+"Char",
+"L"
+],
+[
+"Char",
+"i"
+],
+[
+"Char",
+"n"
+],
+[
+"Char",
+"k"
+],
+[
+"Char",
+"e"
+],
+[
+"Char",
+"d"
+]
+],
+"dump": true
+},
+{
+"cursorPopup": "edit",
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+]
+},
+{
+"events": [
+[
+"Char",
+"h"
+],
+[
+"Char",
+"t"
+],
+[
+"Char",
+"t"
+],
+[
+"Char",
+"p"
+],
+[
+"Char",
+":"
+],
+[
+"Char",
+"/"
+],
+[
+"Char",
+"/"
+],
+[
+"Char",
+"p"
+],
+[
+"Char",
+"o"
+],
+[
+"Char",
+"e"
+],
+[
+"Char",
+"u"
+],
+[
+"Char",
+"r"
+],
+[
+"Char",
+"l"
+],
+[
+"Char",
+"."
+],
+[
+"Char",
+"c"
+],
+[
+"Char",
+"o"
+],
+[
+"Char",
+"m"
+],
+[
+"Char",
+"/"
+],
+[
+"Char",
+"a"
+],
+[
+"Char",
+"b"
+],
+[
+"Char",
+"c"
+]
+],
+"dump": true
+},
+{
+"cursorPopup": "import",
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"netDeliver": true,
+"dump": true
+},
+{
+"cursorPopup": "import",
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"netDeliver": true,
+"dump": true
+},
+{
+"cursorPopup": "import",
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"netDeliver": true,
+"dump": true
+},
+{
+"cursorPopup": "cancel",
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"treePopup": "export",
+"dump": true
+},
+{
+"cursorPopup": "shrink",
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"netDeliver": true,
+"dump": true
+},
+{
+"cursorPopup": "done",
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"treePopup": "export",
+"dump": true
+},
+{
+"cursorPopup": "shrink",
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"netDeliver": true,
+"dump": true
+}
+]
+}

@@ -1,17 +1,22 @@
 //! `Launch.lua` — the program entry point: loads and runs `main` in a protected environment (`PCall` → a Rust panic
 //! caught with `catch_unwind`, UI-ARCH §4.5) and shows errors as a modal prompt.
 //!
-//! Not ported (UI-ARCH §10 п. 6): the update machinery (`first.run` install step, `CheckForUpdate`, `ApplyUpdate`,
-//! `LaunchSubScript` sub-scripts, `DownloadPage` — network is U8) and the dev-mode hotkeys that need a Lua state
+//! Not ported (UI-ARCH §10 п. 6): the update machinery (`first.run` install step, `CheckForUpdate`, `ApplyUpdate`: the
+//! original's update is not ours, the port's own is the user's decision) and the dev-mode hotkeys that need a Lua state
 //! (F6 garbage collection, PAUSE profiler). `devMode` is always false: the Rust port has no "running from the
 //! repository" mode, and its user data never goes next to the scripts (UI-ARCH §10 п. 2).
+//!
+//! `LaunchSubScript`, `OnSubFinished`, `OnSubError`, `DownloadPage` are here over `pob_net`. The network is off until the application's `main` calls [`Launch::set_transport`]: a test
+//! never reaches it by accident.
 
 use crate::modules::main::Main;
 use crate::sg;
 use pob_gfx::{Frame, Gfx, MainObject};
 use std::cell::{Cell, RefCell};
+use std::collections::HashMap;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::rc::Rc;
+use std::sync::Arc;
 
 /// `APP_NAME` (Launch.lua:9 "Path of Building"): "(Rust)" added by the user's decision, to tell the port's window from the original's.
 pub const APP_NAME: &str = "Path of Building (Rust)";
@@ -61,6 +66,22 @@ impl LaunchConfig {
     }
 }
 
+/// `{ header = responseHeader, body = responseBody }` of `launch:DownloadPage`.
+#[derive(Clone, Debug, Default)]
+pub struct PageResponse {
+    pub header: String,
+    pub body: String,
+}
+
+/// `params = { header, body }`.
+#[derive(Clone, Debug, Default)]
+pub struct PageParams {
+    pub header: Option<String>,
+    pub body: Option<String>,
+}
+
+type SubCallback = Box<dyn FnOnce(&mut Gfx, pob_net::Outcome)>;
+
 /// The prompt's key handler (`promptFunc`): `true` dismisses the prompt.
 pub type PromptFunc = Rc<dyn Fn(&mut Gfx, &str) -> bool>;
 
@@ -84,6 +105,13 @@ pub struct Launch {
     /// `launch.connectionProtocol` / `launch.proxyURL` / `launch.noSSL` (kept for Settings.xml; network is U8).
     pub connection_protocol: Cell<Option<f64>>,
     pub proxy_url: RefCell<Option<String>>,
+    /// `--no-ssl` (Main.lua:46-49).
+    pub no_ssl: Cell<bool>,
+    /// The running sub-scripts: `self.subScripts`.
+    pub net: pob_net::Net,
+    subs: RefCell<HashMap<u64, SubCallback>>,
+    /// A gate delivers the replies at its own step: the frames leave them waiting.
+    hold_subs: Cell<bool>,
     /// `launch.updateAvailable` / `updateErrMsg` / `updateCheckRunning`: never set (no update check in the port).
     pub update_available: RefCell<Option<String>>,
     pub update_err_msg: RefCell<Option<String>>,
@@ -98,6 +126,25 @@ pub fn launch() -> Rc<Launch> {
     LAUNCH
         .with(|l| l.borrow().clone())
         .expect("attempt to index global 'launch' (a nil value)")
+}
+
+/// The script of `DownloadPage`, after `perform` (Launch.lua:301-313): `responseBody, errMsg, responseHeader`.
+pub fn page_of(outcome: pob_net::Outcome) -> (PageResponse, Option<String>) {
+    match outcome {
+        pob_net::Outcome::Http(Ok(r)) => {
+            let err = if r.code != 200 {
+                Some(format!("Response code: {}", r.code))
+            } else if r.body.is_empty() {
+                Some("No data returned".to_string())
+            } else {
+                None
+            };
+            let body = r.text();
+            (PageResponse { header: r.header, body }, err)
+        }
+        pob_net::Outcome::Http(Err(e)) | pob_net::Outcome::Crashed(e) => (PageResponse::default(), Some(e)),
+        pob_net::Outcome::Oauth(_) => (PageResponse::default(), Some("not a download".to_string())),
+    }
 }
 
 /// `PCall(func, ...)`: `Err(message)` when the function raised an error (panicked).
@@ -133,6 +180,10 @@ impl Launch {
             dev_mode_alt: Cell::new(false),
             connection_protocol: Cell::new(None),
             proxy_url: RefCell::new(None),
+            no_ssl: Cell::new(false),
+            net: pob_net::Net::default(),
+            subs: RefCell::new(HashMap::new()),
+            hold_subs: Cell::new(false),
             update_available: RefCell::new(None),
             update_err_msg: RefCell::new(None),
         });
@@ -188,8 +239,81 @@ impl Launch {
         }
     }
 
+    /// The way out: only the application's `main` gives the real one.
+    pub fn set_transport(&self, t: Arc<dyn pob_net::Transport>) {
+        self.net.set_transport(t);
+    }
+
+    /// One `easy` handle with what every sub-script sets (Launch.lua:276-292).
+    pub fn net_request(&self, url: &str, header: Option<String>, body: Option<Vec<u8>>, follow_redirects: bool) -> pob_net::Request {
+        pob_net::Request {
+            url: url.to_owned(),
+            header,
+            body,
+            connection_protocol: self.connection_protocol.get(),
+            proxy_url: self.proxy_url.borrow().clone(),
+            no_ssl: self.no_ssl.get(),
+            user_agent: format!("Path of Building/{}", self.version_number.borrow()),
+            follow_redirects,
+        }
+    }
+
+    /// `LaunchSubScript` + `RegisterSubScript`: `None` when it did not start, and the callback never comes.
+    pub fn launch_sub(&self, job: pob_net::Job, cb: impl FnOnce(&mut Gfx, pob_net::Outcome) + 'static) -> Option<u64> {
+        let id = self.net.spawn(job)?;
+        self.subs.borrow_mut().insert(id, Box::new(cb));
+        Some(id)
+    }
+
+    /// `launch:CheckForUpdate()` (Launch.lua:339-356): only a status. `UpdateCheck.lua` asks for the original's manifest and writes `Update/` next to its scripts: the original's update is not the port's to do,
+    /// and how the port updates itself is the user's decision.
+    pub fn check_for_update(&self, g: &mut Gfx) {
+        crate::modules::main::not_ported(
+            g,
+            "Launch.lua:339-356 CheckForUpdate: the port does not update the original and has no update of its own yet",
+        );
+    }
+
+    /// See `hold_subs`.
+    pub fn hold_sub_scripts(&self, on: bool) {
+        self.hold_subs.set(on);
+    }
+
+    /// `launch:DownloadPage(url, callback, params)` (Launch.lua:259-324).
+    pub fn download_page(&self, url: &str, params: PageParams, cb: impl FnOnce(&mut Gfx, PageResponse, Option<String>) + 'static) {
+        let req = self.net_request(url, params.header, params.body.map(String::into_bytes), true);
+        self.launch_sub(pob_net::Job::Http(req), move |g, outcome| {
+            let (response, err) = page_of(outcome);
+            cb(g, response, err);
+        });
+    }
+
+    /// `OnSubCall`, `OnSubFinished`, `OnSubError` of what has arrived (Launch.lua:201-244). The host calls them on the main thread between the frames, here at the start of one.
+    pub fn poll_sub_scripts(&self, g: &mut Gfx) {
+        for e in self.net.poll() {
+            match e {
+                pob_net::Event::OpenAuthUrl(_, url) => {
+                    // LaunchServer.lua: `Copy(url)`, `OpenURL(url)`
+                    g.copy(&url);
+                    g.open_url(&url);
+                }
+                pob_net::Event::Finished(id, outcome) => {
+                    let cb = self.subs.borrow_mut().remove(&id);
+                    if let Some(cb) = cb
+                        && let Err(err) = pcall(|| cb(g, outcome))
+                    {
+                        self.show_err_msg(&format!("In download callback: {err}"));
+                    }
+                }
+            }
+        }
+    }
+
     /// `launch:OnFrame()` (Launch.lua:109-141).
     pub fn on_frame(&self, f: &mut Frame<'_>) {
+        if !self.hold_subs.get() {
+            self.poll_sub_scripts(f);
+        }
         if let Some(main) = self.main()
             && let Err(e) = pcall(|| main.on_frame(f))
         {
@@ -219,7 +343,10 @@ impl Launch {
         if key == "F5" && self.dev_mode.get() {
             *self.do_restart.borrow_mut() = Some("Restarting...".into());
         } else if key == "u" && sg::is_key_down(g, "CTRL") {
-            // `if not self.devMode then self:CheckForUpdate() end`: no update check in the port.
+            // `if not self.devMode then self:CheckForUpdate() end`
+            if !self.dev_mode.get() {
+                self.check_for_update(g);
+            }
         } else if key == "PRINTSCREEN" && sg::is_key_down(g, "CTRL") {
             g.take_screenshot();
         } else if self.prompt_msg.borrow().is_some() {
@@ -338,11 +465,23 @@ impl Launch {
 /// with the same configuration, like SimpleGraphic reloading `Launch.lua`).
 pub struct App {
     pub launch: Rc<Launch>,
+    /// What every `Launch` of this run talks through (a `Restart()` makes a new one).
+    transport: Option<Arc<dyn pob_net::Transport>>,
 }
 
 impl App {
     pub fn new(cfg: LaunchConfig) -> Self {
-        Self { launch: Launch::new(cfg) }
+        Self {
+            launch: Launch::new(cfg),
+            transport: None,
+        }
+    }
+
+    /// The application's `main`: the real network.
+    pub fn with_transport(mut self, t: Arc<dyn pob_net::Transport>) -> Self {
+        self.launch.set_transport(t.clone());
+        self.transport = Some(t);
+        self
     }
 }
 
@@ -355,7 +494,12 @@ impl MainObject for App {
         if self.launch.restart_requested.get() {
             let cfg = self.launch.cfg.clone();
             crate::modules::main::clear_main();
+            let no_ssl = self.launch.no_ssl.get();
             self.launch = Launch::new(cfg);
+            self.launch.no_ssl.set(no_ssl);
+            if let Some(t) = &self.transport {
+                self.launch.set_transport(t.clone());
+            }
             self.launch.on_init(frame);
         }
     }

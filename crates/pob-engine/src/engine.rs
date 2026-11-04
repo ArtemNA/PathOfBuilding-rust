@@ -436,13 +436,23 @@ impl Engine {
         let old: Vec<_> = self.model.tree.specs.iter().map(|s| s.nodes.clone()).collect();
         // `tostring(nil)` of `SkillsTab:Save`: upstream's live table still holds nil here, `load` would read a `false`
         let live = xml.replace(" includeInFullDPS=\"nil\"", "");
+        // `partyTab.actor` is what the last `ParseBuffs` left, not what the buffers say now (PartyTab.lua:353-360, an edit without "Rebuild All")
+        let party = std::mem::take(&mut self.model.party_imported_buffs);
+        // `build.timelessData` lives on: only a real load turns an absent `socketFilterDistance` into 0 (Build.lua:81, :993-1013)
+        let timeless = self.model.timeless_data.take();
         self.model = pob_build::load_build_xml(&live).map_err(|e| format!("XML: {e}"))?;
+        self.model.party_imported_buffs = party;
+        self.model.timeless_data = timeless;
         for (s, n) in self.model.tree.specs.iter_mut().zip(old) {
             s.nodes = n;
         }
         let nil_second = std::mem::take(&mut self.extras.nil_second_weapon);
+        let no_trade_weights = self.extras.no_trade_weights;
+        let nil_quality = self.extras.nil_default_gem_quality;
         self.extras = SaveExtras::from_xml(&xml)?;
         self.extras.nil_second_weapon = nil_second;
+        self.extras.no_trade_weights = no_trade_weights;
+        self.extras.nil_default_gem_quality = nil_quality;
         self.model.main_socket_group = main;
         Ok(())
     }
@@ -500,6 +510,11 @@ impl Engine {
     /// The run is of the current model: the next [`Engine::refresh`] (the `buildFlag` frame) keeps it and rebuilds the stat list.
     pub(crate) fn mark_run_fresh(&mut self) {
         self.run_fresh = true;
+    }
+
+    /// An edit after [`Engine::mark_run_fresh`] in the same frame.
+    pub(crate) fn mark_run_stale(&mut self) {
+        self.run_fresh = false;
     }
 
     /// `build.spec` is the kept object `spec`: the next run keeps it.

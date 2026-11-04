@@ -107,6 +107,8 @@ impl Engine {
         let st = self.result().env.config.clone();
         if let Some(set) = active_set_mut(self.model_mut()) {
             write_set(set, &st);
+            // a new build has no `<Config>`: what the next run reads is this set from now on, or `ConfigState::from_build` would start from the defaults
+            self.model_mut().has_config_section = true;
         }
     }
 

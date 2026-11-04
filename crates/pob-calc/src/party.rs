@@ -226,6 +226,167 @@ impl PartyTab {
     }
 }
 
+// --- the `label` texts of the simple views (:735-764, :901-984): read by the tab, no calc reads them --------------------------------
+
+/// `name..": "..effectMult.."%\n"` (a concat raises on nil).
+fn effect_line(name: &str, b: &PartyBuff) -> Result<String, String> {
+    let v = match &b.effect_mult {
+        Value::Num(n) => pob_lua::tostring_num(*n),
+        Value::Str(s) => s.to_string(),
+        other => {
+            return Err(format!(
+                "{PT}:907: attempt to concatenate field 'effectMult' (a {} value)",
+                other.type_name()
+            ));
+        }
+    };
+    Ok(format!("{name}: {v}%\n"))
+}
+
+/// The `table.sort`ed lines of a plain list (`pairs` over the names + the `Vaal` key, whose table has no `effectMult`).
+fn plain_lines(group: Option<&BuffGroup>) -> Result<Vec<String>, String> {
+    let mut lines = Vec::new();
+    if let Some(g) = group {
+        if g.vaal.is_some() {
+            return Err(format!("{PT}:953: attempt to concatenate field 'effectMult' (a nil value)"));
+        }
+        for (name, b) in &g.named {
+            lines.push(effect_line(name, b)?);
+        }
+    }
+    lines.sort_unstable_by(|a, b| a.as_bytes().cmp(b.as_bytes()));
+    Ok(lines)
+}
+
+/// `(auraMod.type == "FLAG" and "" or type.." ")..name..": "..tostring(value).."\n"` (:937, :945), two spaces in.
+fn mod_line(m: &Mod) -> String {
+    let ty = match m.ty {
+        Some(ModType::Flag) | None => String::new(),
+        Some(t) => format!("{} ", t.as_str()),
+    };
+    let v = match &m.value {
+        Value::Bool(b) => b.to_string(),
+        Value::Num(n) => pob_lua::tostring_num(*n),
+        Value::Str(s) => s.to_string(),
+        other => other.type_name().to_string(),
+    };
+    format!("  {ty}{}: {v}\n", m.name)
+}
+
+impl BuffList {
+    /// :902-949 `label.label` after `ParseBuffs(actor.Aura, buf, "Aura", label)`.
+    pub fn aura_label(&self) -> Result<String, String> {
+        let mut lines = Vec::new();
+        let aura = self.group("Aura");
+        let debuff = self.group("AuraDebuff");
+        if let Some(a) = aura {
+            for (name, b) in &a.named {
+                lines.push(effect_line(name, b)?);
+            }
+            for (name, b) in a.vaal.iter().flatten() {
+                lines.push(effect_line(name, b)?);
+            }
+        }
+        if let Some(d) = debuff {
+            for (name, b) in &d.named {
+                if aura.is_none_or(|a| !a.named.contains_key(name)) {
+                    lines.push(effect_line(name, b)?);
+                }
+            }
+            // :923 reads the global `aura` (nil): the condition always holds
+            for (name, b) in d.vaal.iter().flatten() {
+                lines.push(effect_line(name, b)?);
+            }
+        }
+        let mut out = "^7---------------------------\n".to_string();
+        if !lines.is_empty() {
+            lines.sort_unstable_by(|a, b| a.as_bytes().cmp(b.as_bytes()));
+            out.push_str(&lines.concat());
+            out.push_str("---------------------------\n");
+        }
+        if let Some(extra) = self.group("extraAura").and_then(|g| g.named.get("extraAura")) {
+            out.push_str("extraAuras:\n");
+            for m in &extra.mod_list {
+                out.push_str(&mod_line(m));
+            }
+            out.push_str("---------------------------\n");
+        }
+        if let Some(other) = self.group("otherEffects") {
+            out.push_str("otherEffects:\n");
+            if other.vaal.is_some() {
+                return Err(format!("{PT}:944: bad argument #1 to 'ipairs' (table expected, got nil)"));
+            }
+            for b in other.named.values() {
+                for m in &b.mod_list {
+                    out.push_str(&mod_line(m));
+                }
+            }
+            out.push_str("---------------------------\n");
+        }
+        Ok(out)
+    }
+
+    /// :950-983 `label.label` after `ParseBuffs` of "Warcry", "Link" or "Curse": the group of that name.
+    pub fn plain_label(&self, group: &str) -> Result<String, String> {
+        let lines = plain_lines(self.group(group))?;
+        if lines.is_empty() {
+            return Ok(String::new());
+        }
+        Ok(format!(
+            "^7---------------------------\n{}---------------------------\n",
+            lines.concat()
+        ))
+    }
+}
+
+/// :730-764 `label.label` after `ParseBuffs(list, buf, "EnemyMods", label)`: the groups of this buffer alone. `pairs(enemyModList)` (:752) goes by the string hashes of the process (R13):
+/// the port takes the order of insertion, or `order`, the names as a process of the original walked them (the gate's sample).
+pub fn enemy_mods_label(buf: &str, order: Option<&[String]>) -> Result<String, String> {
+    let mut groups: IndexMap<&str, Vec<(Value, Option<ModType>)>> = IndexMap::new();
+    let mut current: Option<&str> = None;
+    for line in lines(buf) {
+        if !line.contains('|') {
+            current = Some(line);
+            if !line.is_empty() {
+                groups.entry(line).or_default();
+            }
+        } else if let Some(m) = parse_formatted_source_mod(line) {
+            let Some(list) = current.and_then(|c| groups.get_mut(c)) else {
+                return Err(format!("{PT}:744: bad argument #1 to 'insert' (table expected, got nil)"));
+            };
+            list.push((m.value.clone(), m.ty));
+        }
+    }
+    if let Some(order) = order {
+        let at = |n: &str| order.iter().position(|o| o == n).unwrap_or(order.len());
+        groups.sort_by_key(|n, _| at(n));
+    }
+    let mut out = "^7---------------------------".to_string();
+    for (name, list) in &groups {
+        out.push('\n');
+        out.push_str(name);
+        out.push(':');
+        for (value, ty) in list {
+            // `mod[1] and "True" or mod[1]`: a value is never nil or false here (:513-517)
+            debug_assert!(!value.is_nil());
+            let ty = match ty {
+                Some(ModType::Flag) => "",
+                Some(t) => t.as_str(),
+                None => return Err(format!("{PT}:756: attempt to concatenate a nil value")),
+            };
+            out.push_str(" True ");
+            out.push_str(ty);
+            out.push_str(", ");
+        }
+    }
+    if groups.is_empty() {
+        out.push('\n');
+    } else {
+        out.push_str("\n---------------------------\n");
+    }
+    Ok(out)
+}
+
 /// `label[k] = v` (nil removes the key).
 fn set_out(out: &mut IndexMap<String, PartyOut>, k: String, v: Option<f64>) {
     match v {

@@ -549,6 +549,20 @@ impl SkillsTab {
         }
     }
 
+    /// :1409-1413 of ImportTab: `groupList.selIndex = nil`, `selValue = nil`, `SetDisplayGroup()`.
+    pub fn import_cleared(&self, g: &mut Gfx) {
+        self.sync_list();
+        self.group_list.sel_index.set(None);
+        *self.group_list.sel_value.borrow_mut() = None;
+        self.set_display_group(g, None);
+    }
+
+    /// `UpdateSocketGroups`, `AddUndoState` after a character import (ImportTab.lua:1483-1484).
+    pub fn after_import(&self, _g: &mut Gfx) {
+        self.sync_list();
+        self.add_undo_state(false);
+    }
+
     /// The confirmed part of `OnSelDelete` (SkillListControl.lua:175-183, :186-194).
     fn delete_group(&self, g: &mut Gfx, l: &ListControl<GroupRef>, index: usize, confirmed: bool) {
         let removed = l.list.borrow_mut().remove(index - 1);
@@ -1203,11 +1217,12 @@ impl SkillsTab {
             for g2 in e.socket_groups() {
                 if g2.slot.as_deref() == Some(slot.as_str()) {
                     for gem in &g2.gem_list {
-                        let ge = gem
-                            .granted_effect
-                            .as_ref()
-                            .and_then(|i| skills.get(i))
-                            .or_else(|| gem.gem_data.as_deref().and_then(gem_of).and_then(|d| skills.get(&d.granted_effect_id)));
+                        let ge = gem.granted_effect.as_ref().and_then(|i| skills.get(i)).or_else(|| {
+                            gem.gem_data
+                                .as_deref()
+                                .and_then(gem_of)
+                                .and_then(|d| skills.get(&d.granted_effect_id))
+                        });
                         if let Some(ge) = ge
                             && max_sockets > 0.0
                         {

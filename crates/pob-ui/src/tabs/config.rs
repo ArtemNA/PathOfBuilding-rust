@@ -1099,6 +1099,30 @@ impl ConfigTab {
         }
     }
 
+    /// `self.build.configTab.varControls[var]:SetSel(index)` (ImportTab.lua:1227).
+    pub fn import_set_sel(&self, g: &mut Gfx, var: &str, index: usize) {
+        if let Some(Kind::Drop(d)) = self.var_index.get(var).map(|i| &self.vars[*i].kind) {
+            d.set_sel(g, index as i64, false);
+        }
+    }
+
+    /// `setSelByVal(varControls[var], val)` (ImportTab.lua:1229-1235): every entry of that value, as the loop.
+    pub fn import_set_sel_by_val(&self, g: &mut Gfx, var: &str, val: &str) {
+        if let Some(Kind::Drop(d)) = self.var_index.get(var).map(|i| &self.vars[*i].kind) {
+            let hits: Vec<usize> = d
+                .list
+                .borrow()
+                .iter()
+                .enumerate()
+                .filter(|(_, v)| matches!(item_val(v), Some(InputValue::Str(s)) if s == val))
+                .map(|(i, _)| i + 1)
+                .collect();
+            for i in hits {
+                d.set_sel(g, i as i64, false);
+            }
+        }
+    }
+
     /// `self:BuildModList()` (:1130-1203) from a callback.
     pub fn build_mod_list(&self, g: &mut Gfx) {
         let sel = self.e_mut(|e| e.config_build_mod_list()).unwrap_or_else(|err| panic!("{err}"));

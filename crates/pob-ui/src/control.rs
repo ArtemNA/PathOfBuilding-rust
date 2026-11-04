@@ -403,6 +403,11 @@ pub trait Control: Any {
     }
 
     /// `selControl.imbuedSelect and selControl.dropped` (ControlHost.lua:55).
+    /// The control's value for the gates' state dumps: label, buffer, check state or selection.
+    fn debug_value(&self, _g: &Gfx) -> Option<serde_json::Value> {
+        None
+    }
+
     fn imbued_dropped(&self) -> bool {
         false
     }

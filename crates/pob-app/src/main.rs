@@ -67,6 +67,7 @@ impl MainObject for Runner {
             s["configReal"] = pob_ui::tabs::config::debug_input_state(frame);
             s["skillsReal"] = pob_ui::tabs::skills::debug_input_state(frame);
             s["itemsReal"] = pob_ui::tabs::items::debug_input_state(frame);
+            s["importReal"] = pob_ui::tabs::import::debug_input_state(frame);
             let tmp = format!("{p}.tmp");
             if std::fs::write(&tmp, s.to_string()).is_ok() {
                 let _ = std::fs::rename(&tmp, p);
@@ -141,7 +142,13 @@ fn main() {
     let runner = Runner {
         fps_log: args.iter().any(|a| a == "--fps-log").then_some((0, 0)),
         open: arg(&args, "--open"),
-        app: App::new(cfg),
+        app: {
+            // the only place the real network is turned on
+            let app = App::new(cfg).with_transport(std::sync::Arc::new(pob_net::UreqTransport));
+            // Main.lua:46-49
+            app.launch.no_ssl.set(args.iter().any(|a| a == "--no-ssl"));
+            app
+        },
         secs,
         start: Instant::now(),
         state_file: arg(&args, "--state-file"),
