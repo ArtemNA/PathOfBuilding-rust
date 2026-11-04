@@ -429,6 +429,9 @@ impl<M: MainObject> App<M> {
         if let Some(t) = req.title {
             live.window.set_title(&t);
         }
+        if req.foreground {
+            live.window.focus_window();
+        }
         if req.exit.is_some() {
             self.main.on_exit(&mut live.gfx);
             el.exit();

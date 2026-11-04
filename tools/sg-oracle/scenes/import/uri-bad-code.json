@@ -1,0 +1,38 @@
+{
+"net": [
+{
+"url": "https://pastebin.com/raw/abc123",
+"code": 200,
+"header": "HTTP/1.1 200 OK\r\n\r\n",
+"body": "not a build"
+}
+],
+"steps": [
+{
+"dump": true
+},
+{
+"netDeliver": true,
+"dump": true
+},
+{
+"cursor": [
+1200,
+790
+],
+"dump": true,
+"xml": true
+},
+{
+"waitAssets": true
+},
+{
+"cursor": [
+1200,
+790
+],
+"dump": true
+}
+],
+"uri": "pob://pastebin/abc123"
+}

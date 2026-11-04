@@ -1,5 +1,5 @@
 //! `Classes/CalcBreakdownControl.lua`: the breakdown popup of the Calcs tab and of the side bar. What goes in it is `pob_engine::calcs_tab`; here are the
-//! sizes, the position and the drawing. The item tooltips (`itemsTab:AddItemTooltip`, :285, :431, CalcPerform.lua:2139) wait for U6: such a cell highlights and shows no tooltip.
+//! sizes, the position and the drawing.
 
 use std::cell::{Cell, RefCell};
 use std::rc::{Rc, Weak};
@@ -13,7 +13,7 @@ use super::calcs::{CalcsTab, CellKey};
 use crate::control::{Control, ControlBase, ControlRef, Rect, WeakControl, anchor_weak, rect};
 use crate::controls::scroll_bar::ScrollBarControl;
 use crate::host::ControlHost;
-use crate::modules::main::{main, note_not_ported};
+use crate::modules::main::main;
 use crate::sg;
 use crate::tooltip::Tooltip;
 use crate::tree_view::PassiveTreeView;
@@ -359,8 +359,25 @@ impl CalcBreakdownControl {
                 }
                 t.draw(f, cx, row_y, Some((cw, 12.0)), view_port);
             }
-            BdHover::Item => {
-                note_not_ported("Classes/CalcBreakdownControl.lua:285/:431 itemsTab:AddItemTooltip: the engine's row keeps no item");
+            BdHover::Item(id) => {
+                let build = self.tab().build();
+                let items_tab = build.items_tab.borrow().clone().expect("itemsTab");
+                let item = items_tab.read(|e| match id {
+                    Some(i) => e.item_by_id(*i),
+                    // :2139 the row keeps the text only; the item of the requirement is one of the build's
+                    None => {
+                        let text = row.cells.get(key)?;
+                        e.item_order().into_iter().filter_map(|i| e.item_by_id(i)).find(|i| {
+                            crate::colors::color_code(&i.rarity).is_some_and(|c| format!("{c}{}", i.name) == *text)
+                        })
+                    }
+                });
+                let mut t = self.tooltip.borrow_mut();
+                t.clear(false);
+                if let Some(item) = item {
+                    items_tab.add_tooltip(&mut t, f, &item, None, false);
+                }
+                t.draw(f, cx, row_y, Some((cw, 12.0)), view_port);
             }
             BdHover::Node(Some((nx, ny))) => self.draw_node_viewer(f, view_port, (cx, cw, row_y), (*nx, *ny)),
             BdHover::Node(None) => {}
@@ -516,6 +533,11 @@ impl CalcBreakdownControl {
     }
 
     /// `debug`: the state the gate compares.
+    /// The lines of the tooltip of a cell.
+    pub fn debug_tooltip(&self) -> Vec<String> {
+        self.tooltip.borrow().lines.iter().map(|l| l.text.clone().unwrap_or_else(|| "<sep>".to_string())).collect()
+    }
+
     pub fn debug_dump(&self, g: &Gfx) -> serde_json::Value {
         let (x, y) = self.get_pos(g);
         let (w, h) = self.get_size(g);

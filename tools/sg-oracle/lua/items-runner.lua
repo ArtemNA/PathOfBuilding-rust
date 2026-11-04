@@ -54,6 +54,18 @@ do
 	end, 1)
 	writeAll(USER .. "/Path of Building/Builds/Spectre Test.xml", x)
 end
+-- U10: a build for a game version the program does not support (Build.lua:106-110)
+do
+	local x = readAll(POB_ROOT .. "spec/TestBuilds/3.13/OccVortex.xml"):gsub('targetVersion="[^"]*"', 'targetVersion="2_6"', 1)
+	writeAll(USER .. "/Path of Building/Builds/Old Version Test.xml", x)
+end
+-- U10: a skill with `minionUses` for the drag onto mainSkillMinion (the same edit as crates/pob-ui/tests/items.rs).
+do
+	local x = readAll(POB_ROOT .. "spec/TestBuilds/3.13/OccVortex.xml")
+	x = x:gsub('(<Skills [^>]*>)', function(m) return m .. '<Skill mainActiveSkillCalcs="1" enabled="true" mainActiveSkill="1"><Gem level="20" gemId="Metadata/Items/Gems/SkillGemAnimateGuardian" skillId="AnimateGuardian" qualityId="Default" quality="0" enabled="true" nameSpec="Animate Guardian"/></Skill>' end, 1)
+	x = x:gsub('mainSocketGroup="%d+"', 'mainSocketGroup="1"', 1)
+	writeAll(USER .. "/Path of Building/Builds/Guardian Test.xml", x)
+end
 -- ItemsTab.lua:1350-1366 and :1451-1469 over a public golden (the same edit as crates/pob-ui/tests/items.rs).
 do
 	local w = '<TradeSearchWeights><Stat stat="FullDPS" label="old label" weightMult="1.5"/><Stat stat="NoSuchStat" label="gone" weightMult="2"/><Stat stat="Life" label="zero" weightMult="0"/></TradeSearchWeights><TradeSearchWeights><Stat stat="TotalEHP" weightMult="0.125"/><Stat stat="Armour" label="not a number" weightMult="x"/></TradeSearchWeights>'
@@ -445,6 +457,23 @@ itemsDump = function(b)
 			if x and x.buf then q[n] = x.buf end
 			if n == "save" and x then q.saveLabel = x:GetProperty("label") q.saveTip = tipOf(x.tooltip) q.saveEnabled = x:IsEnabled() and true or false end
 		end
+		-- U10: the popups of AddImplicit, Crucible and the rest of Corrupt
+		for _, n in ipairs({ "implicit3", "implicit4", "implicit5", "modGroupSelect", "modSelectNode1", "modSelectNode2", "modSelectNode3", "modSelectNode4", "modSelectNode5" }) do
+			local x = p.controls[n]
+			if x and (n:sub(1, 8) ~= "implicit" or x:IsShown()) then q[n] = dropOf(x) end
+		end
+		if p.title == "Add Implicit to Item" or p.title == "Add Crucible Modifier to Item" or (p.title == "Corrupt Item" and p.height ~= 143) then q.height = p.height end
+		if p.title == "Add Implicit to Item" then q.modSelectLabelY = p.controls.modSelectLabel.y end
+		local rolls = { }
+		for k, x in pairs(p.controls) do
+			local i = type(k) == "string" and k:match("^rollRangeSlider(%d+)$")
+			if i and x:IsShown() then
+				local _, y = x:GetPos()
+				rolls[#rolls + 1] = string.format("%s|%.4f|%s|%s|%g", i, x.val, p.controls["rollRangeValue" .. i].label, p.controls["rollRangeLabel" .. i].label, y)
+			end
+		end
+		table.sort(rolls)
+		if rolls[1] then q.rolls = rolls end
 		if p.controls.searchResults then q.timelessTip = tipOf(p.controls.searchResults.tooltip) end
 		local db = p.controls.notableDB
 		if db then
@@ -687,6 +716,27 @@ function runner:Step()
 		-- every ASYNC tree image decoded (GetAsyncCount), then one frame
 		if GetAsyncCount() > 0 then sc.step = sc.step - 1 end
 		self:Frame()
+		return
+	end
+	if st.devAlt ~= nil then
+		-- U10: `launch.devMode` and the ALT key: the debugging lines of the tooltips
+		launch.devMode = st.devAlt
+		held["ALT"] = st.devAlt or nil
+		return
+	end
+	if st.affixOrder then
+		-- R13: the order of `pairs` the sorts of CorruptDisplayItem start from, for crates/pob-ui/tests/items.rs
+		local ids = { }
+		for id in pairs(main.modes.BUILD.itemsTab.displayItem.affixes) do ids[#ids + 1] = id end
+		for id in pairs(data.itemMods.ItemExclusive) do ids[#ids + 1] = id end
+		writeAll(OUT .. st.affixOrder .. ".json", json.encode({ ids = ids }) .. "\n")
+		return
+	end
+	if st.sharedSlotOrder then
+		-- R13: `pairs(value.slots)` of ItemSetListControl.lua:101
+		local ids = { }
+		for name in pairs(main.sharedItemSetList[1].slots) do ids[#ids + 1] = name end
+		writeAll(OUT .. st.sharedSlotOrder .. ".json", json.encode({ ids = ids }) .. "\n")
 		return
 	end
 	if st.closeBuild then

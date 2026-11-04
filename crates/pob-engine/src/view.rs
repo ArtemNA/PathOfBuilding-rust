@@ -10,15 +10,29 @@ use crate::lua::{LuaV, TableRef};
 pub struct ActorView<'a> {
     pub state: &'a ActorState,
     pub env: &'a Env,
+    /// An output table of `TradeQuery:ReduceOutput` in place of the actor's: only its stats exist.
+    small: Option<&'a std::collections::HashMap<String, f64>>,
 }
 
 impl<'a> ActorView<'a> {
     pub fn new(state: &'a ActorState, env: &'a Env) -> ActorView<'a> {
-        ActorView { state, env }
+        ActorView { state, env, small: None }
+    }
+
+    /// `state`'s actor with `output` being `small` (TradeQuery.lua:808-819).
+    pub fn small(state: &'a ActorState, env: &'a Env, small: &'a std::collections::HashMap<String, f64>) -> ActorView<'a> {
+        ActorView {
+            state,
+            env,
+            small: Some(small),
+        }
     }
 
     /// `output[k]`.
     pub fn get(&self, k: &str) -> LuaV<'a> {
+        if let Some(s) = self.small {
+            return s.get(k).map_or(LuaV::Nil, |v| LuaV::Num(*v));
+        }
         let out = &self.state.output;
         if let Some(v) = out.get(k) {
             return LuaV::from_out(v);

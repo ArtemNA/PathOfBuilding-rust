@@ -114,6 +114,8 @@ pub struct Launch {
     pub proxy_url: RefCell<Option<String>>,
     /// `--no-ssl` (Main.lua:46-49).
     pub no_ssl: Cell<bool>,
+    /// `arg[1]` (Main.lua:71): the URI the program was started with. Taken once: `arg[1] = nil` (:82), a restart has no argument.
+    pub start_uri: RefCell<Option<String>>,
     /// The running sub-scripts: `self.subScripts`.
     pub net: pob_net::Net,
     subs: RefCell<HashMap<u64, SubCallback>>,
@@ -188,6 +190,7 @@ impl Launch {
             connection_protocol: Cell::new(None),
             proxy_url: RefCell::new(None),
             no_ssl: Cell::new(false),
+            start_uri: RefCell::new(None),
             net: pob_net::Net::default(),
             subs: RefCell::new(HashMap::new()),
             hold_subs: Cell::new(false),

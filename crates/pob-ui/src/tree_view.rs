@@ -1,7 +1,6 @@
 //! `Classes/PassiveTreeView.lua` (upstream 3dbca4463): the passive tree viewer -- input, zoom/pan, hover/path, allocation, the artwork.
 //!
-//! Not ported here, each marked where the branch is (`UNIMPLEMENTED`, pushed once into [`PassiveTreeView::unimplemented`]): the jump to the
-//! items tab (U6), `launch.devModeAlt`.
+//! A branch not ported is marked where it is (`UNIMPLEMENTED`, pushed once into [`PassiveTreeView::unimplemented`]).
 
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -1375,6 +1374,15 @@ impl PassiveTreeView {
                         "GREEN/BLUE" => sg::set_draw_color(f, mix, dps, def),
                         _ => {}
                     }
+                }
+            } else if crate::launch::launch().dev_mode_alt.get() {
+                // :948-956 debug display
+                if node.extra() {
+                    sg::set_draw_color(f, 1.0, 0.0, 0.0);
+                } else if node.unknown() {
+                    sg::set_draw_color(f, 0.0, 1.0, 1.0);
+                } else {
+                    sg::set_draw_color(f, 0.0, 0.0, 0.0);
                 }
             } else if let Some((r, g, b)) = cmp_colour {
                 sg::set_draw_color(f, r, g, b);

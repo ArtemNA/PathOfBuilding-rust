@@ -65,6 +65,9 @@ const MINION_TAG_CRUCIBLE_UNIQUES: &[&str] = &[
     "United in Dream",
 ];
 
+/// The damage types of `onlyColdDamage` and the like (Item.lua:1256-1269).
+pub const DAMAGE_TYPES: [&str; 5] = ["cold", "fire", "lightning", "chaos", "physical"];
+
 /// `base.tags[key]`.
 fn base_has(tags: &pob_data::wire::OrderedMap<bool>, key: &str) -> bool {
     tags.get(key).copied().unwrap_or(false)
@@ -105,11 +108,10 @@ impl Item {
                 }
             }
         }
-        if self.restrict_damage_type
-            && let Some(only) = self.only_damage_type
-        {
+        // Item.lua:1734-1751: without a required type, nothing is restricted
+        if self.restrict_damage_type && self.only_damage_type.contains(&true) {
             for key in &m.mod_tags {
-                if ["fire", "cold", "lightning", "chaos", "physical"].contains(&key.as_str()) && key != only {
+                if DAMAGE_TYPES.iter().zip(self.only_damage_type).any(|(t, only)| !only && t == key) {
                     return 0.0;
                 }
             }

@@ -1,0 +1,175 @@
+{
+"steps": [
+{
+"open": "OccVortex"
+},
+{
+"cursorBuild": [
+"modeItems"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"cursor": [
+1200,
+790
+],
+"clipboard": "Rarity: UNIQUE\nCane of Kulemak\nSerpentine Staff\nSource: Drops from unique{Catarina, Master of Undeath}\nCrafted: true\nRequires Level 68\nImplicits: 1\n+22% Chance to Block Attack Damage\n(60-90)% increased Unveiled Modifier magnitudes\n",
+"hold": [
+"CTRL"
+],
+"events": [
+[
+"KeyDown",
+"v"
+],
+[
+"KeyUp",
+"v"
+]
+],
+"dump": true
+},
+{
+"release": [
+"CTRL"
+]
+},
+{
+"cursor": [
+1200,
+790
+],
+"dump": true
+},
+{
+"cursor": [
+1200,
+790
+],
+"clipboard": "Rarity: UNIQUE\nAtziri's Rule\nJudgement Staff\nVariant: Pre 3.25.0\nVariant: Pre 3.29.0\nVariant: Current\nSource: Drops from unique{Atziri, Queen of the Vaal} in normal{The Alluring Abyss}\nImplicits: 2\n{variant:2,3}+25% Chance to Block Attack Damage\n{variant:1}+20% Chance to Block Spell Damage\nGrants Level 20 Queen's Demand Skill\nQueen's Demand can Trigger Level 20 Flames of Judgement\nQueen's Demand can Trigger Level 20 Storm of Judgement\n{variant:3}(100-300)% increased Spell Critical Strike Chance\nCannot be Stunned\nDamage cannot be Reflected\n",
+"hold": [
+"CTRL"
+],
+"events": [
+[
+"KeyDown",
+"v"
+],
+[
+"KeyUp",
+"v"
+]
+],
+"dump": true
+},
+{
+"release": [
+"CTRL"
+]
+},
+{
+"cursorItem": [
+"displayItemAddCrucible"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"cursorPopup": [
+"close"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"cursor": [
+1200,
+790
+],
+"clipboard": "Rarity: UNIQUE\nClayshaper\nRock Breaker\nVariant: Pre 2.6.0\nVariant: Pre 3.19.0\nVariant: Current\nImplicits: 2\n{variant:2,3}15% reduced Enemy Stun Threshold\n{variant:1}40% increased Stun Duration on Enemies\nGrants Level 12 Summon Stone Golem Skill\nAdds (24-30) to (34-40) Physical Damage\n(8-10)% increased Attack Speed\n{variant:1,2}Minions have (20-30)% increased maximum Life\n+1 to maximum number of Summoned Golems\n{variant:1,2}Minions deal (5-8) to (12-16) additional Attack Physical Damage\n{variant:3}Golems have (96-120) to (132-160) Added Attack Physical Damage\n",
+"hold": [
+"CTRL"
+],
+"events": [
+[
+"KeyDown",
+"v"
+],
+[
+"KeyUp",
+"v"
+]
+],
+"dump": true
+},
+{
+"release": [
+"CTRL"
+]
+},
+{
+"cursorItem": [
+"displayItemAddCrucible"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"cursorPopup": [
+"close"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"closeBuild": true
+}
+]
+}

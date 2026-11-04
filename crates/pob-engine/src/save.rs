@@ -167,6 +167,8 @@ pub struct SaveExtras {
     pub no_trade_weights: bool,
     /// No `SkillsTab:Load` ran and no edit: `Save` writes `tostring(nil)` (SkillsTab.lua:96, :577).
     pub nil_default_gem_quality: bool,
+    /// The build has no `<Skills>`: `SkillsTab:Load` does not run and its controls keep the constructor's values.
+    pub no_skills_section: bool,
 }
 
 /// One `statSort` of [`SaveExtras::trade_search_weights`].
@@ -202,6 +204,7 @@ impl Default for SaveExtras {
             trade_search_weights: Vec::new(),
             no_trade_weights: false,
             nil_default_gem_quality: false,
+            no_skills_section: false,
         }
     }
 }
@@ -303,6 +306,7 @@ impl SaveExtras {
         }
         // SkillsTab.lua:96 `self.defaultGemQuality = main.defaultGemQuality`: nil until `Load` (:536) or the edit (:145)
         x.nil_default_gem_quality = !root.child_elements().any(|n| n.name == "Skills");
+        x.no_skills_section = x.nil_default_gem_quality;
         // Build.lua:2244-2252: the first `<Import>`'s importLink
         x.import.build_import_link = root
             .child_elements()

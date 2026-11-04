@@ -278,6 +278,10 @@ local function dump(st)
 		d.popupTitle = p.title
 		d.popupRect = table.concat({ p:GetPos() }, ",") .. "," .. table.concat({ p:GetSize() }, ",")
 		d.popup = controlsDump(p)
+		if st.buttonTip then
+			d.buttonTip = { }
+			for i, l in ipairs(p.controls[st.buttonTip].tooltip.lines) do d.buttonTip[i] = l.text or "<sep>" end
+		end
 	end
 	local b = main.modes.BUILD
 	if b.itemsTab then

@@ -1,7 +1,6 @@
 //! `Classes/TradeQuery.lua`: the "Trader" popup of the Items tab, its rows, the search weights and the results, `TradeStatWeightMultiplierListControl.lua`.
 //! Requests: `requests.rs`; the weights of the mods: `generator.rs`; `Buy similar`: `buy_similar.rs`.
-//! Not ported: `PullLeagueList` (:79-108, no caller upstream); the slider's `tooltip.Draw` replacement (:733-741, a slider without a tooltip text never calls it);
-//! the node compare lines of a Megalomaniac row's tooltip (:1225-1238, `AddStatComparesToTooltip` over `ReduceOutput` tables; a note in the tooltip).
+//! Not ported: `PullLeagueList` (:79-108, no caller upstream); the slider's `tooltip.Draw` replacement (:733-741, a slider without a tooltip text never calls it).
 
 pub mod buy_similar;
 pub mod dkjson;
@@ -1675,7 +1674,7 @@ impl TradeQuery {
                 tooltip.clear(false);
                 t.tab()
                     .add_tooltip(tooltip, g, &item, t.tooltip_slot(&st2, active2.as_ref()).as_ref(), false);
-                t.megalomaniac_tooltip(tooltip, g, &st2);
+                t.megalomaniac_tooltip(tooltip, g, &st2, row, pb);
                 tooltip.add_separator(Some(10.0));
                 tooltip.add_line(
                     g,
@@ -1734,7 +1733,7 @@ impl TradeQuery {
             let item = Rc::new(Item::parse_with(&raw, None, false));
             t.tab()
                 .add_tooltip(tooltip, g, &item, t.tooltip_slot(&st2, active2.as_ref()).as_ref(), true);
-            t.megalomaniac_tooltip(tooltip, g, &st2);
+            t.megalomaniac_tooltip(tooltip, g, &st2, row, idx);
         });
         let m = self.me.borrow().clone();
         import
@@ -1805,10 +1804,30 @@ impl TradeQuery {
             .map(|e| e.item.clone())
     }
 
-    /// `addMegalomaniacCompareToTooltipIfApplicable` (:1225-1238), without the compare lines over reduced tables: see the module's head.
-    fn megalomaniac_tooltip(&self, _tooltip: &mut Tooltip, _g: &Gfx, st: &SlotTable) {
-        if st.slot_name == "Megalomaniac" {
-            crate::modules::main::note_not_ported("Classes/TradeQuery.lua:1236 AddStatComparesToTooltip over ReduceOutput tables");
+    /// `addMegalomaniacCompareToTooltipIfApplicable(tooltip, result_index)` (:1225-1238).
+    fn megalomaniac_tooltip(&self, tooltip: &mut Tooltip, g: &Gfx, st: &SlotTable, row: usize, index: usize) {
+        if st.slot_name != "Megalomaniac" {
+            return;
+        }
+        for entry in self.get_result_evaluation(row, index) {
+            tooltip.add_separator(Some(10.0));
+            let dns = entry.dns.as_ref().expect("evaluationEntry.DNs");
+            let node_combo = dns.join(" ^8+^7 ");
+            let base = self.only_weighted_base_output.borrow().get(&(row, index)).cloned().unwrap_or_default();
+            let lines = self
+                .tab()
+                .read(|e| {
+                    e.stat_compare_small(
+                        &base,
+                        &entry.output,
+                        &format!("^8Allocating ^7{node_combo}^8 will give You:"),
+                        dns.len() as f64 + 2.0,
+                    )
+                })
+                .unwrap_or_else(|er| panic!("{er}"));
+            for l in lines {
+                tooltip.add_line(g, 14.0, Some(&l));
+            }
         }
     }
 

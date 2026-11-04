@@ -1,0 +1,105 @@
+{
+"steps": [
+{
+"open": "Guardian Test"
+},
+{
+"cursorBuild": [
+"modeItems"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"cursor": [
+1200,
+790
+],
+"dump": true,
+"shot": "u10-minion-tab"
+},
+{
+"cursorItemRow": [
+"itemList",
+1
+]
+},
+{
+"hold": [
+"LEFTBUTTON"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"cursorBuild": [
+"mainSkillMinion"
+],
+"dump": true,
+"shot": "u10-minion-drag"
+},
+{
+"release": [
+"LEFTBUTTON"
+],
+"events": [
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"cursor": [
+1200,
+790
+],
+"dump": true
+},
+{
+"cursor": [
+1200,
+790
+],
+"hold": [
+"CTRL"
+],
+"events": [
+[
+"KeyDown",
+"s"
+],
+[
+"KeyUp",
+"s"
+]
+],
+"dump": true,
+"file": "Guardian Test.xml",
+"fileOut": "u10-minion-save.xml"
+},
+{
+"release": [
+"CTRL"
+]
+},
+{
+"closeBuild": true
+}
+]
+}

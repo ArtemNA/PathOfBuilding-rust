@@ -22,7 +22,7 @@ use crate::controls::scroll_bar::ScrollBarControl;
 use crate::host::{ControlHost, InputEvent, InputEvents, ipairs};
 use crate::item_tooltip::{CompareSlot, ItemTooltipArgs, add_item_tooltip};
 use crate::modules::build::BuildMode;
-use crate::modules::main::{BareControl, main, note_not_ported};
+use crate::modules::main::{BareControl, main};
 use crate::sg;
 use crate::tooltip::Tooltip;
 use crate::undo::{UndoHandler, UndoHost};
@@ -415,6 +415,13 @@ pub fn wiki_open_item(g: &mut Gfx, item: &Item) {
     wiki_open(g, &name);
 }
 
+/// `itemLib.wiki.openGem(gemData)` of a gem (ItemTools.lua:456-468).
+pub fn wiki_open_gem(g: &mut Gfx, d: &pob_data::gems::GemEntry) {
+    let support = pob_data::skills::skills().get(&d.granted_effect_id).is_some_and(|x| x.support);
+    let name = if support { format!("{} Support", d.name) } else { d.name.clone() };
+    wiki_open(g, &name);
+}
+
 /// `itemLib.wiki.open(name)` (ItemTools.lua:471-476).
 pub fn wiki_open(g: &mut Gfx, name: &str) {
     let route = name.replace(' ', "_");
@@ -726,6 +733,46 @@ impl ItemsTab {
     }
 
     /// `new("Item"):Item(raw)` + `NormaliseQuality` + `AddItem(newItem, true)` + `AddForbiddenJewelCounterpart` (ItemSlotControl.lua:133-137 and the lists).
+    /// `ItemsTab:EquipItemInSet(item, itemSetId)` (:1673-1702).
+    pub(crate) fn equip_item_in_set(&self, g: &mut Gfx, value: &ItemRow, set_id: f64) {
+        let item = match value {
+            ItemRow::Id(id) => self.read(|e| e.item_by_id(*id)).expect("item"),
+            ItemRow::Obj(i) => i.clone(),
+        };
+        let mut slot_name = item.get_primary_slot();
+        let second = self.read(|e| e.item_sets().iter().find(|s| s.id == set_id).is_some_and(|s| s.use_second_weapon_set));
+        if self.slot(&slot_name).weapon_set.get() == Some(1.0) && second {
+            slot_name = format!("{slot_name} Swap");
+        }
+        let known = item.id.is_some_and(|id| self.read(|e| e.item_by_id(id)).is_some());
+        let id = if known {
+            item.id.expect("id")
+        } else {
+            let raw = item.raw.clone();
+            self.add_item(g, &Item::parse_with(&raw, None, false), true, None)
+        };
+        let item = self.read(|e| e.item_by_id(id)).expect("item");
+        let alt_slot = pob_items::lua::gsub(&slot_name, "1", "2", None);
+        if sg::is_key_down(g, "SHIFT") && self.read(|e| e.is_item_valid_in_set(&item, &alt_slot, set_id)) {
+            slot_name = alt_slot.clone();
+        }
+        if set_id == self.read(Engine::active_item_set_id) {
+            self.slot(&slot_name).set_sel_item_id(id);
+        } else {
+            self.edit(|e| {
+                e.set_item_set_slot(set_id, &slot_name, id);
+                let alt = e.item_sets().iter().find(|s| s.id == set_id).and_then(|s| s.slots.get(&alt_slot)).map_or(0.0, |s| s.item_id);
+                if alt != 0.0 && e.item_by_id(alt).is_none_or(|i| !e.is_item_valid_in_set(&i, &alt_slot, set_id)) {
+                    e.set_item_set_slot(set_id, &alt_slot, 0.0);
+                }
+                Ok(())
+            });
+        }
+        self.populate_slots(g);
+        self.add_undo_state(false);
+        self.build().build_flag.set(true);
+    }
+
     pub fn add_new_from_raw(&self, g: &mut Gfx, raw: &str) -> f64 {
         let mut it = Item::parse_with(raw, None, false);
         it.normalise_quality();
@@ -1422,9 +1469,6 @@ impl ItemsTab {
 
     /// The Manage popup (:2666-2676).
     pub(crate) fn open_item_set_manage_popup(&self, g: &mut Gfx) {
-        note_not_ported(
-            "Classes/ItemSetListControl.lua:89-110, SharedItemSetListControl.lua:18-112: drag between the set lists, Delete and Rename of a shared set",
-        );
         let (set_list, shared_list) = new_manage_lists(g, self.me.clone());
         *self.set_list.borrow_mut() = Rc::downgrade(&set_list);
         *self.shared_set_list.borrow_mut() = Rc::downgrade(&shared_list);
@@ -1512,6 +1556,62 @@ impl ItemsTab {
             Some("save"),
             Some("edit"),
             Some("cancel"),
+            None,
+        );
+    }
+}
+
+impl ItemsTab {
+    /// `SharedItemSetList:RenameSet(sharedItemSet)` (SharedItemSetListControl.lua:33-50).
+    pub(crate) fn rename_shared_set_popup(&self, g: &mut Gfx, index: usize) {
+        let title = main().shared_item_set_list.borrow()[index - 1].title.clone();
+        let save: Rc<RefCell<Option<Rc<ButtonControl>>>> = Rc::new(RefCell::new(None));
+        let s1 = save.clone();
+        let edit = EditControl::new(
+            g,
+            None,
+            rect(0.0, 40.0, 350.0, 20.0),
+            EditArgs {
+                init: title.clone(),
+                limit: Some(100),
+                change_func: Some(Rc::new(move |_g: &mut Gfx, buf: &str, _: bool| {
+                    let ok = buf.chars().any(|c| !c.is_whitespace());
+                    if let Some(b) = s1.borrow().as_ref() {
+                        b.base.enabled.set(ok);
+                    }
+                })),
+                ..EditArgs::default()
+            },
+        );
+        let me = self.me.clone();
+        let e2 = edit.clone();
+        let btn = ButtonControl::new(None, rect(-45.0, 70.0, 80.0, 20.0), "Save".to_string(), move |_g| {
+            main().shared_item_set_list.borrow_mut()[index - 1].title = Some(e2.buf.borrow().clone());
+            me.upgrade().expect("itemsTab").undo.mod_flag.set(true);
+            main().close_popup();
+        });
+        btn.base.enabled.set(false);
+        *save.borrow_mut() = Some(btn.clone());
+        let mut controls: IndexMap<String, ControlRef> = IndexMap::new();
+        controls.insert(
+            "label".into(),
+            LabelControl::new(None, rect(0.0, 20.0, 0.0, 16.0), "^7Enter name for this item set:".to_string()),
+        );
+        controls.insert("edit".into(), edit);
+        controls.insert("save".into(), btn);
+        controls.insert(
+            "cancel".into(),
+            ButtonControl::new(None, rect(45.0, 70.0, 80.0, 20.0), "Cancel".to_string(), |_g| main().close_popup()),
+        );
+        main().open_popup(
+            g,
+            370.0,
+            100.0,
+            if title.is_some() { "Rename" } else { "Set Name" },
+            controls,
+            Some("save"),
+            Some("edit"),
+            None,
             None,
         );
     }
@@ -1839,6 +1939,10 @@ impl ListHooks<f64> for SetListHooks {
         tooltip.clear(false);
         self.0.upgrade().expect("itemsTab").add_item_set_tooltip(tooltip, g, *id);
     }
+    /// ItemSetListControl.lua:89-91: `ItemList`, `itemSets[id]`.
+    fn get_drag_value(&self, _l: &ListControl<f64>, _index: usize, id: &f64) -> (String, f64) {
+        ("ItemList".to_string(), *id)
+    }
     fn on_order_change(&self, l: &ListControl<f64>, _old: usize, _new: usize) {
         let t = self.0.upgrade().expect("itemsTab");
         let order = l.list.borrow().clone();
@@ -1931,6 +2035,46 @@ impl ListHooks<usize> for SharedSetHooks {
                 let item = Item::parse_with(raw, None, false);
                 tooltip.add_line(g, 16.0, Some(&format!("^7{}: {}{}", s.label.borrow(), cc(&item.rarity), item.name)));
             }
+        }
+    }
+    /// SharedItemSetListControl.lua:67-69: `SharedItemList`, the set at its place in `main.sharedItemSetList`.
+    fn get_drag_value(&self, _l: &ListControl<usize>, index: usize, _v: &usize) -> (String, usize) {
+        ("SharedItemList".to_string(), index - 1)
+    }
+    /// The list is `main.sharedItemSetList` itself (:15).
+    fn on_order_change(&self, _l: &ListControl<usize>, old: usize, new: usize) {
+        let m = main();
+        let mut sets = m.shared_item_set_list.borrow_mut();
+        let set = sets.remove(old - 1);
+        sets.insert(new - 1, set);
+    }
+    /// SharedItemSetListControl.lua:97-103
+    fn on_sel_delete(&self, _l: &ListControl<usize>, g: &mut Gfx, index: usize, _v: &usize) {
+        let title = main().shared_item_set_list.borrow()[index - 1].title.clone();
+        let w = self.0.clone();
+        main().open_confirm_popup(
+            g,
+            "Delete Item Set",
+            &format!(
+                "Are you sure you want to delete '{}' from the shared item set list?",
+                title.as_deref().unwrap_or("Default")
+            ),
+            "Delete",
+            Rc::new(move |_g: &mut Gfx| {
+                main().shared_item_set_list.borrow_mut().remove(index - 1);
+                let t = w.upgrade().expect("itemsTab");
+                let l = t.shared_set_list.borrow().upgrade().expect("sharedList");
+                l.list.borrow_mut().remove(index - 1);
+                l.sel_index.set(None);
+                *l.sel_value.borrow_mut() = None;
+            }),
+            None,
+        );
+    }
+    /// SharedItemSetListControl.lua:105-109
+    fn on_sel_key_down(&self, _l: &ListControl<usize>, g: &mut Gfx, index: usize, _v: &usize, key: &str) {
+        if key == "F2" {
+            self.0.upgrade().expect("itemsTab").rename_shared_set_popup(g, index);
         }
     }
 }
@@ -2026,9 +2170,50 @@ fn new_manage_lists(g: &mut Gfx, tab: Weak<ItemsTab>) -> (Rc<ListControl<f64>>, 
         true,
         (0..n).collect(),
         false,
-        Box::new(SharedSetHooks(tab)),
+        Box::new(SharedSetHooks(tab.clone())),
     );
     *shared.default_text.borrow_mut() = Some("^x7F7F7FThis is a list of item sets that will be shared\nbetween all of your builds.\nYou can add sets to this list by dragging them\nfrom the build's set list.".to_string());
+    let sr: ControlRef = shared.clone();
+    let w = Rc::downgrade(&shared);
+    let delete = ButtonControl::new(
+        anchor("BOTTOMLEFT", &sr, "TOP"),
+        rect(2.0, -4.0, 60.0, 18.0),
+        "Delete".to_string(),
+        move |g| {
+            let l = w.upgrade().expect("list");
+            let v = *l.sel_value.borrow();
+            if let (Some(i), Some(v)) = (l.sel_index.get(), v) {
+                l.hooks.on_sel_delete(&l, g, i, &v);
+            }
+        },
+    );
+    let w = Rc::downgrade(&shared);
+    delete
+        .base
+        .enabled
+        .set_fn(move |_| w.upgrade().expect("list").sel_value.borrow().is_some());
+    let w = Rc::downgrade(&shared);
+    let t1 = tab.clone();
+    let rename = ButtonControl::new(
+        anchor("BOTTOMRIGHT", &sr, "TOP"),
+        rect(-2.0, -4.0, 60.0, 18.0),
+        "Rename".to_string(),
+        move |g| {
+            let l = w.upgrade().expect("list");
+            let i = l.sel_index.get().expect("selIndex");
+            t1.upgrade().expect("itemsTab").rename_shared_set_popup(g, i);
+        },
+    );
+    let w = Rc::downgrade(&shared);
+    rename
+        .base
+        .enabled
+        .set_fn(move |_| w.upgrade().expect("list").sel_value.borrow().is_some());
+    shared.host.add("delete", delete);
+    shared.host.add("rename", rename);
+    // :2670-2671
+    set_list.set_drag_target_list(vec![Rc::new(SharedSetTarget(Rc::downgrade(&shared), tab.clone()))]);
+    shared.set_drag_target_list(vec![Rc::new(SetListTarget(Rc::downgrade(&set_list), tab))]);
     let _ = g;
     (set_list, shared)
 }
@@ -3309,16 +3494,16 @@ impl ItemsTab {
                 .collect()
         };
         let list_target = |l: &Rc<ListControl<ItemRow>>| Rc::new(SelfTarget(Rc::downgrade(l))) as Rc<dyn DragTarget<ItemRow>>;
-        note_not_ported_once_minion();
-        let mut targets = vec![list_target(&shared)];
+        let minion_target = || Rc::new(MinionTarget(self.me.clone())) as Rc<dyn DragTarget<ItemRow>>;
+        let mut targets = vec![list_target(&shared), minion_target()];
         targets.extend(slot_targets());
         item_list.set_drag_target_list(targets);
         for db in [&unique_db, &rare_db] {
-            let mut targets = vec![list_target(&item_list), list_target(&shared)];
+            let mut targets = vec![list_target(&item_list), list_target(&shared), minion_target()];
             targets.extend(slot_targets());
             db.list.set_drag_target_list(targets);
         }
-        let mut targets = vec![list_target(&item_list)];
+        let mut targets = vec![list_target(&item_list), minion_target()];
         targets.extend(slot_targets());
         shared.set_drag_target_list(targets);
     }
@@ -3493,6 +3678,54 @@ impl ItemsTab {
                     q.insert("saveEnabled".to_string(), json!(x.is_enabled(g)));
                 }
             }
+            // U10: the popups of AddImplicit, Crucible and the rest of Corrupt
+            for n in ["implicit3", "implicit4", "implicit5", "modGroupSelect", "modSelectNode1", "modSelectNode2", "modSelectNode3", "modSelectNode4", "modSelectNode5"] {
+                if !names.iter().any(|x| x == n) {
+                    continue;
+                }
+                let c = p.control(n);
+                let any: &dyn std::any::Any = &*c;
+                if let Some(x) = any.downcast_ref::<DropDownControl>()
+                    && (!n.starts_with("implicit") || c.is_shown(g))
+                {
+                    q.insert(n.to_string(), drop(x));
+                }
+            }
+            let title = p.title.get(g);
+            let height = p.base.height.get(g);
+            if title == "Add Implicit to Item" || title == "Add Crucible Modifier to Item" || (title == "Corrupt Item" && height != 143.0) {
+                q.insert("height".to_string(), json!(height));
+            }
+            if names.iter().any(|x| x == "modSelectLabel") && title == "Add Implicit to Item" {
+                q.insert("modSelectLabelY".to_string(), json!(p.control("modSelectLabel").base().y.get(g)));
+            }
+            let mut rolls: Vec<String> = Vec::new();
+            for n in &names {
+                if let Some(i) = n.strip_prefix("rollRangeSlider") {
+                    let c = p.control(n);
+                    let any: &dyn std::any::Any = &*c;
+                    if let Some(x) = any.downcast_ref::<crate::controls::scroll_bar::SliderControl>()
+                        && c.is_shown(g)
+                    {
+                        let label_of = |k: String| {
+                            let v = p.control(&k);
+                            let a: &dyn std::any::Any = &*v;
+                            a.downcast_ref::<LabelControl>().expect("label").label.get(g)
+                        };
+                        rolls.push(format!(
+                            "{i}|{:.4}|{}|{}|{}",
+                            x.val.get(),
+                            label_of(format!("rollRangeValue{i}")),
+                            label_of(format!("rollRangeLabel{i}")),
+                            c.get_pos(g).1
+                        ));
+                    }
+                }
+            }
+            if !rolls.is_empty() {
+                rolls.sort();
+                q.insert("rolls".to_string(), json!(rolls));
+            }
             if names.iter().any(|x| x == "searchResults")
                 && let Some(l) = super::timeless::debug_results_tooltip(&p.control("searchResults"))
             {
@@ -3537,14 +3770,164 @@ impl ItemsTab {
     }
 }
 
-/// :1221-1229 `build.controls.mainSkillMinion` in the drag targets, Build.lua:541-550.
-fn note_not_ported_once_minion() {
-    note_not_ported("Classes/ItemsTab.lua:1221-1229, Modules/Build.lua:541-550: dragging an item onto mainSkillMinion (EquipItemInSet)");
+/// `build.controls.mainSkillMinion` in the drag targets (:1221-1229, Build.lua:541-550).
+struct MinionTarget(Weak<ItemsTab>);
+
+impl MinionTarget {
+    fn control(&self) -> Rc<DropDownControl> {
+        self.0.upgrade().expect("itemsTab").build().c().main_skill_minion.clone()
+    }
 }
 
-/// `note_not_ported` re-exported for `item_editor.rs`.
-pub(crate) fn note(what: &str) {
-    note_not_ported(what);
+impl DragTarget<ItemRow> for MinionTarget {
+    fn can_receive_drag(&self, drag_type: &str, value: &ItemRow) -> bool {
+        if drag_type != "Item" || minion_item_set(&self.control()).is_none() {
+            return false;
+        }
+        let t = self.0.upgrade().expect("itemsTab");
+        t.read(|e| {
+            let item = match value {
+                ItemRow::Id(id) => e.item_by_id(*id),
+                ItemRow::Obj(i) => Some(i.clone()),
+            };
+            item.is_some_and(|i| e.main_skill_minion_uses(&i.get_primary_slot()))
+        })
+    }
+    fn set_other_drag_source(&self, on: bool) {
+        self.control().other_drag_source.set(on);
+    }
+    fn other_drag_source(&self) -> bool {
+        self.control().other_drag_source.get()
+    }
+    fn is_mouse_over(&self, g: &Gfx) -> bool {
+        self.control().mouse_over(g).0
+    }
+    fn receive_drag(&self, g: &mut Gfx, _drag_type: &str, value: &ItemRow) {
+        let set = minion_item_set(&self.control()).expect("itemSetId");
+        self.0.upgrade().expect("itemsTab").equip_item_in_set(g, value, set);
+    }
+}
+
+/// `control.list[control.selIndex].itemSetId`.
+fn minion_item_set(c: &DropDownControl) -> Option<f64> {
+    let v = c.get_sel_value()?;
+    match v.data.as_ref()?.downcast_ref::<pob_engine::shell::MinionEntry>()? {
+        pob_engine::shell::MinionEntry::ItemSet { item_set_id, .. } => Some(*item_set_id),
+        _ => None,
+    }
+}
+
+/// `controls.sharedList` as a member of `controls.setList.dragTargetList` (:2670).
+struct SharedSetTarget(Weak<ListControl<usize>>, Weak<ItemsTab>);
+
+impl DragTarget<f64> for SharedSetTarget {
+    /// SharedItemSetListControl.lua:71-73
+    fn can_receive_drag(&self, drag_type: &str, _value: &f64) -> bool {
+        drag_type == "ItemList"
+    }
+    fn set_other_drag_source(&self, on: bool) {
+        self.0.upgrade().expect("list").other_drag_source.set(on);
+    }
+    fn other_drag_source(&self) -> bool {
+        self.0.upgrade().expect("list").other_drag_source.get()
+    }
+    fn is_mouse_over(&self, g: &Gfx) -> bool {
+        self.0.upgrade().expect("list").mouse_over(g)
+    }
+    /// SharedItemSetListControl.lua:75-95. `self.dragIndex` is never set: the set goes to the end.
+    fn receive_drag(&self, _g: &mut Gfx, drag_type: &str, value: &f64) {
+        if drag_type != "ItemList" {
+            return;
+        }
+        let t = self.1.upgrade().expect("itemsTab");
+        let mut slots = IndexMap::new();
+        let title = t.read(|e| {
+            let active = *value == e.active_item_set_id();
+            let set = e.item_sets().iter().find(|s| s.id == *value).expect("item set");
+            for s in t.slots.borrow().values() {
+                if s.node_id.is_none() {
+                    let id = if active {
+                        s.sel_item_id.get()
+                    } else {
+                        set.slots.get(&s.slot_name).map_or(0.0, |x| x.item_id)
+                    };
+                    if id != 0.0
+                        && let Some(item) = e.item_by_id(id)
+                    {
+                        // `new("Item"):Item(rawItem.raw)`: an item set always has an id, so no `NormaliseQuality`
+                        slots.insert(s.slot_name.clone(), item.build_raw());
+                    }
+                }
+            }
+            set.title.clone()
+        });
+        let m = main();
+        m.shared_item_set_list.borrow_mut().push(crate::modules::main::SharedItemSet { title, slots });
+        let l = self.0.upgrade().expect("list");
+        let n = l.list.borrow().len();
+        l.list.borrow_mut().push(n);
+    }
+}
+
+thread_local! {
+    /// `pairs(value.slots)` of a process of the original (R13): which item gets the next id (ItemSetListControl.lua:101). Without it: the order of the set.
+    static SHARED_SLOT_ORDER_SAMPLE: RefCell<Option<Vec<String>>> = const { RefCell::new(None) };
+}
+
+/// See `SHARED_SLOT_ORDER_SAMPLE`.
+pub fn set_shared_slot_order_sample(order: Option<Vec<String>>) {
+    SHARED_SLOT_ORDER_SAMPLE.with_borrow_mut(|s| *s = order);
+}
+
+/// `controls.setList` as a member of `controls.sharedList.dragTargetList` (:2671).
+struct SetListTarget(Weak<ListControl<f64>>, Weak<ItemsTab>);
+
+impl DragTarget<usize> for SetListTarget {
+    /// ItemSetListControl.lua:93-95
+    fn can_receive_drag(&self, drag_type: &str, _value: &usize) -> bool {
+        drag_type == "SharedItemList"
+    }
+    fn set_other_drag_source(&self, on: bool) {
+        self.0.upgrade().expect("list").other_drag_source.set(on);
+    }
+    fn other_drag_source(&self) -> bool {
+        self.0.upgrade().expect("list").other_drag_source.get()
+    }
+    fn is_mouse_over(&self, g: &Gfx) -> bool {
+        self.0.upgrade().expect("list").mouse_over(g)
+    }
+    /// ItemSetListControl.lua:97-110
+    fn receive_drag(&self, g: &mut Gfx, drag_type: &str, value: &usize) {
+        if drag_type != "SharedItemList" {
+            return;
+        }
+        let t = self.1.upgrade().expect("itemsTab");
+        let (title, slots) = {
+            let m = main();
+            let sets = m.shared_item_set_list.borrow();
+            (sets[*value].title.clone(), sets[*value].slots.clone())
+        };
+        let l = self.0.upgrade().expect("list");
+        let at = l.sel_drag_index.get().unwrap_or(l.list.borrow().len() + 1);
+        let id = t.edit(|e| Ok(e.new_item_set(title.as_deref(), Some(at))));
+        let mut slots: Vec<(String, String)> = slots.into_iter().collect();
+        SHARED_SLOT_ORDER_SAMPLE.with_borrow(|s| {
+            if let Some(s) = s {
+                slots.sort_by_key(|(name, _)| s.iter().position(|x| x == name));
+            }
+        });
+        for (slot_name, raw) in &slots {
+            let mut item = Item::parse_with(raw, None, false);
+            item.normalise_quality();
+            let item_id = t.add_item(g, &item, true, None);
+            t.edit(|e| {
+                e.set_item_set_slot(id, slot_name, item_id);
+                Ok(())
+            });
+        }
+        l.list.borrow_mut().insert(at - 1, id);
+        t.add_undo_state(false);
+    }
 }
 
 /// `tools/sg-oracle/items-rust-input.ps1`: the tab's state after each frame, for posted window messages (`runner:RealState` of items-runner.lua).

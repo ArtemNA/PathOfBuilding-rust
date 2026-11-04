@@ -189,8 +189,8 @@ pub fn fetch_auth_token(callback: impl FnOnce(&mut Gfx, Option<String>) + 'stati
                 if store_tokens(&response.body).is_none() {
                     panic!("Classes/PoEAPI.lua:143: attempt to index local 'responseLua' (a nil value)");
                 }
-                // `SetForeground()` (:148): the window of the original comes back from the browser. `pob-gfx` has no such call
-                crate::modules::main::note_not_ported("Classes/PoEAPI.lua:148 SetForeground: no such call in pob-gfx");
+                // :148: the window comes back from the browser
+                g.set_foreground();
                 callback(g, None);
             },
         );

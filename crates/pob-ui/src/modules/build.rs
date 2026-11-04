@@ -344,6 +344,55 @@ impl BuildMode {
     }
 
     /// `self.dbFileName`, `self.buildName` as `Init` takes them (ImportTab.lua:652).
+    /// `buildMode:OpenConversionPopup()` (:1394-1419).
+    fn open_conversion_popup(&self, g: &mut Gfx) {
+        let versions = pob_data::tree::tree_versions().expect("GameVersions");
+        let current = versions
+            .tree_versions
+            .iter()
+            .find(|v| v.ver == versions.latest_tree_version)
+            .map_or(String::new(), |v| v.display.clone());
+        let tip = crate::colors::color_code("TIP").expect("TIP");
+        let warning = crate::colors::color_code("WARNING").expect("WARNING");
+        let mut controls: IndexMap<String, ControlRef> = IndexMap::new();
+        controls.insert(
+            "note".into(),
+            LabelControl::new(
+                None,
+                rect(0.0, 20.0, 0.0, 16.0),
+                format!("{tip}Info:^7 You are trying to load a build created for a version of Path of Exile that is\nnot supported by us. You will have to convert it to the current game version to load it.\nTo use a build newer than the current supported game version, you may have to update.\nTo use a build older than the current supported game version, we recommend loading it\nin an older version of Path of Building Community instead.\n"),
+            ),
+        );
+        controls.insert(
+            "label".into(),
+            LabelControl::new(
+                None,
+                rect(0.0, 110.0, 0.0, 16.0),
+                format!("{warning}Warning:^7 Converting a build to a different game version may have side effects.\nFor example, if the passive tree has changed, then some passives may be deallocated.\nYou should create a backup copy of the build before proceeding.\n"),
+            ),
+        );
+        let w = self.me.clone();
+        controls.insert(
+            "convert".into(),
+            ButtonControl::new(None, rect(-40.0, 170.0, 120.0, 20.0), format!("Convert to {current}"), move |g| {
+                main().close_popup();
+                let b = w.upgrade().expect("buildMode");
+                let (db, name) = b.init_args();
+                b.shutdown(g);
+                b.init(g, &[db, name, ModeArg::Bool(false), ModeArg::Bool(true)]);
+            }),
+        );
+        let w = self.me.clone();
+        controls.insert(
+            "cancel".into(),
+            ButtonControl::new(None, rect(60.0, 170.0, 70.0, 20.0), "Cancel".to_string(), move |g| {
+                main().close_popup();
+                w.upgrade().expect("buildMode").close_build(g);
+            }),
+        );
+        main().open_popup(g, 580.0, 200.0, "Game Version", controls, Some("convert"), None, Some("cancel"), None);
+    }
+
     pub fn init_args(&self) -> (ModeArg, ModeArg) {
         let db = match &*self.db_file_name.borrow() {
             DbFile::Path(p) => ModeArg::Str(p.clone()),
@@ -1791,6 +1840,12 @@ impl Mode for BuildMode {
                 }
             },
         };
+        // SkillsTab.lua:96 `self.defaultGemQuality = main.defaultGemQuality`, until a `<Skills>` loads over it (:536)
+        if engine.extras().nil_default_gem_quality
+            && let Some(q) = m.s.borrow().default_gem_quality
+        {
+            engine.set_default_gem_quality(Some(q)).unwrap_or_else(|e| panic!("{e}"));
+        }
         // Build.lua:67 `self.importLink = importLink`: the link of a build that came from a site wins over the one in its XML (:2247)
         if let Some(link) = args.get(4).and_then(ModeArg::as_str) {
             engine.import_set_build_link(link);
@@ -1798,9 +1853,17 @@ impl Mode for BuildMode {
         *self.target_version.borrow_mut() = Some(engine.model().target_version.clone());
         // Build.lua:94 / :100
         self.mod_flag.set(build_xml.is_some());
+        // :103-110
+        if matches!(args.get(3), Some(ModeArg::Bool(true))) {
+            engine.set_target_version(LIVE_TARGET_VERSION);
+            *self.target_version.borrow_mut() = Some(LIVE_TARGET_VERSION.to_string());
+        }
         if engine.model().target_version != LIVE_TARGET_VERSION {
             *self.target_version.borrow_mut() = None;
-            unimplemented!("Modules/Build.lua:106-110 OpenConversionPopup (a build for another game version)");
+            *self.db_file_name.borrow_mut() = db.clone();
+            *self.build_name.borrow_mut() = build_name.clone();
+            self.open_conversion_popup(g);
+            return;
         }
         *self.view_mode.borrow_mut() = engine.model().view_mode.clone().unwrap_or_else(|| "TREE".into());
         crate::tree_view::set_jewel_radii_globally(&engine.spec_rc().tree_version);

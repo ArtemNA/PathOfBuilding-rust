@@ -179,6 +179,9 @@ function os.time(...)
 	if osTimeFixed and select("#", ...) == 0 then return osTimeFixed end
 	return osTimeReal(...)
 end
+-- U10: `SetForeground()` of the login (PoEAPI.lua:148): whether it was called
+local foregroundCalled = false
+function SetForeground() foregroundCalled = true end
 local function netDeliverAll()
 	local q = netQueue
 	netQueue = { }
@@ -296,6 +299,7 @@ local function dump(st)
 			d.compare = { entries = labels, active = t.activeCompareIndex, reimport = t.controls.reimportBtn:IsEnabled() and true or false }
 		end
 	end
+	if foregroundCalled then d.foreground = true end
 	d.netLog = { }
 	for i, l in ipairs(netLog) do d.netLog[i] = l end
 	d.netReal = netReal
@@ -353,6 +357,18 @@ function runner:Init()
 	RenderInit("DPI_AWARE")
 	ConExecute("set r_screenshotFormat png")
 	SetDPIScaleOverridePercent(100)
+	-- U10: a scene with `uri` is the only one of its process: the URI is `arg[1]` of Main.lua:71, and its request goes before the scene starts
+	if names[1] then
+		local def = json.decode(readAll(base .. "/scenes/import/" .. names[1] .. ".json"), 1, json.null)
+		if def.uri and def.uri ~= json.null then
+			arg[1] = def.uri
+			self.uriScene = true
+			for _, r in ipairs(def.net or { }) do
+				netReplies[r.url] = netReplies[r.url] or { }
+				table.insert(netReplies[r.url], r)
+			end
+		end
+	end
 	local t0 = realGetTime()
 	L:OnInit()
 	self.initMs = realGetTime() - t0
@@ -379,14 +395,16 @@ function runner:Step()
 			writeAll(OUT .. "startup-error.json", json.encode({ err = tostring(bg), prompt = launch.promptMsg or "nil" }, { indent = true }))
 			return self:Finish()
 		end
-		if self.frames < 5 or bg:ImageSize() == 0 or main.mode ~= "LIST" then return self:Frame() end
+		if self.frames < 5 or bg:ImageSize() == 0 or (main.mode ~= "LIST" and not self.uriScene) then return self:Frame() end
 		self.idx = self.idx + 1
 		local name = names[self.idx]
 		if not name then return self:Finish() end
 		clipboard = nil
 		main.lastExportWebsite = nil -- the session's: every scene of the port is a new session
+		foregroundCalled = false
 		writeBuilds(name)
 		self.sc = { name = name, def = json.decode(readAll(base .. "/scenes/import/" .. name .. ".json"), 1, json.null), step = 0, dumps = { }, shots = { }, perf = { } }
+		if not self.uriScene then
 		netReplies, netQueue, netLog, osTimeFixed = { }, { }, { }, nil
 		main.api = new("PoEAPI"):PoEAPI(nil, nil, nil)
 		main.lastRealm, main.lastLeague, main.lastAccountName = nil, nil, nil
@@ -395,6 +413,7 @@ function runner:Step()
 		for _, r in ipairs(self.sc.def.net or { }) do
 			netReplies[r.url] = netReplies[r.url] or { }
 			table.insert(netReplies[r.url], r)
+		end
 		end
 	end
 	local sc = self.sc
@@ -430,6 +449,12 @@ function runner:Step()
 		wipeTable(main.popups)
 		if main.mode == "BUILD" then main.modes.BUILD.modFlag = false main.modes.BUILD.unsaved = false main:SetMode("LIST") end
 		return
+	end
+	if sc.def.screen and sc.def.screen ~= json.null and not sc.screenOn then
+		-- U10: the layout of a wider screen, states only: the window of the process stays as it is
+		sc.screenOn = true
+		local w, h = sc.def.screen[1], sc.def.screen[2]
+		GetVirtualScreenSize = function() return w, h end
 	end
 	if st.realInput then
 		if not self.real then

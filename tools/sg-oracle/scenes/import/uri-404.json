@@ -1,0 +1,38 @@
+{
+"net": [
+{
+"url": "https://api.pob.codes/abc123/raw",
+"code": 404,
+"header": "HTTP/1.1 404 X\r\n\r\n",
+"body": ""
+}
+],
+"steps": [
+{
+"dump": true
+},
+{
+"netDeliver": true,
+"dump": true
+},
+{
+"cursor": [
+1200,
+790
+],
+"dump": true,
+"xml": true
+},
+{
+"waitAssets": true
+},
+{
+"cursor": [
+1200,
+790
+],
+"dump": true
+}
+],
+"uri": "pob://pobcodes/abc123"
+}

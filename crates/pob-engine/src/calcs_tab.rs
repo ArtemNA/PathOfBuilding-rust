@@ -27,8 +27,8 @@ pub enum BdEnv {
 pub enum BdHover {
     /// `row.sourceTooltip`: "Total from <source>:" and the lines (:417-422).
     SourceTotals(String, Vec<String>),
-    /// `itemsTab:AddItemTooltip` (:285, :431) or a `sourceNameTooltip` closure of the calculation (CalcPerform.lua:2139): the item tooltip is U6.
-    Item,
+    /// `itemsTab:AddItemTooltip` (:285, :431): the id of the item; `None`: a `sourceNameTooltip` closure of the calculation (CalcPerform.lua:2139), its item goes by the text of the cell. The item tooltip is U6.
+    Item(Option<f64>),
     /// `sourceNameNode` (:442): `ttNode.x`, `ttNode.y` (nil for the abstract nodes of cluster jewels, :631).
     Node(Option<(f64, f64)>),
 }
@@ -91,7 +91,7 @@ fn row_of(t: &BTable) -> BdRow {
         if let Some(s) = val_text(v) {
             r.cells.insert(k.clone(), s);
         } else if k.ends_with("Tooltip") && matches!(v, BVal::Fn) {
-            r.hover.insert(k.trim_end_matches("Tooltip").to_owned(), BdHover::Item);
+            r.hover.insert(k.trim_end_matches("Tooltip").to_owned(), BdHover::Item(None));
         }
     }
     r
@@ -592,7 +592,7 @@ impl BdCtx<'_, '_> {
                     if let Some(item) = id.and_then(|i| actor.env.items.get(&i)) {
                         let col = color_code(&item.rarity).ok_or_else(|| format!("colorCodes.{} is nil", item.rarity))?;
                         row.cells.insert("sourceName".into(), format!("{col}{}", item.name));
-                        row.hover.insert("sourceName".into(), BdHover::Item);
+                        row.hover.insert("sourceName".into(), BdHover::Item(id.map(|i| i as f64)));
                     }
                 }
                 "Tree" => {
@@ -858,7 +858,7 @@ impl BdCtx<'_, '_> {
                     let item = items(r).ok_or("a slot row's item is not in the actor's item list")?;
                     let col = color_code(&item.rarity).ok_or_else(|| format!("colorCodes.{} is nil", item.rarity))?;
                     row.cells.insert("sourceLabel".into(), format!("{col}{}", item.name));
-                    row.hover.insert("sourceLabel".into(), BdHover::Item);
+                    row.hover.insert("sourceLabel".into(), BdHover::Item(item.id));
                 } else if let Some(s) = r.fields.get("sourceName").and_then(val_text) {
                     row.cells.insert("sourceLabel".into(), s);
                 }

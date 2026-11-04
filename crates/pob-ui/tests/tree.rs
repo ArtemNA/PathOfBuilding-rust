@@ -329,6 +329,22 @@ fn run(name: &str) -> Run {
         version_platform: Some("?".into()),
         app_version: None,
     });
+    // U10: the fake transport of the leagues; nothing else of these scenes reaches it
+    let leagues = sc["steps"].as_array().into_iter().flatten().find_map(|s| s["netLeagues"].as_str());
+    if let Some(body) = leagues {
+        let t = std::sync::Arc::new(pob_net::ScriptedTransport::default());
+        t.add(
+            "https://www.pathofexile.com/api/trade/data/leagues",
+            Ok(pob_net::Reply {
+                code: 200,
+                header: String::new(),
+                body: body.as_bytes().to_vec(),
+            }),
+        );
+        l.set_transport(t);
+    }
+    // the requests wait for a `netLeagues` step, as `launch:DownloadPage` of tree-runner.lua: the others never answer
+    l.hold_sub_scripts(true);
     l.on_init(&mut gfx);
     assert!(l.prompt_msg.borrow().is_none(), "startup error: {:?}", l.prompt_msg.borrow());
     main().background.wait();
@@ -515,6 +531,22 @@ fn run(name: &str) -> Run {
                 x: c[0].as_f64().expect("x"),
                 y: c[1].as_f64().expect("y"),
             });
+        }
+        // U10: the centre of a control of the popup
+        if let Some(name) = st["cursorPopup"].as_str() {
+            let p = main().popups.borrow()[0].clone();
+            let c = p.control(name);
+            let (x, y) = c.get_pos(&gfx);
+            let (w, h) = c.get_size(&gfx);
+            gfx.input(RawEvent::Cursor {
+                x: (x + w / 2.0).floor(),
+                y: (y + h / 2.0).floor(),
+            });
+        }
+        // U10: the reply of the leagues (`netLeagues` of tree-runner.lua)
+        if st.get("netLeagues").is_some() {
+            l.net.wait_idle();
+            l.poll_sub_scripts(&mut gfx);
         }
         if let Some(id) = st["cursorNode"].as_u64() {
             let (x, y) = {

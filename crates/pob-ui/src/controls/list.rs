@@ -310,7 +310,7 @@ impl<V: Clone + PartialEq + 'static> ListControl<V> {
         }
     }
 
-    fn mouse_over(&self, g: &Gfx) -> bool {
+    pub fn mouse_over(&self, g: &Gfx) -> bool {
         self.is_shown(g) && (self.is_mouse_in_bounds(g) || self.host.get_mouse_over_control(g).is_some())
     }
 

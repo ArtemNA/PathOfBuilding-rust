@@ -216,6 +216,8 @@ fn main() {
             };
             // Main.lua:46-49
             app.launch.no_ssl.set(args.iter().any(|a| a == "--no-ssl"));
+            // Main.lua:71 `arg[1]`: the protocol handler starts the program with the URI. The port's own switches are not arguments of the original
+            *app.launch.start_uri.borrow_mut() = args.get(1).filter(|a| !a.starts_with("--")).cloned();
             app
         },
         secs,

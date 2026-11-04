@@ -1,6 +1,6 @@
 //! The node tooltip of `PassiveTreeView` (:1047-1109, `AddNodeName` :1412-1470, `AddNodeTooltip` :1476-1770).
 //!
-//! `unimplemented`: `build.itemsTab:AddItemTooltip` of a socketed jewel (:1501, U6), the compare spec's sections of `AddNodeTooltip` (:1482-1511, :1574-1594: the jewel sections need U6), `launch.devModeAlt`.
+//! `unimplemented`: `node.power` of `launch.devModeAlt` (:1536-1541, the line needs the node's power in the live spec).
 
 use pob_engine::engine::Engine;
 use pob_gfx::{Frame, Gfx};
@@ -262,9 +262,24 @@ fn add_node_name(view: &mut PassiveTreeView, g: &Gfx, e: &Engine, art: &TreeArt,
     } else {
         node.dn().to_string()
     };
+    // :1435-1444 the ids of `launch.devModeAlt`
+    let dev = crate::launch::launch().dev_mode_alt.get();
+    let name = if dev { format!("{name} [{}]", node.id) } else { name };
     view.tooltip.center = true;
     line(view, g, 24.0, &name, Some("FONTIN"));
     view.tooltip.center = false;
+    if dev && node.id > 65535 {
+        // decompose the cluster node id
+        let (id, l) = (node.id, pob_lua::tostring_num);
+        let text = format!(
+            "^7Cluster node index: {}, size: {}, large index: {}, medium index: {}",
+            l(f64::from(id & 0xF)),
+            l(f64::from((id >> 4) & 0x3)),
+            l(f64::from((id >> 6) & 0x7)),
+            l(f64::from((id >> 9) & 0x3))
+        );
+        line(view, g, font_size_big, &text, None);
+    }
     if node.ty() == NodeType::Socket
         && let Some(nir) = node.nodes_in_radius()
     {
@@ -316,6 +331,31 @@ pub fn add_node_name_pub(view: &mut PassiveTreeView, g: &Gfx, e: &Engine, node: 
 /// `addModInfoToTooltip` (:1543-1566).
 fn add_mod_info(view: &mut PassiveTreeView, g: &Gfx, node: &SpecNode, i: usize, text: &str, font_size_big: f64) {
     let Some(Some(m)) = node.mods().get(i) else { return };
+    // :1545-1556 modifier debugging info
+    let mut owned = text.to_string();
+    if crate::launch::launch().dev_mode_alt.get()
+        && let Some(list) = &m.list
+    {
+        let mut mod_str: Option<String> = None;
+        for x in list {
+            let s = pob_mods::format::format_mod(x);
+            mod_str = Some(match mod_str {
+                Some(a) => format!("{a}, {s}"),
+                None => format!("^2{s}"),
+            });
+        }
+        if let Some(extra) = &m.extra {
+            let e = format!("{}{extra}", cc("NEGATIVE"));
+            mod_str = Some(match mod_str {
+                Some(a) => format!("{a}  {e}"),
+                None => e,
+            });
+        }
+        if let Some(s) = mod_str {
+            owned = format!("{owned}  {s}");
+        }
+    }
+    let text = owned.as_str();
     if text != " " && (m.extra.is_some() || m.list.is_none()) {
         let mut l = format!("{}{text}", cc("UNSUPPORTED"));
         if not_supported_mod_tooltips() {

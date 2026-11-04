@@ -1,0 +1,120 @@
+{
+"steps": [
+{
+"open": "Float Test"
+},
+{
+"waitAssets": true
+},
+{
+"cursor": [
+-100,
+-100
+],
+"time": 10000
+},
+{
+"cursorBuild": "modeConfig",
+"hold": [
+"LEFTBUTTON"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+]
+]
+},
+{
+"release": [
+"LEFTBUTTON"
+],
+"events": [
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"cursor": [
+-100,
+-100
+],
+"dump": true
+},
+{
+"scrollVar": "linkedSourceRate"
+},
+{
+"cursorVar": "linkedSourceRate",
+"dump": true,
+"shot": "u10-float-tip"
+},
+{
+"cursorVar": "linkedSourceRate",
+"hold": [
+"LEFTBUTTON"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+]
+]
+},
+{
+"release": [
+"LEFTBUTTON"
+],
+"events": [
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"events": [
+[
+"Char",
+"1"
+],
+[
+"Char",
+"2"
+],
+[
+"Char",
+"."
+],
+[
+"Char",
+"5"
+],
+[
+"Char",
+"x"
+]
+],
+"dump": true
+},
+{
+"cursor": [
+-100,
+-100
+],
+"dump": true,
+"shot": "u10-float-typed"
+},
+{
+"cursor": [
+-100,
+-100
+],
+"dump": true
+}
+]
+}

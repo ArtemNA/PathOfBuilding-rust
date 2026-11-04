@@ -239,6 +239,11 @@ impl Engine {
         &self.model
     }
 
+    /// `self.targetVersion = liveTargetVersion` of `convertBuild` (Build.lua:103-105).
+    pub fn set_target_version(&mut self, version: &str) {
+        version.clone_into(&mut self.model_mut().target_version);
+    }
+
     pub fn extras(&self) -> &SaveExtras {
         &self.extras
     }
@@ -366,7 +371,9 @@ impl Engine {
                     let Some(f) = flags.get(i) else { continue };
                     let this = (i + 1) as f64;
                     let is_active = set.id == active;
-                    if f.main && !(is_active && this == main) {
+                    // CalcSetup.lua:1882-1890 writes it only with a skill in the list
+                    let written = is_active && this == main && g.display_skill_list.as_ref().is_some_and(|l| !l.is_empty());
+                    if f.main && !written {
                         g.main_active_skill = None;
                     }
                     if f.calcs && !(is_active && this == calcs_main && is_calcs) {
@@ -454,10 +461,12 @@ impl Engine {
         let nil_second = std::mem::take(&mut self.extras.nil_second_weapon);
         let no_trade_weights = self.extras.no_trade_weights;
         let nil_quality = self.extras.nil_default_gem_quality;
+        let no_skills = self.extras.no_skills_section;
         self.extras = SaveExtras::from_xml(&xml)?;
         self.extras.nil_second_weapon = nil_second;
         self.extras.no_trade_weights = no_trade_weights;
         self.extras.nil_default_gem_quality = nil_quality;
+        self.extras.no_skills_section = no_skills;
         self.model.main_socket_group = main;
         Ok(())
     }

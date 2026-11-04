@@ -1,8 +1,7 @@
-//! The popups of the display item: `EnchantDisplayItem` (ItemsTab.lua:2821-3030), `AnointDisplayItem` (:3138-3175) with `NotableDBControl`, `CorruptDisplayItem` (:3178-3571), `AddCustomModifierToDisplayItem` (:3576-3927).
-//! `not_ported` (a note, no crash): the roll ranges of `CorruptDisplayItem` (:3403-3436); `Modules/AddImplicitPopup.lua`, `AddCrucibleModifierToDisplayItem`: `item_editor.rs`.
+//! The popups of the display item: `EnchantDisplayItem` (ItemsTab.lua:2821-3030), `AnointDisplayItem` (:3138-3175) with `NotableDBControl`, `CorruptDisplayItem` (:3178-3571), `AddCustomModifierToDisplayItem` (:3576-3927), `AddCrucibleModifierToDisplayItem` (:3930-4039).
 
 use std::cell::{Cell, RefCell};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::rc::{Rc, Weak};
 
 use indexmap::IndexMap;
@@ -21,6 +20,7 @@ use crate::controls::basic::{ButtonControl, CheckBoxControl, LabelControl};
 use crate::controls::drop_down::{DropDownControl, DropItem};
 use crate::controls::edit::{EditArgs, EditControl};
 use crate::controls::list::{ListControl, ListHooks};
+use crate::controls::scroll_bar::SliderControl;
 use crate::modules::main::main;
 use crate::tooltip::Tooltip;
 
@@ -38,8 +38,99 @@ const ENCHANT_SOURCES: [(&str, &str); 10] = [
     ("NORMAL", "Normal Labyrinth"),
 ];
 
+thread_local! {
+    /// `pairs(item.affixes)` and `pairs(data.itemMods.ItemExclusive)` of a process of the original, as `PassiveTreeView::set_order_sample` (R13): mods with the same text and level
+    /// keep their order of `pairs` through `table.sort` (:3222-3230). Without it: the order of the data.
+    static AFFIX_ORDER_SAMPLE: RefCell<Option<Vec<String>>> = const { RefCell::new(None) };
+}
+
+/// See `AFFIX_ORDER_SAMPLE`.
+pub fn set_affix_order_sample(ids: Option<Vec<String>>) {
+    AFFIX_ORDER_SAMPLE.with_borrow_mut(|s| *s = ids);
+}
+
+/// The controls of `implicit<i>` (:3202).
+const MAX_IMPLICIT_NUM: usize = 5;
+
+/// An entry of `implicitList[modType]` (:3203-3234).
+#[derive(Clone)]
+struct CorruptEntry {
+    m: AffixMod,
+    default_sort_order: usize,
+    sort_values: HashMap<String, f64>,
+    sort_value: f64,
+}
+
+/// A row of `modList[node]` of the crucible popup other than `"None"` (:3956-3962).
+#[derive(Clone)]
+struct CrucibleRow {
+    label: String,
+    m: AffixMod,
+    affix_type: String,
+    default_order: String,
+}
+
+/// `data.crucible` (Data.lua:716), read once.
+fn crucible_data() -> &'static serde_json::Map<String, serde_json::Value> {
+    static DATA: std::sync::OnceLock<serde_json::Map<String, serde_json::Value>> = std::sync::OnceLock::new();
+    DATA.get_or_init(|| lua_data("Data/Crucible.lua").as_object().expect("a table of mods").clone())
+}
+
+/// `control.list[index].mod`.
+fn mod_at(d: &DropDownControl, index: usize) -> Option<AffixMod> {
+    d.list
+        .borrow()
+        .get(index.wrapping_sub(1))
+        .and_then(|v| v.data.as_ref().and_then(|x| x.downcast_ref::<AffixMod>()).cloned())
+}
+
+fn mod_row(m: &AffixMod) -> DropItem {
+    let mut e = DropItem::table(&m.lines.join("/"));
+    e.data = Some(Rc::new(m.clone()));
+    e
+}
+
+/// `control:SelByValue(mod, "mod")`: without a match the selection stays.
+fn sel_by_mod(d: &DropDownControl, m: Option<&AffixMod>) {
+    let Some(m) = m else { return };
+    let at = d.list.borrow().iter().position(|e| {
+        e.data
+            .as_ref()
+            .and_then(|x| x.downcast_ref::<AffixMod>())
+            .is_some_and(|x| x.id == m.id)
+    });
+    if let Some(at) = at {
+        d.sel_index.set(at + 1);
+    }
+}
+
+/// The lines of a corrupted implicit (:3289-3296, :3372-3379).
+fn corrupt_lines(m: &AffixMod, scourge: bool) -> Vec<ModLine> {
+    m.lines
+        .iter()
+        .map(|l| {
+            let l = if scourge { format!("{{scourge}}{l}") } else { l.clone() };
+            ModLine {
+                line: if m.mod_tags.is_empty() {
+                    l
+                } else {
+                    format!("{{tags:{}}}{l}", m.mod_tags.join(","))
+                },
+                ..ModLine::default()
+            }
+        })
+        .collect()
+}
+
+/// `main.popups[1].height = height`.
+fn set_popup_height(height: f64) {
+    if let Some(p) = main().popups.borrow().first() {
+        p.base.height.set(height);
+    }
+}
+
 /// `buildModSortList()` (:76-86).
-fn mod_sort_list() -> Vec<DropItem> {
+pub(super) fn mod_sort_list() -> Vec<DropItem> {
     let mut out = vec![DropItem::table("Default")];
     for p in power_stat_list() {
         if p.stat.is_some() && !p.ignore_for_nodes {
@@ -51,7 +142,7 @@ fn mod_sort_list() -> Vec<DropItem> {
     out
 }
 
-fn sort_stat(d: &DropDownControl) -> Option<PowerStat> {
+pub(super) fn sort_stat(d: &DropDownControl) -> Option<PowerStat> {
     d.list
         .borrow()
         .get(d.sel_index.get().wrapping_sub(1))
@@ -59,7 +150,7 @@ fn sort_stat(d: &DropDownControl) -> Option<PowerStat> {
 }
 
 /// `new("Item"):Item(self.displayItem:BuildRaw())` with `item.id = self.displayItem.id`.
-fn copy_of(it: &Item) -> Item {
+pub(super) fn copy_of(it: &Item) -> Item {
     let mut c = Item::parse_with(&it.build_raw(), None, false);
     c.id = it.id;
     c
@@ -80,7 +171,7 @@ fn label(y: f64, x: f64, text: &str) -> Rc<LabelControl> {
 
 impl ItemsTab {
     /// `calcFunc({ repSlotName = slot, repItem = item }, useFullDPS)` read by `GetFromOutput`.
-    fn power_of(&self, slot: &str, item: Item, stat: &PowerStat) -> f64 {
+    pub(super) fn power_of(&self, slot: &str, item: Item, stat: &PowerStat) -> f64 {
         let ov = CalcOverride {
             rep_slot_name: Some(slot.to_string()),
             rep_item: Some(Rc::new(item)),
@@ -544,7 +635,7 @@ impl ItemsTab {
         main().open_popup(g, 380.0, 448.0, "Anoint Item", controls, None, None, None, None);
     }
 
-    /// `ItemsTab:CorruptDisplayItem()` (:3178-3571) without the roll ranges.
+    /// `ItemsTab:CorruptDisplayItem()` (:3178-3571).
     #[allow(clippy::too_many_lines)]
     pub(crate) fn corrupt_display_item_popup(&self, g: &mut Gfx) {
         let Some(item) = self.display_item.borrow().clone() else { return };
@@ -556,50 +647,70 @@ impl ItemsTab {
                 }
             }
         }
-        let n_max = max_implicits as usize;
         let is_glimpse = item.is_unique && item.title.as_deref().is_some_and(|t| t.to_lowercase().contains("glimpse of chaos"));
+        let is_unique = item.rarity == "UNIQUE" || item.rarity == "RELIC";
         let mut source_list = vec!["Corrupted".to_string(), "Scourge".to_string()];
         if item.base.is_some_and(|b| b.ty == "Helmet") {
             source_list.insert(if is_glimpse { 0 } else { source_list.len() }, "Glimpse of Chaos".to_string());
         }
-        if item.rarity == "UNIQUE" || item.rarity == "RELIC" {
-            super::items::note("Classes/ItemsTab.lua:3403-3482 CorruptDisplayItem: the roll ranges of the explicit lines");
-        }
         let current: Rc<RefCell<String>> = Rc::new(RefCell::new(source_list[0].clone()));
-        let empty: HashSet<String> = HashSet::new();
-        let it2 = item.clone();
-        let build_implicits = move |mod_type: &str| -> Vec<AffixMod> {
-            let mut out: Vec<AffixMod> = if mod_type == "Glimpse of Chaos" {
-                pob_items::build_raw::item_exclusive_mods()
-                    .iter()
-                    .filter(|(k, _)| k.starts_with("UniqueSpecialCorruption"))
-                    .map(|(_, m)| m.clone())
-                    .collect()
-            } else {
-                it2.affix_mods()
+        // `implicitList[modType]` (:3203-3234)
+        let lists: Rc<RefCell<HashMap<String, Vec<CorruptEntry>>>> = Rc::default();
+        let build_implicit_list: Rc<dyn Fn(&str)> = {
+            let (lists, it) = (lists.clone(), item.clone());
+            Rc::new(move |mod_type: &str| {
+                if lists.borrow().contains_key(mod_type) {
+                    return;
+                }
+                let empty: HashSet<String> = HashSet::new();
+                let mut out: Vec<AffixMod> = if mod_type == "Glimpse of Chaos" {
+                    pob_items::build_raw::item_exclusive_mods()
+                        .iter()
+                        .filter(|(k, _)| k.starts_with("UniqueSpecialCorruption"))
+                        .map(|(_, m)| m.clone())
+                        .collect()
+                } else {
+                    it.affix_mods()
+                        .into_iter()
+                        .flatten()
+                        .filter(|(_, m)| m.ty.as_deref() == Some(mod_type) && it.get_mod_spawn_weight(m, &empty, &empty, None) > 0.0)
+                        .map(|(_, m)| m.clone())
+                        .collect()
+                };
+                AFFIX_ORDER_SAMPLE.with_borrow(|s| {
+                    if let Some(s) = s {
+                        out.sort_by_key(|m| s.iter().position(|id| *id == m.id));
+                    }
+                });
+                let key = |m: &AffixMod| {
+                    let l = m.lines.first().map_or(String::new(), |x| x.to_lowercase());
+                    let l = pob_items::lua::gsub(&l, "%(.-%)", "$", None);
+                    let l = pob_items::lua::gsub(&l, "[%+%-%%]", "", None);
+                    pob_items::lua::gsub(&l, "%d+", "$", None)
+                };
+                pob_engine::lua::lua_sort(&mut out, &mut |a, b| {
+                    let (x, y) = (key(a), key(b));
+                    if x != y { x.as_bytes() < y.as_bytes() } else { a.level < b.level }
+                });
+                let entries = out
                     .into_iter()
-                    .flatten()
-                    .filter(|(_, m)| m.ty.as_deref() == Some(mod_type) && it2.get_mod_spawn_weight(m, &empty, &empty, None) > 0.0)
-                    .map(|(_, m)| m.clone())
-                    .collect()
-            };
-            let key = |m: &AffixMod| {
-                let l = m.lines.first().map_or(String::new(), |x| x.to_lowercase());
-                let l = pob_items::lua::gsub(&l, "%(.-%)", "$", None);
-                let l = pob_items::lua::gsub(&l, "[%+%-%%]", "", None);
-                pob_items::lua::gsub(&l, "%d+", "$", None)
-            };
-            pob_engine::lua::lua_sort(&mut out, &mut |a, b| {
-                let (x, y) = (key(a), key(b));
-                if x != y { x.as_bytes() < y.as_bytes() } else { a.level < b.level }
-            });
-            out
+                    .enumerate()
+                    .map(|(i, m)| CorruptEntry {
+                        m,
+                        default_sort_order: i + 1,
+                        sort_values: HashMap::new(),
+                        sort_value: 0.0,
+                    })
+                    .collect();
+                lists.borrow_mut().insert(mod_type.to_string(), entries);
+            })
         };
-        let mut drops: Vec<Rc<DropDownControl>> = Vec::new();
-        let implicit_y = 35.0;
-        let list_of = Rc::new(RefCell::new(build_implicits(&source_list[0])));
+        build_implicit_list(&source_list[0]);
         let mut controls: IndexMap<String, ControlRef> = IndexMap::new();
-        for i in 1..=5usize {
+        let implicit_y = 35.0;
+        let mut drops: Vec<Rc<DropDownControl>> = Vec::new();
+        let mut drop_labels: Vec<Rc<LabelControl>> = Vec::new();
+        for i in 1..=MAX_IMPLICIT_NUM {
             let dd = DropDownControl::new(
                 g,
                 anchor_nil("TOPLEFT", "TOPLEFT"),
@@ -609,7 +720,7 @@ impl ItemsTab {
                 None,
                 false,
             );
-            let shown = i <= n_max && !item.implicits_cannot_be_changed;
+            let shown = i as f64 <= max_implicits && !item.implicits_cannot_be_changed;
             dd.base.shown.set(shown);
             let lab = LabelControl::new(
                 anchor_nil("TOPRIGHT", "TOPLEFT"),
@@ -621,11 +732,7 @@ impl ItemsTab {
             dd.tip.set_tooltip_func(move |tooltip, g, (mode, index, _v)| {
                 tooltip.clear(false);
                 let d = w.upgrade().expect("implicit");
-                let m = d
-                    .list
-                    .borrow()
-                    .get(index.wrapping_sub(1))
-                    .and_then(|v| v.data.as_ref().and_then(|x| x.downcast_ref::<AffixMod>()).cloned());
+                let m = mod_at(&d, index);
                 if let (true, Some(m)) = (mode != "OUT", m) {
                     for l in &m.lines {
                         tooltip.add_line(g, 16.0, Some(&format!("^7{l}")));
@@ -633,56 +740,204 @@ impl ItemsTab {
                     me.upgrade().expect("itemsTab").add_mod_comparison(tooltip, g, &m, true);
                 }
             });
-            controls.insert(format!("implicit{i}Label"), lab);
+            controls.insert(format!("implicit{i}Label"), lab.clone());
             controls.insert(format!("implicit{i}"), dd.clone());
             drops.push(dd);
+            drop_labels.push(lab);
         }
         let drops = Rc::new(drops);
+        // `buildScourgeList(control, other, modType)` (:3236-3248)
+        let build_scourge_list: Rc<dyn Fn(usize, usize, &str)> = {
+            let (drops, lists) = (drops.clone(), lists.clone());
+            Rc::new(move |control: usize, other: usize, mod_type: &str| {
+                let selected = |d: &DropDownControl| if d.sel_index.get() > 1 { mod_at(d, d.sel_index.get()) } else { None };
+                let self_mod = selected(&drops[control]);
+                let other_mod = selected(&drops[other]);
+                let mut l = vec![DropItem::table("None")];
+                for e in lists.borrow().get(mod_type).into_iter().flatten() {
+                    if other_mod.as_ref().is_none_or(|o| e.m.group != o.group) {
+                        l.push(mod_row(&e.m));
+                    }
+                }
+                *drops[control].list.borrow_mut() = l;
+                sel_by_mod(&drops[control], self_mod.as_ref());
+            })
+        };
         // `buildCorruptLists(modType)` (:3249-3277)
-        let rebuild: Rc<dyn Fn(&mut Gfx)> = {
-            let (drops, list_of) = (drops.clone(), list_of.clone());
-            Rc::new(move |_g: &mut Gfx| {
-                let selected: Vec<Option<AffixMod>> = drops
-                    .iter()
-                    .map(|d| {
-                        d.list
-                            .borrow()
-                            .get(d.sel_index.get().wrapping_sub(1))
-                            .and_then(|v| v.data.as_ref().and_then(|x| x.downcast_ref::<AffixMod>()).cloned())
-                    })
-                    .collect();
+        let build_corrupt_lists: Rc<dyn Fn(&str)> = {
+            let (drops, lists) = (drops.clone(), lists.clone());
+            Rc::new(move |mod_type: &str| {
+                let mut selected_groups: Vec<(Option<String>, usize, AffixMod)> = Vec::new();
+                for (i, d) in drops.iter().enumerate() {
+                    if let Some(m) = mod_at(d, d.sel_index.get()) {
+                        selected_groups.retain(|(gr, _, _)| *gr != m.group);
+                        selected_groups.push((m.group.clone(), i, m));
+                    }
+                }
                 for (i, d) in drops.iter().enumerate() {
                     let mut l = vec![DropItem::table("None")];
-                    for m in list_of.borrow().iter() {
-                        let taken = selected
-                            .iter()
-                            .enumerate()
-                            .any(|(k, s)| k != i && s.as_ref().is_some_and(|x| x.group == m.group));
-                        if !taken {
-                            let mut e = DropItem::table(&m.lines.join("/"));
-                            e.data = Some(Rc::new(m.clone()));
-                            l.push(e);
+                    for e in lists.borrow().get(mod_type).into_iter().flatten() {
+                        let at = selected_groups.iter().find(|(gr, _, _)| *gr == e.m.group);
+                        if at.is_none_or(|(_, idx, _)| *idx == i) {
+                            l.push(mod_row(&e.m));
                         }
                     }
-                    let want = selected[i].as_ref().map(|x| x.id.clone());
-                    let at = want.and_then(|w| {
-                        l.iter().position(|e| {
-                            e.data
-                                .as_ref()
-                                .and_then(|x| x.downcast_ref::<AffixMod>())
-                                .is_some_and(|m| m.id == w)
-                        })
-                    });
                     *d.list.borrow_mut() = l;
-                    d.sel_index.set(at.map_or(1, |x| x + 1));
+                }
+                for (_, idx, m) in &selected_groups {
+                    sel_by_mod(&drops[*idx], Some(m));
                 }
             })
         };
-        for d in drops.iter() {
-            let r1 = rebuild.clone();
-            *d.sel_func.borrow_mut() = Some(Rc::new(move |g: &mut Gfx, _i: usize, _v: &DropItem| r1(g)));
+        // `sortModType(modType, stat, calcFunc, slotName, useFullDPS)` (:3278-3322)
+        let sort_mod_type: Rc<dyn Fn(&str, Option<&PowerStat>)> = {
+            let (lists, me, cur) = (lists.clone(), self.me.clone(), current.clone());
+            Rc::new(move |mod_type: &str, stat: Option<&PowerStat>| {
+                let Some(mut list) = lists.borrow().get(mod_type).cloned() else { return };
+                if let Some(stat) = stat {
+                    let t = me.upgrade().expect("itemsTab");
+                    let d = t.display_item.borrow().clone().expect("displayItem");
+                    let slot = d.get_primary_slot();
+                    let key = stat.stat.clone().unwrap_or_default();
+                    let scourge_prefix = cur.borrow().as_str() == "ScourgeUpside";
+                    for e in &mut list {
+                        if let Some(v) = e.sort_values.get(&key) {
+                            e.sort_value = *v;
+                            continue;
+                        }
+                        let mut it = copy_of(&d);
+                        it.corrupted = true;
+                        let lines = corrupt_lines(&e.m, scourge_prefix);
+                        if mod_type == "ScourgeUpside" || mod_type == "ScourgeDownside" {
+                            it.scourge_mod_lines = lines;
+                        } else {
+                            it.implicit_mod_lines = lines;
+                        }
+                        it.build_and_parse_raw();
+                        let v = t.power_of(&slot, it, stat);
+                        e.sort_values.insert(key.clone(), v);
+                        e.sort_value = v;
+                    }
+                    pob_engine::lua::lua_sort(&mut list, &mut |a, b| {
+                        if a.sort_value != b.sort_value {
+                            a.sort_value > b.sort_value
+                        } else {
+                            a.default_sort_order < b.default_sort_order
+                        }
+                    });
+                } else {
+                    pob_engine::lua::lua_sort(&mut list, &mut |a, b| a.default_sort_order < b.default_sort_order);
+                }
+                lists.borrow_mut().insert(mod_type.to_string(), list);
+            })
+        };
+        // `applySort(stat)` (:3323-3348)
+        let apply_sort: Rc<dyn Fn(Option<&PowerStat>)> = {
+            let (cur, drops, sort_mod_type, build_corrupt_lists, build_scourge_list) =
+                (current.clone(), drops.clone(), sort_mod_type, build_corrupt_lists.clone(), build_scourge_list.clone());
+            Rc::new(move |stat: Option<&PowerStat>| {
+                let current = cur.borrow().clone();
+                if current == "ScourgeUpside" {
+                    sort_mod_type("ScourgeUpside", stat);
+                    sort_mod_type("ScourgeDownside", stat);
+                    build_scourge_list(0, 1, "ScourgeUpside");
+                    build_scourge_list(1, 0, "ScourgeUpside");
+                    build_scourge_list(2, 3, "ScourgeDownside");
+                    build_scourge_list(3, 2, "ScourgeDownside");
+                } else {
+                    sort_mod_type(&current, stat);
+                    build_corrupt_lists(&current);
+                }
+                for d in drops.iter() {
+                    d.search.update_search();
+                }
+            })
+        };
+        // :3403-3437 the roll ranges of the explicit lines
+        let corrupted_ranges: Rc<RefCell<HashMap<usize, f64>>> = Rc::default();
+        let mut shown_explicits: Vec<(Rc<LabelControl>, Rc<SliderControl>, Rc<LabelControl>)> = Vec::new();
+        let mut explicit_offset = 0.0;
+        if is_unique {
+            let parsed = copy_of(&item);
+            let mut offset = 20.0;
+            let default_quality = main().s.borrow().default_item_affix_quality;
+            for (at, ml) in parsed.explicit_mod_lines.iter().enumerate() {
+                let i = at + 1;
+                let mod_range = ml.range.unwrap_or(default_quality);
+                let applied = |corrupted: f64| {
+                    pob_items::apply_range::apply_range(&ml.line, mod_range, ml.value_scalar, Some(corrupted), pob_calc::ParseMode::Full)
+                };
+                if applied(1.0) == applied(2.0) || !parsed.check_mod_line_variant(ml) {
+                    continue;
+                }
+                let line = ml.line.clone();
+                let scalar = ml.value_scalar;
+                let format_label: Rc<dyn Fn(&Gfx, f64) -> (String, usize)> = Rc::new(move |g: &Gfx, corrupted: f64| {
+                    let line = pob_items::apply_range::apply_range(&line, mod_range, Some(scalar.unwrap_or(1.0)), Some(corrupted), pob_calc::ParseMode::Full);
+                    let lines = crate::common::wrap_string(g, &format!("^7{line}"), 16.0, 430.0);
+                    (lines.join("\n"), lines.len())
+                });
+                let value = LabelControl::new(
+                    anchor_nil("TOPLEFT", "TOPLEFT"),
+                    rect(10.0, 10.0 + offset, 200.0, 16.0),
+                    "^71.00".to_string(),
+                );
+                let vr: ControlRef = value.clone();
+                let slider = SliderControl::new(anchor("LEFT", &vr, "RIGHT"), rect(5.0, 0.0, 80.0, 18.0), None, None);
+                let start = ml.corrupted_range.unwrap_or(1.0);
+                corrupted_ranges.borrow_mut().insert(i, start);
+                slider.val.set((start - 0.78) / 0.44);
+                value.label.set(format!("^7{start:.2}"));
+                let (text, line_count) = format_label(g, start);
+                offset += 16.0 * (line_count as f64 - 1.0);
+                let sr: ControlRef = slider.clone();
+                let line_label = LabelControl::new(anchor("LEFT", &sr, "RIGHT"), rect(5.0, 0.0, 200.0, 16.0), text);
+                {
+                    let (ranges, value, line_label) = (corrupted_ranges.clone(), value.clone(), line_label.clone());
+                    *slider.change_func.borrow_mut() = Some(Rc::new(move |g: &mut Gfx, val: f64| {
+                        let r = 0.78 + pob_lua::number::round(0.44 * val, Some(2.0));
+                        ranges.borrow_mut().insert(i, r);
+                        value.label.set(format!("^7{r:.2}"));
+                        line_label.label.set(format_label(g, r).0);
+                    }));
+                }
+                line_label.base.shown.set(false);
+                slider.base.shown.set(false);
+                value.base.shown.set(false);
+                offset += 20.0;
+                controls.insert(format!("rollRangeValue{i}"), value.clone());
+                controls.insert(format!("rollRangeSlider{i}"), slider.clone());
+                controls.insert(format!("rollRangeLabel{i}"), line_label.clone());
+                shown_explicits.push((value, slider, line_label));
+            }
+            explicit_offset = offset;
         }
-        rebuild(g);
+        let shown_explicits = Rc::new(shown_explicits);
+        let cant = LabelControl::new(
+            anchor_nil("TOPLEFT", "TOPLEFT"),
+            rect(20.0, implicit_y + 20.0, 0.0, 20.0),
+            "^7This Items Implicits Cannot Be Changed".to_string(),
+        );
+        cant.base.shown.set(item.implicits_cannot_be_changed);
+        // `setImplicitControlsShown(implicitNum, canChangeImplicits)` (:3438-3445)
+        let set_implicit_controls_shown: Rc<dyn Fn(f64, bool)> = {
+            let (drops, labels, cant) = (drops.clone(), drop_labels, cant.clone());
+            Rc::new(move |implicit_num: f64, can_change: bool| {
+                for (i, (d, l)) in drops.iter().zip(&labels).enumerate() {
+                    let shown = can_change && (i + 1) as f64 <= implicit_num;
+                    d.base.shown.set(shown);
+                    l.base.shown.set(shown);
+                }
+                cant.base.shown.set(implicit_num > 0.0 && !can_change);
+            })
+        };
+        controls.insert("implicitCannotBeChangedLabel".into(), cant);
+        let source_label = LabelControl::new(
+            anchor_nil("TOPRIGHT", "TOPLEFT"),
+            rect(95.0, 30.0, 0.0, 16.0),
+            "^7Source:".to_string(),
+        );
+        let sort_label = label(20.0, 350.0, "^7Sort by:");
         let sort = DropDownControl::new(
             g,
             anchor_nil("TOPLEFT", "TOPLEFT"),
@@ -693,189 +948,196 @@ impl ItemsTab {
             false,
         );
         {
-            // `applySort(stat)` (:3323-3348); `implicitList[modType]` keeps its default order next to the sorted one
-            let (l2, r1, me, cur2) = (list_of.clone(), rebuild.clone(), self.me.clone(), current.clone());
-            let default_order = Rc::new(RefCell::new(list_of.borrow().clone()));
-            *sort.sel_func.borrow_mut() = Some(Rc::new(move |g: &mut Gfx, _i: usize, v: &DropItem| {
-                let t = me.upgrade().expect("itemsTab");
-                let d = t.display_item.borrow().clone().expect("displayItem");
-                let slot = d.get_primary_slot();
-                let scourge = cur2.borrow().as_str() == "ScourgeUpside";
-                if default_order.borrow().iter().map(|m| &m.id).ne(l2.borrow().iter().map(|m| &m.id)) && !v.data.is_some() {
-                    let mut by_default = l2.borrow().clone();
-                    let order = default_order.borrow();
-                    by_default.sort_by_key(|m| order.iter().position(|x| x.id == m.id).unwrap_or(usize::MAX));
-                    *l2.borrow_mut() = by_default;
-                }
-                if let Some(stat) = v.data.as_ref().and_then(|x| x.downcast_ref::<PowerStat>()) {
-                    let mut keyed: Vec<(f64, usize, AffixMod)> = l2
-                        .borrow()
-                        .iter()
-                        .cloned()
-                        .enumerate()
-                        .map(|(i, m)| {
-                            let mut it = copy_of(&d);
-                            it.corrupted = true;
-                            let lines: Vec<ModLine> = m
-                                .lines
-                                .iter()
-                                .map(|l| {
-                                    let l = if scourge { format!("{{scourge}}{l}") } else { l.clone() };
-                                    ModLine {
-                                        line: if m.mod_tags.is_empty() {
-                                            l
-                                        } else {
-                                            format!("{{tags:{}}}{l}", m.mod_tags.join(","))
-                                        },
-                                        ..ModLine::default()
-                                    }
-                                })
-                                .collect();
-                            if scourge {
-                                it.scourge_mod_lines = lines;
-                            } else {
-                                it.implicit_mod_lines = lines;
-                            }
-                            it.build_and_parse_raw();
-                            (t.power_of(&slot, it, stat), i, m)
-                        })
-                        .collect();
-                    keyed.sort_by(|a, b| b.0.total_cmp(&a.0).then(a.1.cmp(&b.1)));
-                    *l2.borrow_mut() = keyed.into_iter().map(|x| x.2).collect();
-                }
-                r1(g);
+            let apply_sort = apply_sort.clone();
+            *sort.sel_func.borrow_mut() = Some(Rc::new(move |_g: &mut Gfx, _i: usize, v: &DropItem| {
+                apply_sort(v.data.as_ref().and_then(|x| x.downcast_ref::<PowerStat>()));
             }));
         }
-        let (cur, drops2, it3, r1, l2, me) = (
-            current.clone(),
-            drops.clone(),
-            item.clone(),
-            rebuild.clone(),
-            list_of.clone(),
-            self.me.clone(),
-        );
-        let source = DropDownControl::new(
-            g,
-            anchor_nil("TOPLEFT", "TOPLEFT"),
-            rect(100.0, 30.0, 150.0, 18.0),
-            source_list.iter().map(|s| DropItem::str(s)).collect(),
-            Some(Rc::new(move |g: &mut Gfx, _i: usize, v: &DropItem| {
-                for d in drops2.iter() {
-                    d.set_sel(g, 1, true);
-                }
-                let value = v.label.clone().unwrap_or_default();
-                let empty: HashSet<String> = HashSet::new();
-                let of_type = |ty: &str| -> Vec<AffixMod> {
-                    it3.affix_mods()
-                        .into_iter()
-                        .flatten()
-                        .filter(|(_, m)| m.ty.as_deref() == Some(ty) && it3.get_mod_spawn_weight(m, &empty, &empty, None) > 0.0)
-                        .map(|(_, m)| m.clone())
-                        .collect()
-                };
-                let _ = me.upgrade();
-                if value == "Scourge" {
-                    *cur.borrow_mut() = "ScourgeUpside".to_string();
-                    *l2.borrow_mut() = of_type("ScourgeUpside");
-                } else {
-                    *cur.borrow_mut() = value.clone();
-                    *l2.borrow_mut() = if value == "Glimpse of Chaos" {
-                        pob_items::build_raw::item_exclusive_mods()
-                            .iter()
-                            .filter(|(k, _)| k.starts_with("UniqueSpecialCorruption"))
-                            .map(|(_, m)| m.clone())
-                            .collect()
+        let source = {
+            let (cur, drops, build_list, set_shown, sort, apply_sort, build_scourge) = (
+                current.clone(),
+                drops.clone(),
+                build_implicit_list,
+                set_implicit_controls_shown.clone(),
+                sort.clone(),
+                apply_sort.clone(),
+                build_scourge_list.clone(),
+            );
+            let cannot = item.implicits_cannot_be_changed;
+            DropDownControl::new(
+                g,
+                anchor_nil("TOPLEFT", "TOPLEFT"),
+                rect(100.0, 30.0, 150.0, 18.0),
+                source_list.iter().map(|s| DropItem::str(s)).collect(),
+                Some(Rc::new(move |g: &mut Gfx, _i: usize, v: &DropItem| {
+                    for d in drops.iter() {
+                        d.set_sel(g, 1, true);
+                    }
+                    let value = v.label.clone().unwrap_or_default();
+                    if value == "Scourge" {
+                        *cur.borrow_mut() = "ScourgeUpside".to_string();
+                        build_list("ScourgeUpside");
+                        build_list("ScourgeDownside");
+                        let implicit_num = if is_unique { 4.0 } else { 3.0 };
+                        set_shown(implicit_num, true);
+                        set_popup_height(103.0 + 20.0 * implicit_num);
+                        build_scourge(2, 3, "ScourgeDownside");
+                        build_scourge(3, 2, "ScourgeDownside");
                     } else {
-                        of_type(&value)
-                    };
-                }
-                r1(g);
-            })),
-            None,
-            false,
-        );
+                        build_list(&value);
+                        *cur.borrow_mut() = value;
+                        set_shown(max_implicits, !cannot);
+                        set_popup_height(103.0 + 20.0 * max_implicits);
+                    }
+                    apply_sort(sort_stat(&sort).as_ref());
+                })),
+                None,
+                false,
+            )
+        };
         source.base.enabled.set(source_list.len() > 1);
-        let (cur, drops3, me) = (current, drops.clone(), self.me.clone());
-        let corrupt: Rc<dyn Fn() -> Item> = Rc::new(move || {
-            let t = me.upgrade().expect("itemsTab");
-            let d = t.display_item.borrow().clone().expect("displayItem");
-            let mut it = copy_of(&d);
-            it.corrupted = true;
-            let scourge = cur.borrow().as_str() == "ScourgeUpside";
-            let special = if scourge {
-                None
-            } else {
-                d.implicit_mod_lines
-                    .iter()
-                    .rfind(|ml| ml.mod_list.iter().flatten().any(|m| &*m.name == "CorruptImplicitCount"))
-                    .cloned()
-            };
-            let mut new_lines = Vec::new();
-            for dd in drops3.iter() {
-                if dd.sel_index.get() > 1
-                    && let Some(m) = dd.list.borrow()[dd.sel_index.get() - 1]
-                        .data
-                        .as_ref()
-                        .and_then(|x| x.downcast_ref::<AffixMod>())
-                {
-                    for l in &m.lines {
-                        let l = if scourge { format!("{{scourge}}{l}") } else { l.clone() };
-                        let line = if m.mod_tags.is_empty() {
-                            l
+        {
+            let (set_shown, shown, src, src_label, srt, srt_label, cur) = (
+                set_implicit_controls_shown.clone(),
+                shown_explicits.clone(),
+                source.clone(),
+                source_label.clone(),
+                sort.clone(),
+                sort_label.clone(),
+                current.clone(),
+            );
+            let cannot = item.implicits_cannot_be_changed;
+            let implicits = ButtonControl::new(
+                anchor_nil("TOPLEFT", "TOPLEFT"),
+                rect(5.0, 5.0, 80.0, 20.0),
+                "Implicits".to_string(),
+                move |_g| {
+                    let current = cur.borrow().clone();
+                    let implicit_num = if current == "ScourgeUpside" { 4.0 } else { max_implicits };
+                    set_shown(implicit_num, current != "Corrupted" || !cannot);
+                    for (value, slider, line_label) in shown.iter() {
+                        line_label.base.shown.set(false);
+                        slider.base.shown.set(false);
+                        value.base.shown.set(false);
+                    }
+                    src.base.shown.set(true);
+                    src_label.base.shown.set(true);
+                    srt.base.shown.set(true);
+                    srt_label.base.shown.set(true);
+                    set_popup_height(103.0 + 20.0 * implicit_num);
+                },
+            );
+            implicits.base.shown.set(is_unique);
+            let ir: ControlRef = implicits.clone();
+            let (set_shown, shown, src, src_label, srt, srt_label) = (
+                set_implicit_controls_shown,
+                shown_explicits,
+                source.clone(),
+                source_label.clone(),
+                sort.clone(),
+                sort_label.clone(),
+            );
+            let rolls = ButtonControl::new(
+                anchor("LEFT", &ir, "RIGHT"),
+                rect(5.0, 0.0, 80.0, 20.0),
+                "Roll Ranges".to_string(),
+                move |_g| {
+                    set_shown(0.0, false);
+                    for (value, slider, line_label) in shown.iter() {
+                        line_label.base.shown.set(true);
+                        slider.base.shown.set(true);
+                        value.base.shown.set(true);
+                    }
+                    src.base.shown.set(false);
+                    src_label.base.shown.set(false);
+                    srt.base.shown.set(false);
+                    srt_label.base.shown.set(false);
+                    set_popup_height(55.0 + explicit_offset);
+                },
+            );
+            rolls.base.shown.set(is_unique);
+            controls.insert("implicits".into(), implicits);
+            controls.insert("rolls".into(), rolls);
+        }
+        controls.insert("sourceLabel".into(), source_label);
+        controls.insert("source".into(), source);
+        controls.insert("sortLabel".into(), sort_label);
+        controls.insert("sort".into(), sort);
+        // :3544-3558
+        for (at, d) in drops.iter().enumerate() {
+            let i = at + 1;
+            let (cur, corrupt_lists, scourge_list) = (current.clone(), build_corrupt_lists.clone(), build_scourge_list.clone());
+            *d.sel_func.borrow_mut() = Some(Rc::new(move |_g: &mut Gfx, _i: usize, _v: &DropItem| {
+                let current = cur.borrow().clone();
+                if current == "ScourgeUpside" {
+                    let other_idx = if i % 2 == 0 { i - 1 } else { i + 1 };
+                    let mod_type = if i <= 2 { "ScourgeUpside" } else { "ScourgeDownside" };
+                    // Implicit #5 has no Scourge pair and is never shown then
+                    if other_idx <= MAX_IMPLICIT_NUM {
+                        scourge_list(other_idx - 1, i - 1, mod_type);
+                    }
+                } else {
+                    corrupt_lists(&current);
+                }
+            }));
+            if i as f64 <= max_implicits {
+                build_corrupt_lists(&current.borrow());
+            }
+        }
+        // `corruptItem(addingImplicits)` (:3349-3402)
+        let corrupt: Rc<dyn Fn(bool) -> Item> = {
+            let (cur, drops, me, ranges) = (current, drops.clone(), self.me.clone(), corrupted_ranges);
+            Rc::new(move |adding: bool| {
+                let t = me.upgrade().expect("itemsTab");
+                let d = t.display_item.borrow().clone().expect("displayItem");
+                let mut it = copy_of(&d);
+                it.corrupted = true;
+                let scourge = cur.borrow().as_str() == "ScourgeUpside";
+                let special = if scourge {
+                    None
+                } else {
+                    d.implicit_mod_lines
+                        .iter()
+                        .rfind(|ml| ml.mod_list.iter().flatten().any(|m| &*m.name == "CorruptImplicitCount"))
+                        .cloned()
+                };
+                if adding {
+                    let mut new_lines = Vec::new();
+                    for dd in drops.iter() {
+                        if dd.sel_index.get() > 1
+                            && let Some(m) = mod_at(dd, dd.sel_index.get())
+                        {
+                            new_lines.extend(corrupt_lines(&m, scourge));
+                        }
+                    }
+                    if !new_lines.is_empty() {
+                        if scourge {
+                            it.scourge_mod_lines = new_lines;
                         } else {
-                            format!("{{tags:{}}}{l}", m.mod_tags.join(","))
-                        };
-                        new_lines.push(ModLine {
-                            line,
-                            ..ModLine::default()
-                        });
+                            it.implicit_mod_lines.clear();
+                            it.implicit_mod_lines.extend(special);
+                            it.implicit_mod_lines.extend(new_lines);
+                        }
+                    }
+                } else {
+                    for (at, ml) in it.explicit_mod_lines.iter_mut().enumerate() {
+                        if let Some(r) = ranges.borrow().get(&(at + 1)) {
+                            ml.corrupted_range = (*r != 1.0).then_some(*r);
+                        }
                     }
                 }
-            }
-            if !new_lines.is_empty() {
-                if scourge {
-                    it.scourge_mod_lines = new_lines;
-                } else {
-                    it.implicit_mod_lines.clear();
-                    it.implicit_mod_lines.extend(special);
-                    it.implicit_mod_lines.extend(new_lines);
-                }
-            }
-            it.build_and_parse_raw();
-            it
-        });
-        controls.insert(
-            "sourceLabel".into(),
-            LabelControl::new(
-                anchor_nil("TOPRIGHT", "TOPLEFT"),
-                rect(95.0, 30.0, 0.0, 16.0),
-                "^7Source:".to_string(),
-            ),
-        );
-        controls.insert("source".into(), source);
-        controls.insert(
-            "sortLabel".into(),
-            LabelControl::new(
-                anchor_nil("TOPRIGHT", "TOPLEFT"),
-                rect(350.0, 20.0, 0.0, 16.0),
-                "^7Sort by:".to_string(),
-            ),
-        );
-        controls.insert("sort".into(), sort);
-        let cant = LabelControl::new(
-            anchor_nil("TOPLEFT", "TOPLEFT"),
-            rect(20.0, implicit_y + 20.0, 0.0, 20.0),
-            "^7This Items Implicits Cannot Be Changed".to_string(),
-        );
-        cant.base.shown.set(item.implicits_cannot_be_changed);
-        controls.insert("implicitCannotBeChangedLabel".into(), cant);
-        let (c1, me) = (corrupt.clone(), self.me.clone());
+                it.build_and_parse_raw();
+                it
+            })
+        };
+        let first = drops[0].clone();
+        let (c1, me, f1) = (corrupt.clone(), self.me.clone(), first.clone());
         let save = ButtonControl::new(
             anchor_nil("BOTTOM", "BOTTOM"),
             rect(-45.0, -4.0, 80.0, 20.0),
             "Corrupt".to_string(),
             move |g| {
-                let it = c1();
+                let it = c1(f1.base.shown.get(g));
                 me.upgrade().expect("itemsTab").set_display_item(g, Some(it));
                 main().close_popup();
             },
@@ -883,7 +1145,8 @@ impl ItemsTab {
         let (c1, me) = (corrupt, self.me.clone());
         save.tip.set_tooltip_func(move |tooltip, g, ()| {
             tooltip.clear(false);
-            me.upgrade().expect("itemsTab").add_tooltip(tooltip, g, &Rc::new(c1()), None, false);
+            let it = c1(first.base.shown.get(g));
+            me.upgrade().expect("itemsTab").add_tooltip(tooltip, g, &Rc::new(it), None, false);
         });
         controls.insert("save".into(), save);
         controls.insert(
@@ -906,6 +1169,162 @@ impl ItemsTab {
             None,
             None,
         );
+    }
+
+    /// `ItemsTab:AddCrucibleModifierToDisplayItem()` (:3930-4039).
+    #[allow(clippy::too_many_lines)]
+    pub(crate) fn add_crucible_modifier_popup(&self, g: &mut Gfx) {
+        let Some(item) = self.display_item.borrow().clone() else { return };
+        let empty: HashSet<String> = HashSet::new();
+        let mut item_mod_map: HashSet<String> = HashSet::new();
+        for ml in &item.crucible_mod_lines {
+            item_mod_map.insert(ml.line.clone());
+        }
+        let label_of = |m: &AffixMod| m.lines.iter().map(|l| self.check_line_for_allocates(l)).collect::<Vec<_>>().join("/");
+        let mut mod_list: [Vec<Option<CrucibleRow>>; 5] = std::array::from_fn(|_| vec![None]);
+        let mut node_selections: Vec<(usize, String)> = Vec::new();
+        let set_node = |sel: &mut Vec<(usize, String)>, node: usize, id: &str| {
+            sel.retain(|(n, _)| *n != node);
+            sel.push((node, id.to_string()));
+        };
+        // :3941-3977 `buildCrucibleMods`
+        for (id, raw) in crucible_data() {
+            let m = AffixMod::from_json(id, raw);
+            if !item.can_have_mod(&m, &empty) {
+                continue;
+            }
+            let locations: Vec<usize> = raw
+                .get("nodeLocation")
+                .and_then(serde_json::Value::as_array)
+                .into_iter()
+                .flatten()
+                .filter_map(|x| x.as_f64().map(|v| v as usize))
+                .collect();
+            let has = |i: usize| m.lines.get(i).is_some_and(|l| item_mod_map.contains(&self.check_line_for_allocates(l)));
+            if has(0) && (m.lines.len() < 2 || has(1)) {
+                let taken = node_selections.iter().any(|(n, _)| *n == locations[0]);
+                if taken && locations.len() > 1 {
+                    set_node(&mut node_selections, locations[1], id);
+                } else {
+                    set_node(&mut node_selections, locations[0], id);
+                }
+            }
+            let tier = raw.get("tier").and_then(serde_json::Value::as_f64).unwrap_or(0.0);
+            for location in &locations {
+                mod_list[*location - 1].push(Some(CrucibleRow {
+                    label: format!("{} - Tier: {}", label_of(&m), pob_lua::tostring_num(tier)),
+                    m: m.clone(),
+                    affix_type: m.ty.clone().unwrap_or_default(),
+                    default_order: id.clone(),
+                }));
+            }
+        }
+        for tier_list in &mut mod_list {
+            // the comparison returns nothing for a "None" on the right, and `("None").affixType` is nil on the left
+            pob_engine::lua::lua_sort(tier_list, &mut |a, b| match (a, b) {
+                (_, None) | (None, _) => false,
+                (Some(a), Some(b)) => {
+                    if a.affix_type != b.affix_type {
+                        a.affix_type == "Spawn" && b.affix_type == "MergeOnly"
+                    } else {
+                        a.default_order.as_bytes() < b.default_order.as_bytes()
+                    }
+                }
+            });
+        }
+        let mut controls: IndexMap<String, ControlRef> = IndexMap::new();
+        let mut y = 45.0;
+        let mut drops: Vec<Rc<DropDownControl>> = Vec::new();
+        for (at, rows) in mod_list.iter().enumerate() {
+            let i = at + 1;
+            controls.insert(format!("modSelectNode{i}Label"), label(y, 95.0, &format!("^7Node {i}:")));
+            let list = rows
+                .iter()
+                .map(|r| match r {
+                    None => DropItem::str("None"),
+                    Some(r) => {
+                        let mut it = DropItem::table(&r.label);
+                        it.data = Some(Rc::new(r.m.clone()));
+                        it
+                    }
+                })
+                .collect();
+            let dd = DropDownControl::new(
+                g,
+                anchor_nil("TOPLEFT", "TOPLEFT"),
+                rect(100.0, y, 555.0, 18.0),
+                list,
+                None,
+                None,
+                false,
+            );
+            let (me, w) = (self.me.clone(), Rc::downgrade(&dd));
+            dd.tip.set_tooltip_func(move |tooltip, g, (mode, index, _v)| {
+                tooltip.clear(false);
+                let d = w.upgrade().expect("modSelectNode");
+                if let (true, Some(m)) = (mode != "OUT", mod_at(&d, index)) {
+                    let t = me.upgrade().expect("itemsTab");
+                    for l in &m.lines {
+                        tooltip.add_line(g, 16.0, Some(&format!("^7{}", t.check_line_for_allocates(l))));
+                    }
+                    t.add_mod_comparison(tooltip, g, &m, false);
+                }
+            });
+            controls.insert(format!("modSelectNode{i}"), dd.clone());
+            drops.push(dd);
+            y += 22.0;
+        }
+        // :4019-4026 populate the dropdowns with the item's mods
+        for (node, default_order) in &node_selections {
+            let at = mod_list[*node - 1]
+                .iter()
+                .position(|r| r.as_ref().is_some_and(|r| r.default_order == *default_order));
+            if let Some(at) = at {
+                drops[*node - 1].sel_index.set(at + 1);
+            }
+        }
+        let drops = Rc::new(drops);
+        let add: Rc<dyn Fn() -> Item> = {
+            let (drops, me) = (drops, self.me.clone());
+            Rc::new(move || {
+                let t = me.upgrade().expect("itemsTab");
+                let d = t.display_item.borrow().clone().expect("displayItem");
+                let mut it = copy_of(&d);
+                it.crucible_mod_lines.clear();
+                for dd in drops.iter() {
+                    if let Some(m) = mod_at(dd, dd.sel_index.get()) {
+                        for l in &m.lines {
+                            let mut ml = ModLine {
+                                line: t.check_line_for_allocates(l),
+                                mod_tags: m.mod_tags.clone(),
+                                ..ModLine::default()
+                            };
+                            ml.set_flag_pub("crucible");
+                            it.crucible_mod_lines.push(ml);
+                        }
+                    }
+                }
+                it.build_and_parse_raw();
+                it
+            })
+        };
+        let (a1, me) = (add.clone(), self.me.clone());
+        let save = ButtonControl::new(None, rect(-45.0, 157.0, 80.0, 20.0), "Add".to_string(), move |g| {
+            let it = a1();
+            me.upgrade().expect("itemsTab").set_display_item(g, Some(it));
+            main().close_popup();
+        });
+        let (a1, me) = (add, self.me.clone());
+        save.tip.set_tooltip_func(move |tooltip, g, ()| {
+            tooltip.clear(false);
+            me.upgrade().expect("itemsTab").add_tooltip(tooltip, g, &Rc::new(a1()), None, false);
+        });
+        controls.insert("save".into(), save);
+        controls.insert(
+            "close".into(),
+            ButtonControl::new(None, rect(45.0, 157.0, 80.0, 20.0), "Cancel".to_string(), |_g| main().close_popup()),
+        );
+        main().open_popup(g, 710.0, 185.0, "Add Crucible Modifier to Item", controls, Some("save"), None, None, None);
     }
 
     /// `ItemsTab:AddCustomModifierToDisplayItem()` (:3576-3927).

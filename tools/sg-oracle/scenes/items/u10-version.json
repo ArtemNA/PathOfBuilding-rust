@@ -1,0 +1,141 @@
+{
+"steps": [
+{
+"open": "OccVortex"
+},
+{
+"cursorBuild": [
+"modeItems"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"open": "Old Version Test"
+},
+{
+"cursor": [
+1200,
+790
+],
+"dump": true,
+"popupOnly": true,
+"shot": "u10-version-popup"
+},
+{
+"cursorPopup": [
+"cancel"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true,
+"popupOnly": true
+},
+{
+"cursor": [
+1200,
+790
+]
+},
+{
+"closeBuild": true
+},
+{
+"open": "OccVortex"
+},
+{
+"cursorBuild": [
+"modeItems"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"open": "Old Version Test"
+},
+{
+"cursor": [
+1200,
+790
+],
+"dump": true,
+"popupOnly": true
+},
+{
+"cursorPopup": [
+"convert"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"cursor": [
+1200,
+790
+],
+"dump": true
+},
+{
+"cursorBuild": [
+"modeItems"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"cursor": [
+1200,
+790
+],
+"dump": true,
+"shot": "u10-version-converted"
+},
+{
+"closeBuild": true
+}
+]
+}

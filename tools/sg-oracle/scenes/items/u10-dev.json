@@ -1,0 +1,118 @@
+{
+"steps": [
+{
+"open": "OccVortex"
+},
+{
+"cursorBuild": [
+"modeItems"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"devAlt": true
+},
+{
+"cursor": [
+1200,
+790
+],
+"dump": true
+},
+{
+"cursorItem": [
+"slot:Helmet"
+],
+"dump": true
+},
+{
+"cursor": [
+1200,
+790
+],
+"clipboard": "Rarity: RARE\nU10 Dev\nCoral Ring\n+20 to maximum Life\nThis line means nothing to the parser\n",
+"hold": [
+"CTRL"
+],
+"events": [
+[
+"KeyDown",
+"v"
+],
+[
+"KeyUp",
+"v"
+]
+],
+"dump": true
+},
+{
+"release": [
+"CTRL"
+]
+},
+{
+"cursor": [
+1200,
+790
+],
+"dump": true
+},
+{
+"cursorBuild": [
+"modeTree"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+]
+},
+{
+"waitAssets": true
+},
+{
+"treeOrder": "u10-dev-order"
+},
+{
+"cursorNode": 61834,
+"dump": true,
+"treeTip": true
+},
+{
+"cursor": [
+-100,
+-100
+],
+"dump": true
+},
+{
+"devAlt": false
+},
+{
+"cursor": [
+-100,
+-100
+],
+"dump": true
+},
+{
+"closeBuild": true
+}
+]
+}

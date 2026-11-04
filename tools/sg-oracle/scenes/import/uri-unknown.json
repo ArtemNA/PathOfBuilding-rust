@@ -1,0 +1,31 @@
+{
+"net": [],
+"steps": [
+{
+"dump": true
+},
+{
+"netDeliver": true,
+"dump": true
+},
+{
+"cursor": [
+1200,
+790
+],
+"dump": true,
+"xml": true
+},
+{
+"waitAssets": true
+},
+{
+"cursor": [
+1200,
+790
+],
+"dump": true
+}
+],
+"uri": "pob://nosuchsite/abc123"
+}
