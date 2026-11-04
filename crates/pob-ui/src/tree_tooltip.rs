@@ -1,9 +1,8 @@
 //! The node tooltip of `PassiveTreeView` (:1047-1109, `AddNodeName` :1412-1470, `AddNodeTooltip` :1476-1770).
-//!
-//! `unimplemented`: `node.power` of `launch.devModeAlt` (:1536-1541, the line needs the node's power in the live spec).
 
 use pob_engine::engine::Engine;
 use pob_gfx::{Frame, Gfx};
+use pob_tree::tree::NodeModLine;
 use pob_tree::{NodeType, PassiveSpec, SpecNode};
 
 use crate::colors::color_code;
@@ -33,7 +32,13 @@ pub fn draw_node_tooltip(
     let node = &spec.nodes[i];
     crate::sg::set_draw_layer(f, None, 100);
     let size = (overlay_size(node.ty()).unwrap_or(0.0) * scale).floor();
-    let params = (i, view.show_stat_differences, view.trace_path.clone(), e.output_revision());
+    let params = (
+        i,
+        view.show_stat_differences,
+        view.trace_path.clone(),
+        crate::launch::launch().dev_mode_alt.get(),
+        e.output_revision(),
+    );
     if view.tooltip.check_for_update(params) {
         add_node_tooltip(view, f, e, art, spec, node, i, None);
     }
@@ -328,9 +333,123 @@ pub fn add_node_name_pub(view: &mut PassiveTreeView, g: &Gfx, e: &Engine, node: 
     add_node_name(view, g, e, &art, node);
 }
 
+/// What `self.build.spec.tree.keystoneMap[name]` holds (PassiveTree.lua:739-741): a node of the tree, or a legacy keystone of `legion.nodes`.
+enum TreeKeystone<'a> {
+    Tree(&'a pob_tree::tree::TreeNode),
+    Legion(&'a pob_tree::timeless::LegionNode),
+}
+
+/// `self.viewer:AddNodeTooltip(tt, keyStoneNode, self.build, true)` (TreeTab.lua:1595-1598): the name, the lines and the texts of the node up to `returnEarly` (:1666-1668). The node is not one
+/// of the spec, so it has no `alloc`, `power` or `finalModList`; legion nodes have no `recipe`, `reminderText` or `flavourText` in the data (LegionPassives.lua).
+pub fn keystone_tooltip(
+    view: &mut PassiveTreeView,
+    tooltip: &mut crate::tooltip::Tooltip,
+    g: &Gfx,
+    e: &Engine,
+    art: &TreeArt,
+    spec: &PassiveSpec,
+    name: &str,
+) {
+    let tree = &spec.tree;
+    let node = if let Some(&i) = tree.keystone_map.get(name) {
+        TreeKeystone::Tree(&tree.nodes[i])
+    } else {
+        let legion = tree.legion().unwrap_or_else(|err| panic!("{}", err.0));
+        match legion.keystone_map.get(name) {
+            Some(&i) => TreeKeystone::Legion(&legion.nodes[i]),
+            None => return,
+        }
+    };
+    std::mem::swap(&mut view.tooltip, tooltip);
+    add_keystone_tooltip(view, g, e, art, &node);
+    std::mem::swap(&mut view.tooltip, tooltip);
+}
+
+fn add_keystone_tooltip(view: &mut PassiveTreeView, g: &Gfx, e: &Engine, art: &TreeArt, node: &TreeKeystone<'_>) {
+    let flavour = show_flavour_text();
+    let font_size_big = if flavour { 18.0 } else { 16.0 };
+    let dev = crate::launch::launch().dev_mode_alt.get();
+    view.skill_tooltip.clear(false);
+    view.tooltip.center = true;
+    view.tooltip.max_width = Some(800.0);
+    let (dn, sd, stats, reminder, an) = match node {
+        TreeKeystone::Tree(n) => (&n.dn, &n.sd, &n.stats, n.reminder_text.as_deref(), art.nodes.get(&n.id)),
+        TreeKeystone::Legion(n) => (&n.dn, &n.sd, &n.stats, None, None),
+    };
+    // :1412-1444 `AddNodeName`
+    view.tooltip.recipe = an.filter(|n| !n.recipe.is_empty()).map(|n| n.recipe.clone());
+    view.tooltip.tooltip_header = Some("KEYSTONE".to_string());
+    let name = if flavour { format!("^xF8E6CA{dn}") } else { dn.clone() };
+    let name = match (dev, node) {
+        (true, TreeKeystone::Tree(n)) => format!("{name} [{}]", n.id),
+        (true, TreeKeystone::Legion(n)) => format!("{name} [{}]", n.id),
+        (false, _) => name,
+    };
+    line(view, g, 24.0, &name, Some("FONTIN"));
+    view.tooltip.center = false;
+    if dev && let TreeKeystone::Legion(_) = node {
+        // :1437 `node.id > 65535`, and the id of a legion node is a string
+        panic!("Classes/PassiveTreeView.lua:1437: attempt to compare number with string");
+    }
+    // :1621-1647
+    if !sd.is_empty() {
+        line(view, g, 16.0, "", None);
+        for (k, l) in sd.iter().enumerate() {
+            add_mod_info(view, g, &stats.mods, k, l, font_size_big);
+        }
+        add_granted_skills(view, g, e, stats.mod_list.mods.iter());
+    }
+    // :1651-1664
+    if let Some(rem) = reminder {
+        view.tooltip.add_separator(Some(14.0));
+        for l in rem {
+            line(view, g, 14.0, &format!("^xA0A080{l}"), None);
+        }
+    }
+    if flavour
+        && let Some(n) = an
+        && !n.flavour_text.is_empty()
+    {
+        view.tooltip.add_separator(Some(14.0));
+        for l in &n.flavour_text {
+            line(view, g, font_size_big, &format!("{}{l}", cc("UNIQUE")), Some("FONTIN ITALIC"));
+        }
+    }
+}
+
+/// :1626-1646 the child tooltip of a granted skill.
+fn add_granted_skills<'a>(view: &mut PassiveTreeView, g: &Gfx, e: &Engine, mods: impl Iterator<Item = &'a std::rc::Rc<pob_mods::Mod>>) {
+    let granted: Vec<(String, f64)> = mods
+        .filter(|m| matches!(&*m.name, "ExtraSkill" | "ExtraSupport"))
+        .filter_map(|m| {
+            let id = m.value.get("skillId");
+            Some((id.as_str()?.to_string(), m.value.get("level").as_num().unwrap_or(1.0)))
+        })
+        .collect();
+    let skills = pob_data::skills::skills();
+    for (id, level) in granted {
+        let Some(effect) = skills.get(&id) else { continue };
+        let data = pob_data::gems::gems();
+        let gem = data.gem_for_skill.get(&effect.id).and_then(|x| data.gems.0.get(x));
+        crate::gem_tooltip::add_gem_tooltip(
+            &mut view.skill_tooltip,
+            g,
+            e,
+            &crate::gem_tooltip::GemInst {
+                gem,
+                effect,
+                level,
+                quality: 0.0,
+                display: None,
+                skip_requirements: gem.is_none(),
+            },
+        );
+    }
+}
+
 /// `addModInfoToTooltip` (:1543-1566).
-fn add_mod_info(view: &mut PassiveTreeView, g: &Gfx, node: &SpecNode, i: usize, text: &str, font_size_big: f64) {
-    let Some(Some(m)) = node.mods().get(i) else { return };
+fn add_mod_info(view: &mut PassiveTreeView, g: &Gfx, mods: &[Option<NodeModLine>], i: usize, text: &str, font_size_big: f64) {
+    let Some(Some(m)) = mods.get(i) else { return };
     // :1545-1556 modifier debugging info
     let mut owned = text.to_string();
     if crate::launch::launch().dev_mode_alt.get()
@@ -447,6 +566,22 @@ fn add_node_tooltip(
     // :1534
     add_node_name(view, g, e, art, node);
     view.tooltip.center = false;
+    // :1536-1541 power debugging info
+    if crate::launch::launch().dev_mode_alt.get()
+        && let Some(tab) = view.owner_build().tree_tab.borrow().clone()
+        && let Some(power) = tab.power.borrow().as_ref().and_then(|r| r.nodes.get(i).cloned())
+        && let Some(offence) = power.offence
+    {
+        let defence = power
+            .defence
+            .expect("Classes/PassiveTreeView.lua:1539: bad argument #3 to 'format' (number expected, got nil)");
+        let text = pob_lua::format::format(
+            "DPS power: %g   Defence power: %g",
+            &[pob_lua::format::Arg::Num(offence), pob_lua::format::Arg::Num(defence)],
+        )
+        .unwrap_or_else(|err| panic!("{err}"));
+        line(view, g, 16.0, &text, None);
+    }
 
     // :1596-1647 (no compare spec: `mNode` = `node`, `masteryColor` = "")
     let sd = node.sd();
@@ -463,7 +598,7 @@ fn add_node_tooltip(
                 for l in &data.sd {
                     line_count += 1;
                     if !existing {
-                        add_mod_info(view, g, node, line_count - 1, l, font_size_big);
+                        add_mod_info(view, g, node.mods(), line_count - 1, l, font_size_big);
                     }
                 }
             }
@@ -476,40 +611,9 @@ fn add_node_tooltip(
     if !sd.is_empty() && (!node.all_mastery_options || is_runegraft) {
         line(view, g, 16.0, "", None);
         for (k, l) in sd.iter().enumerate() {
-            add_mod_info(view, g, node, k, l, font_size_big);
+            add_mod_info(view, g, node.mods(), k, l, font_size_big);
         }
-        // :1626-1646 the child tooltip of a granted skill
-        let granted: Vec<(String, f64)> = node
-            .mods()
-            .iter()
-            .flatten()
-            .filter_map(|m| m.list.as_ref())
-            .flatten()
-            .filter(|m| matches!(&*m.name, "ExtraSkill" | "ExtraSupport"))
-            .filter_map(|m| {
-                let id = m.value.get("skillId");
-                Some((id.as_str()?.to_string(), m.value.get("level").as_num().unwrap_or(1.0)))
-            })
-            .collect();
-        let skills = pob_data::skills::skills();
-        for (id, level) in granted {
-            let Some(effect) = skills.get(&id) else { continue };
-            let data = pob_data::gems::gems();
-            let gem = data.gem_for_skill.get(&effect.id).and_then(|x| data.gems.0.get(x));
-            crate::gem_tooltip::add_gem_tooltip(
-                &mut view.skill_tooltip,
-                g,
-                e,
-                &crate::gem_tooltip::GemInst {
-                    gem,
-                    effect,
-                    level,
-                    quality: 0.0,
-                    display: None,
-                    skip_requirements: gem.is_none(),
-                },
-            );
-        }
+        add_granted_skills(view, g, e, node.mods().iter().flatten().filter_map(|m| m.list.as_ref()).flatten());
     }
 
     // :1651-1656 reminder text

@@ -1375,8 +1375,8 @@ impl PassiveTreeView {
                         _ => {}
                     }
                 }
-            } else if crate::launch::launch().dev_mode_alt.get() {
-                // :948-956 debug display
+            } else if crate::launch::launch().dev_mode_alt.get() && !self.show_heat_map {
+                // :948-956 debug display (`elseif` of `if self.showHeatMap` :916: with the heat map an allocated node keeps its own colour)
                 if node.extra() {
                     sg::set_draw_color(f, 1.0, 0.0, 0.0);
                 } else if node.unknown() {

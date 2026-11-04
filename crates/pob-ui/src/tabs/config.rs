@@ -78,6 +78,19 @@ fn gate_opts(j: &Json) -> Vec<String> {
     }
 }
 
+/// The `if*` keys with a dev tooltip, in the order of ConfigTab.lua:408-622. `ifEnemyStat` (:557) has no data in this upstream: `gates_of` stops on it.
+const DEV_TOOLTIP_GATES: [ConfigGate; 9] = [
+    ConfigGate::Cond,
+    ConfigGate::MinionCond,
+    ConfigGate::EnemyCond,
+    ConfigGate::CondTrue,
+    ConfigGate::Mult,
+    ConfigGate::EnemyMult,
+    ConfigGate::Stat,
+    ConfigGate::TagType,
+    ConfigGate::Mod,
+];
+
 /// The `if*` keys of a var, in the order ConfigTab.lua:382-662 tests them (any order: all must pass).
 fn gates_of(v: &ConfigVar) -> Vec<Gate> {
     let mut out = Vec::new();
@@ -846,6 +859,38 @@ impl ConfigTab {
 
     /// :367-376 `control.tooltipText`: `varData.tooltip` as a string or the two functions of ConfigOptions.lua:61-72.
     fn tooltip_text(&self, i: usize) -> Option<String> {
+        let mut out = self.var_tooltip_text(i);
+        // :408-622 the `tooltipFuncs` of the `if*` keys, in the order of the Lua; only `launch.devModeAlt` gets text from them
+        if crate::launch::launch().dev_mode_alt.get() {
+            for gate in DEV_TOOLTIP_GATES {
+                if let Some(text) = self.dev_gate_text(i, gate) {
+                    out = Some(match out {
+                        Some(o) => format!("{o}\n{text}"),
+                        None => text,
+                    });
+                }
+            }
+        }
+        out
+    }
+
+    /// `listOrSingleIfTooltip` (:244-258) of one `if*` key.
+    fn dev_gate_text(&self, i: usize, gate: ConfigGate) -> Option<String> {
+        let g = self.vars[i].gates.iter().find(|g| matches!(g.kind, GateKind::Env(k) if k == gate))?;
+        let mut out: Option<String> = None;
+        for opt in &g.opts {
+            if let Some(text) = self.e(|e| e.config_dev_tooltip(gate, opt)) {
+                out = Some(match out {
+                    Some(o) => format!("{o}\n{text}"),
+                    None => text,
+                });
+            }
+        }
+        out
+    }
+
+    /// `varData.tooltip` as a string or the two functions of ConfigOptions.lua:61-72.
+    fn var_tooltip_text(&self, i: usize) -> Option<String> {
         let v = self.vars[i].data;
         match v.tooltip.as_ref()? {
             Json::String(s) => Some(s.clone()),
@@ -1488,6 +1533,23 @@ impl ConfigTab {
     }
 
     /// `scrollVar` of the gate.
+    /// `control:GetProperty("tooltipText")` of every `varControls[var]` that has one: the `devTexts` step of config-runner.lua. The second map: how many vars got text from each `if*` key.
+    pub fn debug_tooltip_texts(&self) -> (Json, std::collections::BTreeMap<String, usize>) {
+        let mut texts = serde_json::Map::new();
+        let mut branches = std::collections::BTreeMap::new();
+        for (i, v) in self.vars.iter().enumerate() {
+            let Some(var) = &v.data.var else { continue };
+            for gate in DEV_TOOLTIP_GATES {
+                if self.dev_gate_text(i, gate).is_some() {
+                    *branches.entry(format!("{gate:?}")).or_insert(0) += 1;
+                }
+            }
+            texts.insert(var.clone(), self.tooltip_text(i).map_or(Json::Null, Json::String));
+        }
+        texts.retain(|_, t| !t.is_null());
+        (Json::Object(texts), branches)
+    }
+
     pub fn debug_scroll_to_var(&self, g: &Gfx, var: &str) {
         let i = *self.var_index.get(var).unwrap_or_else(|| panic!("var {var}"));
         let (_, y) = self.vars[i].kind.control().get_pos(g);

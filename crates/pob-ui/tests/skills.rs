@@ -436,6 +436,15 @@ fn run(name: &str) -> Run {
             frame(&mut gfx, &l);
             continue;
         }
+        // U10c: `launch.devMode` and the ALT key
+        if let Some(on) = st["devAlt"].as_bool() {
+            pob_ui::launch::launch().dev_mode.set(on);
+            gfx.input(RawEvent::Key {
+                key: pob_gfx::input::PhysKey::Alt,
+                pressed: on,
+            });
+            continue;
+        }
         if st["closeBuild"].as_bool() == Some(true) {
             let b = main().build_mode.clone();
             b.mod_flag.set(false);

@@ -16,7 +16,7 @@ use crate::controls::list::{ByRef, ListControl, ListHooks};
 use crate::controls::popup::PopupDialog;
 use crate::controls::scroll_bar::SliderControl;
 use crate::undo::UndoHost;
-use crate::modules::main::{main, note_not_ported};
+use crate::modules::main::main;
 use serde_json::json;
 use crate::sg;
 use crate::tooltip::Tooltip;
@@ -583,6 +583,19 @@ fn tree_node_tooltip(tooltip: &mut Tooltip, g: &Gfx, node_id: u32) {
     let spec = e.spec_rc();
     let art = view.art(&root, &spec.tree);
     crate::tree_tooltip::plain_node_tooltip(view, tooltip, g, e, &art, &spec, node_id);
+}
+
+/// :1595-1598 `self.viewer:AddNodeTooltip(tt, keystoneMap[name], self.build, true)`.
+fn conqueror_keystone_tooltip(tooltip: &mut Tooltip, g: &Gfx, name: &str) {
+    let b = main().build_mode.clone();
+    let root = crate::launch::launch().cfg.script_path.clone();
+    let mut tv = b.tree_view.borrow_mut();
+    let Some(view) = tv.as_mut() else { return };
+    let eng = b.engine.borrow();
+    let e = eng.as_ref().expect("engine");
+    let spec = e.spec_rc();
+    let art = view.art(&root, &spec.tree);
+    crate::tree_tooltip::keystone_tooltip(view, tooltip, g, e, &art, &spec, name);
 }
 
 /// `setAllocatedNodes` (:1602-1634).
@@ -1360,7 +1373,11 @@ fn after_search() {
     let trade = ctl::<ButtonControl>("searchTradeButton");
     trade.base.enabled.set(n > 0);
     trade.label.set("Open Trade URL".to_string());
-    local(|l| l.highlight.set(None));
+    // :2839, :2864 `lastSearch = nil`; :2841, :2866
+    local(|l| {
+        l.last_search.set(None);
+        l.highlight.set(None);
+    });
     list.sel_index.set(Some(1));
 }
 
@@ -2080,11 +2097,14 @@ pub fn find_timeless_jewel(g: &mut Gfx) {
     );
     conqueror.sel_index.set(td(|d| d.conqueror_type_id).map_or(1, |v| v as usize));
     conqueror.tip.set_tooltip_func(
-        |tt: &mut Tooltip, _g: &Gfx, (_, _, val): crate::controls::drop_down::DropTooltipArgs| {
+        |tt: &mut Tooltip, g: &Gfx, (_, _, val): crate::controls::drop_down::DropTooltipArgs| {
             tt.clear(false);
-            if val.and_then(|v| v.label).is_some_and(|l| l.ends_with(')')) {
-                // the keystones of these jewels are legion nodes (`keystoneMap`, PassiveTree.lua:739-741)
-                note_not_ported("TreeTab.lua:1591-1600 AddNodeTooltip of a legion keystone in the conqueror drop-down");
+            // `val.label:match("%((.+)%)$")`
+            let label = val.and_then(|v| v.label);
+            if let Some((_, name)) = label.as_deref().and_then(|l| l.strip_suffix(')')).and_then(|l| l.split_once('('))
+                && !name.is_empty()
+            {
+                conqueror_keystone_tooltip(tt, g, name);
             }
         },
     );
@@ -2910,7 +2930,15 @@ pub fn debug_dump(g: &Gfx) -> serde_json::Value {
     let trade_url = local(|l| l.last_trade_url.borrow().clone()).map(|u| trade_url_parts(&u));
     let leagues = Some(labels("searchTradeLeagueSelect")).filter(|l| !l.is_empty());
     let msg = Some(text("msg")).filter(|m| !m.is_empty());
+    // U10c: the tooltip of the drop-down, once it has one (tree-runner.lua)
+    let conqueror_tip = {
+        let c = ctl::<DropDownControl>("conquerorSelect");
+        let t = c.tip.tooltip.borrow();
+        let lines: Vec<String> = t.lines.iter().map(|l| l.text.clone().unwrap_or("<sep>".into())).collect();
+        (!lines.is_empty()).then(|| json!({ "lines": lines, "header": t.tooltip_header.clone() }))
+    };
     json!({
+        "conquerorTip": conqueror_tip,
         "jewelSel": sel("jewelSelect"),
         "conquerorSel": sel("conquerorSelect"),
         "conquerors": labels("conquerorSelect"),

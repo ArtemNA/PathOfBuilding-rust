@@ -1,0 +1,78 @@
+{
+"steps": [
+{
+"open": "OccVortex"
+},
+{
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON",
+false
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"cursorBuild": [
+"modeSkills"
+],
+"dump": true
+},
+{
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON",
+false
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"cursorRow": 2,
+"dump": true
+},
+{
+"devAlt": true
+},
+{
+"cursorSkill": [
+"gemSlot1Name"
+],
+"dump": true,
+"shot": "u10c-gem-dev-1"
+},
+{
+"cursorSkill": [
+"gemSlot2Name"
+],
+"dump": true
+},
+{
+"cursorSkill": [
+"gemSlot3Name"
+],
+"dump": true,
+"shot": "u10c-gem-dev-3"
+},
+{
+"devAlt": false
+},
+{
+"cursor": [
+1200,
+790
+],
+"dump": true
+},
+{
+"cursorSkill": [
+"gemSlot1Name"
+],
+"dump": true
+}
+]
+}

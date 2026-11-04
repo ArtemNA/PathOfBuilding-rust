@@ -1,0 +1,31 @@
+{
+"steps": [
+{
+"open": "Dual Wield Cospris CoC"
+},
+{
+"devAlt": true
+},
+{
+"cursor": [
+-100,
+-100
+]
+},
+{
+"devTexts": "u10c-dev-texts-3"
+},
+{
+"devAlt": false
+},
+{
+"cursor": [
+-100,
+-100
+]
+},
+{
+"devTexts": "u10c-off-texts-3"
+}
+]
+}

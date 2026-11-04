@@ -53,6 +53,10 @@ do
 			.. group(gem:format("SkillGemIncinerate", "Incinerate", "Incinerate"))
 	end, 1)
 	writeAll(USER .. "/Path of Building/Builds/Spectre Test.xml", x)
+	-- U10c: the minion as the main skill and custom mods for the `if*` keys no golden reaches; the same edit as crates/pob-ui/tests/config.rs
+	local d = x:gsub('mainSocketGroup="%d+"', 'mainSocketGroup="1"', 1)
+	d = d:gsub("(<Config[^>]*>)", function(m) return m .. '<CustomModifierBlock title="T0">1% increased Damage per Siphoning Charge</CustomModifierBlock><CustomModifierBlock title="T1">1% increased Damage per Summoned Totem</CustomModifierBlock><CustomModifierBlock title="T2">10% increased Damage against enemies affected by 2 or more poisons</CustomModifierBlock><CustomModifierBlock title="T3">Minions deal 10% increased Damage while on Full Life</CustomModifierBlock>' end, 1)
+	writeAll(USER .. "/Path of Building/Builds/Dev Test.xml", d)
 	-- U10: a skill for the only option of type `float` (ConfigOptions.lua:527); the same edit as crates/pob-ui/tests/config.rs
 	local y = readAll(POB_ROOT .. "spec/TestBuilds/3.13/OccVortex.xml")
 	y = y:gsub("(<Skills [^>]*>)", function(m) return m .. '<Skill mainActiveSkillCalcs="1" enabled="true" mainActiveSkill="1"><Gem level="20" gemId="Metadata/Items/Gems/SkillGemIntuitiveLink" skillId="IntuitiveLink" qualityId="Default" quality="0" enabled="true" nameSpec="Intuitive Link"/></Skill>' end, 1)
@@ -755,6 +759,21 @@ function runner:Step()
 		local runnerSelf = self
 		setmetatable(b, { __index = function(t, k) if k == "buildFlag" then return val end return mt.__index[k] end,
 			__newindex = function(t, k, v) if k == "buildFlag" then val = v if v then runnerSelf.bfTrace[#runnerSelf.bfTrace + 1] = debug.traceback("", 2):sub(1, 600) end else rawset(t, k, v) end end })
+		return
+	end
+	if st.devAlt ~= nil then
+		-- U10c: `launch.devMode` and the ALT key: the debugging lines of the tooltips
+		launch.devMode = st.devAlt
+		held["ALT"] = st.devAlt or nil
+		return
+	end
+	if st.devTexts then
+		-- U10c: `tooltipText` of every var (ConfigTab.lua:367-376), for crates/pob-ui/tests/config.rs
+		local texts = { }
+		for var, c in pairs(main.modes.BUILD.configTab.varControls) do
+			texts[var] = c:GetProperty("tooltipText")
+		end
+		writeAll(OUT .. st.devTexts .. ".json", json.encode(texts) .. "\n")
 		return
 	end
 	if st.wipeCache then wipeGlobalCache() end -- a probe of the comparison tooltip (R-U7)

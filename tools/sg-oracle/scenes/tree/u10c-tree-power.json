@@ -1,0 +1,117 @@
+{
+"steps": [
+{
+"openNew": true
+},
+{
+"waitAssets": true
+},
+{
+"cursor": [
+-100,
+-100
+],
+"time": 20000
+},
+{
+"treeOrder": "order-u10c-dev2"
+},
+{
+"cursor": [
+796,
+388
+],
+"events": [
+[
+"KeyUp",
+"WHEELDOWN"
+],
+[
+"KeyUp",
+"WHEELDOWN"
+],
+[
+"KeyUp",
+"WHEELDOWN"
+]
+]
+},
+{
+"cursorNode": 31961,
+"dump": true
+},
+{
+"cursor": [
+796,
+388
+],
+"events": [
+[
+"KeyDown",
+"p"
+],
+[
+"KeyUp",
+"p"
+]
+],
+"dump": true,
+"tab": true
+},
+{
+"waitPower": true
+},
+{
+"cursor": [
+-100,
+-100
+],
+"time": 40000,
+"dump": true,
+"tab": true
+},
+{
+"devAlt": true
+},
+{
+"cursor": [
+-100,
+-100
+],
+"dump": true,
+"tab": true,
+"shot": "u10c-tree-dev-heat"
+},
+{
+"cursorNode": 31961,
+"dump": true,
+"shot": "u10c-tree-dev-power",
+"viewH": 688
+},
+{
+"cursorNode": 476,
+"dump": true,
+"viewH": 688
+},
+{
+"cursorNode": 982,
+"dump": true,
+"viewH": 688
+},
+{
+"devAlt": false
+},
+{
+"cursorNode": 476,
+"dump": true,
+"viewH": 688
+},
+{
+"cursor": [
+-100,
+-100
+],
+"dump": true
+}
+]
+}

@@ -931,6 +931,12 @@ function runner:Step()
 			__newindex = function(t, k, v) if k == "buildFlag" then val = v if v then runnerSelf.bfTrace[#runnerSelf.bfTrace + 1] = debug.traceback("", 2):sub(1, 600) end else rawset(t, k, v) end end })
 		return
 	end
+	if st.devAlt ~= nil then
+		-- U10c: `launch.devMode` and the ALT key: the debugging text of a gem's stat lines
+		launch.devMode = st.devAlt
+		held["ALT"] = st.devAlt or nil
+		return
+	end
 	if st.cursor then cursorX, cursorY = st.cursor[1], st.cursor[2] end
 	calcsCursor(st)
 	skillsCursor(st)

@@ -289,7 +289,15 @@ fn cursor_find(kind: &str) -> (f64, f64) {
             }
         }
     };
-    if kind == "clusterSocket" {
+    if matches!(kind, "freeNotable" | "freeNormal" | "allocNormal") {
+        // U10c: the smallest id of a kind of node in the view
+        let ty = if kind == "freeNotable" { pob_tree::NodeType::Notable } else { pob_tree::NodeType::Normal };
+        for n in &spec.nodes {
+            if (kind == "allocNormal") == n.alloc && n.ty() == ty && n.ascendancy_name().is_none() && n.id < 65536 {
+                take(n.id, n);
+            }
+        }
+    } else if kind == "clusterSocket" {
         for n in &spec.nodes {
             if n.alloc && n.tree_node().expansion_jewel.is_some() && n.id < 65536 {
                 take(n.id, n);
@@ -471,6 +479,15 @@ fn run(name: &str) -> Run {
             out.perf.push((format!("open {b}"), t0.elapsed().as_secs_f64() * 1e3));
             continue;
         }
+        // U10c: `launch.devMode` and the ALT key
+        if let Some(on) = st["devAlt"].as_bool() {
+            pob_ui::launch::launch().dev_mode.set(on);
+            gfx.input(RawEvent::Key {
+                key: PhysKey::Alt,
+                pressed: on,
+            });
+            continue;
+        }
         if let Some(s) = st["search"].as_str()
             && let Some(v) = main().build_mode.tree_view.borrow_mut().as_mut()
         {
@@ -543,6 +560,17 @@ fn run(name: &str) -> Run {
                 y: (y + h / 2.0).floor(),
             });
         }
+        // U10c: `{ control of the popup, 1-based row of its open list }`
+        if let Some(c) = st["cursorPopupRow"].as_array() {
+            let p = main().popups.borrow()[0].clone();
+            let ctl = p.control(c[0].as_str().expect("name"));
+            let (x, y) = ctl.get_pos(&gfx);
+            let (w, h) = ctl.get_size(&gfx);
+            gfx.input(RawEvent::Cursor {
+                x: (x + w / 2.0).floor(),
+                y: y + h + 2.0 + (c[1].as_f64().expect("row") - 1.0) * (h - 4.0) + 4.0,
+            });
+        }
         // U10: the reply of the leagues (`netLeagues` of tree-runner.lua)
         if st.get("netLeagues").is_some() {
             l.net.wait_idle();
@@ -557,7 +585,8 @@ fn run(name: &str) -> Run {
                 let tv = b.tree_view.borrow();
                 let v = tv.as_ref().expect("view");
                 let n = spec.node(id as u32).expect("node").tree_node();
-                let (w, h) = (968.0, 712.0);
+                // U10c: `viewH`: the heat map's controls take a second line
+                let (w, h) = (968.0, st["viewH"].as_f64().unwrap_or(712.0));
                 let scale = f64::min(w, h) / art.size * v.zoom;
                 (
                     (n.x.expect("x") * scale + v.zoom_x + 312.0 + w / 2.0).floor(),
