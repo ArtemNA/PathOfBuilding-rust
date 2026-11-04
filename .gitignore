@@ -64,3 +64,6 @@
 /tools/sg-oracle/fixtures/items/
 /tools/sg-oracle/fixtures/audit/items-runner-*.json
 /tools/sg-oracle/scenes/items/local-*.json
+
+/tools/sg-oracle/scenes/compare/local-*.json
+/tools/sg-oracle/fixtures/compare/

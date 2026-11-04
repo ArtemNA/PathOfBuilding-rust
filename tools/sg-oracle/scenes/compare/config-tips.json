@@ -1,0 +1,142 @@
+{
+"steps": [
+{
+"open": "Dual Savior"
+},
+{
+"cursorBuild": [
+"modeCompare"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"compareImport": [
+"OccVortex",
+"Occ"
+]
+},
+{
+"cursorCompare": [
+"subTabConfig"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"cursorCompare": [
+"configToggleBtn"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+]
+},
+{
+"cursorCompare": [
+"configSearchEdit"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+]
+},
+{
+"events": [
+[
+"Char",
+"c"
+],
+[
+"Char",
+"h"
+],
+[
+"Char",
+"a"
+],
+[
+"Char",
+"r"
+]
+]
+},
+{
+"cursorCompare": [
+"cfg_c_useFrenzyCharges"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"cursor": [
+1200,
+790
+]
+},
+{
+"cursorCompare": [
+"cfg_p_useFrenzyCharges"
+],
+"dump": true
+},
+{
+"cursorCompare": [
+"cfg_p_useFrenzyCharges"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"closeBuild": true
+}
+]
+}

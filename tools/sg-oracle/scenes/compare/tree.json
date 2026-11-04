@@ -1,0 +1,165 @@
+{
+"steps": [
+{
+"open": "Dual Savior"
+},
+{
+"cursorBuild": [
+"modeCompare"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"compareImport": [
+"Generals Perforate Zerker",
+"Zerker"
+]
+},
+{
+"cursorCompare": [
+"subTabTree"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"waitAssets": true
+},
+{
+"treeOrder": "tree-order"
+},
+{
+"cursor": [
+1200,
+790
+],
+"dump": true,
+"shot": "tree-overlay"
+},
+{
+"cursorCompare": [
+"treeOverlayCheck"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"waitAssets": true
+},
+{
+"cursor": [
+1200,
+790
+],
+"dump": true,
+"shot": "tree-side"
+},
+{
+"cursorCompare": [
+"leftTreeSearch"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+]
+},
+{
+"events": [
+[
+"Char",
+"l"
+],
+[
+"Char",
+"i"
+],
+[
+"Char",
+"f"
+],
+[
+"Char",
+"e"
+]
+],
+"dump": true,
+"shot": "tree-search"
+},
+{
+"cursorCompare": [
+"treeOverlayCheck"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"cursorCompare": [
+"copySpecBtn"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"cursor": [
+1200,
+790
+],
+"dump": true
+},
+{
+"closeBuild": true
+}
+]
+}

@@ -204,6 +204,8 @@ pub struct ControlBase {
     pub collapse_x: Cell<Option<f64>>,
     pub collapse_y: Cell<Option<f64>>,
     pub has_focus: Cell<bool>,
+    /// `self.mouseClipRect` (ControlHost.lua:34).
+    pub mouse_clip: Cell<Option<[f64; 4]>>,
     /// `self.tabOrder`: shared list of the tab group (Control.lua:144-152).
     pub tab_order: RefCell<Option<Rc<RefCell<Vec<WeakControl>>>>>,
 }
@@ -223,6 +225,7 @@ impl ControlBase {
             collapse_x: Cell::new(None),
             collapse_y: Cell::new(None),
             has_focus: Cell::new(false),
+            mouse_clip: Cell::new(None),
             tab_order: RefCell::new(None),
         };
         if let Some(a) = anchor {
@@ -386,7 +389,7 @@ pub trait Control: Any {
 
     /// `control.mouseClipRect` (ControlHost.lua:31-35).
     fn mouse_clip_rect(&self, _g: &Gfx) -> Option<[f64; 4]> {
-        None
+        self.base().mouse_clip.get()
     }
 
     /// `selControl.selDragActive and selControl.dragTargetList` (ControlHost.lua:17).

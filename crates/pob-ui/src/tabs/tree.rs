@@ -1142,7 +1142,7 @@ fn open_reset_popup(g: &mut Gfx) {
 }
 
 /// `OpenVersionConvertPopup` (:654-671).
-fn open_version_convert_popup(g: &mut Gfx, version: &str, ignore_sub_type: bool) {
+pub(crate) fn open_version_convert_popup(g: &mut Gfx, version: &str, ignore_sub_type: bool) {
     let mut controls: IndexMap<String, ControlRef> = IndexMap::new();
     controls.insert(
         "warningLabel".into(),

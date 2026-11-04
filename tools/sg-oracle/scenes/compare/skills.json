@@ -1,0 +1,154 @@
+{
+"steps": [
+{
+"open": "Generals Perforate Zerker"
+},
+{
+"cursorBuild": [
+"modeCompare"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"compareImport": [
+"Mirage Archer Toxic Rain",
+"Mirage"
+]
+},
+{
+"cursorCompare": [
+"subTabSkills"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"cursor": [
+1200,
+790
+],
+"dump": true,
+"shot": "skills-tab"
+},
+{
+"cursor": [
+340,
+240
+],
+"dump": true,
+"shot": "skills-hover"
+},
+{
+"cursor": [
+340,
+276
+],
+"dump": true
+},
+{
+"cursor": [
+340,
+312
+],
+"dump": true
+},
+{
+"cursor": [
+700,
+500
+],
+"events": [
+[
+"KeyDown",
+"WHEELDOWN"
+],
+[
+"KeyUp",
+"WHEELDOWN"
+]
+],
+"dump": true,
+"shot": "skills-scrolled"
+},
+{
+"compareImport": [
+"Dual Savior",
+"Other - Savior"
+]
+},
+{
+"cursor": [
+1200,
+790
+],
+"dump": true
+},
+{
+"cursorCompare": [
+"compareBuildSelect"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+]
+},
+{
+"cursorCompareRow": [
+"compareBuildSelect",
+1
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+]
+},
+{
+"cursor": [
+1200,
+790
+],
+"dump": true
+},
+{
+"cursor": [
+1200,
+790
+],
+"dump": true
+},
+{
+"closeBuild": true
+}
+]
+}

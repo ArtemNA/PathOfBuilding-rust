@@ -1,0 +1,66 @@
+{
+"steps": [
+{
+"open": "Dual Savior"
+},
+{
+"waitAssets": true
+},
+{
+"cursorNodeAuto": true
+},
+{
+"cursorNodeAuto": true,
+"dump": true,
+"nodeTip": true
+},
+{
+"cursorBuild": [
+"modeCompare"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"compareImport": [
+"OccVortex",
+"Occ"
+]
+},
+{
+"cursorBuild": [
+"modeTree"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+]
+},
+{
+"cursorNodeAuto": true
+},
+{
+"cursorNodeAuto": true,
+"dump": true,
+"nodeTip": true
+},
+{
+"closeBuild": true
+}
+]
+}

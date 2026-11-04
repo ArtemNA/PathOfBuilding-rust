@@ -1,0 +1,53 @@
+{
+"steps": [
+{
+"open": "Dual Savior"
+},
+{
+"cacheProbe": [
+"conditionEnemyBleeding",
+true,
+"TotalDPS"
+]
+},
+{
+"cursorBuild": [
+"modeCompare"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"compareImport": [
+"OccVortex",
+"OccVortex"
+]
+},
+{
+"cacheProbe": [
+"conditionEnemyBleeding",
+true,
+"TotalDPS"
+]
+},
+{
+"cacheProbe": [
+"conditionEnemyBleeding",
+true,
+"FullDPS"
+]
+},
+{
+"closeBuild": true
+}
+]
+}

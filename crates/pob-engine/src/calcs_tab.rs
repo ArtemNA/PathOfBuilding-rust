@@ -879,7 +879,7 @@ impl BdCtx<'_, '_> {
     }
 }
 
-fn mod_type(t: &str) -> Result<ModType, String> {
+pub(crate) fn mod_type(t: &str) -> Result<ModType, String> {
     Ok(match t {
         "BASE" => ModType::Base,
         "INC" => ModType::Inc,

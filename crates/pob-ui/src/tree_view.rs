@@ -25,6 +25,17 @@ thread_local! {
 }
 
 const JEWEL_RADIUS_TINT_NEUTRAL: [f64; 4] = [1.0, 1.0, 1.0, 0.7];
+const JEWEL_RADIUS_TINT_PRIMARY_ONLY: [f64; 4] = [1.0, 0.0, 0.0, 0.7];
+const JEWEL_RADIUS_TINT_COMPARE_ONLY: [f64; 4] = [0.0, 1.0, 0.0, 0.7];
+
+/// `compareJewelsEqual` (PassiveTreeView.lua:161-166).
+fn jewels_equal(a: Option<&Rc<pob_items::item::Item>>, b: Option<&Rc<pob_items::item::Item>>) -> bool {
+    match (a, b) {
+        (Some(x), Some(y)) => x.build_raw() == y.build_raw(),
+        (None, None) => true,
+        _ => false,
+    }
+}
 
 /// `jewel` of `GetSocketAndJewelForNodeID` (what the view reads off it).
 fn socket_jewel(e: &Engine, spec: &PassiveSpec, node_id: u32) -> Option<Rc<pob_items::item::Item>> {
@@ -118,6 +129,12 @@ pub struct PassiveTreeView {
     pub show_heat_map: bool,
     /// `self.compareSpec` (TreeTab.lua:450).
     pub compare_spec: Option<Rc<PassiveSpec>>,
+    /// CompareTab.lua:3425-3428 the patched `GetCursorPos`: what is subtracted from the cursor.
+    pub cursor_offset: (f64, f64),
+    /// The build of a viewer that is not of `main.modes.BUILD` (a compare entry).
+    pub owner: Option<std::rc::Weak<crate::modules::build::BuildMode>>,
+    /// `compareSpec.build` when it is another build than this viewer's.
+    pub compare_owner: Option<std::rc::Weak<crate::modules::build::BuildMode>>,
     cache: Option<SpecCache>,
     pub unimplemented: Vec<String>,
     /// Test harness only: a sample of the `pairs(tree.nodes)`-dependent orders of one oracle process (see [`Self::set_order_sample`]).
@@ -172,6 +189,9 @@ impl PassiveTreeView {
             zoom: 1.2_f64.powf(3.0),
             zoom_x: 0.0,
             zoom_y: 0.0,
+            cursor_offset: (0.0, 0.0),
+            owner: None,
+            compare_owner: None,
             search_str: String::new(),
             search_str_cached: String::new(),
             search_params: Vec::new(),
@@ -195,6 +215,11 @@ impl PassiveTreeView {
     /// `viewer.highlightRing`.
     pub fn highlight_ring(&self) -> &ImageHandle {
         &self.highlight_ring
+    }
+
+    /// The build of this viewer.
+    pub fn owner_build(&self) -> std::rc::Rc<crate::modules::build::BuildMode> {
+        self.owner.as_ref().and_then(std::rc::Weak::upgrade).unwrap_or_else(|| main().build_mode.clone())
     }
 
     pub fn load(&mut self, st: &pob_engine::save::TreeViewState) {
@@ -379,6 +404,7 @@ impl PassiveTreeView {
         self.zoom = 1.2_f64.powf(self.zoom_level);
         let factor = self.zoom / old_zoom;
         let (cx, cy) = f.get_cursor_pos();
+        let (cx, cy) = (cx - self.cursor_offset.0, cy - self.cursor_offset.1);
         let rel_x = cx - view_port.x - view_port.width / 2.0;
         let rel_y = cy - view_port.y - view_port.height / 2.0;
         self.zoom_x = rel_x + (self.zoom_x - rel_x) * factor;
@@ -403,6 +429,7 @@ impl PassiveTreeView {
         self.sync_cache(&spec, &art);
         let cur_class_id = spec.cur_class_id;
         let (cursor_x, cursor_y) = f.get_cursor_pos();
+        let (cursor_x, cursor_y) = (cursor_x - self.cursor_offset.0, cursor_y - self.cursor_offset.1);
         let m_over = cursor_x >= view_port.x
             && cursor_x < view_port.x + view_port.width
             && cursor_y >= view_port.y
@@ -541,6 +568,15 @@ impl PassiveTreeView {
         }
         // :318-331 compare-only nodes
         let compare = self.compare_spec.clone();
+        // :118-128 `GetCompareJewel`: `compareSpec.build.itemsTab`
+        let compare_owner = self.compare_owner.as_ref().and_then(std::rc::Weak::upgrade);
+        let compare_same_build = compare_owner.is_none();
+        let compare_jewel = |id: u32| -> Option<Rc<pob_items::item::Item>> {
+            let b = compare_owner.as_ref()?;
+            let eng = b.engine.borrow();
+            let e = eng.as_ref()?;
+            socket_jewel(e, compare.as_deref()?, id)
+        };
         let mut hover_compare: Option<usize> = None;
         if m_over
             && hover_node.is_none()
@@ -624,7 +660,7 @@ impl PassiveTreeView {
         if tree_click == Some("LEFT") {
             if let Some(h) = hover_node {
                 let id = spec.nodes[h].id;
-                let tab = main().build_mode.tree_tab.borrow().clone();
+                let tab = self.owner_build().tree_tab.borrow().clone();
                 if let Some(t) = &tab {
                     t.ensure_undo();
                 }
@@ -660,7 +696,7 @@ impl PassiveTreeView {
                                     let res = engine.borrow_mut().as_mut().expect("engine").select_secondary_ascend_class(k);
                                     res.unwrap_or_else(|e| panic!("{e}"));
                                     add_undo();
-                                    main().build_mode.set_title_pub(f);
+                                    if self.owner.is_none() { main().build_mode.set_title_pub(f); }
                                     build_flag.set(true);
                                 }
                             }
@@ -678,7 +714,7 @@ impl PassiveTreeView {
                                 let res = engine.borrow_mut().as_mut().expect("engine").select_ascend_class(a as f64);
                                 res.unwrap_or_else(|e| panic!("{e}"));
                                 add_undo();
-                                main().build_mode.set_title_pub(f);
+                                if self.owner.is_none() { main().build_mode.set_title_pub(f); }
                                 build_flag.set(true);
                             } else {
                                 let found = engine.borrow().as_ref().expect("engine").find_ascendancy(&asc);
@@ -744,7 +780,7 @@ impl PassiveTreeView {
             let can_tattoo = engine.borrow().as_ref().expect("engine").node_can_tattoo(id);
             if n.alloc && n.ty() == NodeType::Socket {
                 // :522-529 jump to the item page and focus the item slot control
-                let b = crate::modules::main::main().build_mode.clone();
+                let b = self.owner_build();
                 let tab = b.items_tab.borrow().clone();
                 if let Some(slot) = tab.as_ref().and_then(|t| t.sockets.borrow().get(&id).cloned())
                     && slot.is_enabled(f)
@@ -1057,15 +1093,15 @@ impl PassiveTreeView {
 
         // :783-787
         let power = if self.show_heat_map {
-            main().build_mode.tree_tab.borrow().as_ref().and_then(|t| {
+            self.owner_build().tree_tab.borrow().as_ref().and_then(|t| {
                 t.build_power(f);
                 t.power.borrow().clone()
             })
         } else {
             None
         };
-        let heat_stat_single = main()
-            .build_mode
+        let heat_stat_single = self
+            .owner_build()
             .tree_tab
             .borrow()
             .as_ref()
@@ -1255,8 +1291,16 @@ impl PassiveTreeView {
                         || compare.as_ref().and_then(|cs| cs.mastery_selections.get(&id)) != spec.mastery_selections.get(&id))
                 {
                     Some((0.0, 0.0, 1.0))
+                } else if ty == NodeType::Socket
+                    && c.alloc
+                    && node.alloc
+                    && !compare_same_build
+                    && !jewels_equal(socket_jewel(e, &spec, id).as_ref(), compare_jewel(id).as_ref())
+                {
+                    // :185-191
+                    Some((0.0, 0.0, 1.0))
                 } else {
-                    // :185-191: `GetCompareJewel` reads the active sockets: the same jewel
+                    // :185-191: on the tab of one build `GetCompareJewel` reads the active sockets: the same jewel
                     None
                 }
             });
@@ -1395,7 +1439,7 @@ impl PassiveTreeView {
                         let key = if t.expansion_jewel.is_some() { "allocAlt" } else { "alloc" };
                         let n = overlay(c.ty(), key, art.version_num).unwrap_or("JewelSocketActiveBlue");
                         base = art.assets.get(n).cloned();
-                        if let Some(j) = socket_jewel(e, &spec, c.id) {
+                        if let Some(j) = compare_jewel(c.id).or_else(|| socket_jewel(e, &spec, c.id).filter(|_| compare_same_build)) {
                             over = jewel_socket_overlay(&j, t.expansion_jewel.is_some()).map(str::to_owned);
                         }
                     }
@@ -1489,10 +1533,21 @@ impl PassiveTreeView {
                     }
                 }
             }
-            if (node.alloc || compare.as_ref().and_then(|c| c.node(node.id)).is_some_and(|c| c.alloc))
-                && let Some(j) = &jewel
-                && let Some(ri) = j.jewel_radius_index
-            {
+            // :1245-1256
+            let c_jewel = compare_jewel(node.id).or_else(|| compare_same_build.then(|| jewel.clone()).flatten());
+            let mut rings: Vec<(Rc<pob_items::item::Item>, [f64; 4])> = Vec::new();
+            if node.alloc || compare.as_ref().and_then(|c| c.node(node.id)).is_some_and(|c| c.alloc) {
+                let same = jewels_equal(jewel.as_ref(), c_jewel.as_ref());
+                if let Some(j) = jewel.as_ref().filter(|j| j.jewel_radius_index.is_some()) {
+                    let tint = if compare.is_none() || same { JEWEL_RADIUS_TINT_NEUTRAL } else { JEWEL_RADIUS_TINT_PRIMARY_ONLY };
+                    rings.push((j.clone(), tint));
+                }
+                if !same && let Some(j) = c_jewel.as_ref().filter(|j| j.jewel_radius_index.is_some()) {
+                    rings.push((j.clone(), JEWEL_RADIUS_TINT_COMPARE_ONLY));
+                }
+            }
+            for (j, c) in &rings {
+                let ri = j.jewel_radius_index.expect("a ring");
                 // :1168-1214 drawJewelRadius (`isAbyssConquered(jewel.jewelData)`)
                 let abyss = j.jewel_data.as_ref().is_some_and(|d| {
                     d.get("conqueredBy")
@@ -1507,7 +1562,6 @@ impl PassiveTreeView {
                 let rad = &radii[ri as usize - 1];
                 let outer = rad.outer * scale;
                 let inner = rad.inner * scale * 1.06;
-                let c = JEWEL_RADIUS_TINT_NEUTRAL;
                 sg::set_draw_color_a(f, c[0], c[1], c[2], c[3]);
                 let title = j.title.as_deref().unwrap_or("");
                 let d = outer * 2.0;

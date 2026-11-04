@@ -160,7 +160,7 @@ fn lua_err(e: pob_calc::calc_tools::LuaError) -> String {
 }
 
 impl Engine {
-    fn skill_data(&self) -> Rc<Skills> {
+    pub(crate) fn skill_data(&self) -> Rc<Skills> {
         self.result().env.skills.as_ref().expect("skills on").skills.clone()
     }
 

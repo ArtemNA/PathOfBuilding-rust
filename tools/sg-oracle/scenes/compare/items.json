@@ -1,0 +1,184 @@
+{
+"steps": [
+{
+"open": "Dual Wield Cospris CoC"
+},
+{
+"cursorBuild": [
+"modeCompare"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"compareImport": [
+"OccVortex",
+"Occ"
+]
+},
+{
+"cursorCompare": [
+"subTabItems"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"cursor": [
+1200,
+790
+],
+"dump": true,
+"shot": "items-compact"
+},
+{
+"cursor": [
+500,
+300
+],
+"dump": true,
+"shot": "items-hover-primary"
+},
+{
+"cursor": [
+1000,
+300
+],
+"dump": true,
+"shot": "items-hover-compare"
+},
+{
+"cursor": [
+340,
+270
+],
+"dump": true
+},
+{
+"cursor": [
+1200,
+790
+],
+"dump": true
+},
+{
+"cursorCompare": [
+"itemsExpandedCheck"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true,
+"shot": "items-expanded"
+},
+{
+"cursor": [
+700,
+500
+],
+"events": [
+[
+"KeyDown",
+"WHEELDOWN"
+],
+[
+"KeyUp",
+"WHEELDOWN"
+]
+],
+"dump": true
+},
+{
+"cursor": [
+700,
+500
+],
+"events": [
+[
+"KeyDown",
+"WHEELDOWN"
+],
+[
+"KeyUp",
+"WHEELDOWN"
+]
+],
+"dump": true
+},
+{
+"events": [
+[
+"KeyDown",
+"WHEELUP"
+],
+[
+"KeyUp",
+"WHEELUP"
+]
+]
+},
+{
+"events": [
+[
+"KeyDown",
+"WHEELUP"
+],
+[
+"KeyUp",
+"WHEELUP"
+]
+]
+},
+{
+"cursorCompare": [
+"itemsExpandedCheck"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"cursor": [
+1200,
+790
+],
+"dump": true
+},
+{
+"closeBuild": true
+}
+]
+}

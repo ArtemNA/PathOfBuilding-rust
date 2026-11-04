@@ -175,6 +175,7 @@ pub struct BuildMode {
     pub tree_tab: RefCell<Option<Rc<crate::tabs::tree::TreeTab>>>,
     pub config_tab: RefCell<Option<Rc<crate::tabs::config::ConfigTab>>>,
     pub notes_tab: RefCell<Option<Rc<crate::tabs::notes::NotesTab>>>,
+    pub compare_tab: RefCell<Option<Rc<crate::tabs::compare::CompareTab>>>,
     pub db_file_name: RefCell<DbFile>,
     pub build_name: RefCell<Option<String>>,
     pub db_file_sub_path: RefCell<Option<String>>,
@@ -219,6 +220,7 @@ impl BuildMode {
             tree_tab: RefCell::new(None),
             config_tab: RefCell::new(None),
             notes_tab: RefCell::new(None),
+            compare_tab: RefCell::new(None),
             db_file_name: RefCell::new(DbFile::Nil),
             build_name: RefCell::new(None),
             db_file_sub_path: RefCell::new(None),
@@ -1755,6 +1757,7 @@ impl Mode for BuildMode {
         // Build.lua:609-611
         *self.notes_tab.borrow_mut() = Some(crate::tabs::notes::NotesTab::new(g, self.me.clone()));
         *self.config_tab.borrow_mut() = Some(crate::tabs::config::ConfigTab::new(g, self.me.clone()));
+        *self.compare_tab.borrow_mut() = Some(crate::tabs::compare::CompareTab::new(g, self.me.clone()));
         *self.breakdown.borrow_mut() = Some(breakdown);
         let skills = crate::tabs::skills::new_skills_tab(g, self.me.clone());
         *self.skills_tab.borrow_mut() = Some(skills);
@@ -1953,6 +1956,15 @@ impl Mode for BuildMode {
             tab.draw(f, &view_port, input_events);
         } else if self.view_mode.borrow().as_str() == "ITEMS" {
             let tab = self.items_tab.borrow().clone().expect("itemsTab");
+            let view_port = Rect {
+                x: side_bar_width,
+                y: 32.0,
+                width: screen_w - side_bar_width,
+                height: screen_h - 32.0,
+            };
+            tab.draw(f, &view_port, input_events);
+        } else if self.view_mode.borrow().as_str() == "COMPARE" {
+            let tab = self.compare_tab.borrow().clone().expect("compareTab");
             let view_port = Rect {
                 x: side_bar_width,
                 y: 32.0,
@@ -2251,6 +2263,46 @@ impl BuildMode {
         tab.draw(f, &view_port, input_events);
     }
 
+    /// `groupList:GetRowIcon(1, idx, group)`.
+    pub fn skills_group_icon(&self, idx: usize) -> Option<pob_gfx::ImageHandle> {
+        let tab = self.skills_tab.borrow().clone()?;
+        let dummy = crate::controls::list::ByRef(Rc::new(()));
+        tab.group_list.hooks.get_row_icon(&tab.group_list, 1, idx, &dummy)
+    }
+
+    /// `primaryBuild.treeTab`: made at the first draw of the tab in the port.
+    pub fn tree_tab_made(&self, g: &mut Gfx) -> Rc<crate::tabs::tree::TreeTab> {
+        let tab = self.tree_tab.borrow().clone();
+        match tab {
+            Some(t) => t,
+            None => {
+                let t = crate::tabs::tree::new_tree_tab(g);
+                *self.tree_tab.borrow_mut() = Some(t.clone());
+                t.sync_active_spec_quiet();
+                t
+            }
+        }
+    }
+
+    /// What `CompareEntry:LoadFromXML` makes of this build object (CompareEntry.lua:63-186): the engine and `configTab`, the other tabs are read through the engine.
+    pub fn init_compare_entry(&self, g: &mut Gfx, xml: &str, label: &str) -> Result<(), String> {
+        *self.build_name.borrow_mut() = Some(label.to_string());
+        let engine = Engine::load_xml(xml)?;
+        // CompareEntry.lua:102-104
+        *self.target_version.borrow_mut() = Some(LIVE_TARGET_VERSION.to_string());
+        *self.view_mode.borrow_mut() = engine.model().view_mode.clone().unwrap_or_else(|| "TREE".into());
+        engine.view_mode_is_tree.set(self.view_mode.borrow().as_str() == "TREE");
+        *self.engine.borrow_mut() = Some(engine);
+        // the tabs read the controls of their build; they are never drawn for an entry
+        let c = self.create_controls(g);
+        *self.c.borrow_mut() = Some(c);
+        *self.config_tab.borrow_mut() = Some(crate::tabs::config::ConfigTab::new(g, self.me.clone()));
+        *self.items_tab.borrow_mut() = Some(crate::tabs::items::ItemsTab::new(g, self.me.clone()));
+        *self.skills_tab.borrow_mut() = Some(crate::tabs::skills::new_skills_tab(g, self.me.clone()));
+        self.initialised.set(true);
+        Ok(())
+    }
+
     /// `spec:SetWindowTitleWithBuildClass()`.
     pub fn set_title_pub(&self, g: &mut Gfx) {
         self.set_window_title_with_build_class(g);
@@ -2311,6 +2363,28 @@ impl BuildMode {
         let e = eng.as_mut().expect("engine");
         if e.extras().tree_view != st {
             e.set_tree_view_state(st);
+        }
+    }
+
+    /// `treeTab.viewer`: made at the first use in the port; the viewer of an entry knows its build.
+    pub fn ensure_tree_view(&self) {
+        let root = launch().cfg.script_path.clone();
+        let mine = self.me.upgrade().is_some_and(|r| Rc::ptr_eq(&r, &main().build_mode));
+        let mut tv = self.tree_view.borrow_mut();
+        let v = tv.get_or_insert_with(|| {
+            let mut v = PassiveTreeView::new(&root);
+            v.load(&self.engine.borrow().as_ref().expect("engine").extras().tree_view);
+            v
+        });
+        if !mine {
+            v.owner = Some(self.me.clone());
+        }
+    }
+
+    /// CompareTab.lua:3425-3428.
+    pub fn set_tree_cursor_offset(&self, o: (f64, f64)) {
+        if let Some(v) = self.tree_view.borrow_mut().as_mut() {
+            v.cursor_offset = o;
         }
     }
 

@@ -1,0 +1,213 @@
+{
+"steps": [
+{
+"open": "Dual Savior"
+},
+{
+"cursorBuild": [
+"modeCompare"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"compareImport": [
+"OccVortex",
+"Occ"
+]
+},
+{
+"cursorCompare": [
+"subTabConfig"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"cursor": [
+1200,
+790
+],
+"dump": true,
+"shot": "config-tab"
+},
+{
+"cursorCompare": [
+"configToggleBtn"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+]
+},
+{
+"cursor": [
+1200,
+790
+],
+"dump": true,
+"shot": "config-all"
+},
+{
+"cursor": [
+700,
+500
+],
+"events": [
+[
+"KeyDown",
+"WHEELDOWN"
+],
+[
+"KeyUp",
+"WHEELDOWN"
+]
+],
+"dump": true
+},
+{
+"events": [
+[
+"KeyDown",
+"WHEELUP"
+],
+[
+"KeyUp",
+"WHEELUP"
+]
+]
+},
+{
+"cursorCompare": [
+"configSearchEdit"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+]
+},
+{
+"events": [
+[
+"Char",
+"c"
+],
+[
+"Char",
+"h"
+],
+[
+"Char",
+"a"
+],
+[
+"Char",
+"r"
+]
+],
+"dump": true,
+"shot": "config-search"
+},
+{
+"cursorCompare": [
+"cfg_c_useFrenzyCharges"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+]
+},
+{
+"cursor": [
+1200,
+790
+],
+"dump": true
+},
+{
+"cursorCompare": [
+"cfg_p_useFrenzyCharges"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+]
+},
+{
+"cursor": [
+1200,
+790
+],
+"dump": true,
+"shot": "config-written"
+},
+{
+"cursorCompare": [
+"copyConfigBtn"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"cursor": [
+1200,
+790
+],
+"dump": true
+},
+{
+"closeBuild": true
+}
+]
+}

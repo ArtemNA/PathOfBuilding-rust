@@ -44,6 +44,11 @@ impl ControlHost {
         self.controls.borrow_mut().insert(name.to_string(), c);
     }
 
+    /// `self.controls[name] = nil`.
+    pub fn remove(&self, name: &str) {
+        self.controls.borrow_mut().shift_remove(name);
+    }
+
     /// `(name, control)` of every control, for the gate's dump.
     pub fn controls_named(&self) -> Vec<(String, ControlRef)> {
         self.controls.borrow().iter().map(|(k, v)| (k.clone(), v.clone())).collect()
