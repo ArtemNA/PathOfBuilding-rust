@@ -9,7 +9,8 @@ use std::sync::Arc;
 use pob_lua::format::{Arg, format};
 use pob_lua::{Repl, gsub};
 
-use crate::lua_data::{LuaKey, LuaTab, LuaVal, parse_return};
+use crate::lua_data::{LuaKey, LuaTab, LuaVal};
+use crate::src_cache;
 
 #[derive(Clone, Copy, Debug)]
 enum Limit {
@@ -84,17 +85,9 @@ pub(crate) type Scopes = HashMap<String, Arc<Scope>>;
 /// Every file of `Data/StatDescriptions/`: for a thread of its own. A file it cannot read is left to [`load_scope`], which reports it.
 pub(crate) fn read_all_scopes(root: &str) -> Scopes {
     let mut out = HashMap::new();
-    for e in std::fs::read_dir(format!("{root}Data/StatDescriptions"))
-        .into_iter()
-        .flatten()
-        .flatten()
-    {
-        let name = e.file_name().to_string_lossy().into_owned();
-        if let Some(name) = name.strip_suffix(".lua")
-            && let Ok(src) = std::fs::read(e.path())
-            && let Ok(v) = parse_return(&src)
-        {
-            out.insert(name.to_string(), Arc::new(scope_of(&v)));
+    for name in src_cache::lua_files(root, "Data/StatDescriptions") {
+        if let Ok(v) = src_cache::read_lua(root, &format!("Data/StatDescriptions/{name}.lua")) {
+            out.insert(name, Arc::new(scope_of(&v)));
         }
     }
     out
@@ -110,9 +103,7 @@ fn load_scope(name: &str) -> Arc<Scope> {
         return s;
     }
     let root = crate::launch::launch().cfg.script_path.clone();
-    let path = format!("{root}Data/StatDescriptions/{name}.lua");
-    let src = std::fs::read(&path).unwrap_or_else(|e| panic!("Modules/StatDescriber.lua:15: {path}: {e}"));
-    let v = parse_return(&src).unwrap_or_else(|e| panic!("{path}: {e}"));
+    let v = src_cache::read_lua(&root, &format!("Data/StatDescriptions/{name}.lua")).unwrap_or_else(|e| panic!("Modules/StatDescriber.lua:15: {e}"));
     let scope = Arc::new(scope_of(&v));
     SCOPES.with_borrow_mut(|m| m.insert(name.to_string(), scope.clone()));
     scope
@@ -337,8 +328,7 @@ fn pearl_support_text(n: f64) -> String {
     let v = PEARL.with_borrow_mut(|p| {
         p.get_or_insert_with(|| {
             let root = crate::launch::launch().cfg.script_path.clone();
-            let src = std::fs::read(format!("{root}Data/PearlSupports.lua")).expect("Data/PearlSupports.lua");
-            Rc::new(parse_return(&src).expect("Data/PearlSupports.lua"))
+            Rc::new(src_cache::read_lua(&root, "Data/PearlSupports.lua").expect("Data/PearlSupports.lua"))
         })
         .clone()
     });

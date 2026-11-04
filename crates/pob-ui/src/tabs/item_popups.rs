@@ -21,6 +21,7 @@ use crate::controls::drop_down::{DropDownControl, DropItem};
 use crate::controls::edit::{EditArgs, EditControl};
 use crate::controls::list::{ListControl, ListHooks};
 use crate::controls::scroll_bar::SliderControl;
+use crate::lua_data::{LuaKey, LuaTab, LuaVal};
 use crate::modules::main::main;
 use crate::tooltip::Tooltip;
 
@@ -1583,10 +1584,59 @@ fn enchant_with(display: &Item, line: &str, slot: usize) -> Item {
 /// A `Data/*.lua` table with no `data/` file, read from the checkout (as `stat_describer.rs`): a table's positional strings are its `lines`.
 fn lua_data(rel: &str) -> serde_json::Value {
     let root = crate::launch::launch().cfg.script_path.clone();
-    let text = std::fs::read_to_string(format!("{root}{rel}")).unwrap_or_else(|e| panic!("{rel}: {e}"));
+    let v = crate::src_cache::product(&root, &popup_key(rel), |root| Ok(json_to_lua(&popup_table(root, rel)?))).unwrap_or_else(|e| panic!("{rel}: {e}"));
+    lua_to_json(&v)
+}
+
+/// The files [`lua_data`] is asked for.
+pub const POPUP_TABLES: [&str; 4] = ["Data/Crucible.lua", "Data/BeastCraft.lua", "Data/DelveDropOnly.lua", "Data/IncursionDropOnly.lua"];
+
+/// The table of `rel` in `src.cache`.
+pub fn popup_key(rel: &str) -> String {
+    format!("{rel}#popup")
+}
+
+/// The file's table as the popups read it.
+pub fn popup_table(root: &str, rel: &str) -> Result<serde_json::Value, String> {
+    let text = std::fs::read_to_string(format!("{root}{rel}")).map_err(|e| format!("{e}"))?;
     let b = text.as_bytes();
     let mut i = text.find("return").map_or(0, |x| x + 6);
-    lua_value(b, &mut i)
+    Ok(lua_value(b, &mut i))
+}
+
+/// [`lua_value`]'s JSON as a table of the cache: an array has items and no keys, and [`lua_value`] makes no empty one. Its numbers are all `f64`.
+pub fn json_to_lua(v: &serde_json::Value) -> LuaVal {
+    use serde_json::Value;
+    let tab = |arr, fields| LuaVal::Table(Rc::new(LuaTab { arr, fields }));
+    match v {
+        Value::Null => LuaVal::Nil,
+        Value::Bool(b) => LuaVal::Bool(*b),
+        Value::Number(n) => LuaVal::Num(n.as_f64().expect("a number")),
+        Value::String(s) => LuaVal::Str(s.as_str().into()),
+        Value::Array(a) => tab(a.iter().map(json_to_lua).collect(), Vec::new()),
+        Value::Object(m) => tab(Vec::new(), m.iter().map(|(k, v)| (LuaKey::Str(k.as_str().into()), json_to_lua(v))).collect()),
+    }
+}
+
+/// The reverse of [`json_to_lua`].
+pub fn lua_to_json(v: &LuaVal) -> serde_json::Value {
+    use serde_json::{Map, Value, json};
+    match v {
+        LuaVal::Nil => Value::Null,
+        LuaVal::Bool(b) => json!(b),
+        LuaVal::Num(n) => json!(n),
+        LuaVal::Str(s) => json!(&**s),
+        LuaVal::Table(t) if t.fields.is_empty() && !t.arr.is_empty() => Value::Array(t.arr.iter().map(lua_to_json).collect()),
+        LuaVal::Table(t) => {
+            let mut m = Map::new();
+            for (k, v) in &t.fields {
+                if let LuaKey::Str(k) = k {
+                    m.insert(k.to_string(), lua_to_json(v));
+                }
+            }
+            Value::Object(m)
+        }
+    }
 }
 
 fn lua_skip(b: &[u8], i: &mut usize) {

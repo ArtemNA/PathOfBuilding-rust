@@ -12,7 +12,7 @@ use pob_items::Item;
 use crate::control::{Anchor, RectProps};
 use crate::controls::edit::{ChangeFunc, EditArgs, EditControl};
 use crate::lua::{gsub, is_match, lmatch, lmatch_all};
-use crate::lua_data::{LuaTab, LuaVal, parse_return};
+use crate::lua_data::{LuaTab, LuaVal};
 
 // ---------------------------------------------------------------------------------------------- Common.lua:332-347, :1129-1146
 
@@ -101,9 +101,7 @@ thread_local! {
 
 fn read_data_file(rel: &str) -> LuaVal {
     let root = crate::launch::launch().cfg.script_path.clone();
-    let path = format!("{root}{rel}");
-    let src = std::fs::read(&path).unwrap_or_else(|e| panic!("{path}: {e}"));
-    parse_return(&src).unwrap_or_else(|e| panic!("{path}: {e}"))
+    crate::src_cache::read_lua(&root, rel).unwrap_or_else(|e| panic!("{e}"))
 }
 
 /// `tradeHelpers.getTradeStats()` (:102-104).

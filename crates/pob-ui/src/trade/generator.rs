@@ -27,7 +27,7 @@ use crate::controls::edit::{EditArgs, EditControl};
 use crate::controls::popup::PopupDialog;
 use crate::launch::launch;
 use crate::lua::{gsub, lmatch};
-use crate::lua_data::{LuaKey, LuaVal, parse_return};
+use crate::lua_data::{LuaKey, LuaVal};
 use crate::modules::main::{BareControl, main};
 use crate::stat_describer::describe_stats;
 use crate::tabs::items::{ItemSlotControl, ItemsTab};
@@ -104,10 +104,8 @@ pub fn mod_data() -> Rc<ModData> {
         return m;
     }
     let root = launch().cfg.script_path.clone();
-    let path = format!("{root}Data/QueryMods.lua");
-    let src = std::fs::read(&path)
-        .unwrap_or_else(|e| panic!("Classes/TradeQueryGenerator.lua:379-560 (regenerating QueryMods.lua is not ported): {path}: {e}"));
-    let v = parse_return(&src).unwrap_or_else(|e| panic!("{path}: {e}"));
+    let v = crate::src_cache::read_lua(&root, "Data/QueryMods.lua")
+        .unwrap_or_else(|e| panic!("Classes/TradeQueryGenerator.lua:379-560 (regenerating QueryMods.lua is not ported): {e}"));
     let mut out: ModData = HashMap::new();
     for (k, t) in &v.as_tab().expect("modData").fields {
         let (LuaKey::Str(k), LuaVal::Table(t)) = (k, t) else { continue };
@@ -145,9 +143,7 @@ fn pearl_support_count() -> usize {
         return n;
     }
     let root = launch().cfg.script_path.clone();
-    let path = format!("{root}Data/PearlSupports.lua");
-    let src = std::fs::read(&path).unwrap_or_else(|e| panic!("{path}: {e}"));
-    let v = parse_return(&src).unwrap_or_else(|e| panic!("{path}: {e}"));
+    let v = crate::src_cache::read_lua(&root, "Data/PearlSupports.lua").unwrap_or_else(|e| panic!("{e}"));
     let n = v.as_tab().map_or(0, |t| t.len_seq());
     PEARL_COUNT.with(|c| c.set(Some(n)));
     n

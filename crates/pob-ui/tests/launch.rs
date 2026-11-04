@@ -30,7 +30,7 @@ fn start(tag: &str) -> (Tmp, Gfx, TestPlatform, Rc<Launch>) {
     let l = Launch::new(LaunchConfig {
         user_path: Some(dir.to_string_lossy().replace('\\', "/")),
         user_folder: "PoB test".into(),
-        script_path: format!("{root}/src/"),
+        script_path: scene::script_path(),
         doc_path: format!("{root}/"),
         version_number: "1.2.3".into(),
         version_branch: None,

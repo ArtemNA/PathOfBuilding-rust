@@ -3,9 +3,10 @@
 #   pwsh tools/package.ps1 [-SkipBuild]
 #
 # What of upstream's src/ goes in (a journal of the files read on all the tabs, plus every reader in crates/):
-#   GameVersions.lua, Assets/, Data/ without TimelessJewelData/ (the converter's input: the app reads data/timeless-luts, data/node-id-list.json and
-#   data-patches/legion-passives.json instead), TreeData/ with ALL the versions: a build of an old version opens with that version's tree.
-#   Not read by anything: Classes/, Modules/, Export/ and the other *.lua of src/.
+#   Assets/ as it is. TreeData/ with ALL the versions (a build of an old version opens with that version's tree), one file per content: the other paths are in the table of the copies.
+#   Every Lua file the application reads becomes a table of src/src.cache (crates/pob-ui/src/src_cache.rs); no .lua is in the package, and nothing there parses Lua text.
+#   Not read by anything: Classes/, Modules/, Export/, the rest of Data/ (TimelessJewelData/ is the converter's input: the app reads data/timeless-luts, data/node-id-list.json and
+#   data-patches/legion-passives.json instead).
 param([switch]$SkipBuild)
 $ErrorActionPreference = 'Stop'
 
@@ -79,10 +80,17 @@ Copy-Item (Join-Path $repo 'data.cache') $out
 foreach ($f in 'manifest.xml', 'changelog.txt', 'help.txt') { Copy-Item (Join-Path $pob $f) $out }
 Copy-Tree (Join-Path $pob 'runtime/SimpleGraphic/Fonts') (Join-Path $out 'runtime/SimpleGraphic/Fonts')
 New-Item -ItemType Directory -Force (Join-Path $out 'src') | Out-Null
-Copy-Item (Join-Path $pob 'src/GameVersions.lua') (Join-Path $out 'src')
 Copy-Tree (Join-Path $pob 'src/Assets') (Join-Path $out 'src/Assets')
-Copy-Tree (Join-Path $pob 'src/TreeData') (Join-Path $out 'src/TreeData')
-Copy-Tree (Join-Path $pob 'src/Data') (Join-Path $out 'src/Data') @((Join-Path $pob 'src/Data/TimelessJewelData'))
+# TreeData/ and src.cache. It stops if a file through the table of the copies or a table differs from upstream (byte for byte, bit for bit) or a .lua is left.
+Push-Location $repo
+try {
+    cargo run --release -p pob-ui --example gen_src_cache -- (Join-Path $pob 'src') (Join-Path $out 'src')
+    if ($LASTEXITCODE -ne 0) { throw 'gen_src_cache failed' }
+} finally {
+    Pop-Location
+}
+$lua = @(Get-ChildItem $out -Recurse -File -Filter '*.lua')
+if ($lua) { throw "the package has $($lua.Count) Lua files: $($lua[0].FullName)" }
 
 Copy-Item (Join-Path $repo 'LICENSE') (Join-Path $out 'LICENSE')
 Copy-Item (Join-Path $pob 'LICENSE.md') (Join-Path $out 'LICENSE-PathOfBuilding.md')
@@ -95,8 +103,8 @@ A Rust port of Path of Building Community, built from commit $head of the port.
 The program is under the MIT license of the port: LICENSE.
 Next to it are unchanged files of Path of Building Community $version (commit $($up.pobSha),
 https://github.com/PathOfBuildingCommunity/PathOfBuilding), under its license: LICENSE-PathOfBuilding.md:
-  manifest.xml, changelog.txt, help.txt, runtime/SimpleGraphic/Fonts, src/GameVersions.lua, src/Assets, src/Data, src/TreeData.
-data/ and data-patches/ are converted from the same files (pob-sha $($lock.pobSha)).
+  manifest.xml, changelog.txt, help.txt, runtime/SimpleGraphic/Fonts, src/Assets, src/TreeData (one file for each content).
+data/, data-patches/ and src/src.cache are converted from the same files (pob-sha $($lock.pobSha)).
 Game data and art: (c) Grinding Gear Games. This port is not affiliated with Grinding Gear Games or Path of Building Community.
 
 User data goes to Documents\Path of Building (Rust). It updates by a new build: Ctrl+U only shows a status.
@@ -104,7 +112,8 @@ User data goes to Documents\Path of Building (Rust). It updates by a new build: 
 
 $mb = { param($p) [math]::Round(((Get-ChildItem $p -Recurse -File | Measure-Object Length -Sum).Sum) / 1MB, 1) }
 "exe     {0,8:N1} MB" -f ((Get-Item (Join-Path $out $exeName)).Length / 1MB)
-foreach ($d in 'data', 'data-patches', 'runtime', 'src/TreeData', 'src/Data', 'src/Assets') { "{0,-13} {1,8:N1} MB" -f $d, (& $mb (Join-Path $out $d)) }
+foreach ($d in 'data', 'data-patches', 'runtime', 'src/TreeData', 'src/Assets') { "{0,-13} {1,8:N1} MB" -f $d, (& $mb (Join-Path $out $d)) }
+"src.cache {0,6:N1} MB" -f ((Get-Item (Join-Path $out 'src/src.cache')).Length / 1MB)
 "total   {0,8:N1} MB, {1} files" -f (& $mb $out), (Get-ChildItem $out -Recurse -File).Count
 "version $version"
 "out     $out"

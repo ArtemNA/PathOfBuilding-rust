@@ -389,7 +389,7 @@ impl Main {
             Some(p) => *m.user_path.borrow_mut() = Some(format!("{p}/{}/", l.cfg.user_folder)),
         }
         // `self:LoadTree(latestTreeVersion)`: PassiveTree:LoadImage("Background2.png", …, "ASYNC") (PassiveTree.lua:262-263, :909-932).
-        let bg = format!("{}TreeData/Background2.png", l.cfg.script_path);
+        let bg = crate::src_cache::resolve(&l.cfg.script_path, "TreeData/Background2.png");
         if let Err(e) = m.background.load_lua(&bg, &["ASYNC"]) {
             panic!("{e}");
         }
