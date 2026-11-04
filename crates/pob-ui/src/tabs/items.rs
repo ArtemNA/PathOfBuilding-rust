@@ -535,7 +535,15 @@ impl ItemsTab {
     }
 
     /// `AddItemTooltip(tooltip, item, slot, dbMode, maxWidth)`.
-    pub fn add_tooltip_width(&self, tooltip: &mut Tooltip, g: &Gfx, item: &Rc<Item>, slot: Option<&CompareSlot>, db_mode: bool, max_width: Option<f64>) {
+    pub fn add_tooltip_width(
+        &self,
+        tooltip: &mut Tooltip,
+        g: &Gfx,
+        item: &Rc<Item>,
+        slot: Option<&CompareSlot>,
+        db_mode: bool,
+        max_width: Option<f64>,
+    ) {
         // :4911: the branch of the items that are not a flask or a tincture
         if !item.base.as_ref().is_some_and(|b| b.flask.is_some() || b.tincture.is_some()) {
             self.update_sockets(g);
@@ -560,7 +568,15 @@ impl ItemsTab {
 
     /// `AddItemTooltip(tooltip, jewel, socket)` of the tree view (PassiveTreeView.lua:1501).
     pub fn add_socket_tooltip(&self, tooltip: &mut Tooltip, g: &Gfx, item: &Rc<Item>, node_id: u32) {
+        // :4911 `UpdateSockets` runs first in `AddItemTooltip`, the label of the slot is read after it ("Socket #n")
+        self.update_sockets(g);
         let slot = self.sockets.borrow().get(&node_id).map(|s| s.compare_info());
+        self.add_tooltip(tooltip, g, item, slot.as_ref(), false);
+    }
+
+    /// `compareSpec.build.itemsTab:AddItemTooltip(tooltip, cJewel, socket)` with the socket of the primary build (PassiveTreeView.lua:1493).
+    pub fn add_foreign_socket_tooltip(&self, tooltip: &mut Tooltip, g: &Gfx, item: &Rc<Item>, socket_tab: &ItemsTab, node_id: u32) {
+        let slot = socket_tab.sockets.borrow().get(&node_id).map(|s| s.compare_info());
         self.add_tooltip(tooltip, g, item, slot.as_ref(), false);
     }
 
@@ -3524,7 +3540,7 @@ pub fn debug_input_state(g: &Gfx) -> serde_json::Value {
     let mode = b.host.get("modeItems").expect("modeItems");
     let db = t.unique_db.borrow().clone().expect("uniqueDB");
     let craft = t.craft_display_item.borrow().clone().expect("craft");
-    let popup_save = main().popups.borrow().first().map(|p| pos(&*p.control("save")));
+    let popup_save = main().popups.borrow().first().and_then(|p| p.host.get("save")).map(|c| pos(&*c));
     json!({
         "viewMode": *b.view_mode.borrow(), "modeBtn": pos(&*mode), "rowPos": { "x": lx + 10.0, "y": ly + 2.0 + 16.0 + 8.0 },
         "listSel": list.sel_index.get().unwrap_or(0),

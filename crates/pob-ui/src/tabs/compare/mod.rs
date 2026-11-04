@@ -6,6 +6,7 @@
 mod calcs;
 mod config;
 mod entry;
+mod folder;
 mod items;
 mod power;
 mod skills;
@@ -29,7 +30,7 @@ use crate::controls::edit::{EditArgs, EditControl};
 use crate::controls::scroll_bar::ScrollBarControl;
 use crate::host::{ControlHost, InputEvent, InputEvents, ipairs};
 use crate::modules::build::{BuildMode, SkillControls, apply_skill_select};
-use crate::modules::main::{BareControl, main, not_ported};
+use crate::modules::main::{BareControl, main};
 use crate::sg;
 use crate::tooltip::Tooltip;
 use crate::undo::UndoHost;
@@ -125,6 +126,8 @@ pub struct CompareTab {
     compare_power_list_synced: Cell<bool>,
     /// `comparePowerCoroutine`.
     compare_power_run: RefCell<Option<power::PowerRun>>,
+    /// The `listHost` of the open "Import from Folder" popup.
+    folder_host: RefCell<Weak<folder::FolderHost>>,
 }
 
 /// `self.controls` of the top bar and the shared scroll bars.
@@ -247,6 +250,7 @@ impl CompareTab {
             compare_power_progress: Cell::new(0.0),
             compare_power_list_synced: Cell::new(false),
             compare_power_run: RefCell::new(None),
+            folder_host: RefCell::new(Weak::new()),
         });
         let c = tab.init_controls(g);
         *tab.c.borrow_mut() = Some(c);
@@ -364,17 +368,32 @@ impl CompareTab {
             anchor("LEFT", &ib, "RIGHT"),
             rect(4.0, 0.0, 140.0, 20.0),
             "Re-import Current".to_string(),
-            // :250-252 ReimportPrimary: the network of the Import tab
-            |g| not_ported(g, "Classes/CompareTab.lua:1293 ReimportPrimary (character import, network)"),
+            // :250-252 ReimportPrimary, the body in `ImportTab::reimport_character`
+            {
+                let tt = t.clone();
+                move |g| {
+                    if let Some(tab) = tt().primary().import_tab.borrow().clone() {
+                        tab.reimport_character(g);
+                    }
+                }
+            },
         );
-        // :253-270 the tooltip with no character selected (the import of a character is the network, not ported)
-        reimport_btn.tip.set_tooltip_func(|tooltip: &mut Tooltip, g: &Gfx, _: ()| {
-            tooltip.clear(false);
-            tooltip.add_line(g, 16.0, Some("^7No character selected."));
-            tooltip.add_line(g, 14.0, Some("^7Go to Import/Export Build tab and select a character first."));
+        // :253-270
+        let tt = t.clone();
+        reimport_btn.tip.set_tooltip_func(move |tooltip: &mut Tooltip, g: &Gfx, _: ()| {
+            if let Some(tab) = tt().primary().import_tab.borrow().as_ref() {
+                tab.reimport_tooltip(tooltip, g);
+            }
         });
-        // :271-276 without a selected character: `nil or nil`
-        reimport_btn.base.enabled.set(false);
+        // :271-276
+        let tt = t.clone();
+        reimport_btn.base.enabled.set_fn(move |_| {
+            tt().primary()
+                .import_tab
+                .borrow()
+                .as_ref()
+                .is_some_and(|tab| tab.reimport_enabled())
+        });
         let rb: ControlRef = reimport_btn.clone();
         let tt = t.clone();
         let remove_btn = ButtonControl::new(
@@ -1239,7 +1258,7 @@ impl CompareTab {
         }
     }
 
-    /// `OpenImportPopup` (:1467-1530). The URL branch (:1493-1511) is the network.
+    /// `OpenImportPopup` (:1467-1530).
     pub fn open_import_popup(&self, g: &mut Gfx) {
         let mut controls: IndexMap<String, ControlRef> = IndexMap::new();
         let state_text = Rc::new(RefCell::new(String::new()));
@@ -1282,12 +1301,27 @@ impl CompareTab {
             }
             let custom = nm.buf.borrow().clone();
             let custom = (!custom.is_empty()).then_some(custom);
-            for (site, m) in BUILD_SITES {
+            // :1493-1511
+            for (i, (site, m)) in BUILD_SITES.into_iter().enumerate() {
                 if pob_lua::gsub(buf.as_bytes(), m.as_bytes(), pob_lua::Repl::Str(b""), Some(1)).is_ok_and(|r| r.1 > 0) {
-                    not_ported(
-                        g,
-                        &format!("Classes/CompareTab.lua:1496 buildSites.DownloadBuild ({site}, network)"),
-                    );
+                    *st.borrow_mut() = format!("{}Downloading...", color_code("WARNING").expect("WARNING"));
+                    let (tab, st, custom) = (tab.clone(), st.clone(), custom.clone());
+                    crate::build_sites::download_build(&buf, i + 1, move |g, ok, data| {
+                        if !ok {
+                            *st.borrow_mut() = format!("{}{data}", color_code("NEGATIVE").expect("NEGATIVE"));
+                            return;
+                        }
+                        match pob_build::code::decode_build_code(&data).map(|x| String::from_utf8_lossy(&x).into_owned()) {
+                            Some(xml) => {
+                                let label = custom.unwrap_or_else(|| format!("Imported from {site}"));
+                                tab.import_build(g, &xml, &label);
+                                main().close_popup();
+                            }
+                            None => {
+                                *st.borrow_mut() = format!("{}Failed to decode build data", color_code("NEGATIVE").expect("NEGATIVE"));
+                            }
+                        }
+                    });
                     return;
                 }
             }
@@ -1332,11 +1366,6 @@ impl CompareTab {
             Some("cancel"),
             None,
         );
-    }
-
-    /// `OpenImportFolderPopup` (:1534-1645).
-    pub fn open_import_folder_popup(&self, g: &mut Gfx) {
-        not_ported(g, "Classes/CompareTab.lua:1534 OpenImportFolderPopup");
     }
 
     /// `Draw` (:1650-1866).
@@ -1673,12 +1702,30 @@ impl CompareTab {
         })
     }
 
+    /// The set selectors of the Items view, for the gate.
+    pub fn debug_sets(&self) -> serde_json::Value {
+        let c = self.c();
+        let drop = |d: &DropDownControl| {
+            serde_json::json!({
+                "sel": d.sel_index.get(),
+                "list": d.list.borrow().iter().map(|v| v.label.clone().unwrap_or_default()).collect::<Vec<_>>(),
+            })
+        };
+        serde_json::json!({
+            "primaryItem": drop(&c.primary_item_set_select),
+            "compareItem": drop(&c.compare_item_set_select2),
+            "primaryTree": drop(&c.primary_tree_set_select),
+            "compareTree": drop(&c.compare_tree_set_select),
+        })
+    }
+
     /// `control:SetSel(index)` of the gate.
     pub fn debug_select(&self, g: &mut Gfx, name: &str, index: i64) {
         let c = self.c();
         match name {
             "comparePowerStatSelect" => c.power_stat_select.set_sel(g, index, false),
             "cmpSocketGroup" => c.cmp_socket_group.set_sel(g, index, false),
+            "rightVersionSelect" => c.tree.right_version.set_sel(g, index, false),
             other => panic!("debug_select {other}"),
         }
     }
@@ -1687,6 +1734,66 @@ impl CompareTab {
     pub fn debug_control(&self, name: &str) -> Option<ControlRef> {
         self.host.get(name)
     }
+}
+
+/// The state of the real window after a frame (the runner's `RealState`, tools/sg-oracle/compare-rust-input.ps1).
+pub fn debug_input_state(g: &Gfx) -> serde_json::Value {
+    use serde_json::json;
+    if main().mode.borrow().as_deref() != Some("BUILD") {
+        return serde_json::Value::Null;
+    }
+    let b = main().build_mode.clone();
+    let Some(t) = b.compare_tab.borrow().clone() else {
+        return serde_json::Value::Null;
+    };
+    let pos = |ctl: &dyn Control| {
+        let (x, y) = ctl.get_pos(g);
+        let (w, h) = ctl.get_size(g);
+        json!({ "x": (x + w / 2.0).floor(), "y": (y + h / 2.0).floor() })
+    };
+    let shown = |ctl: Option<ControlRef>| match ctl {
+        Some(c) if c.is_shown(g) => pos(&*c),
+        _ => json!({ "x": 0, "y": 0 }),
+    };
+    let c = t.c();
+    let m = main();
+    let popups = m.popups.borrow();
+    let p = popups.first();
+    let pc = |name: &str| p.and_then(|p| p.host.get(name));
+    let list = pc("buildList");
+    let row2 = list.as_ref().map_or(json!({ "x": 0, "y": 0 }), |l| {
+        let (x, y) = l.get_pos(g);
+        json!({ "x": x + 20.0, "y": y + 2.0 + 20.0 + 10.0 })
+    });
+    let folder = t.debug_folder(g);
+    let labels: Vec<String> = t.entries.borrow().iter().map(|e| e.label.clone()).collect();
+    let str_value = |ctl: Option<ControlRef>| ctl.and_then(|c| c.debug_value(g)).unwrap_or(json!(""));
+    json!({
+        "viewMode": *b.view_mode.borrow(),
+        "modeCompare": pos(&*b.host.get("modeCompare").expect("modeCompare")),
+        "importBtn": pos(&*c.import_btn),
+        "removeBtn": shown(Some(c.remove_btn.clone())),
+        "popups": popups.len(),
+        "popupTitle": p.map_or(String::new(), |p| p.title.get(g)),
+        "input": shown(pc("input")),
+        "inputBuf": str_value(pc("input")),
+        "state": str_value(pc("state")),
+        "go": shown(pc("go")),
+        "importFolder": shown(pc("importFolder")),
+        "folderRow2": row2,
+        "folderN": folder.as_ref().filter(|_| list.is_some()).map_or(0, |f| f["rows"].as_array().map_or(0, Vec::len)),
+        "folderSel": folder.as_ref().filter(|_| list.is_some()).map_or(json!(0), |f| f["sel"].clone()),
+        "folderOpen": shown(pc("open")),
+        "entries": labels,
+        "active": t.active.get(),
+        "mode": *t.view_mode.borrow(),
+        "scrollY": t.scroll_y.get(),
+        "subItems": shown(t.host.get("subTabItems")),
+        "subConfig": shown(t.host.get("subTabConfig")),
+        "subTree": shown(t.host.get("subTabTree")),
+        "configSearch": shown(Some(c.config_search_edit.clone())),
+        "configBuf": c.config_search_edit.buf.borrow().clone(),
+    })
 }
 
 /// `PopulateSetDropdown` (:1087-1102).

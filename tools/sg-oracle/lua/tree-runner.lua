@@ -35,6 +35,7 @@ for _, b in ipairs(BUILD_FILES) do
 	writeAll(USER .. "/Path of Building/Builds/" .. b .. ".xml", readAll(BUILDS .. b .. ".xml"))
 end
 writeAll(USER .. "/Path of Building/Builds/Generals Perforate Zerker.xml", readAll(POB_ROOT .. "spec/TestBuilds/3.13/Generals Perforate Zerker.xml"))
+writeAll(USER .. "/Path of Building/Builds/Dual Savior.xml", readAll(POB_ROOT .. "spec/TestBuilds/3.13/Dual Savior.xml"))
 writeAll(USER .. "/Path of Building/Settings.xml", readAll(base .. "/scenes/tree/Settings.xml"))
 
 -- 2. Environment: the checkout's src, read in place.

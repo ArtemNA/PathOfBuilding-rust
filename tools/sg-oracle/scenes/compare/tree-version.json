@@ -1,0 +1,198 @@
+{
+"steps": [
+{
+"open": "Generals Perforate Zerker"
+},
+{
+"cursorBuild": [
+"modeCompare"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"compareImport": [
+"Dual Savior",
+"Savior"
+]
+},
+{
+"cursorCompare": [
+"subTabTree"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"waitAssets": true
+},
+{
+"treeOrder": "tree-version-order"
+},
+{
+"cursor": [
+1200,
+790
+],
+"dump": true,
+"radius": true,
+"shot": "tree-version-start"
+},
+{
+"cursorCompare": [
+"rightVersionSelect"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"cursorCompareRow": [
+"rightVersionSelect",
+3
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true,
+"shot": "tree-version-popup"
+},
+{
+"cursorPopup": [
+"cancel"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"compareSel": [
+"rightVersionSelect",
+25
+]
+},
+{
+"cursor": [
+1200,
+790
+],
+"dump": true
+},
+{
+"cursorPopup": [
+"convert"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true,
+"radius": true
+},
+{
+"waitAssets": true
+},
+{
+"treeOrder": "tree-version-order2"
+},
+{
+"cursor": [
+1200,
+790
+],
+"dump": true,
+"radius": true,
+"shot": "tree-version-overlay"
+},
+{
+"cursorBuild": [
+"mainSocketGroup"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+]
+},
+{
+"cursorBuild": [
+"mainSocketGroup",
+0,
+36
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+]
+},
+{
+"cursor": [
+1200,
+790
+],
+"dump": true,
+"radius": true
+},
+{
+"closeBuild": true
+}
+]
+}

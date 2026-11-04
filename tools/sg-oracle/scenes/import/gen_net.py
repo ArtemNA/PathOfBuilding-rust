@@ -574,6 +574,112 @@ write('net-oauth-expired', [
     err(TOKEN, "synthetic refused"),
 ])
 
+# --- U8b2: the Compare tab over the network: a build by link, the errors of a site, a name, a popup cancelled while it downloads; Re-import Current
+COMPARE = {"cursorBuild": "modeCompare", "events": click(), "dump": True}
+IMPORT_BTN = {"cursorCompare": "importBtn", "events": click(), "dump": True}
+def go(link):
+    return [paste(link), {"cursorPopup": "go", "events": click(), "dump": True}]
+def again(link):
+    return [{"cursorPopup": "input", "events": click()}, select_all_delete(), *go(link)]
+write('net-compare-url', [
+    {"open": "OccVortex"},
+    COMPARE,
+    IMPORT_BTN,
+    *go("https://pobb.in/e404"),
+    DELIVER,
+    *again("https://pobb.in/empty"),
+    DELIVER,
+    *again("https://pobb.in/notacode"),
+    DELIVER | {"shot": "net-compare-bad"},
+    *again("https://pastebin.com/dead"),
+    {"shot": "net-compare-downloading"},
+    DELIVER,
+    *again("https://pobb.in/good"),
+    DELIVER,
+    AWAY | {"dump": True, "shot": "net-compare-imported"},
+    # a name of its own, on another site
+    IMPORT_BTN,
+    paste("https://maxroll.gg/poe/pob/abc123"),
+    {"cursorPopup": "name", "events": click()},
+    {"events": typed("Named"), "dump": True},
+    {"cursorPopup": "go", "events": click(), "dump": True},
+    DELIVER,
+    # the popup closed before the reply: the entry still comes
+    IMPORT_BTN,
+    *go("https://pobb.in/good"),
+    {"cursorPopup": "cancel", "events": click(), "dump": True},
+    DELIVER,
+    # a reply of the site under another popup: `main:ClosePopup()` takes that one
+    IMPORT_BTN,
+    *go("https://pobb.in/good"),
+    {"cursorPopup": "cancel", "events": click(), "dump": True},
+    IMPORT_BTN,
+    DELIVER,
+    AWAY | {"dump": True},
+], [
+    fail("https://pobb.in/pob/e404", 404),
+    ok("https://pobb.in/pob/empty", ""),
+    ok("https://pobb.in/pob/notacode", "this is not a build code"),
+    err("https://pastebin.com/raw/dead", "synthetic failure"),
+    ok("https://pobb.in/pob/good", CODE),
+    ok("https://maxroll.gg/poe/api/pob/abc123", CODE),
+])
+write('net-compare-reimport', [
+    {"open": "OccVortex"},
+    COMPARE,
+    # nothing selected: the tooltip, a disabled button
+    {"cursorCompare": "reimportBtn", "dump": True, "shot": "net-compare-reimport-none"},
+    {"cursorCompare": "reimportBtn", "events": click(), "dump": True},
+    TAB,
+    *START,
+    DELIVER,
+    DELIVER,
+    COMPARE,
+    {"cursorCompare": "reimportBtn", "dump": True, "shot": "net-compare-reimport-site"},
+    {"cursorCompare": "reimportBtn", "events": click(), "dump": True},
+    DELIVER | {"xml": True},
+    {"cursorCompare": "reimportBtn", "events": click(), "dump": True},
+    DELIVER | {"xml": True},
+    AWAY | {"dump": True, "shot": "net-compare-reimport-done"},
+], [
+    ok(LIST, j(CHARS)),
+    ok(PROFILE, PAGE),
+    ok(ITEMS_URL2, j({"items": EQUIPMENT, "guardian": GUARDIAN})),
+    ok(TREE_URL2, j(SITE_PASSIVES)),
+])
+write('net-compare-reimport-oauth', [
+    {"open": "OccVortex"},
+    CLOCK,
+    TAB,
+    tapi("authenticateButton", clipboard="fixed"),
+    {"netDeliver": True, "clipboard": "fixed", "dump": True},
+    DELIVER,
+    DELIVER,
+    COMPARE,
+    {"cursorCompare": "reimportBtn", "dump": True, "shot": "net-compare-reimport-oauth"},
+    {"cursorCompare": "reimportBtn", "events": click(), "dump": True},
+    {"cursorPopup": "confirm", "events": click(), "dump": True},
+    DELIVER | {"xml": True},
+    AWAY | {"dump": True},
+], [
+    {"url": "oauth", "oauth": {"code": "synthetic-code", "port": 49082}},
+    ok(TOKEN, TOKENS),
+    ok(API, j({"characters": OC}), LIMITS),
+    ok(f"{API}/Another", j({"character": character()})),
+])
+
+# the third mode of the code: into the Compare tab (ImportTab.lua:655-663)
+write('net-compare-code', [
+    {"open": "OccVortex"},
+    TAB,
+    imp("importCodeIn", events=click()),
+    paste(CODE),
+    tapi("importCodeMode"),
+    pick("import", "importCodeMode", 3),
+    tapi("importCodeGo"),
+    AWAY | {"dump": True, "shot": "net-compare-code"},
+])
+
 idx = json.load(open(f'{OUT}/index.json'))
 names = write.__defaults__[1]
 for n in names:

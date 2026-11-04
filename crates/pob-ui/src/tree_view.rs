@@ -29,7 +29,7 @@ const JEWEL_RADIUS_TINT_PRIMARY_ONLY: [f64; 4] = [1.0, 0.0, 0.0, 0.7];
 const JEWEL_RADIUS_TINT_COMPARE_ONLY: [f64; 4] = [0.0, 1.0, 0.0, 0.7];
 
 /// `compareJewelsEqual` (PassiveTreeView.lua:161-166).
-fn jewels_equal(a: Option<&Rc<pob_items::item::Item>>, b: Option<&Rc<pob_items::item::Item>>) -> bool {
+pub(crate) fn jewels_equal(a: Option<&Rc<pob_items::item::Item>>, b: Option<&Rc<pob_items::item::Item>>) -> bool {
     match (a, b) {
         (Some(x), Some(y)) => x.build_raw() == y.build_raw(),
         (None, None) => true,
@@ -41,6 +41,34 @@ fn jewels_equal(a: Option<&Rc<pob_items::item::Item>>, b: Option<&Rc<pob_items::
 fn socket_jewel(e: &Engine, spec: &PassiveSpec, node_id: u32) -> Option<Rc<pob_items::item::Item>> {
     let id = spec.jewels.get(f64::from(node_id)).copied()?;
     e.result().env.item(id).cloned()
+}
+
+impl PassiveTreeView {
+    /// `GetCompareJewel(nodeId)` (:118-128): on the tab of one build `compareSpec.build` is this build, its sockets show the active spec.
+    pub(crate) fn compare_jewel(&self, e: &Engine, spec: &PassiveSpec, node_id: u32) -> Option<Rc<pob_items::item::Item>> {
+        let compare = self.compare_spec.as_deref()?;
+        match self.compare_owner.as_ref().and_then(std::rc::Weak::upgrade) {
+            Some(b) => {
+                let eng = b.engine.borrow();
+                socket_jewel(eng.as_ref()?, compare, node_id)
+            }
+            None => socket_jewel(e, spec, node_id),
+        }
+    }
+}
+
+thread_local! {
+    /// `data.jewelRadius` (Data.lua:583-589): one table for all the builds of the process, the key of the last `data.setJewelRadiiGlobally`.
+    static JEWEL_RADIUS: std::cell::Cell<&'static str> = const { std::cell::Cell::new("3_16") };
+}
+
+/// The key of `data.jewelRadius` at this moment.
+pub fn jewel_radius_table() -> &'static str {
+    JEWEL_RADIUS.with(std::cell::Cell::get)
+}
+/// `data.setJewelRadiiGlobally(treeVersion)` (Data.lua:583-589): `Build:Init` (Build.lua:606), `main:LoadTree` (a new spec, Main.lua:354-357), `TreeTab:SetActiveSpec` (TreeTab.lua:552), also of an entry of Compare.
+pub fn set_jewel_radii_globally(tree_version: &str) {
+    JEWEL_RADIUS.with(|c| c.set(radius_key(tree_version)));
 }
 
 /// `GetJewelSocketOverlay` (:131-159).
@@ -135,6 +163,7 @@ pub struct PassiveTreeView {
     pub owner: Option<std::rc::Weak<crate::modules::build::BuildMode>>,
     /// `compareSpec.build` when it is another build than this viewer's.
     pub compare_owner: Option<std::rc::Weak<crate::modules::build::BuildMode>>,
+    socket_order_sample: Option<Vec<u32>>,
     cache: Option<SpecCache>,
     pub unimplemented: Vec<String>,
     /// Test harness only: a sample of the `pairs(tree.nodes)`-dependent orders of one oracle process (see [`Self::set_order_sample`]).
@@ -192,6 +221,7 @@ impl PassiveTreeView {
             cursor_offset: (0.0, 0.0),
             owner: None,
             compare_owner: None,
+            socket_order_sample: None,
             search_str: String::new(),
             search_str_cached: String::new(),
             search_params: Vec::new(),
@@ -219,7 +249,10 @@ impl PassiveTreeView {
 
     /// The build of this viewer.
     pub fn owner_build(&self) -> std::rc::Rc<crate::modules::build::BuildMode> {
-        self.owner.as_ref().and_then(std::rc::Weak::upgrade).unwrap_or_else(|| main().build_mode.clone())
+        self.owner
+            .as_ref()
+            .and_then(std::rc::Weak::upgrade)
+            .unwrap_or_else(|| main().build_mode.clone())
     }
 
     pub fn load(&mut self, st: &pob_engine::save::TreeViewState) {
@@ -259,6 +292,12 @@ impl PassiveTreeView {
     /// `pairs(spec.subGraphs)` follows the sockets' order of that process too (two orders of 4 subgraphs in 8 runs): which of two overlapping subgraphs is on top.
     pub fn set_sub_graph_order_sample(&mut self, ids: Vec<u32>) {
         self.sub_graph_order_sample = Some(ids);
+        self.cache = None;
+    }
+
+    /// `pairs(tree.sockets)`: filled in the order of `pairs(self.nodes)` (PassiveTree.lua:571), so of the process too: which of two overlapping radius rings is on top.
+    pub fn set_socket_order_sample(&mut self, ids: Vec<u32>) {
+        self.socket_order_sample = Some(ids);
         self.cache = None;
     }
 
@@ -375,7 +414,10 @@ impl PassiveTreeView {
                 connectors,
             });
         }
-        let sockets = spec.tree.sockets.keys().filter_map(|id| spec.node_idx(*id)).collect();
+        let sockets = match &self.socket_order_sample {
+            Some(ids) => ids.iter().filter_map(|id| spec.node_idx(*id)).collect(),
+            None => spec.tree.sockets.keys().filter_map(|id| spec.node_idx(*id)).collect(),
+        };
         self.cache = Some(SpecCache {
             spec: spec.clone(),
             node_order,
@@ -696,7 +738,9 @@ impl PassiveTreeView {
                                     let res = engine.borrow_mut().as_mut().expect("engine").select_secondary_ascend_class(k);
                                     res.unwrap_or_else(|e| panic!("{e}"));
                                     add_undo();
-                                    if self.owner.is_none() { main().build_mode.set_title_pub(f); }
+                                    if self.owner.is_none() {
+                                        main().build_mode.set_title_pub(f);
+                                    }
                                     build_flag.set(true);
                                 }
                             }
@@ -714,7 +758,9 @@ impl PassiveTreeView {
                                 let res = engine.borrow_mut().as_mut().expect("engine").select_ascend_class(a as f64);
                                 res.unwrap_or_else(|e| panic!("{e}"));
                                 add_undo();
-                                if self.owner.is_none() { main().build_mode.set_title_pub(f); }
+                                if self.owner.is_none() {
+                                    main().build_mode.set_title_pub(f);
+                                }
                                 build_flag.set(true);
                             } else {
                                 let found = engine.borrow().as_ref().expect("engine").find_ascendancy(&asc);
@@ -1130,7 +1176,7 @@ impl PassiveTreeView {
         let no_popups = main().popups.borrow().is_empty();
         let mut draw_tooltip_for: Option<(usize, f64, f64)> = None;
         let jewel_radius = &pob_data::rules::rules().jewel_radii;
-        let radii = jewel_radius.get(radius_key(&spec.tree.tree_version)).expect("jewelRadii");
+        let radii = jewel_radius.get(jewel_radius_table()).expect("jewelRadii");
 
         // :815-1110 the nodes
         for &i in &node_order {
@@ -1517,7 +1563,11 @@ impl PassiveTreeView {
             let (scr_x, scr_y) = to_screen(x, y);
             let jewel = socket_jewel(e, &spec, node.id);
             if Some(i) == hover_node {
-                let is_toh = jewel.as_ref().is_some_and(|j| j.jewel_radius_label.as_deref() == Some("Variable"));
+                // :1224-1225 `jewel or cJewel`
+                let effective = jewel.clone().or_else(|| compare_jewel(node.id));
+                let is_toh = effective
+                    .as_ref()
+                    .is_some_and(|j| j.jewel_radius_label.as_deref() == Some("Variable"));
                 for rad in radii {
                     let outer = rad.outer * scale;
                     let inner = rad.inner * scale;
@@ -1539,7 +1589,11 @@ impl PassiveTreeView {
             if node.alloc || compare.as_ref().and_then(|c| c.node(node.id)).is_some_and(|c| c.alloc) {
                 let same = jewels_equal(jewel.as_ref(), c_jewel.as_ref());
                 if let Some(j) = jewel.as_ref().filter(|j| j.jewel_radius_index.is_some()) {
-                    let tint = if compare.is_none() || same { JEWEL_RADIUS_TINT_NEUTRAL } else { JEWEL_RADIUS_TINT_PRIMARY_ONLY };
+                    let tint = if compare.is_none() || same {
+                        JEWEL_RADIUS_TINT_NEUTRAL
+                    } else {
+                        JEWEL_RADIUS_TINT_PRIMARY_ONLY
+                    };
                     rings.push((j.clone(), tint));
                 }
                 if !same && let Some(j) = c_jewel.as_ref().filter(|j| j.jewel_radius_index.is_some()) {

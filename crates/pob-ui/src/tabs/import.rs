@@ -1257,7 +1257,17 @@ impl ImportTab {
                     None,
                 );
             }
-            3 => not_ported(g, "Classes/ImportTab.lua:655-663 compareTab:ImportBuild (the Compare tab, U8b)"),
+            // :655-663
+            3 => {
+                let tab = b.compare_tab.borrow().clone();
+                if let Some(tab) = tab {
+                    if tab.import_build(g, &xml, "Imported comparison") {
+                        *b.view_mode.borrow_mut() = "COMPARE".into();
+                    } else {
+                        main().open_message_popup(g, "Import Error", "Failed to import build for comparison.");
+                    }
+                }
+            }
             _ => {
                 b.shutdown(g);
                 let mut args = vec![
@@ -1831,6 +1841,49 @@ impl ImportTab {
         });
         *control.list.borrow_mut() = out;
         control.sel_index.set(at.map_or(1, |i| i + 1));
+    }
+
+    /// `CompareTabClass:ReimportPrimary` (CompareTab.lua:1293-1313): the import of the selected character with everything cleared.
+    pub fn reimport_character(&self, g: &mut Gfx) {
+        if self.char_select.get_sel_value().is_some() {
+            self.clear_jewels.state.set(true);
+            self.clear_skills.state.set(true);
+            self.clear_items.state.set(true);
+            self.char_import_tree.click(g);
+            self.char_import_items.click(g);
+        } else if self.site_char_select.get_sel_value().is_some() {
+            self.site_clear_jewels.state.set(true);
+            self.site_clear_skills.state.set(true);
+            self.site_clear_items.state.set(true);
+            self.host.get("siteCharImportTree").expect("siteCharImportTree").click(g);
+            self.host.get("siteCharImportItems").expect("siteCharImportItems").click(g);
+        }
+    }
+
+    /// `reimportBtn.enabled` (CompareTab.lua:271-276).
+    pub fn reimport_enabled(&self) -> bool {
+        let site_active = *self.charimport_mode.borrow() == "SELECTCHAR" && self.site_char_select.get_sel_value().is_some();
+        self.char_select.get_sel_value().is_some() || site_active
+    }
+
+    /// `reimportBtn.tooltipFunc` (CompareTab.lua:253-270).
+    pub fn reimport_tooltip(&self, tooltip: &mut crate::tooltip::Tooltip, g: &Gfx) {
+        tooltip.clear(false);
+        if *self.charimport_mode.borrow() == "SELECTCHAR" {
+            let data = self.char_select.get_sel_value().and_then(|v| v.data);
+            match data.as_ref().and_then(|d| d.downcast_ref::<Json>()) {
+                Some(c) => {
+                    tooltip.add_line(g, 16.0, Some("Re-import character from the game server:"));
+                    let s = |k: &str| c[k].as_str().unwrap_or("").to_string();
+                    tooltip.add_line(g, 14.0, Some(&format!("^7{} ({}, {})", s("name"), s("class"), s("league"))));
+                }
+                None => tooltip.add_line(g, 16.0, Some("Re-import the currently selected character.")),
+            }
+            tooltip.add_line(g, 14.0, Some("^7Refreshes passive tree, jewels, items, and skills."));
+        } else {
+            tooltip.add_line(g, 16.0, Some("^7No character selected."));
+            tooltip.add_line(g, 14.0, Some("^7Go to Import/Export Build tab and select a character first."));
+        }
     }
 
     /// `SetPredefinedBuildName` (:1926-1932).

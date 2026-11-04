@@ -183,6 +183,9 @@ fn dump(g: &Gfx, tp: &TestPlatform, net: &NetScript, want_xml: bool) -> Value {
         if let Some(c) = p.host.get("import") {
             d.insert("popupImportOn".into(), json!(c.is_enabled(g)));
         }
+        if let Some(c) = p.host.get("state") {
+            d.insert("popupState".into(), c.debug_value(g).unwrap_or(Value::Null));
+        }
     }
     let prompt = pob_ui::launch::launch().prompt_msg.borrow().clone().unwrap_or_else(|| "nil".into());
     d.insert("prompt".into(), json!(prompt));
@@ -240,6 +243,14 @@ fn dump(g: &Gfx, tp: &TestPlatform, net: &NetScript, want_xml: bool) -> Value {
         );
         d.insert("import".into(), import.debug_dump(g));
         d.insert("party".into(), party.debug_dump(g));
+        if *b.view_mode.borrow() == "COMPARE" {
+            let t = b.compare_tab.borrow().clone().expect("compareTab");
+            let labels: Vec<String> = t.entries.borrow().iter().map(|e| e.label.clone()).collect();
+            d.insert(
+                "compare".into(),
+                json!({ "entries": labels, "active": t.active.get(), "reimport": t.c().reimport_btn.is_enabled(g) }),
+            );
+        }
     }
     Value::Object(d)
 }
@@ -269,6 +280,9 @@ fn cursor_step(gfx: &mut Gfx, st: &Value, cur: &mut (f64, f64)) {
         *cur = center(gfx, &*tab_control("import", s));
     } else if let Some(s) = st["cursorParty"].as_str() {
         *cur = center(gfx, &*tab_control("party", s));
+    } else if let Some(s) = st["cursorCompare"].as_str() {
+        let t = b.compare_tab.borrow().clone().expect("compareTab");
+        *cur = center(gfx, &*t.debug_control(s).unwrap_or_else(|| panic!("control {s}")));
     } else if let Some(s) = st["cursorPopup"].as_str() {
         let p = main().popups.borrow().first().cloned().expect("popup");
         let c = p.host.get(s).unwrap_or_else(|| panic!("popup control {s}"));

@@ -1,0 +1,152 @@
+{
+"steps": [
+{
+"open": "Mirage Archer Toxic Rain"
+},
+{
+"cursorBuild": [
+"modeCompare"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"compareImport": [
+"Sets Test",
+"Sets"
+]
+},
+{
+"cursorCompare": [
+"subTabItems"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"cursor": [
+1200,
+790
+],
+"dump": true,
+"setsState": true
+},
+{
+"cursorCompare": [
+"compareItemSetSelect2"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+]
+},
+{
+"cursorCompareRow": [
+"compareItemSetSelect2",
+2
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+]
+},
+{
+"cursor": [
+1200,
+790
+],
+"dump": true,
+"setsState": true
+},
+{
+"cursor": [
+1200,
+790
+],
+"dump": true,
+"setsState": true,
+"shot": "items-sets-compare"
+},
+{
+"cursorCompare": [
+"primaryTreeSetSelect"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+]
+},
+{
+"cursorCompareRow": [
+"primaryTreeSetSelect",
+1
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+]
+},
+{
+"cursor": [
+1200,
+790
+],
+"dump": true,
+"setsState": true
+},
+{
+"cursor": [
+1200,
+790
+],
+"dump": true,
+"setsState": true,
+"shot": "items-sets-primary-tree"
+},
+{
+"closeBuild": true
+}
+]
+}

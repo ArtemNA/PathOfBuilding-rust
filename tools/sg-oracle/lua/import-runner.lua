@@ -265,12 +265,19 @@ local function dump(st)
 		if c.edit then d.popupEdit = c.edit.buf end
 		if c.shrink then d.popupShrink = c.shrink:GetProperty("label") d.popupShrinkOn = c.shrink:IsEnabled() and true or false end
 		if c.import then d.popupImportOn = c.import:IsEnabled() and true or false end
+		if c.state then d.popupState = c.state:GetProperty("label") end
 	end
 	if main.modes.BUILD.importTab and main.modes.BUILD.controls.statBox then
 		local b = main.modes.BUILD
 		d.build = buildDump(b)
 		d.import = importDump(b.importTab)
 		d.party = partyDump(b.partyTab)
+		if st.compareState ~= false and b.viewMode == "COMPARE" then
+			local t = b.compareTab
+			local labels = { }
+			for i, e in ipairs(t.compareEntries) do labels[i] = e.label end
+			d.compare = { entries = labels, active = t.activeCompareIndex, reimport = t.controls.reimportBtn:IsEnabled() and true or false }
+		end
 	end
 	d.netLog = { }
 	for i, l in ipairs(netLog) do d.netLog[i] = l end
@@ -302,6 +309,7 @@ local function cursorStep(st)
 	if st.cursorBuild then center(b.controls[st.cursorBuild])
 	elseif st.cursorImport then center(b.importTab.controls[st.cursorImport])
 	elseif st.cursorParty then center(b.partyTab.controls[st.cursorParty])
+	elseif st.cursorCompare then center(b.compareTab.controls[st.cursorCompare])
 	elseif st.cursorPopup then center(main.popups[1].controls[tonumber(st.cursorPopup) or st.cursorPopup])
 	elseif st.cursorDrop then -- { tab, control, 1-based row of the open list }
 		local c = tabOf(st.cursorDrop[1]).controls[st.cursorDrop[2]]

@@ -48,7 +48,7 @@ fn ok_or_panic<T>(r: Result<T, String>) -> T {
     r.unwrap_or_else(|e| panic!("{e}"))
 }
 
-fn tree_version_display(ver: &str) -> String {
+pub(crate) fn tree_version_display(ver: &str) -> String {
     pob_data::tree::tree_versions()
         .expect("GameVersions")
         .tree_versions
@@ -482,6 +482,7 @@ impl TreeTab {
     pub fn sync_active_spec(&self, g: &mut Gfx) {
         let b = main().build_mode.clone();
         let ver = engine_read(|e| e.spec_rc().tree_version.clone());
+        crate::tree_view::set_jewel_radii_globally(&ver);
         self.show_convert.set(!ver.starts_with(latest_tree_version()));
         b.after_spec_change(g);
         // :573-578 `if itemOrderList[1] then itemsTab:PopulateSlots()`, `specSelect.selIndex = specId`
@@ -2722,6 +2723,7 @@ impl TreeTab {
     /// The state `SetActiveSpec` leaves at the load: `showConvert` and `versionSelect`.
     pub fn sync_active_spec_quiet(&self) {
         let ver = engine_read(|e| e.spec_rc().tree_version.clone());
+        crate::tree_view::set_jewel_radii_globally(&ver);
         self.show_convert.set(!ver.starts_with(latest_tree_version()));
         let ix = self
             .version_select

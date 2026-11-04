@@ -53,8 +53,21 @@ local function writeBuilds()
 	local y = readAll(POB_ROOT .. "spec/TestBuilds/3.13/Dual Savior.xml")
 	y = y:gsub("</Items>", function() return '<ItemSet id="2" title="Empty set"/></Items>' end, 1)
 	writeAll(USER .. "/Path of Building/Builds/Sets Test.xml", y)
+	-- The folder popup: a sub-folder with a build, a broken file, and enough files to scroll.
+	local dir = USER .. "/Path of Building/Builds/Folder Test/"
+	MakeDir(dir) MakeDir(dir .. "Many")
+	writeAll(dir .. "Inner Build.xml", readAll(POB_ROOT .. "spec/TestBuilds/3.13/Generals Perforate Zerker.xml"))
+	writeAll(dir .. "Not A Build.xml", "not a build")
+	for i = 1, 30 do writeAll(dir .. string.format("Many/Row %02d.xml", i), "<PathOfBuilding/>") end
 end
-writeBuilds()
+-- The real window (inject-compare-real.ps1): only two builds, the same as compare-rust-input.ps1.
+local function writeRealBuilds()
+	for _, b in ipairs({ "Dual Savior", "OccVortex" }) do
+		writeAll(USER .. "/Path of Building/Builds/" .. b .. ".xml", readAll(POB_ROOT .. "spec/TestBuilds/3.13/" .. b .. ".xml"))
+	end
+end
+local REAL = scriptArgs == "real-input"
+if REAL then writeRealBuilds() else writeBuilds() end
 writeAll(USER .. "/Path of Building/Settings.xml", readAll(base .. "/scenes/tree/Settings.xml"))
 
 -- 2. Environment: the checkout's src, read in place.
@@ -78,7 +91,7 @@ function PLoadModule(name, ...)
 end
 function GetUserPath() return USER end
 function LaunchSubScript() return nil end
-local realGetTime = GetTime
+local realGetTime, realIsKeyDown = GetTime, IsKeyDown
 local cursorX, cursorY, nowMs, held = -100, -100, 0, { }
 function GetCursorPos() return cursorX, cursorY end
 function GetTime() return nowMs end
@@ -178,14 +191,33 @@ local function compareDump(b)
 		buildSelect = drop(c.compareBuildSelect), specSelect = drop(c.compareSpecSelect), skillSetSelect = drop(c.compareSkillSetSelect), itemSetSelect = drop(c.compareItemSetSelect), configSetSelect = drop(c.compareConfigSetSelect),
 		cmpSocketGroup = drop(c.cmpSocketGroup), cmpMainSkill = drop(c.cmpMainSkill), cmpSkillPart = drop(c.cmpSkillPart), cmpMinion = drop(c.cmpMinion), cmpMinionSkill = drop(c.cmpMinionSkill), cmpStageCount = edit(c.cmpStageCount), cmpMineCount = edit(c.cmpMineCount) }
 end
+-- The popup "Import from Folder" (the same fields as `FolderHost::debug_dump`).
+local function folderDump(p)
+	local c = p.controls
+	local l = c.buildList
+	local rows, labels = { }, { }
+	for i, v in ipairs(l.list) do rows[i] = l:GetRowValue(1, i, v) .. "|" .. l:GetRowValue(2, i, v) end
+	for i, f in ipairs(l.controls.path.folderList) do labels[i] = f.label end
+	return { rows = rows, sel = l.selIndex or 0, subPath = l.listMode.subPath, path = labels, search = c.searchText.buf, sort = c.sort.selIndex, sortMode = c.sort:GetSelValue().sortMode,
+		openEnabled = c.open:IsEnabled() and true or false, scrollV = l.controls.scrollBarV.offset }
+end
 local function dump(st)
-	local d = { mode = main.mode or "nil", popups = #main.popups, prompt = launch.promptMsg or "nil" }
+	local d = { mode = main.mode or "nil", popups = #main.popups, prompt = launch.promptMsg or "nil", cursorAt = { cursorX, cursorY } }
 	if main.popups[1] then d.popupTitle = main.popups[1].title end
+	for _, p in ipairs(main.popups) do
+		if p.controls.buildList then d.folder = folderDump(p) end
+	end
 	local b = main.modes.BUILD
 	local lines = { }
 	for i, l in ipairs(b.controls.statBox.list) do lines[i] = tostring(l[1] or "nil") .. "|" .. tostring(l[2] or "nil") end
 	d.build = { viewMode = b.viewMode, statBox = lines }
 	d.compare = compareDump(b)
+	if st.setsState then
+		local c = b.compareTab.controls
+		local function drop(s) local list = { } for i, v in ipairs(s.list) do list[i] = labelOf(v) end return { sel = s.selIndex or "nil", list = list } end
+		d.sets = { primaryItem = drop(c.primaryItemSetSelect), compareItem = drop(c.compareItemSetSelect2), primaryTree = drop(c.primaryTreeSetSelect), compareTree = drop(c.compareTreeSetSelect) }
+	end
+	if st.radius then d.radiusTable = data.jewelRadius == data.jewelRadii["3_15"] and "3_15" or "3_16" end
 	if st.saved then d.savedHasCompare = readAll(main.buildPath .. st.saved .. ".xml"):find("<Compare", 1, true) ~= nil end
 	if st.nodeTip then
 		-- the primary build's node tooltip (the comparison of `calcFunc` over the cache the entries left)
@@ -206,7 +238,9 @@ local function compareCursor(st)
 		local a = st.cursorCompareRow
 		local x, y = c[a[1]]:GetPos()
 		local w, h = c[a[1]]:GetSize()
-		cursorX, cursorY = x + 10, y + h + 2 + (a[2] - 1) * (h - 4) + math.floor((h - 4) / 2)
+		-- a negative row counts from the end of the list
+		local row = a[2] < 0 and #c[a[1]].list + a[2] + 1 or a[2]
+		cursorX, cursorY = x + 10, y + h + 2 + (row - 1) * (h - 4) + math.floor((h - 4) / 2)
 	elseif st.compareItemButton then
 		-- the buttons of a compact row of the Items view (TradeHelpers.lua:440-496, CompareTab.lua:3792-3793)
 		local a = st.compareItemButton
@@ -226,19 +260,51 @@ local function compareCursor(st)
 		local x, y = ctl:GetPos()
 		local w, h = ctl:GetSize()
 		cursorX, cursorY = math.floor(x + w / 2) + (a[2] or 0), math.floor(y + h / 2) + (a[3] or 0)
+	elseif st.cursorPopupDrop then
+		-- { control of the popup, 1-based row of the open list }
+		local a = st.cursorPopupDrop
+		local x, y = main.popups[1].controls[a[1]]:GetPos()
+		local w, h = main.popups[1].controls[a[1]]:GetSize()
+		cursorX, cursorY = math.floor(x + w / 2), y + h + 2 + (a[2] - 1) * (h - 4) + 4
+	elseif st.cursorFolderRow then
+		local x, y = main.popups[1].controls.buildList:GetPos()
+		cursorX, cursorY = x + 20, y + 2 + (st.cursorFolderRow - 1) * 20 + 10
+	elseif st.cursorFolderPath then
+		local ctl = main.popups[1].controls.buildList.controls.path.folderList[st.cursorFolderPath].button
+		local x, y = ctl:GetPos()
+		local w, h = ctl:GetSize()
+		cursorX, cursorY = math.floor(x + w / 2), math.floor(y + h / 2)
+	elseif st.cursorCompareNode then
+		-- the overlay of the Compare tab: the viewer's viewport is relative, GetCursorPos is patched by that offset (CompareTab.lua:3425-3429)
+		local b = main.modes.BUILD
+		local v = b.treeTab.viewer
+		local n = assert(b.spec.nodes[st.cursorCompareNode], "no such node")
+		local W, H = 968, 768 - 126 - 74 - 30
+		local scale = math.min(W, H) / b.spec.tree.size * v.zoom
+		cursorX, cursorY = math.floor(n.x * scale + v.zoomX + W / 2) + 312, math.floor(n.y * scale + v.zoomY + H / 2) + 32 + 126 + 74
 	elseif st.cursorNodeAuto then
 		-- the smallest id of an unallocated notable next to the allocated tree (a node with a path of 1)
 		local b = main.modes.BUILD
 		local v = b.treeTab.viewer
-		local best
+		-- the nearest to the centre of the view: the smallest id may be out of the window at the default zoom (no tooltip, the probe of U8b)
+		local best, bestD
 		for id, n in pairs(b.spec.nodes) do
-			if n.type == "Notable" and not n.alloc and n.pathDist == 1 and (not best or id < best) then best = id end
+			if n.type == "Notable" and not n.alloc and n.x then
+				local d = (n.x + v.zoomX * b.spec.tree.size / (v.zoom * 712)) ^ 2 + (n.y + v.zoomY * b.spec.tree.size / (v.zoom * 712)) ^ 2
+				if not best or d < bestD or (d == bestD and id < best) then best, bestD = id, d end
+			end
 		end
-		if not best then for id, n in pairs(b.spec.nodes) do if n.type == "Notable" and not n.alloc and (not best or id < best) then best = id end end end
+		assert(best, "no notable")
 		local n = b.spec.nodes[best]
-		local W, H = 968, 712
+		-- TreeTab.lua: the viewer's height depends on the convert bar of an old tree, recorded by the wrapper of its Draw
+		if not rawget(v, "__vp") then
+			local draw = v.Draw
+			v.Draw = function(self, build, vp, ev) rawset(self, "__vp", { x = vp.x, y = vp.y, width = vp.width, height = vp.height }) return draw(self, build, vp, ev) end
+		end
+		local p = rawget(v, "__vp") or { x = 312, y = 32, width = 968, height = 712 }
+		local W, H = p.width, p.height
 		local scale = math.min(W, H) / b.spec.tree.size * v.zoom
-		cursorX, cursorY = math.floor(n.x * scale + v.zoomX + 312 + W / 2), math.floor(n.y * scale + v.zoomY + 32 + H / 2)
+		cursorX, cursorY = math.floor(n.x * scale + v.zoomX + p.x + W / 2), math.floor(n.y * scale + v.zoomY + p.y + H / 2)
 	elseif st.cursorNode then
 		local b = main.modes.BUILD
 		local v, n = b.treeTab.viewer, b.spec.nodes[st.cursorNode]
@@ -284,10 +350,38 @@ function runner:OnFrame()
 	if not ok then fail("OnFrame", err) end
 end
 
-function runner:OnKeyDown() end
-function runner:OnKeyUp() end
-function runner:OnChar() end
+-- The events of the real window (scene real-input, inject-compare-real.ps1).
+local realEvents = { }
+function runner:OnKeyDown(key, double)
+	if self.real then realEvents[#realEvents + 1] = "down " .. key .. (double and " double" or "") L:OnKeyDown(key, double) end
+end
+function runner:OnKeyUp(key)
+	if self.real then realEvents[#realEvents + 1] = "up " .. key L:OnKeyUp(key) end
+end
+function runner:OnChar(key)
+	if self.real then realEvents[#realEvents + 1] = "char " .. key L:OnChar(key) end
+end
 function runner:OnExit() end
+-- The state of the real window (the same fields as pob_ui::tabs::compare::debug_input_state).
+function runner:RealState()
+	local b = main.modes.BUILD
+	local t = b.compareTab
+	local c = t.controls
+	local pos = function(ctl) local x, y = ctl:GetPos() local w, h = ctl:GetSize() return { x = math.floor(x + w / 2), y = math.floor(y + h / 2) } end
+	local shown = function(ctl) if ctl and ctl:IsShown() then return pos(ctl) end return { x = 0, y = 0 } end
+	local p = main.popups[1]
+	local pc = p and p.controls or { }
+	local labels = { }
+	for i, e in ipairs(t.compareEntries) do labels[i] = e.label end
+	local list = pc.buildList
+	local row2 = { x = 0, y = 0 }
+	if list then local x, y = list:GetPos() row2 = { x = x + 20, y = y + 2 + 20 + 10 } end
+	return { ready = true, events = realEvents, compareReal = { viewMode = b.viewMode, modeCompare = pos(b.controls.modeCompare), importBtn = pos(c.importBtn), removeBtn = shown(c.removeBtn), popups = #main.popups, popupTitle = p and p.title or "",
+		input = shown(pc.input), inputBuf = pc.input and pc.input.buf or "", state = pc.state and pc.state:GetProperty("label") or "", go = shown(pc.go), importFolder = shown(pc.importFolder),
+		folderRow2 = row2, folderN = list and #list.list or 0, folderSel = list and list.selIndex or 0, folderOpen = shown(pc.open),
+		entries = labels, active = t.activeCompareIndex, mode = t.compareViewMode, scrollY = t.scrollY, subItems = shown(c.subTabItems), subConfig = shown(c.subTabConfig), subTree = shown(c.subTabTree),
+		configSearch = shown(c.configSearchEdit), configBuf = c.configSearchEdit.buf } }
+end
 
 function runner:Finish()
 	self.finished = true
@@ -307,7 +401,7 @@ function runner:Step()
 		self.idx = self.idx + 1
 		local name = names[self.idx]
 		if not name then return self:Finish() end
-		clipboard = nil writeBuilds() wipeTable(main.popups)
+		clipboard = nil if not REAL then writeBuilds() end wipeTable(main.popups)
 		self.sc = { name = name, def = json.decode(readAll(base .. "/scenes/compare/" .. name .. ".json"), 1, json.null), step = 0, dumps = { }, shots = { }, perf = { } }
 	end
 	local sc = self.sc
@@ -342,6 +436,27 @@ function runner:Step()
 			b.modFlag, b.unsaved, b.skillsTab.modFlag, b.calcsTab.modFlag, b.itemsTab.modFlag = false, false, false, false, false
 			main:SetMode("LIST")
 		end
+		return
+	end
+	if st.realInput then
+		if not self.real then
+			self.real = true
+			GetTime, IsKeyDown = realGetTime, realIsKeyDown
+			writeAll(base .. "/ready", "1")
+		end
+		local cf = realOpen(base .. "/cursor.txt", "r")
+		if cf then
+			local x, y = cf:read("*n", "*n")
+			cf:close()
+			if x and y then cursorX, cursorY = x, y end
+		end
+		self:Frame()
+		writeAll(base .. "/state.tmp", json.encode(self:RealState()))
+		os.remove(base .. "/state.json")
+		os.rename(base .. "/state.tmp", base .. "/state.json")
+		local stop = realOpen(base .. "/stop", "r")
+		if stop then stop:close() return self:Finish() end
+		sc.step = sc.step - 1
 		return
 	end
 	if st.waitAssets then
@@ -411,22 +526,71 @@ function runner:Step()
 		self:Frame()
 		return
 	end
+	if st.quadLog then
+		-- diagnostics (MINEFIELD R60): every DrawImage / DrawImageQuad of one frame that touches the box, with its Lua line
+		local box = st.quadLog
+		local log = { }
+		local realQuad, realImage = DrawImageQuad, DrawImage
+		local function touches(...)
+			local a = { ... }
+			local minX, maxX, minY, maxY = math.huge, -math.huge, math.huge, -math.huge
+			for i = 1, #a, 2 do
+				minX, maxX = math.min(minX, a[i]), math.max(maxX, a[i])
+				minY, maxY = math.min(minY, a[i + 1]), math.max(maxY, a[i + 1])
+			end
+			return maxX >= box[1] and minX <= box[3] and maxY >= box[2] and minY <= box[4]
+		end
+		function DrawImageQuad(h, x1, y1, x2, y2, x3, y3, x4, y4, s1, t1, s2, t2, s3, t3, s4, t4, ...)
+			if touches(x1, y1, x2, y2, x3, y3, x4, y4) then
+				local w, hh = 0, 0
+				if h then w, hh = h:ImageSize() end
+				log[#log + 1] = string.format("%d|%dx%d|%.3f,%.3f %.3f,%.3f %.3f,%.3f %.3f,%.3f|%.5f,%.5f %.5f,%.5f %.5f,%.5f %.5f,%.5f", debug.getinfo(2, "l").currentline, w, hh, x1, y1, x2, y2, x3, y3, x4, y4, s1 or 0, t1 or 0, s2 or 0, t2 or 0, s3 or 0, t3 or 0, s4 or 0, t4 or 0)
+			end
+			if s1 == nil then return realQuad(h, x1, y1, x2, y2, x3, y3, x4, y4) end
+			return realQuad(h, x1, y1, x2, y2, x3, y3, x4, y4, s1, t1, s2, t2, s3, t3, s4, t4, ...)
+		end
+		function DrawImage(h, x, y, w, hh, ...)
+			if touches(x, y, x + w, y + hh) then
+				local iw, ih = 0, 0
+				if h then iw, ih = h:ImageSize() end
+				log[#log + 1] = string.format("%d|%dx%d|%.3f,%.3f %.3f,%.3f", debug.getinfo(2, "l").currentline, iw, ih, x, y, w, hh)
+			end
+			return realImage(h, x, y, w, hh, ...)
+		end
+		self:Frame()
+		DrawImageQuad, DrawImage = realQuad, realImage
+		writeAll(OUT .. st.quadOut .. ".json", json.encode(log, { indent = true }) .. "\n")
+		return
+	end
+	if st.treeCenter then
+		-- the view as a precondition of a scene: the zoom position that the XML saved leaves nodes out of the window
+		local v = main.modes.BUILD.treeTab.viewer
+		v.zoomX, v.zoomY = 0, 0
+		self:Frame()
+		return
+	end
 	if st.treeOrder then
 		-- R27, R31: the overlap order of this process, of both builds
 		local function orders(b)
-			local ids, conns, subs = { }, { }, { }
+			local ids, conns, subs, sockets = { }, { }, { }, { }
 			for id in pairs(b.spec.nodes) do ids[#ids + 1] = id end
 			for _, c in ipairs(b.spec.tree.connectors) do conns[#conns + 1] = c.nodeId1 .. "-" .. c.nodeId2 .. ":" .. c.type end
 			for id in pairs(b.spec.subGraphs) do subs[#subs + 1] = id end
-			return { nodes = ids, connectors = conns, subGraphs = subs }
+			for id in pairs(b.spec.tree.sockets) do sockets[#sockets + 1] = id end
+			return { nodes = ids, connectors = conns, subGraphs = subs, sockets = sockets }
 		end
 		local b = main.modes.BUILD
-		writeAll(OUT .. st.treeOrder .. ".json", json.encode({ primary = orders(b), entry = orders(b.compareTab:GetActiveCompare()) }) .. "\n")
+		local entry = b.compareTab:GetActiveCompare()
+		writeAll(OUT .. st.treeOrder .. ".json", json.encode({ primary = orders(b), entry = entry and orders(entry) or nil }) .. "\n")
 		return
 	end
 	if st.compareScrollX then
 		main.modes.BUILD.compareTab.controls.itemsHScrollBar:SetOffset(st.compareScrollX)
 		self:Frame()
+		return
+	end
+	if st.writeFile then
+		writeAll(main.buildPath .. st.writeFile[1], st.writeFile[2])
 		return
 	end
 	if st.save then
@@ -446,7 +610,7 @@ function runner:Step()
 	if st.time then nowMs = st.time end
 	for _, k in ipairs(st.hold or { }) do held[k] = true end
 	for _, k in ipairs(st.release or { }) do held[k] = nil end
-	if st.dump and main.mode == "BUILD" then wrapCompareDraw(main.modes.BUILD) rawset(main.modes.BUILD.compareTab, "__capture", true) end
+	if st.dump and main.mode == "BUILD" then wrapCompareDraw(main.modes.BUILD) rawset(main.modes.BUILD.compareTab, "__capture", true) rawset(main.modes.BUILD.compareTab, "__log", nil) end
 	local perfT0 = os.clock()
 	for _, e in ipairs(st.events or { }) do
 		if e[1] == "KeyDown" then L:OnKeyDown(e[2], e[3] == true)

@@ -85,7 +85,8 @@ impl PathControl {
             while i < b.len() && b[i] != b'/' {
                 i += 1;
             }
-            folders.push((sub_path[start..i].to_string(), sub_path[..i].to_string()));
+            // `subPath:sub(1, endIndex)`: `endIndex` is the position after the name, so the slash is in the path
+            folders.push((sub_path[start..i].to_string(), sub_path[..(i + 1).min(b.len())].to_string()));
         }
         let me_dyn: WeakControl = self.me.clone();
         let mut x = 2.0;

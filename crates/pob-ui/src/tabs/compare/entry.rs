@@ -100,10 +100,24 @@ impl CompareEntry {
                 return;
             }
             e.set_active_spec(index).unwrap_or_else(|err| panic!("{err}"));
+            crate::tree_view::set_jewel_radii_globally(&e.spec_rc().tree_version);
         }
         let tab = self.b.items_tab.borrow().clone().expect("itemsTab");
         tab.populate_slots(g);
         self.rebuild(g);
+    }
+
+    /// `entry.treeTab:ConvertToVersion(version, remove, false, true)` (TreeTab.lua:593-617).
+    pub fn convert_to_version(&self, g: &mut Gfx, version: &str, remove: bool) {
+        {
+            let mut eng = self.b.engine.borrow_mut();
+            let e = eng.as_mut().expect("engine");
+            e.convert_to_version(version, remove, true).unwrap_or_else(|err| panic!("{err}"));
+            crate::tree_view::set_jewel_radii_globally(&e.spec_rc().tree_version);
+        }
+        let tab = self.b.items_tab.borrow().clone().expect("itemsTab");
+        tab.populate_slots(g);
+        self.b.build_flag.set(true);
     }
 
     /// :317-319: `entry:SetActiveSkillSet(skillSetOrderList[index])`.

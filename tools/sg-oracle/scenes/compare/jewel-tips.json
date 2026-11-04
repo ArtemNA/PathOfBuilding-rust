@@ -1,0 +1,137 @@
+{
+"steps": [
+{
+"open": "Dual Wield Cospris CoC"
+},
+{
+"cursorBuild": [
+"modeCompare"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"compareImport": [
+"OccVortex",
+"Occ"
+]
+},
+{
+"cursorCompare": [
+"subTabTree"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"waitAssets": true
+},
+{
+"treeOrder": "jewel-tips-order"
+},
+{
+"treeCenter": true
+},
+{
+"cursor": [
+800,
+500
+],
+"events": [
+[
+"KeyDown",
+"WHEELDOWN"
+],
+[
+"KeyUp",
+"WHEELDOWN"
+],
+[
+"KeyDown",
+"WHEELDOWN"
+],
+[
+"KeyUp",
+"WHEELDOWN"
+],
+[
+"KeyDown",
+"WHEELDOWN"
+],
+[
+"KeyUp",
+"WHEELDOWN"
+]
+]
+},
+{
+"cursor": [
+1200,
+790
+]
+},
+{
+"cursorCompareNode": 61419,
+"dump": true
+},
+{
+"cursorCompareNode": 61419,
+"dump": true,
+"nodeTip": true,
+"shot": "jewel-tip-both"
+},
+{
+"cursor": [
+1200,
+790
+]
+},
+{
+"cursorCompareNode": 36634,
+"dump": true
+},
+{
+"cursorCompareNode": 36634,
+"dump": true,
+"nodeTip": true,
+"shot": "jewel-tip-compare-only"
+},
+{
+"cursor": [
+1200,
+790
+]
+},
+{
+"cursorCompareNode": 64583,
+"dump": true
+},
+{
+"cursorCompareNode": 64583,
+"dump": true,
+"nodeTip": true,
+"shot": "jewel-tip-primary-only"
+},
+{
+"closeBuild": true
+}
+]
+}

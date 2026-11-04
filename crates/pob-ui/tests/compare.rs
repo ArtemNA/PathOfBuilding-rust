@@ -92,6 +92,18 @@ impl Sandbox {
             y.replacen("</Items>", r#"<ItemSet id="2" title="Empty set"/></Items>"#, 1),
         )
         .expect("sets build");
+        // the folder popup: a sub-folder with a build, a broken file, and enough files to scroll
+        let dir = builds.join("Folder Test");
+        std::fs::create_dir_all(dir.join("Many")).expect("mkdir");
+        std::fs::copy(
+            format!("{pob}/spec/TestBuilds/3.13/Generals Perforate Zerker.xml"),
+            dir.join("Inner Build.xml"),
+        )
+        .expect("copy golden");
+        std::fs::write(dir.join("Not A Build.xml"), "not a build").expect("broken");
+        for i in 1..=30 {
+            std::fs::write(dir.join(format!("Many/Row {i:02}.xml")), "<PathOfBuilding/>").expect("row");
+        }
         for b in local_builds("compare") {
             let src = format!("{BUILDS_329}{b}.xml");
             let src = if std::path::Path::new(&src).exists() {
@@ -131,6 +143,9 @@ fn dump(g: &Gfx, st: &Value) -> Value {
         d.insert("popupTitle".into(), json!(p.title.get(g)));
     }
     let tab = b.compare_tab.borrow().clone().expect("compareTab");
+    if let Some(f) = tab.debug_folder(g) {
+        d.insert("folder".into(), f);
+    }
     let mut c = tab.debug_dump(g);
     let mut log = pob_ui::sg::text_log_take();
     log.sort();
@@ -148,6 +163,26 @@ fn dump(g: &Gfx, st: &Value) -> Value {
         })
         .collect();
     d.insert("build".into(), json!({ "viewMode": *b.view_mode.borrow(), "statBox": lines }));
+    if st["setsState"].as_bool() == Some(true) {
+        d.insert("sets".into(), tab.debug_sets());
+    }
+    if st["radius"].as_bool() == Some(true) {
+        d.insert("radiusTable".into(), json!(pob_ui::tree_view::jewel_radius_table()));
+    }
+    if st["nodeTip"].as_bool() == Some(true) {
+        let v = b.tree_view.borrow();
+        let lines: Vec<String> = v
+            .as_ref()
+            .map(|v| {
+                v.tooltip
+                    .lines
+                    .iter()
+                    .map(|l| l.text.clone().unwrap_or_else(|| "<sep>".into()))
+                    .collect()
+            })
+            .unwrap_or_default();
+        d.insert("tooltip".into(), json!(lines));
+    }
     if let Some(f) = st["saved"].as_str() {
         let p = format!("{}{f}.xml", m.build_path.borrow());
         d.insert(
@@ -171,6 +206,15 @@ fn oracle_state(o: &Value) -> Value {
     if !s["savedHasCompare"].is_null() {
         d.insert("savedHasCompare".into(), s["savedHasCompare"].clone());
     }
+    if !s["folder"].is_null() {
+        d.insert("folder".into(), s["folder"].clone());
+    }
+    for k in ["sets", "radiusTable", "tooltip"] {
+        if !s[k].is_null() {
+            d.insert(k.into(), s[k].clone());
+        }
+    }
+
     Value::Object(d)
 }
 
@@ -178,6 +222,16 @@ fn centre(g: &Gfx, c: &dyn Control, dx: f64, dy: f64) -> (f64, f64) {
     let (x, y) = c.get_pos(g);
     let (w, h) = c.get_size(g);
     ((x + w / 2.0).floor() + dx, (y + h / 2.0).floor() + dy)
+}
+
+/// The number of rows of a drop-down of the tab.
+fn tab_drop_len(c: &pob_ui::control::ControlRef) -> f64 {
+    let any: Rc<dyn std::any::Any> = c.clone();
+    any.downcast::<pob_ui::controls::DropDownControl>()
+        .expect("a drop-down")
+        .list
+        .borrow()
+        .len() as f64
 }
 
 /// The cursor steps of compare-runner.lua.
@@ -199,7 +253,12 @@ fn cursor_step(gfx: &mut Gfx, st: &Value, cur: &mut (f64, f64)) {
         let n = ctl(c[0].as_str().expect("name"));
         let (x, y) = n.get_pos(gfx);
         let (_, h) = n.get_size(gfx);
-        *cur = (x + 10.0, y + h + 2.0 + (off(c, 1) - 1.0) * (h - 4.0) + ((h - 4.0) / 2.0).floor());
+        // a negative row counts from the end of the list
+        let row = match off(c, 1) {
+            r if r < 0.0 => tab_drop_len(&n) + r + 1.0,
+            r => r,
+        };
+        *cur = (x + 10.0, y + h + 2.0 + (row - 1.0) * (h - 4.0) + ((h - 4.0) / 2.0).floor());
     } else if let Some(c) = st["compareItemButton"].as_array() {
         let tab = b.compare_tab.borrow().clone().expect("tab");
         let start = 312.0 + tab.items_col_width.get().expect("colWidth") + 10.0 - tab.c().items_h_scroll_bar.offset.get() + 310.0 + 6.0;
@@ -218,8 +277,30 @@ fn cursor_step(gfx: &mut Gfx, st: &Value, cur: &mut (f64, f64)) {
     } else if let Some(c) = st["cursorPopup"].as_array() {
         let popups = m.popups.borrow();
         let p = popups.first().expect("popup");
-        let n = p.host.get(c[0].as_str().expect("name")).expect("popup control");
+        let n = p
+            .host
+            .get(c[0].as_str().expect("name"))
+            .unwrap_or_else(|| panic!("control {} of the popup {:?}", c[0], p.title.get(gfx)));
         *cur = centre(gfx, &*n, off(c, 1), off(c, 2));
+    } else if let Some(c) = st["cursorPopupDrop"].as_array() {
+        let popups = m.popups.borrow();
+        let n = popups
+            .first()
+            .expect("popup")
+            .host
+            .get(c[0].as_str().expect("name"))
+            .expect("popup control");
+        let (x, y) = n.get_pos(gfx);
+        let (w, h) = n.get_size(gfx);
+        *cur = ((x + w / 2.0).floor(), y + h + 2.0 + (off(c, 1) - 1.0) * (h - 4.0) + 4.0);
+    } else if let Some(r) = st["cursorFolderRow"].as_f64() {
+        let popups = m.popups.borrow();
+        let n = popups.first().expect("popup").host.get("buildList").expect("buildList");
+        let (x, y) = n.get_pos(gfx);
+        *cur = (x + 20.0, y + 2.0 + (r - 1.0) * 20.0 + 10.0);
+    } else if let Some(i) = st["cursorFolderPath"].as_u64() {
+        let tab = b.compare_tab.borrow().clone().expect("tab");
+        *cur = tab.debug_folder_path_button(gfx, i as usize);
     } else {
         return;
     }
@@ -280,12 +361,68 @@ fn run(name: &str) -> Run {
             frame(&mut gfx, &l);
             continue;
         }
+        if let Some(box_) = st["quadLogRust"].as_array().or(st["quadLog"].as_array()) {
+            // diagnostics (MINEFIELD R60): the quads of one frame that touch the box
+            let b: Vec<f32> = box_.iter().map(|v| v.as_f64().expect("box") as f32).collect();
+            let list = frame(&mut gfx, &l);
+            let lines: Vec<String> = list
+                .commands
+                .iter()
+                .filter(|c| {
+                    let (x0, x1) = c.pos.iter().fold((f32::MAX, f32::MIN), |a, p| (a.0.min(p[0]), a.1.max(p[0])));
+                    let (y0, y1) = c.pos.iter().fold((f32::MAX, f32::MIN), |a, p| (a.0.min(p[1]), a.1.max(p[1])));
+                    x1 >= b[0] && x0 <= b[2] && y1 >= b[1] && y0 <= b[3]
+                })
+                .map(|c| {
+                    let p = |i: usize| format!("{:.3},{:.3}", c.pos[i][0], c.pos[i][1]);
+                    let u = |i: usize| format!("{:.5},{:.5}", c.uv[i][0], c.uv[i][1]);
+                    format!(
+                        "{}x{}|{} {} {} {}|{} {} {} {}",
+                        c.texture.width,
+                        c.texture.height,
+                        p(0),
+                        p(1),
+                        p(2),
+                        p(3),
+                        u(0),
+                        u(1),
+                        u(2),
+                        u(3)
+                    )
+                })
+                .collect();
+            if let Ok(dir) = std::env::var("POB_COMPARE_DUMP_OURS") {
+                std::fs::create_dir_all(&dir).expect("mkdir");
+                std::fs::write(format!("{dir}/quads.txt"), lines.join("\n")).expect("write");
+            }
+            continue;
+        }
+        if st["treeCenter"].as_bool() == Some(true) {
+            if let Some(v) = main().build_mode.tree_view.borrow_mut().as_mut() {
+                v.zoom_x = 0.0;
+                v.zoom_y = 0.0;
+            }
+            frame(&mut gfx, &l);
+            continue;
+        }
         if let Some(o) = st["treeOrder"].as_str() {
             // the overlap order of this oracle process (R27, R31)
             let rec = oracle_record(o).unwrap_or_else(|| panic!("fixtures/compare/{o}.json"));
+            // diagnostics: the model of the app next to the sample (MINEFIELD R27)
+            if let Ok(dir) = std::env::var("POB_COMPARE_DUMP_OURS") {
+                main().build_mode.ensure_tree_view();
+                frame(&mut gfx, &l);
+                if let Some(v) = main().build_mode.tree_view.borrow().as_ref() {
+                    std::fs::create_dir_all(&dir).expect("mkdir");
+                    std::fs::write(format!("{dir}/{o}-model.json"), v.debug_orders().to_string()).expect("write");
+                }
+            }
             let tab = main().build_mode.compare_tab.borrow().clone().expect("compareTab");
-            let entry = tab.active_compare().expect("entry");
-            for (b, k) in [(main().build_mode.clone(), "primary"), (entry.b.clone(), "entry")] {
+            let mut sides = vec![(main().build_mode.clone(), "primary")];
+            if let Some(entry) = tab.active_compare() {
+                sides.push((entry.b.clone(), "entry"));
+            }
+            for (b, k) in sides {
                 b.ensure_tree_view();
                 let r = &rec[k];
                 let ids: Vec<u32> = r["nodes"]
@@ -310,6 +447,9 @@ fn run(name: &str) -> Run {
                 let view = view.as_mut().expect("view");
                 view.set_order_sample(ids, conns);
                 view.set_sub_graph_order_sample(subs);
+                if let Some(s) = r["sockets"].as_array() {
+                    view.set_socket_order_sample(s.iter().map(|v| v.as_f64().expect("id") as u32).collect());
+                }
             }
             continue;
         }
@@ -357,6 +497,11 @@ fn run(name: &str) -> Run {
             frame(&mut gfx, &l);
             continue;
         }
+        if let Some(a) = st["writeFile"].as_array() {
+            let p = format!("{}{}", main().build_path.borrow(), a[0].as_str().expect("file"));
+            std::fs::write(p, a[1].as_str().expect("text")).expect("write");
+            continue;
+        }
         if st["save"].as_bool() == Some(true) {
             main().build_mode.save_db_file(&mut gfx);
             frame(&mut gfx, &l);
@@ -375,6 +520,19 @@ fn run(name: &str) -> Run {
             gfx.input(RawEvent::Cursor { x: cur.0, y: cur.1 });
         }
         cursor_step(&mut gfx, st, &mut cur);
+        // the node steps: the cursor of the oracle at that step (the formula of the runner reads its viewer); a step without a dump is only the frame before it
+        if (st.get("cursorNodeAuto").is_some() || st.get("cursorCompareNode").is_some())
+            && let Some(at) = oracle_record(name).and_then(|r| {
+                r["dumps"]
+                    .as_array()?
+                    .iter()
+                    .find(|d| d["step"].as_u64() == Some((i + 1) as u64))
+                    .map(|d| d["state"]["cursorAt"].clone())
+            })
+        {
+            cur = (at[0].as_f64().expect("x"), at[1].as_f64().expect("y"));
+            gfx.input(RawEvent::Cursor { x: cur.0, y: cur.1 });
+        }
         if let Some(t) = st["time"].as_u64() {
             tp.set_time(t);
         }
@@ -383,6 +541,19 @@ fn run(name: &str) -> Run {
         }
         if st["dump"].as_bool() == Some(true) {
             pob_ui::sg::text_log_arm();
+        }
+        let hold = |gfx: &mut Gfx, k: &Value, pressed: bool| match k.as_str() {
+            Some("CTRL") => gfx.input(RawEvent::Key {
+                key: pob_gfx::input::PhysKey::Ctrl,
+                pressed,
+            }),
+            other => panic!("hold of {other:?}"),
+        };
+        for k in st["hold"].as_array().into_iter().flatten() {
+            hold(&mut gfx, k, true);
+        }
+        for k in st["release"].as_array().into_iter().flatten() {
+            hold(&mut gfx, k, false);
         }
         let t0 = std::time::Instant::now();
         for e in st["events"].as_array().into_iter().flatten() {
@@ -422,6 +593,11 @@ fn scenario_names() -> Vec<String> {
             .expect("json");
     // `probe-*`: numbers of the oracle for the report
     names.retain(|n| !n.starts_with("probe-"));
+    if let Ok(o) = std::env::var("POB_COMPARE_ONLY")
+        && o.starts_with("probe-")
+    {
+        names.push(o);
+    }
     for i in 0..local_builds("compare").len() {
         let n = format!("local-{}", i + 1);
         if scene::oracle_dir().join(format!("scenes/compare/{n}.json")).exists() && oracle_record(&n).is_some() {
@@ -538,6 +714,47 @@ fn compare_states_equal_original() {
             .collect::<Vec<_>>()
             .join("\n")
     );
+}
+
+/// The real window on both sides (compare-real-seq.ps1): the stages' state and the events the window delivered. Run the sides first:
+///   pwsh tools/sg-oracle/run.ps1 -Script compare-runner.lua -ScriptArgs real-input -Inject inject-compare-real.ps1 -Timeout 60
+///   pwsh tools/sg-oracle/compare-rust-input.ps1
+#[test]
+fn compare_real_input_equals_original() {
+    let read = |n: &str| -> Option<Value> {
+        let t = std::fs::read_to_string(scene::oracle_dir().join(format!("fixtures/compare/{n}.json"))).ok()?;
+        Some(serde_json::from_str(t.trim_start_matches('\u{feff}')).expect("json"))
+    };
+    let (Some(o), Some(r)) = (read("real-input-oracle"), read("real-input-rust")) else {
+        eprintln!("SKIPPED compare_real_input_equals_original: no fixtures/compare/real-input-*.json");
+        return;
+    };
+    let stages = [
+        "start", "tab", "popup", "typed", "bad", "folder", "row", "imported", "wheel", "items", "config", "searched", "tree", "removed",
+    ];
+    let mut events = 0;
+    for stage in stages {
+        if let Some(d) = first_diff(&norm(&o[stage]["compareReal"]), &norm(&r[stage]["compareReal"]), stage) {
+            panic!("{d}");
+        }
+        assert_eq!(o[stage]["events"], r[stage]["events"], "{stage}: events");
+        events = o[stage]["events"].as_array().map_or(0, Vec::len);
+    }
+    assert_eq!(o["typed"]["compareReal"]["inputBuf"].as_str(), Some("12"), "the digits arrived");
+    assert_eq!(o["folder"]["compareReal"]["folderN"].as_f64(), Some(2.0), "the list of the folder");
+    assert_eq!(
+        o["imported"]["compareReal"]["entries"][0].as_str(),
+        Some("OccVortex"),
+        "the build of the row"
+    );
+    assert!(o["wheel"]["compareReal"]["scrollY"].as_f64() > Some(0.0), "the wheel scrolled");
+    assert_eq!(
+        o["searched"]["compareReal"]["configBuf"].as_str(),
+        Some("3"),
+        "the search took the key"
+    );
+    assert_eq!(o["removed"]["compareReal"]["active"].as_f64(), Some(0.0), "the entry went");
+    eprintln!("{} stages, {events} events", stages.len());
 }
 
 #[test]
