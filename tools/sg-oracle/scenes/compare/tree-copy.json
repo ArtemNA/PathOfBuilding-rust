@@ -1,0 +1,108 @@
+{
+"steps": [
+{
+"open": "Dual Savior"
+},
+{
+"cursorBuild": [
+"modeCompare"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"compareImport": [
+"Generals Perforate Zerker",
+"Zerker"
+]
+},
+{
+"cursorCompare": [
+"subTabTree"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"waitAssets": true
+},
+{
+"cursorCompare": [
+"copySpecUseBtn"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true,
+"setsState": true
+},
+{
+"waitAssets": true
+},
+{
+"treeOrder": "tree-copy-order"
+},
+{
+"cursor": [
+1200,
+790
+],
+"dump": true,
+"setsState": true,
+"shot": "tree-copy-use"
+},
+{
+"cursorCompare": [
+"copySpecBtn"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true,
+"setsState": true
+},
+{
+"cursor": [
+1200,
+790
+],
+"dump": true,
+"setsState": true
+},
+{
+"closeBuild": true
+}
+]
+}

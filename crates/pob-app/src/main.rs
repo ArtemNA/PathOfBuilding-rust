@@ -68,6 +68,7 @@ impl MainObject for Runner {
             s["skillsReal"] = pob_ui::tabs::skills::debug_input_state(frame);
             s["itemsReal"] = pob_ui::tabs::items::debug_input_state(frame);
             s["importReal"] = pob_ui::tabs::import::debug_input_state(frame);
+            s["compareReal"] = pob_ui::tabs::compare::debug_input_state(frame);
             let tmp = format!("{p}.tmp");
             if std::fs::write(&tmp, s.to_string()).is_ok() {
                 let _ = std::fs::rename(&tmp, p);

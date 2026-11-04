@@ -12,7 +12,7 @@ use crate::controls::basic::{ButtonControl, CheckBoxControl};
 use crate::controls::drop_down::{DropDownControl, DropItem};
 use crate::controls::edit::{EditArgs, EditControl};
 use crate::host::InputEvents;
-use crate::modules::main::{BareControl, not_ported};
+use crate::modules::main::{BareControl, main};
 use crate::sg;
 
 fn code(n: &str) -> String {
@@ -196,9 +196,8 @@ impl CompareTab {
                 let Some(e) = tt().active_compare() else { return };
                 let ver = v.data.as_ref().and_then(|d| d.downcast_ref::<String>()).cloned();
                 let cur = e.b.engine.borrow().as_ref().expect("engine").spec_rc().tree_version.clone();
-                if ver.is_some_and(|x| x != cur) {
-                    // the popup converts `build.spec` of the primary build's tab in the port
-                    not_ported(g, "Classes/CompareTab.lua:889 entry.treeTab:OpenVersionConvertPopup");
+                if let Some(ver) = ver.filter(|x| *x != cur) {
+                    open_entry_version_convert_popup(g, &e, &ver);
                 }
             })),
             None,
@@ -272,6 +271,8 @@ impl CompareTab {
         };
         spec.title = Some(format!("{} (Compared)", spec.title.as_deref().unwrap_or("Default")));
         spec.jewels = Default::default();
+        // :1347 `new("PassiveSpec")` loads its tree: `main:LoadTree` (Main.lua:354)
+        crate::tree_view::set_jewel_radii_globally(&spec.tree_version);
         let p = self.primary();
         let n = {
             let mut eng = p.engine.borrow_mut();
@@ -470,4 +471,43 @@ impl CompareTab {
             &format!("{}{}", code("WARNING"), entry.label),
         );
     }
+}
+
+/// `entry.treeTab:OpenVersionConvertPopup(version, true)` (CompareTab.lua:889, TreeTab.lua:654-671) over the entry's engine. `ignoreTreeSubType` is true; Cancel moves `versionSelect` of the entry's tree tab, which is never drawn.
+fn open_entry_version_convert_popup(g: &mut Gfx, entry: &Rc<CompareEntry>, version: &str) {
+    let mut controls: indexmap::IndexMap<String, ControlRef> = indexmap::IndexMap::new();
+    controls.insert(
+        "warningLabel".into(),
+        crate::controls::basic::LabelControl::new(
+            None,
+            rect(0.0, 20.0, 0.0, 16.0),
+            "^7Warning: some or all of the passives may be de-allocated due to changes in the tree.\n\nConvert will replace your current tree.\nCopy + Convert will backup your current tree.\n".to_string(),
+        ),
+    );
+    let button = |x: f64, w: f64, label: &str, remove: bool| {
+        let (e, v) = (entry.clone(), version.to_string());
+        ButtonControl::new(None, rect(x, 105.0, w, 20.0), label.to_string(), move |g| {
+            e.convert_to_version(g, &v, remove);
+            main().close_popup();
+        })
+    };
+    controls.insert("convert".into(), button(-125.0, 100.0, "Convert", true));
+    controls.insert("convertCopy".into(), button(0.0, 125.0, "Copy + Convert", false));
+    controls.insert(
+        "cancel".into(),
+        ButtonControl::new(None, rect(125.0, 105.0, 100.0, 20.0), "Cancel".to_string(), |_| {
+            main().close_popup()
+        }),
+    );
+    main().open_popup(
+        g,
+        570.0,
+        140.0,
+        &format!("Convert to Version {}", crate::tabs::tree::tree_version_display(version)),
+        controls,
+        Some("convert"),
+        None,
+        None,
+        None,
+    );
 }

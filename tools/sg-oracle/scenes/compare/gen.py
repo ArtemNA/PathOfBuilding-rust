@@ -226,6 +226,180 @@ write('config', [
  {"cursor": AWAY, "dump": True},
  {"closeBuild": True},
 ])
+# U8b2: Copy and use of a tree; the set selectors of the Items view; the socket under a label; the tooltips of the tree; the version of an entry
+write('tree-copy', [
+ {"open": "Dual Savior"},
+ tab,
+ {"compareImport": ["Generals Perforate Zerker", "Zerker"]},
+ sub('Tree'),
+ {"waitAssets": True},
+ {"cursorCompare": ["copySpecUseBtn"], "events": click(), "dump": True, "setsState": True},
+ {"waitAssets": True},
+ {"treeOrder": "tree-copy-order"},
+ {"cursor": AWAY, "dump": True, "setsState": True, "shot": "tree-copy-use"},
+ {"cursorCompare": ["copySpecBtn"], "events": click(), "dump": True, "setsState": True},
+ {"cursor": AWAY, "dump": True, "setsState": True},
+ {"closeBuild": True},
+])
+def pick_sets(name, row):
+    return [{"cursorCompare": [name], "events": click()}, {"cursorCompareRow": [name, row], "events": click()}, {"cursor": AWAY, "dump": True, "setsState": True}]
+write('items-sets', [
+ {"open": "Sets Test"},
+ tab,
+ {"compareImport": ["Mirage Archer Toxic Rain", "Mirage"]},
+ sub('Items'),
+ {"cursor": AWAY, "dump": True, "setsState": True, "shot": "items-sets-start"},
+ *pick_sets("primaryItemSetSelect", 2),
+ {"cursor": AWAY, "dump": True, "setsState": True, "shot": "items-sets-primary"},
+ *pick_sets("primaryItemSetSelect", 1),
+ *pick_sets("compareTreeSetSelect", 1),
+ {"cursor": AWAY, "dump": True, "setsState": True, "shot": "items-sets-tree"},
+ *pick_sets("compareTreeSetSelect", 3),
+ {"closeBuild": True},
+])
+write('items-sets2', [
+ {"open": "Mirage Archer Toxic Rain"},
+ tab,
+ {"compareImport": ["Sets Test", "Sets"]},
+ sub('Items'),
+ {"cursor": AWAY, "dump": True, "setsState": True},
+ *pick_sets("compareItemSetSelect2", 2),
+ {"cursor": AWAY, "dump": True, "setsState": True, "shot": "items-sets-compare"},
+ *pick_sets("primaryTreeSetSelect", 1),
+ {"cursor": AWAY, "dump": True, "setsState": True, "shot": "items-sets-primary-tree"},
+ {"closeBuild": True},
+])
+write('items-viewer', [
+ {"open": "Mirage Archer Toxic Rain"},
+ {"waitAssets": True},
+ tab,
+ {"compareImport": ["Dual Wield Cospris CoC", "Cospris"]},
+ sub('Items'),
+ {"waitAssets": True},
+ {"cursor": AWAY, "dump": True},
+ {"cursor": [335, 676], "dump": True, "shot": "items-viewer-1"},
+ {"cursor": [335, 696], "dump": True, "shot": "items-viewer-2"},
+ {"cursor": [330, 240 + 20 * 2 + 10], "dump": True},
+ {"closeBuild": True},
+])
+# the node tooltip of the primary build: on its own, and after an import (the cache the entries leave, MINEFIELD R59)
+write('node-tips', [
+ {"open": "Dual Savior"},
+ {"waitAssets": True},
+ {"treeOrder": "node-tips-order"},
+ {"cursorNodeAuto": True, "dump": True},
+ {"cursorNodeAuto": True, "dump": True, "nodeTip": True, "shot": "node-tip-alone"},
+ tab,
+ {"compareImport": ["OccVortex", "Occ"]},
+ {"cursorBuild": ["modeTree"], "events": click()},
+ {"waitAssets": True},
+ {"cursorNodeAuto": True, "dump": True},
+ {"cursorNodeAuto": True, "dump": True, "nodeTip": True, "shot": "node-tip-imported"},
+ {"closeBuild": True},
+])
+# addCompareJewelSection (PassiveTreeView.lua:1482): a socket with another jewel, a socket of the compared build only, a socket empty there
+write('jewel-tips', [
+ {"open": "Dual Wield Cospris CoC"},
+ tab,
+ {"compareImport": ["OccVortex", "Occ"]},
+ sub('Tree'),
+ {"waitAssets": True},
+ {"treeOrder": "jewel-tips-order"},
+ {"treeCenter": True},
+ {"cursor": [800, 500], "events": wheel("WHEELDOWN") * 3},
+ {"cursor": AWAY},
+ {"cursorCompareNode": 61419, "dump": True},
+ {"cursorCompareNode": 61419, "dump": True, "nodeTip": True, "shot": "jewel-tip-both"},
+ {"cursor": AWAY},
+ {"cursorCompareNode": 36634, "dump": True},
+ {"cursorCompareNode": 36634, "dump": True, "nodeTip": True, "shot": "jewel-tip-compare-only"},
+ {"cursor": AWAY},
+ {"cursorCompareNode": 64583, "dump": True},
+ {"cursorCompareNode": 64583, "dump": True, "nodeTip": True, "shot": "jewel-tip-primary-only"},
+ {"closeBuild": True},
+])
+# :889 the version of an entry; data.jewelRadius is one for all the builds (MINEFIELD R42)
+write('tree-version', [
+ {"open": "Generals Perforate Zerker"},
+ tab,
+ {"compareImport": ["Dual Savior", "Savior"]},
+ sub('Tree'),
+ {"waitAssets": True},
+ {"treeOrder": "tree-version-order"},
+ {"cursor": AWAY, "dump": True, "radius": True, "shot": "tree-version-start"},
+ {"cursorCompare": ["rightVersionSelect"], "events": click(), "dump": True},
+ {"cursorCompareRow": ["rightVersionSelect", 3], "events": click(), "dump": True, "shot": "tree-version-popup"},
+ {"cursorPopup": ["cancel"], "events": click(), "dump": True},
+ {"compareSel": ["rightVersionSelect", 25]},
+ {"cursor": AWAY, "dump": True},
+ {"cursorPopup": ["convert"], "events": click(), "dump": True, "radius": True},
+ {"waitAssets": True},
+ {"treeOrder": "tree-version-order2"},
+ {"cursor": AWAY, "dump": True, "radius": True, "shot": "tree-version-overlay"},
+ # the rings and the numbers of the primary build under the table the entry left
+ # no hover over a jewel of the primary here: PassiveTreeView.lua:1005 of the original fails on the table of another tree version (a Lua error; the port draws)
+ {"cursorBuild": ["mainSocketGroup"], "events": click()},
+ {"cursorBuild": ["mainSocketGroup", 0, 36], "events": click()},
+ {"cursor": AWAY, "dump": True, "radius": True},
+ {"closeBuild": True},
+])
+# Import from Folder: the list, the search, the sort, folders and the path, the errors, a build by its row, the wheel, the keys
+SELECT_ALL_DELETE = {"hold": ["CTRL"], "events": [["KeyDown", "a"], ["KeyUp", "a"], ["KeyDown", "BACK"], ["KeyUp", "BACK"]], "release": ["CTRL"], "dump": True}
+FOLDER = [{"cursorCompare": ["importBtn"], "events": click()}, {"cursorPopup": ["importFolder"], "events": click(), "dump": True}]
+write('folder', [
+ {"open": "OccVortex"},
+ tab,
+ {"cursorCompare": ["importBtn"], "events": click()},
+ {"cursorPopup": ["importFolder"], "events": click(), "dump": True, "shot": "folder-open"},
+ {"events": [["Char", "D"], ["Char", "u"], ["Char", "a"], ["Char", "l"]], "dump": True, "shot": "folder-search"},
+ SELECT_ALL_DELETE,
+ {"cursorPopup": ["sort"], "events": click(), "dump": True},
+ {"cursorPopupDrop": ["sort", 2], "events": click(), "dump": True},
+ {"cursorPopup": ["sort"], "events": click()},
+ {"cursorPopupDrop": ["sort", 1], "events": click(), "dump": True},
+ # into the folder by the Open button, back by the path
+ {"cursorFolderRow": 1, "events": click(), "dump": True},
+ {"cursorPopup": ["open"], "dump": True},
+ {"cursorPopup": ["open"], "events": click(), "dump": True, "shot": "folder-inside"},
+ {"cursorFolderPath": 1, "dump": True},
+ {"cursorFolderPath": 1, "events": click(), "dump": True},
+ # a broken file: the message popup over the list
+ {"cursorFolderRow": 1, "events": click()},
+ {"cursorPopup": ["open"], "events": click()},
+ {"cursorFolderRow": 3, "events": click(), "dump": True},
+ {"cursorPopup": ["open"], "events": click(), "dump": True, "shot": "folder-broken"},
+ {"cursorPopup": ["close"], "events": click(), "dump": True},
+ # the folder of many: the wheel over a list without the focus, the list with it
+ {"cursorFolderRow": 1, "events": click()},
+ {"cursorPopup": ["open"], "events": click(), "dump": True},
+ {"cursorFolderRow": 3, "events": wheel("WHEELDOWN"), "dump": True, "shot": "folder-scrolled"},
+ {"events": wheel("WHEELDOWN"), "dump": True},
+ {"cursorFolderRow": 3, "events": click(), "dump": True},
+ {"events": wheel("WHEELUP"), "dump": True},
+ # back, a build by Return on its row: the entry, the popup closed
+ {"cursorFolderPath": 2, "events": click(), "dump": True},
+ {"cursorFolderRow": 2, "events": click(), "dump": True},
+ {"events": [["KeyDown", "RETURN"], ["KeyUp", "RETURN"]], "dump": True, "shot": "folder-imported"},
+ # again: the sort stays, the Close button
+ {"cursorCompare": ["importBtn"], "events": click()},
+ {"cursorPopup": ["importFolder"], "events": click(), "dump": True},
+ {"cursorPopup": ["close"], "events": click(), "dump": True},
+ *FOLDER,
+ {"events": [["KeyDown", "ESCAPE"], ["KeyUp", "ESCAPE"]], "dump": True},
+ {"events": [["KeyDown", "ESCAPE"], ["KeyUp", "ESCAPE"]], "dump": True},
+ # a build at the root by the Open button
+ *FOLDER,
+ {"cursorFolderRow": 2, "events": click(), "dump": True},
+ {"cursorPopup": ["open"], "events": click(), "dump": True},
+ {"cursor": AWAY, "dump": True, "shot": "folder-root-build"},
+ # an empty file met by the scan: the cloud error under the list
+ {"writeFile": ["Folder Test/Empty File.xml", ""]},
+ *FOLDER,
+ {"cursor": AWAY, "dump": True, "shot": "folder-empty"},
+ {"cursorPopup": ["close"], "events": click(), "dump": True},
+ {"cursor": AWAY, "dump": True},
+ {"closeBuild": True},
+])
 # the cache shared with the entries (oracle only: numbers for the report; the Rust test skips cacheProbe)
 # the Tree view: overlay and side by side, a spec of the entry, the search, the copy of a tree, the row of the report on a tree node
 write('tree', [
@@ -278,12 +452,12 @@ write('config-tips', [
 write('probe-tree', [
  {"open": "Dual Savior"},
  {"waitAssets": True},
- {"cursorNodeAuto": True},
+ {"cursorNodeAuto": True, "dump": True},
  {"cursorNodeAuto": True, "dump": True, "nodeTip": True},
  tab,
  {"compareImport": ["OccVortex", "Occ"]},
  {"cursorBuild": ["modeTree"], "events": click()},
- {"cursorNodeAuto": True},
+ {"cursorNodeAuto": True, "dump": True},
  {"cursorNodeAuto": True, "dump": True, "nodeTip": True},
  {"closeBuild": True},
 ])

@@ -62,6 +62,12 @@ impl Sandbox {
             builds.join(format!("{GOLDEN}.xml")),
         )
         .expect("copy golden");
+        // the scene `dual-savior`: the overlap of a connector and two nodes by the start of the class (`order-dual-savior`)
+        std::fs::copy(
+            format!("{}/spec/TestBuilds/3.13/Dual Savior.xml", scene::pob_root()),
+            builds.join("Dual Savior.xml"),
+        )
+        .expect("copy golden");
         std::fs::copy(
             scene::oracle_dir().join("scenes/tree/Settings.xml"),
             root.join("Path of Building/Settings.xml"),

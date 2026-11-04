@@ -725,10 +725,27 @@ pub fn add_item_tooltip(t: &mut Tooltip, g: &Gfx, e: &Engine, item: &Rc<Item>, a
         if let Some(r) = &item.jewel_radius_label {
             t.add_line_ex(g, big, Some(&format!("{grey}Radius: ^7{r}")), sc, false, None);
         }
-        if a.slot.is_some_and(|s| s.node_id.is_some()) && item.jewel_radius_index.is_some() {
-            note_not_ported(
-                "Classes/ItemsTab.lua:4486-4498 Attributes in Radius: item.jewelRadiusData (CalcSetup.lua:272-298) is not kept by the run",
-            );
+        // :4486-4498 `item.jewelRadiusData[slot.nodeId]`: what the last MAIN run left in `rad.data` (CalcSetup.lua:306-314); of several functions of one jewel, the last
+        let radius = a.slot.and_then(|s| s.node_id).and_then(|node| {
+            e.result()
+                .env
+                .radius_jewel_list
+                .iter()
+                .rev()
+                .find(|r| r.node_id == node && r.item.id == item.id)
+        });
+        if let Some(rad) = radius {
+            let mut text: Option<String> = None;
+            for (name, code) in [("Str", "STRENGTH"), ("Dex", "DEXTERITY"), ("Int", "INTELLIGENCE")] {
+                let v = rad.data.get(name).as_num().unwrap_or(0.0);
+                if v != 0.0 {
+                    let part = format!("{}{} {name}^7", cc(code), v as i64);
+                    text = Some(text.map_or(part.clone(), |l| format!("{l}, {part}")));
+                }
+            }
+            if let Some(text) = text {
+                t.add_line_ex(g, big, Some(&format!("^x7F7F7FAttributes in Radius: {text}")), sc, false, None);
+            }
         }
     }
     if let (Some(c), Some(q)) = (item.catalyst, item.catalyst_quality)

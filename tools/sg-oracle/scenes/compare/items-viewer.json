@@ -1,0 +1,84 @@
+{
+"steps": [
+{
+"open": "Mirage Archer Toxic Rain"
+},
+{
+"waitAssets": true
+},
+{
+"cursorBuild": [
+"modeCompare"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"compareImport": [
+"Dual Wield Cospris CoC",
+"Cospris"
+]
+},
+{
+"cursorCompare": [
+"subTabItems"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"waitAssets": true
+},
+{
+"cursor": [
+1200,
+790
+],
+"dump": true
+},
+{
+"cursor": [
+335,
+676
+],
+"dump": true,
+"shot": "items-viewer-1"
+},
+{
+"cursor": [
+335,
+696
+],
+"dump": true,
+"shot": "items-viewer-2"
+},
+{
+"cursor": [
+330,
+290
+],
+"dump": true
+},
+{
+"closeBuild": true
+}
+]
+}

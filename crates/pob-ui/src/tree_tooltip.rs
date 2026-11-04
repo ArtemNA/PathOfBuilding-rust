@@ -91,6 +91,36 @@ pub fn draw_node_tooltip(
     }
 }
 
+/// `addCompareJewelSection` (:1482-1495): the jewel of the compared build in this socket, through that build's items tab with the socket of this one.
+fn add_compare_jewel_section(
+    view: &mut PassiveTreeView,
+    g: &Gfx,
+    node_id: u32,
+    c_jewel: Option<&std::rc::Rc<pob_items::item::Item>>,
+    with_label: bool,
+) -> bool {
+    let allocated = view
+        .compare_spec
+        .as_ref()
+        .is_some_and(|c| c.node_idx(node_id).is_some_and(|k| c.nodes[k].alloc));
+    let Some(jewel) = c_jewel.filter(|_| allocated) else {
+        return false;
+    };
+    if with_label {
+        view.tooltip.add_separator(Some(14.0));
+        line(view, g, 14.0, &format!("{}Compared build:", cc("DEXTERITY")), None);
+    }
+    // `self.compareSpec.build.itemsTab`, on the tab of one build its own
+    let owner = view.compare_owner.as_ref().and_then(std::rc::Weak::upgrade);
+    let own = view.owner_build();
+    let socket_tab = own.items_tab.borrow().clone();
+    let tab = owner.map_or_else(|| socket_tab.clone(), |b| b.items_tab.borrow().clone());
+    if let (Some(tab), Some(socket_tab)) = (tab, socket_tab) {
+        tab.add_foreign_socket_tooltip(&mut view.tooltip, g, jewel, &socket_tab, node_id);
+    }
+    true
+}
+
 /// `AddCompareNodeTooltip` (:1772-1830) + `AddCompareNodeName` (:1832-1856).
 pub fn add_compare_node_tooltip(view: &mut PassiveTreeView, g: &Gfx, _e: &Engine, art: &TreeArt, node: &SpecNode) {
     let flavour = show_flavour_text();
@@ -320,20 +350,31 @@ fn add_node_tooltip(
 
     // :1497-1522 sockets
     if ty == NodeType::Socket && node.alloc {
-        let has_jewel = spec
+        let jewel = spec
             .jewels
             .get(f64::from(node.id))
             .copied()
-            .and_then(|id| e.result().env.item(id).cloned())
-            .is_some();
-        if has_jewel {
-            let jewel = spec.jewels.get(f64::from(node.id)).copied().and_then(|id| e.result().env.item(id).cloned());
+            .and_then(|id| e.result().env.item(id).cloned());
+        let c_jewel = view.compare_jewel(e, spec, node.id);
+        if let Some(jewel) = &jewel {
             let tab = view.owner_build().items_tab.borrow().clone();
-            if let (Some(jewel), Some(tab)) = (jewel, tab) {
-                tab.add_socket_tooltip(&mut view.tooltip, g, &jewel, node.id);
+            if let Some(tab) = tab {
+                tab.add_socket_tooltip(&mut view.tooltip, g, jewel, node.id);
             }
-        } else {
+            if !crate::tree_view::jewels_equal(Some(jewel), c_jewel.as_ref()) {
+                add_compare_jewel_section(view, g, node.id, c_jewel.as_ref(), true);
+            }
+        } else if !add_compare_jewel_section(view, g, node.id, c_jewel.as_ref(), false) {
             add_node_name(view, g, e, art, node);
+        }
+        if c_jewel.is_none()
+            && view
+                .compare_spec
+                .as_ref()
+                .is_some_and(|c| c.node_idx(node.id).is_some_and(|k| c.nodes[k].alloc))
+        {
+            view.tooltip.add_separator(Some(14.0));
+            line(view, g, 16.0, &format!("{}Compared build: ^7(empty socket)", cc("WARNING")), None);
         }
         if let Some(d) = node.distance_to_class_start
             && d > 0.0
@@ -352,6 +393,15 @@ fn add_node_tooltip(
         );
         line(view, g, 14.0, &format!("{tip}Tip: Hold Shift or Ctrl to hide this tooltip."), None);
         return;
+    }
+
+    // :1525-1531 an unallocated socket: the jewel of the compared build
+    if ty == NodeType::Socket {
+        let c_jewel = view.compare_jewel(e, spec, node.id);
+        if add_compare_jewel_section(view, g, node.id, c_jewel.as_ref(), false) {
+            line(view, g, 14.0, &format!("{tip}Tip: Hold Shift or Ctrl to hide this tooltip."), None);
+            return;
+        }
     }
 
     // :1534

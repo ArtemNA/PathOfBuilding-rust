@@ -1,0 +1,231 @@
+{
+"steps": [
+{
+"open": "Sets Test"
+},
+{
+"cursorBuild": [
+"modeCompare"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"compareImport": [
+"Mirage Archer Toxic Rain",
+"Mirage"
+]
+},
+{
+"cursorCompare": [
+"subTabItems"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"cursor": [
+1200,
+790
+],
+"dump": true,
+"setsState": true,
+"shot": "items-sets-start"
+},
+{
+"cursorCompare": [
+"primaryItemSetSelect"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+]
+},
+{
+"cursorCompareRow": [
+"primaryItemSetSelect",
+2
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+]
+},
+{
+"cursor": [
+1200,
+790
+],
+"dump": true,
+"setsState": true
+},
+{
+"cursor": [
+1200,
+790
+],
+"dump": true,
+"setsState": true,
+"shot": "items-sets-primary"
+},
+{
+"cursorCompare": [
+"primaryItemSetSelect"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+]
+},
+{
+"cursorCompareRow": [
+"primaryItemSetSelect",
+1
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+]
+},
+{
+"cursor": [
+1200,
+790
+],
+"dump": true,
+"setsState": true
+},
+{
+"cursorCompare": [
+"compareTreeSetSelect"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+]
+},
+{
+"cursorCompareRow": [
+"compareTreeSetSelect",
+1
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+]
+},
+{
+"cursor": [
+1200,
+790
+],
+"dump": true,
+"setsState": true
+},
+{
+"cursor": [
+1200,
+790
+],
+"dump": true,
+"setsState": true,
+"shot": "items-sets-tree"
+},
+{
+"cursorCompare": [
+"compareTreeSetSelect"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+]
+},
+{
+"cursorCompareRow": [
+"compareTreeSetSelect",
+3
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+]
+},
+{
+"cursor": [
+1200,
+790
+],
+"dump": true,
+"setsState": true
+},
+{
+"closeBuild": true
+}
+]
+}

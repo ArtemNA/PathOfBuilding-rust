@@ -1803,6 +1803,7 @@ impl Mode for BuildMode {
             unimplemented!("Modules/Build.lua:106-110 OpenConversionPopup (a build for another game version)");
         }
         *self.view_mode.borrow_mut() = engine.model().view_mode.clone().unwrap_or_else(|| "TREE".into());
+        crate::tree_view::set_jewel_radii_globally(&engine.spec_rc().tree_version);
         *self.engine.borrow_mut() = Some(engine);
         self.abort_save.set(Some(true));
         self.host.controls.borrow_mut().clear();
@@ -2379,6 +2380,7 @@ impl BuildMode {
         *self.target_version.borrow_mut() = Some(LIVE_TARGET_VERSION.to_string());
         *self.view_mode.borrow_mut() = engine.model().view_mode.clone().unwrap_or_else(|| "TREE".into());
         engine.view_mode_is_tree.set(self.view_mode.borrow().as_str() == "TREE");
+        crate::tree_view::set_jewel_radii_globally(&engine.spec_rc().tree_version);
         *self.engine.borrow_mut() = Some(engine);
         // the tabs read the controls of their build; they are never drawn for an entry
         let c = self.create_controls(g);

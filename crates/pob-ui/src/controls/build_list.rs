@@ -36,54 +36,59 @@ fn s_eq(a: &Option<String>, b: &Option<String>) -> bool {
     a == b
 }
 
+/// `BuildListClass:GetRowValue` (BuildListControl.lua:191-224) over the host's `subPath` and `cutBuild`: shared with the popup of `CompareTab`.
+pub(crate) fn build_row_value(build: &BuildRef, base_sub: Option<&str>, cut: Option<&BuildRef>, column: usize) -> String {
+    let b = &build.0;
+    if column == 1 {
+        let mut prefix = String::new();
+        if let Some(base_sub) = base_sub
+            && b.sub_path != base_sub
+        {
+            if b.sub_path.as_bytes().starts_with(base_sub.as_bytes()) {
+                prefix = b.sub_path[base_sub.len()..].to_string();
+            } else {
+                prefix = b.sub_path.clone();
+            }
+        }
+        let label = match &b.folder_name {
+            Some(f) => format!(">> {prefix}{f}"),
+            None => format!("{prefix}{}", b.build_name.as_deref().unwrap_or("?")),
+        };
+        if let Some(c) = cut
+            && s_eq(&c.0.build_name, &b.build_name)
+            && s_eq(&c.0.folder_name, &b.folder_name)
+            && c.0.sub_path == b.sub_path
+        {
+            return format!("^xC0B0B0{label}");
+        }
+        label
+    } else if column == 2 {
+        if b.build_name.is_some() {
+            let color = b
+                .class_name
+                .as_ref()
+                .and_then(|c| crate::colors::color_code(&c.to_ascii_uppercase()))
+                .unwrap_or_else(|| "^7".into());
+            let name = match &b.ascend_class_name {
+                Some(a) if a != "None" => a.clone(),
+                _ => b.class_name.clone().unwrap_or_else(|| "?".into()),
+            };
+            format!("{color}Level {} {name}", b.level.unwrap_or(1.0) as i64)
+        } else {
+            String::new()
+        }
+    } else {
+        String::new()
+    }
+}
+
 impl ListHooks<BuildRef> for BuildListHooks {
     /// BuildListControl.lua:223-252
     fn get_row_value(&self, _list: &ListControl<BuildRef>, _g: &Gfx, column: usize, _index: usize, build: &BuildRef) -> String {
         let ctl = self.ctl();
-        let b = &build.0;
-        if column == 1 {
-            let mut prefix = String::new();
-            if let Some(lm) = ctl.list_mode.upgrade() {
-                let base_sub = lm.sub_path.borrow().clone();
-                if b.sub_path != base_sub {
-                    if b.sub_path.as_bytes().starts_with(base_sub.as_bytes()) {
-                        prefix = b.sub_path[base_sub.len()..].to_string();
-                    } else {
-                        prefix = b.sub_path.clone();
-                    }
-                }
-            }
-            let label = match &b.folder_name {
-                Some(f) => format!(">> {prefix}{f}"),
-                None => format!("{prefix}{}", b.build_name.as_deref().unwrap_or("?")),
-            };
-            let cut = ctl.cut_build.borrow().clone();
-            if let Some(c) = cut
-                && s_eq(&c.0.build_name, &b.build_name)
-                && s_eq(&c.0.folder_name, &b.folder_name)
-                && c.0.sub_path == b.sub_path
-            {
-                return format!("^xC0B0B0{label}");
-            }
-            label
-        } else if column == 2 {
-            if b.build_name.is_some() {
-                let color = b
-                    .class_name
-                    .as_ref()
-                    .and_then(|c| crate::colors::color_code(&c.to_ascii_uppercase()))
-                    .unwrap_or_else(|| "^7".into());
-                let name = match &b.ascend_class_name {
-                    Some(a) if a != "None" => a.clone(),
-                    _ => b.class_name.clone().unwrap_or_else(|| "?".into()),
-                };
-                format!("{color}Level {} {name}", b.level.unwrap_or(1.0) as i64)
-            } else {
-                String::new()
-            }
-        } else {
-            String::new()
-        }
+        let base_sub = ctl.list_mode.upgrade().map(|lm| lm.sub_path.borrow().clone());
+        let cut = ctl.cut_build.borrow().clone();
+        build_row_value(build, base_sub.as_deref(), cut.as_ref(), column)
     }
 
     /// BuildListControl.lua:254-256
