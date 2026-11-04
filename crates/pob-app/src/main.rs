@@ -68,6 +68,7 @@ impl MainObject for Runner {
             s["skillsReal"] = pob_ui::tabs::skills::debug_input_state(frame);
             s["itemsReal"] = pob_ui::tabs::items::debug_input_state(frame);
             s["importReal"] = pob_ui::tabs::import::debug_input_state(frame);
+            s["tradeReal"] = pob_ui::trade::debug_input_state(frame);
             let tmp = format!("{p}.tmp");
             if std::fs::write(&tmp, s.to_string()).is_ok() {
                 let _ = std::fs::rename(&tmp, p);
@@ -143,8 +144,12 @@ fn main() {
         fps_log: args.iter().any(|a| a == "--fps-log").then_some((0, 0)),
         open: arg(&args, "--open"),
         app: {
-            // the only place the real network is turned on
-            let app = App::new(cfg).with_transport(std::sync::Arc::new(pob_net::UreqTransport));
+            // the only place the real network is turned on; `--no-network`: a check of the window (tools/sg-oracle/trade-rust-input.ps1), every request refused
+            let app = if args.iter().any(|a| a == "--no-network") {
+                App::new(cfg)
+            } else {
+                App::new(cfg).with_transport(std::sync::Arc::new(pob_net::UreqTransport))
+            };
             // Main.lua:46-49
             app.launch.no_ssl.set(args.iter().any(|a| a == "--no-ssl"));
             app

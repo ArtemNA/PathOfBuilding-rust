@@ -42,7 +42,16 @@ pub struct RateLimiter {
 /// :9-62 `limitMargin`.
 const LIMIT_MARGIN: f64 = 1.0;
 /// :184 "PoE2 release date": blocks until the limits are known.
-const BLOCKED: f64 = 1_956_528_000.0;
+pub const BLOCKED: f64 = 1_956_528_000.0;
+
+/// `self.policyNames[key]` (:45-48).
+pub fn policy_name(key: &str) -> &'static str {
+    match key {
+        "search" => "trade-search-request-limit",
+        "fetch" => "trade-fetch-request-limit",
+        other => panic!("TradeQueryRateLimiter.lua:65: no policy for {other}"),
+    }
+}
 
 /// `headerString:gmatch("([%a%d%-]+): ([%g ]+)")`, the names lowercased (:67-74). The last of a name wins.
 fn parse_headers(header: &str) -> BTreeMap<String, String> {
@@ -283,6 +292,59 @@ mod tests {
         let h = "X-Rate-Limit-Rules: Ip\r\nX-Rate-Limit-Ip: 5:10:60\r\nX-Rate-Limit-Ip-State: 6:10:40\r\n";
         r.update_from_header(h, p, 100.0);
         assert_eq!(r.next_request_time(p, 100.0), 141.0_f64.max(100.0 + 60.0 + 1.0));
+    }
+
+    /// The sample of the upstream comment (:12-37): two rules; `limitMargin` 1 leaves a limit of 7 of 8 and 14 of 15, 2 of 3.
+    const TRADE: &str = "HTTP/1.1 200 OK\r\nX-Rate-Limit-Policy: trade-search-request-limit\r\nX-Rate-Limit-Rules: Ip,Account\r\nX-Rate-Limit-Ip: 8:10:60,15:60:120,60:300:1800\r\nX-Rate-Limit-Ip-State: 1:10:0,1:60:0,1:300:0\r\nX-Rate-Limit-Account: 3:5:60\r\nX-Rate-Limit-Account-State: 1:5:0\r\n\r\n";
+
+    #[test]
+    fn the_tightest_rule_of_the_trade_policy_decides() {
+        let mut r = RateLimiter::default();
+        let p = policy_name("search");
+        let id = r.insert_request(p, 100.0);
+        r.finish_request(p, id);
+        r.update_from_header(TRADE, p, 100.0);
+        assert_eq!(r.next_request_time(p, 100.0), 100.0);
+        // the Account limit 3 less the margin is 2: one more makes it, 5 s + 1
+        r.insert_request(p, 100.0);
+        assert_eq!(r.next_request_time(p, 100.0), 106.0);
+    }
+
+    #[test]
+    fn a_header_of_a_second_policy_goes_under_its_own_name() {
+        let mut r = RateLimiter::default();
+        let p = policy_name("fetch");
+        // `x-rate-limit-policy` names the policy, whatever the caller said
+        r.update_from_header(TRADE, p, 100.0);
+        assert!(r.policies.contains_key("trade-search-request-limit"));
+        assert!(!r.policies.contains_key(p));
+        assert_eq!(r.next_request_time(p, 100.0), 100.0);
+    }
+
+    #[test]
+    fn with_requests_pending_a_header_only_raises_the_state() {
+        let mut r = RateLimiter::default();
+        let p = policy_name("search");
+        let a = r.insert_request(p, 100.0);
+        r.finish_request(p, a);
+        r.update_from_header(TRADE, p, 100.0);
+        let _pending = r.insert_request(p, 100.0);
+        // a lower state of the reply does not overwrite the local count; the higher one of an outside request does
+        let lower = TRADE.replace("X-Rate-Limit-Account-State: 1:5:0", "X-Rate-Limit-Account-State: 0:5:0");
+        r.update_from_header(&lower, p, 100.0);
+        assert_eq!(r.policies[p]["account"].state[&5].request, 2.0);
+        let higher = TRADE.replace("X-Rate-Limit-Account-State: 1:5:0", "X-Rate-Limit-Account-State: 9:5:0");
+        r.update_from_header(&higher, p, 100.0);
+        assert_eq!(r.policies[p]["account"].state[&5].request, 9.0);
+    }
+
+    #[test]
+    fn a_limit_is_never_below_one_after_the_margin() {
+        let mut r = RateLimiter::default();
+        let p = policy_name("search");
+        let h = "X-Rate-Limit-Rules: Ip\r\nX-Rate-Limit-Ip: 1:10:60\r\nX-Rate-Limit-Ip-State: 0:10:0\r\n";
+        r.update_from_header(h, p, 100.0);
+        assert_eq!(r.policies[p]["ip"].limits[&10].request, 1.0);
     }
 
     #[test]

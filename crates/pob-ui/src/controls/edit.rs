@@ -84,6 +84,8 @@ pub struct EditControl {
     pub button_down: Option<Rc<ButtonControl>>,
     pub button_up: Option<Rc<ButtonControl>>,
     pub button_clear: Option<Rc<ButtonControl>>,
+    /// `function control:OnFocusLost()` set by an owner (TradeQuery.lua:405-407).
+    pub on_focus_lost_fn: RefCell<Option<Rc<dyn Fn(&mut Gfx)>>>,
 }
 
 /// Constructor arguments after `anchor, rect` (EditControl.lua:43).
@@ -226,6 +228,7 @@ impl EditControl {
                 button_down,
                 button_up,
                 button_clear,
+                on_focus_lost_fn: RefCell::new(None),
             };
             // `self:SetText(init or "")` runs before `changeFunc` is assigned (EditControl.lua:48 vs :53).
             e.set_text_raw(a.init.as_deref().unwrap_or(""));
@@ -529,6 +532,13 @@ impl EditControl {
 }
 
 impl Control for EditControl {
+    fn on_focus_lost(&self, g: &mut Gfx) {
+        let f = self.on_focus_lost_fn.borrow().clone();
+        if let Some(f) = f {
+            f(g);
+        }
+    }
+
     fn base(&self) -> &ControlBase {
         &self.base
     }

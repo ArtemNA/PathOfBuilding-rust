@@ -177,6 +177,8 @@ pub struct Main {
     /// `itemLib.wiki.triggered` (U6).
     pub wiki_triggered: Cell<bool>,
     pub first_frame_done: Cell<bool>,
+    /// `self.onFrameFuncs`.
+    pub on_frame_funcs: RefCell<IndexMap<String, Rc<dyn Fn(&mut Gfx)>>>,
 }
 
 thread_local! {
@@ -341,6 +343,7 @@ impl Main {
             filter_build_list: RefCell::new(None),
             wiki_triggered: Cell::new(false),
             first_frame_done: Cell::new(false),
+            on_frame_funcs: RefCell::new(IndexMap::new()),
             startup_frames: Cell::new(0),
         });
         MAIN_OBJ.with(|g| *g.borrow_mut() = Some(Rc::clone(&m)));
@@ -583,6 +586,11 @@ impl Main {
             self.first_frame_done.set(true);
             let t = f.get_time() as f64 - launch().start_time.get() as f64;
             f.con_printf(&format!("Startup time: {} ms", t as i64));
+        }
+        // :489-491 `pairs(self.onFrameFuncs)`: "TradeQueryGenerator", "TradeQueryRequests" (U8d), in the order they were set
+        let funcs: Vec<_> = self.on_frame_funcs.borrow().values().cloned().collect();
+        for func in funcs {
+            func(f);
         }
     }
 

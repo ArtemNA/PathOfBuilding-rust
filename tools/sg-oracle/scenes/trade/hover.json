@@ -1,0 +1,314 @@
+{
+"net": [
+{
+"url": "https://www.pathofexile.com/api/trade/data/leagues",
+"code": 200,
+"header": "HTTP/1.1 200 OK\r\n\r\n",
+"body": "{\"result\":[{\"id\":\"Standard\",\"realm\":\"pc\",\"text\":\"Standard\"},{\"id\":\"Hardcore\",\"realm\":\"pc\",\"text\":\"Hardcore\"},{\"id\":\"Synth League\",\"realm\":\"pc\",\"text\":\"Synth League\"},{\"id\":\"Hardcore Synth League\",\"realm\":\"pc\",\"text\":\"Hardcore Synth League\"},{\"id\":\"Standard\",\"realm\":\"xbox\",\"text\":\"Standard\"},{\"id\":\"Hardcore\",\"realm\":\"xbox\",\"text\":\"Hardcore\"},{\"id\":\"Standard\",\"realm\":\"sony\",\"text\":\"Standard\"},{\"id\":\"Sony Only\",\"realm\":\"sony\",\"text\":\"Sony Only\"}]}"
+},
+{
+"url": "https://www.pathofexile.com/api/trade/data/static",
+"code": 200,
+"header": "HTTP/1.1 200 OK\r\n\r\n",
+"body": "{\"result\":[{\"id\":\"Currency\",\"label\":\"Currency\",\"entries\":[{\"id\":\"sep\",\"text\":\"\"},{\"id\":\"chaos\",\"text\":\"Chaos Orb\"},{\"id\":\"divine\",\"text\":\"Divine Orb\"},{\"id\":\"exalted\",\"text\":\"Exalted Orb\"},{\"id\":\"unknowncoin\",\"text\":\"No Such Currency\"}]}]}"
+},
+{
+"url": "https://web.poecdn.com/api/currency-exchange/1799996400",
+"code": 200,
+"header": "HTTP/1.1 200 OK\r\n\r\n",
+"body": "{\"markets\":[{\"league\":\"Standard\",\"market_pair\":[\"Metadata/Items/Currency/CurrencyRerollRare\",\"Metadata/Items/Currency/CurrencyModValues\"],\"lowest_ratio\":{\"Metadata/Items/Currency/CurrencyRerollRare\":200,\"Metadata/Items/Currency/CurrencyModValues\":1},\"highest_stock\":{\"Metadata/Items/Currency/CurrencyRerollRare\":5000,\"Metadata/Items/Currency/CurrencyModValues\":40}},{\"league\":\"Standard\",\"market_pair\":[\"Metadata/Items/Currency/CurrencyAddModToRare\",\"Metadata/Items/Currency/CurrencyRerollRare\"],\"lowest_ratio\":{\"Metadata/Items/Currency/CurrencyAddModToRare\":1,\"Metadata/Items/Currency/CurrencyRerollRare\":12},\"highest_stock\":{\"Metadata/Items/Currency/CurrencyAddModToRare\":100,\"Metadata/Items/Currency/CurrencyRerollRare\":900}},{\"league\":\"Standard\",\"market_pair\":[\"Metadata/Items/Currency/CurrencyAddModToRare\",\"Metadata/Items/Currency/CurrencyRerollRare\"],\"lowest_ratio\":{\"Metadata/Items/Currency/CurrencyAddModToRare\":1,\"Metadata/Items/Currency/CurrencyRerollRare\":15},\"highest_stock\":{\"Metadata/Items/Currency/CurrencyAddModToRare\":10,\"Metadata/Items/Currency/CurrencyRerollRare\":90}},{\"league\":\"Empty League\",\"market_pair\":[\"Metadata/Items/Currency/CurrencyAddModToRare\",\"Metadata/Items/Currency/CurrencyRerollRare\"],\"lowest_ratio\":{\"Metadata/Items/Currency/CurrencyAddModToRare\":1,\"Metadata/Items/Currency/CurrencyRerollRare\":12},\"highest_stock\":{\"Metadata/Items/Currency/CurrencyAddModToRare\":1,\"Metadata/Items/Currency/CurrencyRerollRare\":9}}]}"
+},
+{
+"url": "https://www.pathofexile.com/api/trade/search/Standard",
+"code": 200,
+"header": "HTTP/1.1 200 OK\r\n\r\n",
+"body": "{\"id\":\"first\",\"total\":1,\"result\":[\"x\"]}"
+},
+{
+"url": "https://www.pathofexile.com/api/trade/search/Synth%20League",
+"code": 200,
+"header": "HTTP/1.1 200 OK\r\nX-Rate-Limit-Policy: trade-search-request-limit\r\nX-Rate-Limit-Rules: Ip,Account\r\nX-Rate-Limit-Ip: 8:10:60,15:60:120,60:300:1800\r\nX-Rate-Limit-Ip-State: 1:10:0,1:60:0,1:300:0\r\nX-Rate-Limit-Account: 30:5:60\r\nX-Rate-Limit-Account-State: 1:5:0\r\n\r\n",
+"body": "{\"id\":\"synthq1\",\"total\":25,\"result\":[\"h1\",\"h2\",\"h3\",\"h4\",\"h5\",\"h6\",\"h7\"]}"
+},
+{
+"url": "https://www.pathofexile.com/api/trade/fetch/*",
+"code": 200,
+"header": "HTTP/1.1 200 OK\r\nX-Rate-Limit-Policy: trade-fetch-request-limit\r\nX-Rate-Limit-Rules: Ip,Account\r\nX-Rate-Limit-Ip: 8:10:60,15:60:120,60:300:1800\r\nX-Rate-Limit-Ip-State: 1:10:0,1:60:0,1:300:0\r\nX-Rate-Limit-Account: 30:5:60\r\nX-Rate-Limit-Account-State: 1:5:0\r\n\r\n",
+"body": "{\"result\":[{\"id\":\"h1\",\"item\":{\"rarity\":\"Rare\",\"name\":\"Synth Band 1\",\"typeLine\":\"Coral Ring\",\"ilvl\":80,\"implicitMods\":[{\"description\":\"+25 to maximum Life\"}],\"explicitMods\":[{\"description\":\"+40 to maximum Life\"},{\"description\":\"+20% to Fire Resistance\",\"flags\":{\"crafted\":true}}],\"pseudoMods\":[{\"description\":\"Sum: 101.5\"}]},\"listing\":{\"price\":{\"amount\":3,\"currency\":\"chaos\",\"type\":\"~price\"},\"whisper\":\"@Synth hello\",\"account\":{\"name\":\"SynthSeller\"}}},{\"id\":\"h2\",\"item\":{\"rarity\":\"Rare\",\"name\":\"Synth Band 2\",\"typeLine\":\"Coral Ring\",\"ilvl\":80,\"implicitMods\":[{\"description\":\"+25 to maximum Life\"}],\"explicitMods\":[{\"description\":\"+90 to maximum Life\"},{\"description\":\"+40% to Fire Resistance\",\"flags\":{\"crafted\":true}}],\"pseudoMods\":[{\"description\":\"Sum: 102.5\"}]},\"listing\":{\"price\":{\"amount\":2,\"currency\":\"exalted\",\"type\":\"~b/o\"},\"whisper\":null,\"account\":{\"name\":\"SynthSeller\"}}},{\"id\":\"h3\",\"item\":{\"rarity\":\"Rare\",\"name\":\"Synth Band 3\",\"typeLine\":\"Coral Ring\",\"ilvl\":80,\"implicitMods\":[{\"description\":\"+25 to maximum Life\"}],\"explicitMods\":[{\"description\":\"+70 to maximum Life\"},{\"description\":\"+30% to Fire Resistance\",\"flags\":{\"crafted\":true}}],\"pseudoMods\":[{\"description\":\"Sum: 103.5\"}],\"influences\":{\"crusader\":true}},\"listing\":{\"price\":{\"amount\":1,\"currency\":\"divine\",\"type\":\"~price\"},\"whisper\":\"@Synth hello\",\"account\":{\"name\":\"SynthSeller\"}}},{\"id\":\"h4\",\"item\":{\"rarity\":\"Rare\",\"name\":\"Synth Band 4\",\"typeLine\":\"Coral Ring\",\"ilvl\":80,\"implicitMods\":[{\"description\":\"+25 to maximum Life\"}],\"explicitMods\":[{\"description\":\"+60 to maximum Life\"},{\"description\":\"+10% to Fire Resistance\",\"flags\":{\"crafted\":true}}],\"pseudoMods\":[{\"description\":\"Sum: 104.5\"}],\"duplicated\":true},\"listing\":{\"price\":{\"amount\":10,\"currency\":\"chaos\",\"type\":\"~price\"},\"whisper\":\"@Synth hello\",\"account\":{\"name\":\"SynthSeller\"}}},{\"id\":\"h5\",\"item\":{\"rarity\":\"Rare\",\"name\":\"Synth Band 5\",\"typeLine\":\"Coral Ring\",\"ilvl\":80,\"implicitMods\":[{\"description\":\"+25 to maximum Life\"}],\"explicitMods\":[{\"description\":\"+10 to maximum Life\"},{\"description\":\"+5% to Fire Resistance\",\"flags\":{\"crafted\":true}}],\"pseudoMods\":[{\"description\":\"Sum: 105.5\"}],\"corrupted\":true,\"sockets\":[{\"sColour\":\"W\"}]},\"listing\":{\"price\":{\"amount\":1,\"currency\":\"chaos\",\"type\":\"~price\"},\"whisper\":\"@Synth hello\",\"account\":{\"name\":\"SynthSeller\"}}},{\"id\":\"h6\",\"item\":{\"rarity\":\"Rare\",\"name\":\"Not A Ring\",\"typeLine\":\"Glorious Plate\",\"ilvl\":80,\"explicitMods\":[{\"description\":\"+10 to maximum Life\"}]},\"listing\":{\"price\":{\"amount\":1,\"currency\":\"chaos\",\"type\":\"~price\"},\"whisper\":\"@Synth hello\",\"account\":{\"name\":\"SynthSeller\"}}},{\"id\":\"h7\",\"item\":{\"rarity\":\"Rare\",\"name\":\"No Base\",\"typeLine\":\"A Base That Does Not Exist\",\"ilvl\":80},\"listing\":{\"price\":{\"amount\":1,\"currency\":\"chaos\",\"type\":\"~price\"},\"whisper\":\"@Synth hello\",\"account\":{\"name\":\"SynthSeller\"}}}]}"
+},
+{
+"url": "https://www.pathofexile.com/api/trade/fetch/*",
+"code": 200,
+"header": "HTTP/1.1 200 OK\r\nX-Rate-Limit-Policy: trade-fetch-request-limit\r\nX-Rate-Limit-Rules: Ip,Account\r\nX-Rate-Limit-Ip: 8:10:60,15:60:120,60:300:1800\r\nX-Rate-Limit-Ip-State: 1:10:0,1:60:0,1:300:0\r\nX-Rate-Limit-Account: 30:5:60\r\nX-Rate-Limit-Account-State: 1:5:0\r\n\r\n",
+"body": "{\"result\":[]}"
+}
+],
+"steps": [
+{
+"open": "OccVortex"
+},
+{
+"osTime": 1800000000
+},
+{
+"apiTokens": {
+"auth": "synthetic-access",
+"refresh": "synthetic-refresh",
+"expiry": 1900000000
+}
+},
+{
+"cursorBuild": "modeItems",
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"cursorItems": "priceDisplayItem",
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"netDeliver": true,
+"dump": true
+},
+{
+"dump": true
+},
+{
+"netDeliver": true,
+"dump": true
+},
+{
+"netDeliver": true,
+"dump": true
+},
+{
+"popupDropSel": [
+"league",
+"Synth League"
+],
+"dump": true
+},
+{
+"netDeliver": true,
+"dump": true
+},
+{
+"dump": true
+},
+{
+"cursorPopup": "tradeAuthButton",
+"dump": true,
+"shot": "hover-auth"
+},
+{
+"cursorPopup": "fetchCountEdit",
+"dump": true,
+"shot": "hover-fetch"
+},
+{
+"cursorPopup": "StatWeightMultipliersButton",
+"dump": true,
+"shot": "hover-weights"
+},
+{
+"cursorPopup": "itemSortSelection",
+"dump": true,
+"shot": "hover-sort"
+},
+{
+"cursorPopup": "bestButton8",
+"dump": true,
+"shot": "hover-best"
+},
+{
+"cursorPopup": "bestButton16",
+"dump": true
+},
+{
+"waitAssets": true
+},
+{
+"dump": true,
+"shot": "hover-best-socket"
+},
+{
+"cursorPopup": "uri8",
+"dump": true,
+"shot": "hover-uri"
+},
+{
+"cursorPopup": "priceButton8",
+"dump": true,
+"shot": "hover-price"
+},
+{
+"cursorPopup": "realm",
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true,
+"shot": "hover-realm-open"
+},
+{
+"cursor": [
+0,
+0
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"cursorPopup": "bestButton8",
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"cursorPopup": "generateQuery",
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"dump": true
+},
+{
+"netDeliver": true,
+"dump": true
+},
+{
+"netDeliver": true,
+"dump": true
+},
+{
+"netDeliver": true,
+"dump": true
+},
+{
+"netDeliver": true,
+"dump": true
+},
+{
+"netDeliver": true,
+"dump": true
+},
+{
+"netDeliver": true,
+"dump": true
+},
+{
+"cursorPopup": "priceButton8",
+"dump": true
+},
+{
+"cursorPopup": "resultDropdown8",
+"dump": true,
+"shot": "hover-result"
+},
+{
+"cursorPopup": "resultDropdown8",
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true,
+"shot": "hover-result-open"
+},
+{
+"cursorPopupDrop": [
+"resultDropdown8",
+2
+],
+"dump": true,
+"shot": "hover-result-row"
+},
+{
+"cursor": [
+0,
+0
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"cursorPopup": "importButton8",
+"dump": true,
+"shot": "hover-import"
+},
+{
+"cursorPopup": "whisperButton8",
+"dump": true,
+"shot": "hover-whisper"
+},
+{
+"cursorPopup": "bestButton8",
+"dump": true
+}
+]
+}

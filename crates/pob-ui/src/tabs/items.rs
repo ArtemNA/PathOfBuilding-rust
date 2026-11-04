@@ -1,6 +1,6 @@
 //! `Classes/ItemsTab.lua` (the tab, its slots and the panel of the display item), `ItemSlotControl.lua`, `ItemListControl.lua`, `ItemSetListControl.lua`, `SharedItemListControl.lua`, `SharedItemSetListControl.lua`, `ItemDBControl.lua`.
 //! The items live in the engine (`pob_engine::items_tab`); the display item is an owned `Rc<Item>` here (upstream's `self.displayItem`: not in `self.items` even when it has the id of one).
-//! The popups of the display item: `item_editor.rs`. Not ported (a note, no crash): `Trade for these items` and `Buy similar` (the network, U8), `buildSpecForJewelComparison`.
+//! The popups of the display item: `item_editor.rs`. `Trade for these items` and `Buy similar`: `crate::trade`. Not ported (a note, no crash): `buildSpecForJewelComparison`.
 
 use std::cell::{Cell, RefCell};
 use std::rc::{Rc, Weak};
@@ -203,7 +203,17 @@ impl ItemSlotControl {
         c
     }
 
-    fn compare_info(&self) -> CompareSlot {
+    /// `self.parentSlot.slotName` of an abyssal socket.
+    pub(crate) fn parent_slot_name(&self) -> Option<String> {
+        let t = self.tab.upgrade()?;
+        let slots = t.slots.borrow();
+        slots
+            .values()
+            .find(|s| s.abyssal_socket_list.borrow().iter().any(|a| Rc::ptr_eq(&a.drop, &self.drop)))
+            .map(|s| s.slot_name.clone())
+    }
+
+    pub(crate) fn compare_info(&self) -> CompareSlot {
         CompareSlot {
             slot_name: self.slot_name.clone(),
             label: self.label.borrow().clone(),
@@ -445,6 +455,8 @@ impl DragTarget<ItemRow> for SlotTarget {
 // ---------------------------------------------------------------------------------------------- the tab
 
 pub struct ItemsTab {
+    /// `self.tradeQuery` (:108).
+    pub trade_query: RefCell<Option<Rc<crate::trade::TradeQuery>>>,
     pub host: ControlHost,
     pub(crate) me: Weak<Self>,
     build: Weak<BuildMode>,
@@ -535,7 +547,15 @@ impl ItemsTab {
     }
 
     /// `AddItemTooltip(tooltip, item, slot, dbMode, maxWidth)`.
-    pub fn add_tooltip_width(&self, tooltip: &mut Tooltip, g: &Gfx, item: &Rc<Item>, slot: Option<&CompareSlot>, db_mode: bool, max_width: Option<f64>) {
+    pub fn add_tooltip_width(
+        &self,
+        tooltip: &mut Tooltip,
+        g: &Gfx,
+        item: &Rc<Item>,
+        slot: Option<&CompareSlot>,
+        db_mode: bool,
+        max_width: Option<f64>,
+    ) {
         // :4911: the branch of the items that are not a flask or a tincture
         if !item.base.as_ref().is_some_and(|b| b.flask.is_some() || b.tincture.is_some()) {
             self.update_sockets(g);
@@ -782,8 +802,8 @@ impl ItemsTab {
     }
 
     /// `ItemsTab:AddDisplayItem(noAutoEquip)` (:1857-1870).
-    pub fn add_display_item(&self, g: &mut Gfx, no_auto_equip: bool) {
-        let Some(item) = self.display_item.borrow().clone() else { return };
+    pub fn add_display_item(&self, g: &mut Gfx, no_auto_equip: bool) -> Option<f64> {
+        let item = self.display_item.borrow().clone()?;
         let old = item.id.and_then(|i| self.read(|e| e.item_by_id(i)));
         let id = self.add_item(g, &item, no_auto_equip, None);
         self.set_display_item(g, None);
@@ -793,6 +813,12 @@ impl ItemsTab {
         self.add_undo_state(false);
         self.build().build_flag.set(true);
         self.update_item_list(g);
+        Some(id)
+    }
+
+    /// `slot.shown()` of `self.slots[name]`.
+    pub(crate) fn read_slot_shown(&self, name: &str) -> bool {
+        self.slots.borrow().get(name).is_some_and(|s| !s.inactive.get())
     }
 
     /// `ItemsTab:GetEquippedSlotForItem(item)` (:2585-2599): the slot and the set when it is another's.
@@ -2697,6 +2723,7 @@ impl ItemsTab {
                 }
             });
             ItemsTab {
+                trade_query: RefCell::new(None),
                 host: ControlHost::new(),
                 me: me.clone(),
                 build: build.clone(),
@@ -2742,6 +2769,7 @@ impl ItemsTab {
         tab.host.add("setSelect", tab.set_select.clone());
         let _ = weak;
         tab.after_load(g);
+        *tab.trade_query.borrow_mut() = Some(crate::trade::TradeQuery::new(Rc::downgrade(&tab)));
         tab
     }
 
@@ -2773,7 +2801,14 @@ impl ItemsTab {
             anchor("TOPLEFT", &ar, "TOPLEFT"),
             rect(96.0, 32.0, 310.0, 20.0),
             "Trade for these items".to_string(),
-            move |g| crate::modules::main::not_ported(g, "Classes/ItemsTab.lua:132 tradeQuery:PriceItem (the network, U8)"),
+            {
+                let t = self.me.clone();
+                move |g| {
+                    // :132 `self.tradeQuery:PriceItem()`
+                    let q = t.upgrade().expect("itemsTab").trade_query.borrow().clone().expect("tradeQuery");
+                    q.price_item(g);
+                }
+            },
         );
         price.tip.set_tooltip_func(|tooltip, g, ()| {
             tooltip.clear(false);
@@ -3524,7 +3559,7 @@ pub fn debug_input_state(g: &Gfx) -> serde_json::Value {
     let mode = b.host.get("modeItems").expect("modeItems");
     let db = t.unique_db.borrow().clone().expect("uniqueDB");
     let craft = t.craft_display_item.borrow().clone().expect("craft");
-    let popup_save = main().popups.borrow().first().map(|p| pos(&*p.control("save")));
+    let popup_save = main().popups.borrow().first().and_then(|p| p.host.get("save")).map(|c| pos(&*c));
     json!({
         "viewMode": *b.view_mode.borrow(), "modeBtn": pos(&*mode), "rowPos": { "x": lx + 10.0, "y": ly + 2.0 + 16.0 + 8.0 },
         "listSel": list.sel_index.get().unwrap_or(0),

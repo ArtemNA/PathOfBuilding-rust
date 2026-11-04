@@ -16,7 +16,7 @@ use crate::colors::color_code;
 use crate::control::{Control, Rect};
 use crate::host::{InputEvent, InputEvents, ipairs};
 use crate::item_tooltip::format_mod_line;
-use crate::modules::main::{main, not_ported};
+use crate::modules::main::main;
 use crate::sg;
 use crate::undo::UndoHost;
 
@@ -350,7 +350,7 @@ struct Hover {
     equip: Option<(Rc<Item>, String, f64, f64)>,
     clicked_copy: Option<String>,
     clicked_equip: Option<String>,
-    clicked_buy: Option<String>,
+    clicked_buy: Option<(String, Rc<Item>)>,
 }
 
 /// `processSlotButtons` (:3819-3843).
@@ -373,7 +373,7 @@ fn process_buttons(hover: &mut Hover, b: &Buttons, c_item: Option<&Rc<Item>>, co
                 hover.clicked_equip = Some(equip.to_string());
                 input_events[id] = None;
             } else if b.b3 {
-                hover.clicked_buy = Some(equip.to_string());
+                hover.clicked_buy = c_item.map(|i| (equip.to_string(), i.clone()));
                 input_events[id] = None;
             }
         }
@@ -730,8 +730,10 @@ impl CompareTab {
         } else if let Some(s) = hover.clicked_equip.take() {
             self.copy_item_to_primary(f, &s, entry, true);
         }
-        if hover.clicked_buy.is_some() {
-            not_ported(f, "Classes/CompareTab.lua:3980 buySimilar.openPopup (trade, network)");
+        if let Some((slot, item)) = hover.clicked_buy.take() {
+            // :3980 `buySimilar.openPopup(clickedBuyItem, clickedBuySlot, self.primaryBuild)`
+            let primary = self.primary();
+            crate::trade::buy_similar::open_popup(f, item, slot, &primary);
         }
         sg::set_viewport(f, None);
         let max_tip = 600f64.min((vp.width - 24.0).max(260.0));

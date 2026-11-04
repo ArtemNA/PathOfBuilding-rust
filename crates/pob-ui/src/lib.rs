@@ -26,6 +26,7 @@ pub mod sg;
 pub mod stat_describer;
 pub mod tabs;
 pub mod tooltip;
+pub mod trade;
 pub mod tree_art;
 pub mod tree_tooltip;
 pub mod tree_view;

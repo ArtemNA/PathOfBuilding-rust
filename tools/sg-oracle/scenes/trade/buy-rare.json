@@ -1,0 +1,334 @@
+{
+"net": [
+{
+"url": "https://www.pathofexile.com/api/trade/data/leagues",
+"code": 200,
+"header": "HTTP/1.1 200 OK\r\n\r\n",
+"body": "{\"result\":[{\"id\":\"Standard\",\"realm\":\"pc\",\"text\":\"Standard\"},{\"id\":\"Hardcore\",\"realm\":\"pc\",\"text\":\"Hardcore\"},{\"id\":\"Synth League\",\"realm\":\"pc\",\"text\":\"Synth League\"},{\"id\":\"Hardcore Synth League\",\"realm\":\"pc\",\"text\":\"Hardcore Synth League\"},{\"id\":\"Standard\",\"realm\":\"xbox\",\"text\":\"Standard\"},{\"id\":\"Hardcore\",\"realm\":\"xbox\",\"text\":\"Hardcore\"},{\"id\":\"Standard\",\"realm\":\"sony\",\"text\":\"Standard\"},{\"id\":\"Sony Only\",\"realm\":\"sony\",\"text\":\"Sony Only\"}]}"
+}
+],
+"steps": [
+{
+"open": "OccVortex"
+},
+{
+"osTime": 1800000000
+},
+{
+"cursorBuild": "modeItems",
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"displayItem": "Rarity: RARE\nSynth Grip\nSorcerer Gloves\nQuality: 20\nEnergy Shield: 80\nSockets: B-B-B-B\nItem Level: 84\nImplicits: 1\n+25 to maximum Life\n+40 to maximum Energy Shield\n{crafted}+30% to Fire Resistance\n+30% to Cold Resistance\n10% increased Attack Speed\nAdds 5 to 10 Physical Damage to Attacks\nThis Line Means Nothing To The Trade Site",
+"dump": true
+},
+{
+"cursorItems": "displayItemBuySimilar",
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"dump": true,
+"shot": "buy-rare-loading"
+},
+{
+"netDeliver": true,
+"dump": true,
+"shot": "buy-rare"
+},
+{
+"cursorPopup": "baseTypeCheck",
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"cursorPopup": "mod1Check",
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"cursorPopup": "mod2Check",
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"cursorPopup": "mod3Check",
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"cursorPopup": "ilvlMin",
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+]
+},
+{
+"events": [
+[
+"Char",
+"8"
+],
+[
+"Char",
+"0"
+]
+],
+"dump": true
+},
+{
+"cursorPopup": "def1Check",
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"cursorPopup": "mod2Min",
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+]
+},
+{
+"events": [
+[
+"Char",
+"5"
+]
+],
+"dump": true
+},
+{
+"cursorPopup": "listedDrop",
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"cursorPopupDrop": [
+"listedDrop",
+3
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"cursorPopup": "leagueDrop",
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"cursorPopupDrop": [
+"leagueDrop",
+2
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"cursorPopup": "realmDrop",
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"cursorPopupDrop": [
+"realmDrop",
+2
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"netDeliver": true,
+"dump": true
+},
+{
+"cursorPopup": "search",
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"cursorPopup": "close",
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"cursorItems": "displayItemBuySimilar",
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"netDeliver": true,
+"dump": true
+},
+{
+"cursorPopup": "close",
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+}
+]
+}

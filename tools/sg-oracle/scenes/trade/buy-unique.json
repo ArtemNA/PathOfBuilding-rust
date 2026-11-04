@@ -1,0 +1,81 @@
+{
+"net": [
+{
+"url": "https://www.pathofexile.com/api/trade/data/leagues",
+"error": "synthetic failure"
+}
+],
+"steps": [
+{
+"open": "OccVortex"
+},
+{
+"osTime": 1800000000
+},
+{
+"cursorBuild": "modeItems",
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"displayItem": "Rarity: UNIQUE\nFoulborn Tabula Rasa\nSimple Robe\nSockets: W-W-W-W-W-W\nItem has no level requirement and Energy Shield (Hidden)\nImplicits: 0\nItem has no Level Requirement",
+"dump": true
+},
+{
+"cursorItems": "displayItemBuySimilar",
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"netDeliver": true,
+"dump": true,
+"shot": "buy-unique"
+},
+{
+"cursorPopup": "search",
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"cursorPopup": "close",
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+}
+]
+}

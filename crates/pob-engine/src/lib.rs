@@ -19,9 +19,9 @@
 pub mod api;
 pub mod calcs;
 pub mod calcs_tab;
+pub mod compare_tab;
 pub mod config_tab;
 pub mod display;
-pub mod compare_tab;
 pub mod engine;
 pub mod import_tab;
 pub mod items_tab;
@@ -31,6 +31,7 @@ pub mod save;
 pub mod shell;
 pub mod skills_tab;
 pub mod stats;
+pub mod trade_tab;
 pub mod tree_tab;
 pub mod tree_view;
 pub mod view;
