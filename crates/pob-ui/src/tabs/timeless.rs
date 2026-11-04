@@ -1454,15 +1454,19 @@ fn build_stat_mod_lists(tree: &pob_tree::PassiveTree, id: &str, sorted: &[String
     sorted
         .iter()
         .map(|key| {
-            let line = pob_data::timeless::legion_stat_line(id, key)
-                .unwrap_or_else(|e| panic!("{}", e.0))
-                .unwrap_or_else(|| panic!("Classes/TreeTab.lua:2007: no description of {key} of {id}"));
+            let line = legion_stat_line(sorted, key).unwrap_or_else(|| panic!("Classes/TreeTab.lua:2007: no description of {key} of {id}"));
             pob_engine::tree_tab::FallbackLine {
-                mods: tree.parse_mod_list(line),
+                mods: tree.parse_mod_list(&line),
                 divisor: Some(100.0),
             }
         })
         .collect()
+}
+
+/// `data.describeStats({ [stat] = 100, others = 0 }, "stat_descriptions")[1]` (:2002-2006). `stats`: the keys of `legionPassive.stats`, which are its `sortedStats` (test `legion_stat_lines.rs`).
+pub fn legion_stat_line(stats: &[String], stat: &str) -> Option<String> {
+    let values: Vec<(String, f64)> = stats.iter().map(|k| (k.clone(), if k == stat { 100.0 } else { 0.0 })).collect();
+    crate::stat_describer::describe_stats(&values, "stat_descriptions", false).0.into_iter().next()
 }
 
 /// `newNode.divisor = ...modList[1].value` (:2052, :2094).

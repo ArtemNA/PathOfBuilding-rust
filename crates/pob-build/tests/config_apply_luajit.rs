@@ -6,6 +6,9 @@
 //! the bodies that iterate `pairs` over string keys, R13), the Lua error, and the side effects on the tab. Here: the same
 //! start state rebuilt from the fixture, the registry entry called, the same dump -- compared exactly (strings byte for
 //! byte, numbers bit for bit, mod order included).
+//!
+//! R3.5c, `fixtures/config-apply-strings.json` (`--strings` of the same probe): what `ConfigTab:Load` can leave in `input` of a number or list var besides
+//! numbers (the attribute `string` as it is, `boolean="true"`), and `control.placeholder`.
 
 use pob_build::config::{APPLY_REGISTRY, ApplyCtx};
 use pob_build::{ConfigState, ConfigValue};
@@ -98,6 +101,9 @@ fn start_state(s: &Json) -> ConfigState {
     for var in s["disabled"].as_array().unwrap() {
         st.controls.enabled.insert(var.as_str().unwrap().to_owned(), false);
     }
+    if let Some(ph) = s.get("controlPlaceholder") {
+        st.controls.placeholder = pairs(ph).into_iter().map(|(k, v)| (k, cfg_of(&v))).collect();
+    }
     st
 }
 
@@ -112,7 +118,7 @@ fn tdiff(before: &indexmap::IndexMap<String, ConfigValue>, after: &indexmap::Ind
         .collect()
 }
 
-fn ctldiff(before: &ConfigState, after: &ConfigState) -> Vec<(String, String, V)> {
+fn ctldiff(before: &ConfigState, after: &ConfigState, with_placeholder: bool) -> Vec<(String, String, V)> {
     let mut keys: Vec<&String> = before
         .controls
         .sel_index
@@ -120,6 +126,8 @@ fn ctldiff(before: &ConfigState, after: &ConfigState) -> Vec<(String, String, V)
         .chain(after.controls.sel_index.keys())
         .chain(before.controls.enabled.keys())
         .chain(after.controls.enabled.keys())
+        .chain(before.controls.placeholder.keys())
+        .chain(after.controls.placeholder.keys())
         .collect();
     keys.sort();
     keys.dedup();
@@ -132,13 +140,30 @@ fn ctldiff(before: &ConfigState, after: &ConfigState) -> Vec<(String, String, V)
         if before.control_enabled(k) != after.control_enabled(k) {
             out.push(("en".into(), k.clone(), V::Bool(after.control_enabled(k))));
         }
+        let (a, b) = (before.controls.placeholder.get(k), after.controls.placeholder.get(k));
+        if with_placeholder && a != b {
+            out.push(("ph".into(), k.clone(), v_cfg(b)));
+        }
     }
     out
 }
 
 #[test]
 fn all_539_apply_closures_match_luajit() {
-    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/config-apply.json");
+    let vars = compare_with_fixture("config-apply.json");
+    assert_eq!(vars, 539, "the fixture covers every var with an apply");
+}
+
+/// Every var with an `apply` that is not a `check`: 217.
+#[test]
+fn string_values_match_luajit() {
+    let vars = compare_with_fixture("config-apply-strings.json");
+    assert_eq!(vars, 539 - 322, "the fixture covers every var with an apply but `check`");
+}
+
+/// The number of vars of the fixture.
+fn compare_with_fixture(name: &str) -> usize {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures").join(name);
     let fx: Json = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
     let start = start_state(&fx["start"]);
     let V::Num(cl) = v_json(&fx["start"]["characterLevel"]) else {
@@ -146,6 +171,7 @@ fn all_539_apply_closures_match_luajit() {
     };
     let character_level = f64::from_bits(cl);
 
+    let with_placeholder = fx["start"].get("controlPlaceholder").is_some();
     let cases = fx["cases"].as_array().unwrap();
     let mut vars = std::collections::HashSet::new();
     let mut bad: Vec<String> = Vec::new();
@@ -231,7 +257,7 @@ fn all_539_apply_closures_match_luajit() {
             .iter()
             .map(|x| (x[0].as_str().unwrap().to_owned(), x[1].as_str().unwrap().to_owned(), v_json(&x[2])))
             .collect();
-        let got_ctl = ctldiff(&before, &st);
+        let got_ctl = ctldiff(&before, &st, with_placeholder);
         if want_ctl != got_ctl {
             diffs.push(format!("controls: want {want_ctl:?}, got {got_ctl:?}"));
         }
@@ -252,9 +278,9 @@ fn all_539_apply_closures_match_luajit() {
         cases.len() - bad.len(),
         cases.len()
     );
-    assert_eq!(vars.len(), 539, "the fixture covers every var with an apply");
     for b in bad.iter().take(40) {
         println!("{b}");
     }
     assert!(bad.is_empty(), "{} of {} cases differ from LuaJIT", bad.len(), cases.len());
+    vars.len()
 }

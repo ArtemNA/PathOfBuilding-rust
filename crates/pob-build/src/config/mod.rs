@@ -7,7 +7,7 @@
 //! [`ConfigState`]. Placeholder writes land in the active set's table mid-loop -- `enemyIsBoss` (varList index 652) changes
 //! what `enemyArmour`/`enemyEvasion`/`enemy*Resist` read a few iterations later. Do not split that into two passes.
 //!
-//! Registry of the `apply` closures: [`apply`] (R3-ARCH §2.5) -- 92 hand-ported + 447 generated (`apply_gen.rs`, R3.5b) = all 539.
+//! Registry of the `apply` closures: [`apply`] (R3-ARCH §2.5) -- 10 hand-ported + 529 generated (`apply_gen.rs`, R3.5b, R3.5c) = all 539.
 
 pub mod apply;
 #[rustfmt::skip]
@@ -45,6 +45,8 @@ pub struct ConfigControls {
     pub enabled: IndexMap<String, bool>,
     /// 1-based (L8).
     pub sel_index: IndexMap<String, usize>,
+    /// `control.placeholder`: `SetPlaceholder` writes it with or without `notify` (EditControl.lua:111-116).
+    pub placeholder: IndexMap<String, ConfigValue>,
 }
 
 /// `configSets[activeConfigSetId]` + `ConfigTab.enemyLevel` + the persistent control bits.
@@ -237,7 +239,11 @@ impl ConfigState {
     /// `tostring(buf)`. Other types have no EditControl (upstream: "attempt to call a nil value") -> a warning.
     pub fn set_placeholder(&mut self, var: &str, v: &ConfigValue, warnings: &mut Vec<String>) {
         let buf = lua_tostring(v);
-        match var_data(var).and_then(|d| d.ty.as_deref()) {
+        let ty = var_data(var).and_then(|d| d.ty.as_deref());
+        if matches!(ty, Some("count" | "integer" | "countAllowZero" | "float" | "text")) {
+            self.set_control_placeholder(var, v);
+        }
+        match ty {
             Some("count" | "integer" | "countAllowZero" | "float") => {
                 set_or_remove(&mut self.placeholder, var, tonumber(&buf).map(InputValue::Num));
             }
@@ -248,6 +254,24 @@ impl ConfigState {
                 "SetPlaceholder on '{var}' (type {}): no EditControl, ignored",
                 ty.unwrap_or("nil")
             )),
+        }
+    }
+
+    /// `varControls[var]:SetPlaceholder(v, false)`: `self.placeholder = tostring(v)`, the set's table is not touched.
+    pub fn set_control_placeholder(&mut self, var: &str, v: &ConfigValue) {
+        self.controls.placeholder.insert(var.to_owned(), InputValue::Str(lua_tostring(v)));
+    }
+
+    /// `UpdateControls` (:1011-1014): an edit control takes the placeholder of the active set where it has one, and keeps what it shows otherwise.
+    pub fn update_control_placeholders(&mut self) {
+        for (var, v) in &self.placeholder {
+            let edit = matches!(
+                var_data(var).and_then(|d| d.ty.as_deref()),
+                Some("count" | "integer" | "countAllowZero" | "float" | "text")
+            );
+            if edit && !matches!(v, InputValue::Bool(false)) {
+                self.controls.placeholder.insert(var.clone(), InputValue::Str(lua_tostring(v)));
+            }
         }
     }
 
@@ -295,8 +319,10 @@ impl ConfigState {
     /// `varControls[var].placeholder` -- what `UpdateControls`/`SetPlaceholder` last stringified, else the ctor's
     /// `defaultPlaceholderState` (:679). The string form is coerced back by the arithmetic that reads it (L6).
     pub fn control_placeholder(&self, var: &str) -> Option<ConfigValue> {
-        self.placeholder
+        self.controls
+            .placeholder
             .get(var)
+            .or_else(|| self.placeholder.get(var))
             .cloned()
             .or_else(|| var_data(var)?.default_placeholder_state.as_ref().map(scalar))
     }

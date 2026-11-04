@@ -126,6 +126,20 @@ impl Engine {
         self.sync_config_to_model();
     }
 
+    /// The placeholder part of `UpdateControls` (:1011-1014), over the controls `BuildModList` reads next: without it the apply closures of a set just switched to read what the previous set left.
+    pub fn config_update_control_placeholders(&mut self) {
+        let controls = self.config_controls.take();
+        let carried = controls.is_some();
+        let c = &mut self.res_mut().env.config;
+        if let Some(ctl) = controls {
+            c.controls = ctl;
+        }
+        c.update_control_placeholders();
+        if carried {
+            self.config_controls = Some(self.result().env.config.controls.clone());
+        }
+    }
+
     /// `ConfigTab:BuildModList()` (:1130-1203): its lists are rebuilt by the next run; here its writes to the set and to the controls. Returns the `SelByValue`s it did on the
     /// dropdowns (1-based), the `selIndex` of the tab's controls from here on.
     pub fn config_build_mod_list(&mut self) -> Result<Vec<(String, usize)>, String> {

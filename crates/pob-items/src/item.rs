@@ -507,22 +507,11 @@ fn unique_mod_stat_order() -> &'static (std::collections::HashMap<String, f64>, 
         let (mut exact, mut normalised) = (std::collections::HashMap::new(), std::collections::HashMap::new());
         let file = crate::build_raw::mod_file("item-mods/ItemExclusive.json");
         for (id, m) in file.iter() {
-            let lines = m
-                .get("lines")
-                .and_then(serde_json::Value::as_array)
-                .map(Vec::as_slice)
-                .unwrap_or_default();
-            let order = m
-                .get("statOrder")
-                .and_then(serde_json::Value::as_array)
-                .map(Vec::as_slice)
-                .unwrap_or_default();
-            for (index, line) in lines.iter().enumerate() {
-                let line = line.as_str().unwrap_or_else(|| panic!("ItemExclusive {id}: line"));
+            for (index, line) in m.lines.iter().enumerate() {
                 // `m_min(x, nil)` is a Lua error upstream.
-                let o = order
+                let o = *m
+                    .stat_order
                     .get(index)
-                    .and_then(serde_json::Value::as_f64)
                     .unwrap_or_else(|| panic!("{ITEM}:1367: ItemExclusive {id}: statOrder[{}] is nil", index + 1));
                 let exact_line = gsub(
                     &lower(line),

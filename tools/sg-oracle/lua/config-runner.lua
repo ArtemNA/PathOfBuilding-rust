@@ -618,7 +618,7 @@ function runner:Step()
 		main.modes.BUILD.treeTab.viewer.searchStr = st.search
 	end
 	if st.legionLines then
-		-- U3d: what TreeTab.lua:2006 asks of Data/StatDescriptions, for crates/pob-data/src/legion_stat_lines.json
+		-- U3d: what TreeTab.lua:2006 asks of Data/StatDescriptions, for crates/pob-ui/tests/fixtures/legion_stat_lines.json
 		local lines = { }
 		local legion = main.tree[latestTreeVersion].legion
 		for _, list in ipairs({ legion.nodes, legion.additions }) do

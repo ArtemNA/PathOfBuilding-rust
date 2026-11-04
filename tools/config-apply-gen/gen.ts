@@ -7,15 +7,18 @@
 //
 // The sha256 of every body is recomputed from the checkout (lines from..to, LF line ends) and must equal the json
 // (otherwise abort: data drift). A body outside the grammar below is NOT translated approximately: the generator lists it
-// and aborts unless it is one of the known hand-ported bodies (MANUAL_OK, the 8 `mapAffixDropDownFunction` vars).
+// and aborts unless it is one of the known hand-ported bodies (MANUAL_OK: the 8 `mapAffixDropDownFunction` vars, `enemyIsBoss`
+// and `presetBossSkills`, which read `data.*` and `build.configTab.*`).
 //
 // Grammar (Lua 5.1 subset):
 //   funcbody := 'function' '(' Name {',' Name} ')' block 'end'
 //   stat     := 'local' Name '=' exp | Name '=' exp | 'if' exp 'then' block {'elseif' exp 'then' block} ['else' block] 'end'
 //             | P ':' 'NewMod' '(' explist ')'          -- P = the 2nd or 3rd parameter (modList / enemyModList)
+//             | build.configTab.varControls[String]:SetPlaceholder(exp, false)
 //   exp      := nil | true | false | Number | String | Name | '(' exp ')' | tablecons | exp binop exp | unop exp
 //             | m_min(a, b) | m_max(a, b) | type(x) | modLib.createMod(explist) | SkillType.Name
 // Semantics (helpers in apply.rs, section "runtime of the generated closures"):
+//   * NewMod's source (the 1st vararg) is a literal or a `..`, which is a string or raises;
 //   * arithmetic coerces numeric strings and raises otherwise (L3/L18); `..` formats numbers with %.14g; `<`/`<=` compare
 //     numbers or strings, raise across types; `a > b` is `b < a` (LuaJIT VM order, MINEFIELD-RUST R4);
 //   * `and`/`or`/`not`/`if` use Lua truthiness (L4); every table constructor is a fresh table (R4);
@@ -33,7 +36,7 @@ const OUT_RS = `${ROOT}/crates/pob-build/src/config/apply_gen.rs`
 const J = JSON.parse(readFileSync(`${ROOT}/data/config-options.json`, 'utf8'))
 const HAND_RS = readFileSync(`${ROOT}/crates/pob-build/src/config/apply.rs`, 'utf8')
 const HAND = new Set([...HAND_RS.matchAll(/\be\("(\w+)", \d+, \d+, /g)].map((m) => m[1]!))
-const MANUAL_OK = new Set(['MapPrefix1', 'MapPrefix2', 'MapPrefix3', 'MapPrefix4', 'MapSuffix1', 'MapSuffix2', 'MapSuffix3', 'MapSuffix4'])
+const MANUAL_OK = new Set(['enemyIsBoss', 'presetBossSkills', 'MapPrefix1', 'MapPrefix2', 'MapPrefix3', 'MapPrefix4', 'MapSuffix1', 'MapSuffix2', 'MapSuffix3', 'MapSuffix4'])
 
 class Reject extends Error {}
 const reject = (why: string): never => { throw new Reject(why) }
@@ -118,6 +121,7 @@ type Stat =
   | { k: 'local'; name: string; e: Exp } | { k: 'assign'; name: string; e: Exp }
   | { k: 'if'; arms: { cond: Exp | null; body: Stat[] }[] }
   | { k: 'newmod'; list: string; args: Exp[]; line: number }
+  | { k: 'setph'; v: string; e: Exp }
 
 class Parser {
   p = 0
@@ -170,6 +174,21 @@ class Parser {
       }
       this.expect('end')
       return { k: 'if', arms }
+    }
+    if (t.t === 'name' && t.v === 'build') {
+      this.next()
+      for (const f of ['configTab', 'varControls']) { this.expect('.'); if (this.name() !== f) reject(`build... at line ${t.line}`) }
+      this.expect('[')
+      const v = this.next()
+      if (v.t !== 'str') reject(`varControls[non-string] at line ${t.line}`)
+      this.expect(']')
+      this.expect(':')
+      if (this.name() !== 'SetPlaceholder') reject(`varControls method at line ${t.line}`)
+      this.expect('(')
+      const args = this.explist(')')
+      const notify = args[1]
+      if (args.length !== 2 || notify?.k !== 'bool' || notify.v) reject(`SetPlaceholder with a notify at line ${t.line}`)
+      return { k: 'setph', v: v.v, e: args[0]! }
     }
     if (t.t === 'name') {
       const n1 = this.peek(1)
@@ -399,7 +418,9 @@ function modArgs(args: Exp[], cx: Ctx, line: number): string {
   const ty = `ModType::${MODTYPES[(typeE as { v: string }).v]}`
   let source = 'None'
   let i = 0
-  if (rest[0] && rest[0].k === 'str') { source = `Some(${rustStr(rest[0].v)})`; i = 1 } else if (rest[0] && rest[0].k !== 'table') reject(`non-literal vararg slot 1 at line ${line}`)
+  if (rest[0] && rest[0].k === 'str') { source = `Some(${rustStr(rest[0].v)})`; i = 1 }
+  else if (rest[0] && rest[0].k === 'bin' && rest[0].op === '..') { source = `Some(&lua_tostring(${ref(scalar(rest[0], cx))}))`; i = 1 }
+  else if (rest[0] && rest[0].k !== 'table') reject(`non-literal vararg slot 1 at line ${line}`)
   if (rest.slice(i).some((x) => x.k !== 'table')) reject(`flags/keywordFlags or a non-table tag at line ${line}`)
   const tags = rest.slice(i).map((t) => tagCons(t, cx))
   return `${name}, ${ty}, ${value(valE, cx)}, ${source}, vec![${tags.join(', ')}]`
@@ -435,6 +456,8 @@ function stats(body: Stat[], cx: Ctx, out: string[], ind: string): void {
         cx.locals = saved
       })
       out.push(`${ind}}`)
+    } else if (s.k === 'setph') {
+      out.push(`${ind}c.tab.set_control_placeholder(${rustStr(s.v)}, ${ref(scalar(s.e, cx))});`)
     } else {
       const which = cx.params.indexOf(s.list)
       if (which !== 1 && which !== 2) reject(`NewMod on '${s.list}' (not the modList/enemyModList parameter)`)

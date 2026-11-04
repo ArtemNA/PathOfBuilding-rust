@@ -263,9 +263,8 @@ pub struct SessionCore {
     depth: Cell<usize>,
     /// A MAIN initEnv has run (it is what fills the shared `build.skillsTab`, CalcSetup.lua:1452).
     main_init_done: Cell<bool>,
-    /// The checkpoint hook every perform of the session runs with ([`CalcSession::set_hook`]); taken out while a perform runs, so a
-    /// perform nested inside it runs without one.
-    hook: RefCell<Option<SessionHook>>,
+    /// The checkpoint hook every perform of the session runs with ([`CalcSession::set_hook`]), nested ones included: it is borrowed only for the call at a checkpoint.
+    hook: RefCell<Option<Rc<RefCell<SessionHook>>>>,
     /// The run [`CalcSession::perform_in_place`] performs now and the frame depth it was called at (R7.2b mine, R7.9): its env is mutably
     /// borrowed for the whole perform, and a reader of `cachedData[..].ActiveSkill` inside that perform gets the skill of the env in hand.
     in_place: RefCell<Option<(std::rc::Weak<RefCell<CalcRun>>, usize)>>,
@@ -440,10 +439,10 @@ impl CalcSession {
         self.core.log.borrow()
     }
 
-    /// Every `calcs.perform` the session runs from now on calls `hook` at the [`Checkpoint`]s (the outermost one only while
-    /// performs nest). `None` removes it.
+    /// Every `calcs.perform` the session runs from now on calls `hook` at the [`Checkpoint`]s, the ones nested in another perform too
+    /// (`calcs.triggers` and `calcs.mirages` build their runs between the checkpoints of the outer one). `None` removes it.
     pub fn set_hook(&self, hook: Option<SessionHook>) {
-        *self.core.hook.borrow_mut() = hook;
+        *self.core.hook.borrow_mut() = hook.map(|h| Rc::new(RefCell::new(h)));
     }
 
     /// `wipeGlobalCache()` (Common.lua:944-948).
@@ -608,7 +607,7 @@ impl CalcSession {
     }
 
     /// `calcs.perform(newEnv)` from inside a perform that holds a checkpoint hook (CalcMirages.lua:52, R7.9): the nested perform runs with
-    /// that same hook (the session's own hook is taken by the outermost perform), then `cacheData` as every perform.
+    /// that same hook, then `cacheData` as every perform.
     pub(crate) fn perform_hooked(&self, env: Env, skip_ehp: bool, hook: crate::offence::Hook<'_, '_>) -> RunRef {
         self.perform_run(env, skip_ehp, false, Some(hook))
     }
@@ -687,15 +686,15 @@ impl CalcSession {
                 perform_skip_ehp(env, self.core.opts.defence, self.core.opts.estimations, h, skip_ehp)
             }
             None => {
-                let mut hook = self.core.hook.borrow_mut().take();
-                let state = match hook.as_mut() {
-                    Some(h) => perform_skip_ehp(env, self.core.opts.defence, self.core.opts.estimations, Some(&mut **h), skip_ehp),
+                let hook = self.core.hook.borrow().clone();
+                match hook {
+                    Some(h) => {
+                        let mut call =
+                            |cp: Checkpoint, e: &Env, player: &ActorState, minion: &ActorState| (h.borrow_mut())(cp, e, player, minion);
+                        perform_skip_ehp(env, self.core.opts.defence, self.core.opts.estimations, Some(&mut call), skip_ehp)
+                    }
                     None => perform_skip_ehp(env, self.core.opts.defence, self.core.opts.estimations, None, skip_ehp),
-                };
-                if hook.is_some() && self.core.hook.borrow().is_none() {
-                    *self.core.hook.borrow_mut() = hook;
                 }
-                state
             }
         };
         self.core.depth.set(depth);

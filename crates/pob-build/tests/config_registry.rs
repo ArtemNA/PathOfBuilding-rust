@@ -1,7 +1,7 @@
 //! The drift guard on `pob_build::config::apply` (pob-ts `test/config/registry.test.ts`): every ported closure carries the
 //! sha256 of the upstream `apply` body as `data/config-options.json` recorded it; a re-converted PathOfBuilding where one
 //! of the 539 bodies changed turns this red instead of letting the port drift silently (MINEFIELD D1). Since R3.5b the
-//! registry is complete: 92 hand-ported (`HAND_PORTED`: the 84 of R3.5 + the 8 map-affix dropdowns) + 447 generated
+//! registry is complete: 10 hand-ported (`HAND_PORTED`: `enemyIsBoss`, `presetBossSkills` + the 8 map-affix dropdowns) + 529 generated
 //! (`GENERATED`, `tools/config-apply-gen/gen.ts`); the 41 `AffixData[x].apply` of Data/ModMap.lua have their own guard.
 
 use std::collections::HashSet;
@@ -15,8 +15,8 @@ fn keys_contains(v: &str) -> bool {
 
 #[test]
 fn all_539_unique_entries_each_a_var_with_apply() {
-    assert_eq!(HAND_PORTED.len(), 92);
-    assert_eq!(GENERATED.len(), 447);
+    assert_eq!(HAND_PORTED.len(), 10);
+    assert_eq!(GENERATED.len(), 529);
     assert_eq!(APPLY_REGISTRY.len(), 539);
     let keys: HashSet<&str> = APPLY_REGISTRY.iter().map(|e| e.var).collect();
     assert_eq!(keys.len(), 539);
@@ -95,13 +95,13 @@ fn whole_enemy_stats_section_is_covered() {
     assert!(missing.is_empty(), "{missing:?}");
 }
 
-/// The R3.5 part of `HAND_PORTED` (its first 84 entries) is still the 537 Lua lines it was.
+/// What stays by hand: the two bodies outside the generator's grammar and the 8 dropdowns of `mapAffixDropDownFunction`.
 #[test]
-fn r35_bodies_add_up_to_537_lua_lines() {
-    let lines: u32 = HAND_PORTED[..84].iter().map(|e| e.to - e.from + 1).sum();
-    assert_eq!(lines, 537);
+fn hand_ported_are_the_bodies_outside_the_grammar() {
+    assert_eq!(HAND_PORTED[0].var, "enemyIsBoss");
+    assert_eq!(HAND_PORTED[1].var, "presetBossSkills");
     assert!(
-        HAND_PORTED[84..]
+        HAND_PORTED[2..]
             .iter()
             .all(|e| e.var.starts_with("Map") && (e.from, e.to) == (117, 130))
     );

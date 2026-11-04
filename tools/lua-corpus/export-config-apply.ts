@@ -8,8 +8,11 @@
 // dropdown selIndex/enabled). Extra contexts: the map-affix dropdowns under every tier x {no effect, 50% effect}, and
 // presetBossSkills under enemyIsBoss = Pinnacle/Uber.
 // Truth = docker LuaJIT (PoB HeadlessWrapper; no CRT math in these bodies). Two runs must be byte-identical.
-// Usage (PowerShell, Node 24, from pob-rust root): node tools/lua-corpus/export-config-apply.ts [--no-selfcheck]
+// Usage (PowerShell, Node 24, from pob-rust root): node tools/lua-corpus/export-config-apply.ts [--no-selfcheck] [--strings]
 //   -> crates/pob-build/tests/fixtures/config-apply.json
+// R3.5c, --strings -> config-apply-strings.json: what `ConfigTab:Load` can put into `input` of a number or list var besides numbers: the attribute
+// `string` is stored as it is (numeric or not), and `boolean="true"` is the literal true. `check` vars are out: BuildModList passes them the literal true
+// (ConfigTab.lua:1140). The side effects also have `control.placeholder`, which `SetPlaceholder(x, false)` writes.
 import { POB as UPSTREAM_POB } from '../upstream.ts'
 import { execFile } from 'node:child_process'
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
@@ -22,7 +25,8 @@ type Rec = Record<string, any> // eslint-disable-line
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
 const POB = UPSTREAM_POB
 const POBTS = 'C:/pob-work/pob-ts'
-const OUT = join(ROOT, 'crates/pob-build/tests/fixtures/config-apply.json')
+const STRINGS = process.argv.includes('--strings')
+const OUT = join(ROOT, `crates/pob-build/tests/fixtures/config-apply${STRINGS ? '-strings' : ''}.json`)
 const IMAGE = 'ghcr.io/pathofbuildingcommunity/pathofbuilding-tests:latest'
 const MAX = 1_500_000
 
@@ -34,6 +38,7 @@ type Ctx = { input?: Record<string, Scalar>; sel?: Record<string, Scalar> }
 type Case = { var: string; val: Scalar; ctx?: Ctx }
 
 const numOf = (v: unknown): Scalar => (v && typeof v === 'object' && '$num' in (v as Rec) ? Number((v as Rec).$num) : (v as Scalar))
+const LOADED: Scalar[] = ['7', '2.5', '-3', '0', '0x10', '1e1', ' 7 ', 'abc', '', true]
 const VALUES: Record<string, number[]> = { count: [0, 1, 7], integer: [0, 1, 7, -3], countAllowZero: [0, 1, 7, -3], float: [0, 1, 7, 2.5] }
 const MAP_CTX: Ctx[] = []
 for (const tier of ['HIGH', 'MED', 'LOW']) for (const eff of [undefined, 50]) MAP_CTX.push({ sel: { multiplierMapModTier: tier }, ...(eff === undefined ? {} : { input: { multiplierMapModEffect: eff } }) })
@@ -45,11 +50,15 @@ function cases(): { list: Case[]; sorted: string[] } {
     if (!v.apply) continue
     const body = LUA_SRC.slice(v.apply.from - 1, v.apply.to).join('\n')
     if (/(^|[^i])pairs\(/.test(body)) sorted.push(v.var)
-    const vals: Scalar[] = v.type === 'check' ? [true] : v.type === 'list' ? v.list.map((e: Rec) => numOf(e.val)) : VALUES[v.type] ?? []
+    let vals: Scalar[] = v.type === 'check' ? [true] : v.type === 'list' ? v.list.map((e: Rec) => numOf(e.val)) : VALUES[v.type] ?? []
     if (!vals.length) throw new Error(`${v.var}: type ${v.type} has no probe values`)
+    if (STRINGS) {
+      if (v.type === 'check') continue
+      vals = v.type === 'list' ? [...vals, ...LOADED] : LOADED
+    }
     for (const val of vals) {
       list.push({ var: v.var, val })
-      if (v.var === 'MapPrefix1' || v.var === 'MapSuffix1') for (const ctx of MAP_CTX) list.push({ var: v.var, val, ctx })
+      if (!STRINGS && (v.var === 'MapPrefix1' || v.var === 'MapSuffix1')) for (const ctx of MAP_CTX) list.push({ var: v.var, val, ctx })
       if (v.var === 'presetBossSkills') for (const boss of ['Pinnacle', 'Uber']) list.push({ var: v.var, val, ctx: { input: { enemyIsBoss: boss }, sel: { enemyIsBoss: boss } } })
     }
   }
@@ -66,7 +75,7 @@ const luaVal = (v: Scalar): string => (typeof v === 'string' ? luaStr(v) : typeo
 const luaMap = (m: Record<string, Scalar> | undefined): string => `{${Object.entries(m ?? {}).map(([k, x]) => `[${luaStr(k)}]=${luaVal(x)}`).join(',')}}`
 const casesLua = (cs: Case[], sorted: string[]): string =>
   `local CASES = {\n${cs.map((c) => `{var=${luaStr(c.var)},val=${luaVal(c.val)},input=${luaMap(c.ctx?.input)},sel=${luaMap(c.ctx?.sel)}}`).join(',\n')}\n}\n`
-  + `local SORTED = {${sorted.map((v) => `[${luaStr(v)}]=true`).join(',')}}\n`
+  + `local SORTED = {${sorted.map((v) => `[${luaStr(v)}]=true`).join(',')}}\nlocal CTLPH = ${STRINGS}\n`
 
 const BODY = String.raw`
 local function esc(s)
@@ -119,13 +128,14 @@ local function tdiff(before, after)
   end
   return "[" .. table.concat(out, ",") .. "]"
 end
-local function ctlsnap() local r = {} for var, c in pairs(ct.varControls) do r[var] = { sel = c.selIndex, en = c.enabled } end return r end
+local function ctlsnap() local r = {} for var, c in pairs(ct.varControls) do r[var] = { sel = c.selIndex, en = c.enabled, ph = c.placeholder } end return r end
 local function ctldiff(b)
   local out = {}
   for _, var in ipairs(sortedKeys(ct.varControls)) do
     local c, s = ct.varControls[var], b[var]
     if c.selIndex ~= s.sel then out[#out + 1] = '["sel",' .. esc(var) .. ',' .. enc(c.selIndex) .. ']' end
     if c.enabled ~= s.en then out[#out + 1] = '["en",' .. esc(var) .. ',' .. enc(c.enabled) .. ']' end
+    if CTLPH and c.placeholder ~= s.ph then out[#out + 1] = '["ph",' .. esc(var) .. ',' .. enc(c.placeholder) .. ']' end
   end
   return "[" .. table.concat(out, ",") .. "]"
 end
@@ -134,13 +144,14 @@ end
 local start = {}
 do
   local function kv(t) local o = {} for _, k in ipairs(sortedKeys(t)) do o[#o + 1] = "[" .. esc(k) .. "," .. enc(t[k]) .. "]" end return "[" .. table.concat(o, ",") .. "]" end
-  local sels, ens = {}, {}
+  local sels, ens, phs = {}, {}, {}
   for _, var in ipairs(sortedKeys(ct.varControls)) do
     local c = ct.varControls[var]
     if c.list and c.selIndex then sels[#sels + 1] = "[" .. esc(var) .. "," .. enc(c.selIndex) .. "]" end
     if c.enabled == false then ens[#ens + 1] = esc(var) end
+    if c.placeholder ~= nil then phs[#phs + 1] = "[" .. esc(var) .. "," .. enc(c.placeholder) .. "]" end
   end
-  start = '{"characterLevel":' .. enc(build.characterLevel) .. ',"disabled":[' .. table.concat(ens, ",") .. '],"enemyLevel":' .. enc(ct.enemyLevel)
+  start = '{"characterLevel":' .. enc(build.characterLevel) .. (CTLPH and ',"controlPlaceholder":[' .. table.concat(phs, ",") .. ']' or '') .. ',"disabled":[' .. table.concat(ens, ",") .. '],"enemyLevel":' .. enc(ct.enemyLevel)
     .. ',"input":' .. kv(ct.input) .. ',"placeholder":' .. kv(ct.placeholder) .. ',"selIndex":[' .. table.concat(sels, ",") .. ']}'
 end
 
