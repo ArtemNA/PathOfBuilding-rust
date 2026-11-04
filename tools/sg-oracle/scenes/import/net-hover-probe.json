@@ -1,0 +1,22 @@
+{
+"net": [],
+"steps": [
+{
+"open": "Dual Savior"
+},
+{
+"cursor": [
+616,
+552
+],
+"dump": true
+},
+{
+"waitAssets": true
+},
+{
+"dump": true,
+"shot": "net-hover-probe"
+}
+]
+}

@@ -20,6 +20,8 @@ use crate::stats::color;
 pub struct PointDisplay {
     pub str: String,
     pub req: String,
+    /// `self.Act` (`nil`-free: `None` is "Endgame").
+    pub act: Option<usize>,
 }
 
 /// Build.lua:729-764 `acts` (the same table as `pob_calc::calculate::ACTS`, which is private to that crate).
@@ -44,10 +46,14 @@ fn act_extra(act: usize, extra: f64) -> f64 {
 
 /// Build.lua:898-940 `EstimatePlayerProgress` -- the point display (the level and the warnings are `calculate`'s / [`crate::display`]'s).
 pub fn point_display(res: &CalculateResult) -> PointDisplay {
+    point_display_with(res, res.perform.player.output.opt_num("ExtraPoints").unwrap_or(0.0))
+}
+
+/// The same with `calcsTab.mainOutput.ExtraPoints` of an earlier run (ImportTab.lua:1217 reads it before the next `BuildOutput`).
+pub fn point_display_with(res: &CalculateResult, extra: f64) -> PointDisplay {
     let c = res.env.spec.count_alloc_nodes();
     let points_used = f64::from(c.used);
     let asc_used = f64::from(c.asc_used);
-    let extra = res.perform.player.output.opt_num("ExtraPoints").unwrap_or(0.0);
     let (used_max, asc_max) = (99.0 + 23.0 + extra, 8.0);
     let mut act = 0;
     let mut level;
@@ -83,6 +89,7 @@ pub fn point_display(res: &CalculateResult) -> PointDisplay {
     };
     let d = |v: f64| format!("{}", v as i64);
     PointDisplay {
+        act: (level < 90.0 && act <= 10).then_some(act),
         // `string.format("%s%3d / %3d   %s%d / %d", ...)`
         str: format!(
             "{}{:>3} / {:>3}   {}{} / {}",

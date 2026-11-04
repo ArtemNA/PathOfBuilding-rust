@@ -10,6 +10,8 @@ publish.workspace = true
 [dependencies]
 pob-calc = { path = "../pob-calc" }
 pob-lua = { path = "../pob-lua" }
+pob-net = { path = "../pob-net" }
+pob-parser.workspace = true
 pob-mods = { path = "../pob-mods" }
 pob-data.workspace = true
 pob-build.workspace = true

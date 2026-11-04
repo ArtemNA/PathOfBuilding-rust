@@ -160,6 +160,10 @@ pub struct Main {
     pub game_accounts: RefCell<IndexMap<String, Option<String>>>,
     /// `main.lastExportWebsite` (ImportTab.lua:536): the session only, no setting holds it.
     pub last_export_website: RefCell<Option<String>>,
+    /// `main.predefinedBuildName` (ImportTab.lua:1931).
+    pub predefined_build_name: RefCell<Option<String>>,
+    /// `main.api`.
+    pub api: Rc<crate::poe_api::PoeApi>,
     pub shared_item_list: RefCell<Vec<String>>,
     pub shared_item_set_list: RefCell<Vec<SharedItemSet>>,
     pub anchor_main: Rc<BareControl>,
@@ -325,6 +329,8 @@ impl Main {
             accounts: RefCell::new(Accounts::default()),
             game_accounts: RefCell::new(IndexMap::new()),
             last_export_website: RefCell::new(None),
+            predefined_build_name: RefCell::new(None),
+            api: Rc::new(crate::poe_api::PoeApi::default()),
             shared_item_list: RefCell::new(Vec::new()),
             shared_item_set_list: RefCell::new(Vec::new()),
             anchor_main,

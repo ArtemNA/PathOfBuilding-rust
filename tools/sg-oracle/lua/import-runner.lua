@@ -1,7 +1,7 @@
 #@ SimpleGraphic
 -- U8a gate (the Import and Party tabs; the frame of config-runner.lua with the dumps and the cursor steps of these tabs): runs the WHOLE original PoB of the checkout in the real SimpleGraphic,
 -- read in place (a relative write is a Lua error), against a TEST build folder in the sandbox, and records state + screenshots for scripted scenarios (sg/scenes/import/<name>.json).
--- No network: `LaunchSubScript` returns nil, so `launch:DownloadPage` does nothing, and no scene presses a control that would need it.
+-- No network: `LaunchSubScript` and `launch:DownloadPage` are replaced here (U8c): what a scene's "net" says is what comes back, on the `netDeliver` steps. The original functions are never called: `netReal` in every dump counts them.
 --   pwsh tools/sg-oracle/run.ps1 -Script import-runner.lua [-ScriptArgs <scenario,...>] -Timeout 300
 ConExecute("set vid_mode 8")
 ConExecute("set vid_resizable 3")
@@ -62,7 +62,47 @@ function PLoadModule(name, ...)
 	return r[2]
 end
 function GetUserPath() return USER end
-function LaunchSubScript() return nil end
+-- The fake transport (the same list as pob_net::ScriptedTransport in crates/pob-ui/tests/import.rs): a URL with several replies gives them in turn, the last one stays.
+local netReplies, netQueue, netLog, netReal, netNextId = { }, { }, { }, 0, 1000
+local function netNormal(b)
+	if not b then return "" end
+	b = b:gsub("code_verifier=[^&]*", "code_verifier=*")
+	return #b > 300 and "<long>" or b
+end
+local function netNext(url)
+	local q = netReplies[url]
+	if not q then
+		for u, l in pairs(netReplies) do
+			if u:sub(-1) == "*" and url:sub(1, #u - 1) == u:sub(1, -2) then q = l end
+		end
+	end
+	if not q then return { error = "no recorded reply for " .. url } end
+	if #q > 1 then return table.remove(q, 1) end
+	return q[1]
+end
+local function netRecord(url, header, body)
+	netLog[#netLog + 1] = url .. "|" .. (header or "") .. "|" .. netNormal(body)
+end
+-- `LaunchSubScript`: the sub-scripts other than `DownloadPage`, told apart by their text.
+function LaunchSubScript(script, funcList, subList, ...)
+	local a = { ... }
+	netNextId = netNextId + 1
+	local id = netNextId
+	if script:find("Server started", 1, true) then
+		netQueue[#netQueue + 1] = { kind = "oauth", id = id, url = a[1] }
+	elseif script:find("OPT_POSTFIELDS", 1, true) then
+		local url, fields = script:match("setopt_url%('([^']*)'%)"), script:match("OPT_POSTFIELDS, '([^']*)'")
+		local body = (fields or "") .. a[1]
+		netRecord(url, nil, body)
+		netQueue[#netQueue + 1] = { kind = "post", id = id, url = url, archives = script:find("return page, res", 1, true) ~= nil }
+	elseif script:find("INFO_REDIRECT_URL", 1, true) then
+		netRecord(a[1], nil, nil)
+		netQueue[#netQueue + 1] = { kind = "redirect", id = id, url = a[1] }
+	else
+		error("import-runner: an unknown sub-script")
+	end
+	return id
+end
 local realGetTime, realIsKeyDown = GetTime, IsKeyDown
 local cursorX, cursorY, nowMs, held = -100, -100, 0, { }
 function GetCursorPos() return cursorX, cursorY end
@@ -72,7 +112,7 @@ local clipboard, opened = nil, { }
 function Copy(text) clipboard = text end
 function Paste() return clipboard end
 function OpenURL(url) opened[#opened + 1] = url end
-local redirect = { ["changelog.txt"] = POB_ROOT .. "changelog.txt", ["help.txt"] = POB_ROOT .. "help.txt" }
+local redirect = { ["changelog.txt"] = POB_ROOT .. "changelog.txt", ["help.txt"] = POB_ROOT .. "help.txt", ["LaunchServer.lua"] = POB .. "LaunchServer.lua" }
 local writesRefused = { }
 local function inCheckout(name)
 	return type(name) == "string" and name:gsub("\\", "/"):lower():sub(1, #POB_ROOT) == POB_ROOT:lower()
@@ -111,6 +151,52 @@ local okL, errL = pcall(dofile, POB .. "Launch.lua")
 if not okL then fail("dofile Launch", errL) end
 local L = launch
 L.CheckForUpdate = function() end
+-- Launch.lua:259-324 with the reply of the scene: what the script does with `perform`'s result, on `netDeliver`.
+L.DownloadPage = function(self, url, callback, params)
+	params = params or { }
+	netRecord(url, params.header, params.body)
+	netQueue[#netQueue + 1] = { kind = "page", url = url, callback = callback }
+end
+local osTimeReal, osTimeFixed = os.time, nil
+function os.time(...)
+	if osTimeFixed and select("#", ...) == 0 then return osTimeFixed end
+	return osTimeReal(...)
+end
+local function netDeliverAll()
+	local q = netQueue
+	netQueue = { }
+	for _, e in ipairs(q) do
+		if e.kind == "page" then
+			local r = netNext(e.url)
+			local errMsg
+			if r.error then errMsg = r.error
+			elseif r.code ~= 200 then errMsg = "Response code: " .. r.code
+			elseif #r.body == 0 then errMsg = "No data returned" end
+			local cb = e.callback
+			local perr = PCall(cb, { header = r.header or "", body = r.body or "" }, errMsg)
+			if perr then L:ShowErrMsg("In download callback: %s", perr) end
+		elseif e.kind == "post" then
+			local r = netNext(e.url)
+			if e.archives then L:OnSubFinished(e.id, r.body or "", r.code or 0)
+			elseif r.code == 200 then L:OnSubFinished(e.id, r.body)
+			else L:OnSubFinished(e.id, nil, r.body or "") end
+		elseif e.kind == "redirect" then
+			local r = netNext(e.url)
+			local loc = r.header and r.header:match("[Ll]ocation: ([^\r\n]+)")
+			if not loc or loc:match("poeurl%.com/") then L:OnSubFinished(e.id, nil, "Failed to resolve PoEURL link")
+			else L:OnSubFinished(e.id, loc) end
+		elseif e.kind == "oauth" then
+			clipboard = e.url
+			opened[#opened + 1] = e.url
+			local r = netNext("oauth")
+			if r.error then L:OnSubFinished(e.id, nil, r.error, nil, 0)
+			else
+				local o = r.oauth
+				L:OnSubFinished(e.id, o.code, o.err, o.state or e.url:match("state=(%x+)"), o.port)
+			end
+		end
+	end
+end
 SetMainObject(runner)
 
 local function ts(v) return tostring(v) end
@@ -143,8 +229,17 @@ end
 local function importDump(t)
 	local list = { }
 	for i, v in ipairs(t.controls.siteAccountHistory.list) do list[i] = v end
+	local rows = function(c)
+		local out = { }
+		for i, v in ipairs(c.list) do
+			if type(v) == "table" then out[i] = (v.label or "") .. "|" .. (v.detail or "") else out[i] = v .. "|" end
+		end
+		return out
+	end
 	return { controls = controlsDump(t), importCodeIn = t.controls.importCodeIn.buf, importCodeDetail = t.importCodeDetail or "", importCodeValid = t.importCodeValid and true or false, importCodeSite = t.importCodeSite,
-		hasXml = t.importCodeXML ~= nil, hasJson = t.importCodeJson ~= nil, generated = xmlOf(t.controls.generateCodeOut.buf), mode = t.charImportMode, status = t.charImportStatus, history = list }
+		hasXml = t.importCodeXML ~= nil, hasJson = t.importCodeJson ~= nil, generated = xmlOf(t.controls.generateCodeOut.buf), mode = t.charImportMode, status = t.charImportStatus, history = list,
+		oauthErr = t.oauthErrCode, oauthLoading = t.oauthLoading and true or false, fetching = t.importCodeFetching and true or false,
+		charList = rows(t.controls.charSelect), leagueList = rows(t.controls.charSelectLeague), siteCharList = rows(t.controls.siteCharSelect), siteLeagueList = rows(t.controls.siteCharSelectLeague) }
 end
 local function partyDump(t)
 	-- `notesDesc.width` wraps its label on the first call and `pairs` may reach the labels below it first (R13): the pass that counts sees it wrapped
@@ -163,12 +258,26 @@ end
 local function dump(st)
 	local d = { mode = main.mode or "nil", popups = #main.popups, prompt = launch.promptMsg or "nil", clipboard = xmlOf(clipboard) or "nil" }
 	local p = main.popups[1]
-	if p then d.popupTitle = p.title end
+	if p then
+		d.popupTitle = p.title
+		local c = p.controls
+		if c.msg then d.popupMsg = c.msg:GetProperty("label") end
+		if c.edit then d.popupEdit = c.edit.buf end
+		if c.shrink then d.popupShrink = c.shrink:GetProperty("label") d.popupShrinkOn = c.shrink:IsEnabled() and true or false end
+		if c.import then d.popupImportOn = c.import:IsEnabled() and true or false end
+	end
 	if main.modes.BUILD.importTab and main.modes.BUILD.controls.statBox then
 		local b = main.modes.BUILD
 		d.build = buildDump(b)
 		d.import = importDump(b.importTab)
 		d.party = partyDump(b.partyTab)
+	end
+	d.netLog = { }
+	for i, l in ipairs(netLog) do d.netLog[i] = l end
+	d.netReal = netReal
+	if st.xml then
+		-- the build as `SaveDB` writes it: every effect of an import on it
+		d.xml = (main.modes.BUILD:SaveDB("code"):gsub("\r\n", "\n"))
 	end
 	if st.file then
 		local f = realOpen(main.buildPath .. st.file, "rb")
@@ -253,6 +362,15 @@ function runner:Step()
 		main.lastExportWebsite = nil -- the session's: every scene of the port is a new session
 		writeBuilds()
 		self.sc = { name = name, def = json.decode(readAll(base .. "/scenes/import/" .. name .. ".json"), 1, json.null), step = 0, dumps = { }, shots = { }, perf = { } }
+		netReplies, netQueue, netLog, osTimeFixed = { }, { }, { }, nil
+		main.api = new("PoEAPI"):PoEAPI(nil, nil, nil)
+		main.lastRealm, main.lastLeague, main.lastAccountName = nil, nil, nil
+		wipeTable(main.gameAccounts)
+		historyList = nil
+		for _, r in ipairs(self.sc.def.net or { }) do
+			netReplies[r.url] = netReplies[r.url] or { }
+			table.insert(netReplies[r.url], r)
+		end
 	end
 	local sc = self.sc
 	if sc.waitShot then
@@ -360,6 +478,13 @@ function runner:Step()
 		main.api.authToken = st.token or nil
 		main.lastToken = st.token or nil
 	end
+	if st.apiTokens then
+		main.api.authToken, main.api.refreshToken, main.api.tokenExpiry = st.apiTokens.auth, st.apiTokens.refresh, st.apiTokens.expiry
+		main.lastToken, main.lastRefreshToken, main.tokenExpiry = st.apiTokens.auth, st.apiTokens.refresh, st.apiTokens.expiry
+	end
+	if st.osTime then osTimeFixed = st.osTime end
+	if st.treePopup == "import" then main.modes.BUILD.treeTab:OpenImportPopup() elseif st.treePopup == "export" then main.modes.BUILD.treeTab:OpenExportPopup() end
+	if st.netDeliver then netDeliverAll() end
 	if st.devMode ~= nil then launch.devMode = st.devMode end
 	if st.importMode then main.modes.BUILD.importTab.charImportMode = st.importMode end
 	if st.setGenerated then main.modes.BUILD.importTab.controls.generateCodeOut:SetText(st.setGenerated) end

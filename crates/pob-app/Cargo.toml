@@ -10,6 +10,7 @@ publish.workspace = true
 [dependencies]
 serde_json = { workspace = true }
 pob-gfx = { path = "../pob-gfx" }
+pob-net = { path = "../pob-net" }
 pob-ui = { path = "../pob-ui" }
 
 [lints]

@@ -22,6 +22,7 @@ pub mod calcs_tab;
 pub mod config_tab;
 pub mod display;
 pub mod engine;
+pub mod import_tab;
 pub mod items_tab;
 pub mod lua;
 pub mod party_tab;

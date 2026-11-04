@@ -1,0 +1,179 @@
+{
+"net": [
+{
+"url": "https://api.pathofexile.com/character",
+"code": 401,
+"header": "HTTP/1.1 401 X\r\n\r\n",
+"body": ""
+},
+{
+"url": "https://api.pathofexile.com/character",
+"code": 200,
+"header": "HTTP/1.1 429 Too Many\r\nRetry-After: 30\r\nX-Rate-Limit-Policy: character-list-request-limit\r\n\r\n",
+"body": "{}"
+},
+{
+"url": "https://api.pathofexile.com/character",
+"code": 500,
+"header": "HTTP/1.1 500 X\r\n\r\n",
+"body": ""
+},
+{
+"url": "https://api.pathofexile.com/character",
+"code": 200,
+"header": "HTTP/1.1 200 OK\r\nX-Rate-Limit-Policy: character-list-request-limit\r\nX-Rate-Limit-Rules: Account\r\nX-Rate-Limit-Account: 5:10:60\r\nX-Rate-Limit-Account-State: 1:10:0\r\n\r\n",
+"body": "{\"characters\":[{\"name\":\"Synth Char\",\"realm\":\"pc\",\"class\":\"Necromancer\",\"league\":\"Standard\",\"level\":85,\"id\":\"id0\"},{\"name\":\"Another\",\"realm\":\"pc\",\"class\":\"Juggernaut\",\"league\":\"Hardcore\",\"level\":40,\"id\":\"id1\"},{\"name\":\"bystander\",\"realm\":\"pc\",\"class\":\"Witch\",\"league\":\"Standard\",\"level\":3,\"id\":\"id2\"},{\"name\":\"Elsewhere\",\"realm\":\"xbox\",\"class\":\"Witch\",\"league\":\"Standard\",\"level\":3,\"id\":\"id3\"},{\"name\":\"Odd One\",\"realm\":\"pc\",\"class\":\"Nonsense\",\"league\":\"Standard\",\"level\":3,\"id\":\"id4\"}]}"
+},
+{
+"url": "https://api.pathofexile.com/character/Another",
+"code": 500,
+"header": "HTTP/1.1 500 X\r\n\r\n",
+"body": ""
+}
+],
+"steps": [
+{
+"openNew": true
+},
+{
+"osTime": 1800000000
+},
+{
+"apiTokens": {
+"auth": "synthetic-access",
+"refresh": "synthetic-refresh",
+"expiry": 1900000000
+}
+},
+{
+"cursorBuild": "modeImport",
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"cursorImport": "accountRealmFetchButton",
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"netDeliver": true,
+"dump": true
+},
+{
+"netDeliver": true,
+"dump": true
+},
+{
+"cursor": [
+1200,
+790
+],
+"osTime": 1800000031,
+"dump": true
+},
+{
+"cursorImport": "accountRealmFetchButton",
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"netDeliver": true,
+"dump": true
+},
+{
+"netDeliver": true,
+"dump": true
+},
+{
+"netDeliver": true,
+"dump": true
+},
+{
+"cursorImport": "charSelect",
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"cursor": [
+1200,
+790
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"cursorImport": "charImportItems",
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"netDeliver": true,
+"dump": true
+},
+{
+"netDeliver": true,
+"dump": true
+},
+{
+"cursor": [
+1200,
+790
+],
+"dump": true
+}
+]
+}

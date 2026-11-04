@@ -141,7 +141,7 @@ fn moved_index(cur: f64, from: f64, to: f64) -> f64 {
 }
 
 /// SkillsTab.lua:1464-1475 over the live list.
-fn rebuild_imbued(tab: &mut SkillsTab) {
+pub(crate) fn rebuild_imbued(tab: &mut SkillsTab) {
     let data = pob_data::gems::gems();
     let mut out = indexmap::IndexMap::new();
     for sg in tab.socket_group_list() {
@@ -160,7 +160,7 @@ fn lua_err(e: pob_calc::calc_tools::LuaError) -> String {
 }
 
 impl Engine {
-    fn skill_data(&self) -> Rc<Skills> {
+    pub(crate) fn skill_data(&self) -> Rc<Skills> {
         self.result().env.skills.as_ref().expect("skills on").skills.clone()
     }
 
@@ -177,7 +177,7 @@ impl Engine {
         self.skills_tab().socket_group_list()
     }
 
-    fn edit_skills<R>(&mut self, f: impl FnOnce(&mut SkillsTab, &Skills) -> Result<R, String>) -> Result<R, String> {
+    pub(crate) fn edit_skills<R>(&mut self, f: impl FnOnce(&mut SkillsTab, &Skills) -> Result<R, String>) -> Result<R, String> {
         let skills = self.skill_data();
         let mut tab = match self.take_skills_live() {
             Some(t) => t,

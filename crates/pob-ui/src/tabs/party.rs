@@ -19,7 +19,7 @@ use crate::controls::edit::{EditArgs, EditControl};
 use crate::host::{ControlHost, InputEvent, InputEvents, ipairs};
 use crate::launch::launch;
 use crate::modules::build::BuildMode;
-use crate::modules::main::{BareControl, main, not_ported};
+use crate::modules::main::{BareControl, main};
 use crate::sg;
 use crate::tabs::import::{CodeInput, WEBSITES, classify_code, dump_host};
 
@@ -93,6 +93,9 @@ pub struct PartyTab {
     import_code_site: Cell<Option<usize>>,
     import_code_detail: RefCell<String>,
     import_code_xml: RefCell<Option<String>>,
+    /// `self.importCodeFetching`
+    import_code_fetching: Cell<bool>,
+    me: RefCell<Weak<Self>>,
     import_code_valid: Cell<bool>,
     last_content: RefCell<LastContent>,
     pub mod_flag: Cell<bool>,
@@ -304,6 +307,8 @@ impl PartyTab {
             import_code_detail: RefCell::new(String::new()),
             import_code_xml: RefCell::new(None),
             import_code_valid: Cell::new(false),
+            import_code_fetching: Cell::new(false),
+            me: RefCell::new(Weak::new()),
             last_content: RefCell::new(LastContent::default()),
             mod_flag: Cell::new(false),
             synced: RefCell::new(None),
@@ -450,6 +455,7 @@ impl PartyTab {
 
         // --- the callbacks
         let weak = Rc::downgrade(&t);
+        *t.me.borrow_mut() = weak.clone();
         let f = move || weak.upgrade().expect("partyTab");
         let h = f.clone();
         import_code_state.label.set_fn(move |_| h().import_code_detail.borrow().clone());
@@ -466,7 +472,10 @@ impl PartyTab {
         let h = f.clone();
         *import_code_go.on_click.borrow_mut() = Rc::new(move |g: &mut Gfx| h().on_import_go(g));
         let h = f.clone();
-        import_code_go.base.enabled.set_fn(move |_| h().import_code_valid.get());
+        import_code_go.base.enabled.set_fn(move |_| {
+            let tab = h();
+            tab.import_code_valid.get() && !tab.import_code_fetching.get()
+        });
         let h = f.clone();
         *import_code_go.enter_func.borrow_mut() = Some(Rc::new(move |g: &mut Gfx| {
             if h().import_code_valid.get() {
@@ -645,11 +654,23 @@ impl PartyTab {
 
     /// :302-321
     fn on_import_go(&self, g: &mut Gfx) {
-        if self.import_code_site.get().is_some() && self.import_code_xml.borrow().is_none() {
-            not_ported(
-                g,
-                "Classes/PartyTab.lua:304-318 buildSites.DownloadBuild (launch:DownloadPage, the network)",
-            );
+        if let Some(site) = self.import_code_site.get()
+            && self.import_code_xml.borrow().is_none()
+        {
+            self.import_code_fetching.set(true);
+            let w = self.me.borrow().clone();
+            let link = self.import_code_in.buf.borrow().clone();
+            crate::build_sites::download_build(&link, site, move |g, ok, data| {
+                let Some(tab) = w.upgrade() else { return };
+                tab.import_code_fetching.set(false);
+                if ok {
+                    tab.import_code_handle(g, &data);
+                    tab.finish_import(g);
+                } else {
+                    *tab.import_code_detail.borrow_mut() = colored("NEGATIVE", &data);
+                    tab.import_code_valid.set(false);
+                }
+            });
             return;
         }
         self.finish_import(g);

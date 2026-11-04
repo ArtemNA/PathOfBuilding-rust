@@ -473,14 +473,15 @@ impl BuildMode {
             "label".into(),
             LabelControl::new(None, rect(0.0, 20.0, 0.0, 16.0), "^7Enter new build name:".to_string()),
         );
-        // `not self.dbFileName and main.predefinedBuildName or (self.buildName or self.dbFileName):gsub(…)` (predefinedBuildName: U8)
-        let init = {
+        // `not self.dbFileName and main.predefinedBuildName or (self.buildName or self.dbFileName):gsub(…)`
+        let predefined = main().predefined_build_name.borrow().clone().filter(|_| self.db_file_name.borrow().path().is_none());
+        let init = predefined.unwrap_or_else(|| {
             let bn = self.build_name.borrow().clone();
             let src = bn
                 .or_else(|| self.db_file_name.borrow().path().map(str::to_string))
                 .unwrap_or_default();
             lua::gsub(&src, "[\\/:%*%?\"<>|%c]", "-")
-        };
+        });
         let ub = update_build_name.clone();
         let edit = EditControl::new(
             g,
@@ -1777,7 +1778,7 @@ impl Mode for BuildMode {
                 pob_data::tree::tree_versions().expect("GameVersions").latest_tree_version
             )),
         };
-        let engine = match imported {
+        let mut engine = match imported {
             Some(e) => e,
             None => match Engine::load_xml(&xml.unwrap_or_default()) {
                 Ok(e) => e,
@@ -1788,6 +1789,10 @@ impl Mode for BuildMode {
                 }
             },
         };
+        // Build.lua:67 `self.importLink = importLink`: the link of a build that came from a site wins over the one in its XML (:2247)
+        if let Some(link) = args.get(4).and_then(ModeArg::as_str) {
+            engine.import_set_build_link(link);
+        }
         *self.target_version.borrow_mut() = Some(engine.model().target_version.clone());
         // Build.lua:94 / :100
         self.mod_flag.set(build_xml.is_some());

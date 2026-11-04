@@ -612,7 +612,8 @@ fn oracle_record(name: &str) -> Value {
     serde_json::from_str(&std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("{}: {e}", p.display()))).expect("json")
 }
 
-/// U3c: what the tab cannot do yet is a note with `file:line`, no crash; the original has these branches (the network). Abyss and `Generate` now run (U3d).
+/// U3c: the poeurl buttons of the link popups do not crash. Abyss and `Generate` run since U3d, poeurl since U8c: with no transport (a test's default) the request is refused and counted, no note is left.
+/// What they do with an answer: the scene `net-tree` of `tests/import.rs`.
 #[test]
 fn unported_branches_do_not_crash() {
     if let Some(why) = missing_inputs() {
@@ -624,8 +625,8 @@ fn unported_branches_do_not_crash() {
     }
     let notes = pob_ui::modules::main::not_ported_notes();
     eprintln!("notes: {notes:#?}");
-    for want in ["TreeTab.lua:823-836", "TreeTab.lua:765-794"] {
-        assert!(notes.iter().any(|n| n.starts_with(want)), "{want}: {notes:?}");
+    for gone in ["TreeTab.lua:823-836", "TreeTab.lua:765-794"] {
+        assert!(!notes.iter().any(|n| n.starts_with(gone)), "{gone}: {notes:?}");
     }
 }
 

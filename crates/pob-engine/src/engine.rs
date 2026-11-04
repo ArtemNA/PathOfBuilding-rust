@@ -512,6 +512,11 @@ impl Engine {
         self.run_fresh = true;
     }
 
+    /// An edit after [`Engine::mark_run_fresh`] in the same frame.
+    pub(crate) fn mark_run_stale(&mut self) {
+        self.run_fresh = false;
+    }
+
     /// `build.spec` is the kept object `spec`: the next run keeps it.
     pub(crate) fn set_live_spec(&mut self, spec: Option<Rc<pob_tree::PassiveSpec>>) {
         self.live_spec = spec;
