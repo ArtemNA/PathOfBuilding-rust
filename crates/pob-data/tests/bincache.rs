@@ -141,5 +141,10 @@ fn a_foreign_cache_is_not_used() {
     other[8] ^= 1;
     std::fs::write(&path, &other).unwrap();
     assert!(CacheFile::open(&path, &sha).is_none(), "another format");
+    let mut damaged = bytes.clone();
+    *damaged.last_mut().unwrap() ^= 1;
+    std::fs::write(&path, &damaged).unwrap();
+    let opened = CacheFile::open(&path, &sha).expect("the head is whole");
+    assert!(opened.table("a.json").is_none(), "a damaged table is the JSON");
     std::fs::remove_dir_all(&tmp).unwrap();
 }

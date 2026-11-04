@@ -72,6 +72,10 @@ Copy-Item $exe (Join-Path $out $exeName)
 Copy-Tree (Join-Path $repo 'data') (Join-Path $out 'data')
 Copy-Tree (Join-Path $repo 'data-patches') (Join-Path $out 'data-patches')
 Copy-Item (Join-Path $repo 'data.lock') $out
+# the binary cache of data/ (without it the application reads the JSON, slower)
+& (Join-Path $PSScriptRoot 'gen-data-cache.ps1')
+if ($LASTEXITCODE -ne 0) { throw 'gen-data-cache failed' }
+Copy-Item (Join-Path $repo 'data.cache') $out
 foreach ($f in 'manifest.xml', 'changelog.txt', 'help.txt') { Copy-Item (Join-Path $pob $f) $out }
 Copy-Tree (Join-Path $pob 'runtime/SimpleGraphic/Fonts') (Join-Path $out 'runtime/SimpleGraphic/Fonts')
 New-Item -ItemType Directory -Force (Join-Path $out 'src') | Out-Null

@@ -3,7 +3,7 @@
 //! * The form is the JSON tree itself: one tagged value per JSON value, objects in file order, numbers as the JSON parser gave them. [`Value`] deserializes into any
 //!   type the JSON does, so a table has one model and no second conversion to get wrong (the gate: `tests/bincache.rs`).
 //! * The header carries `manifestSha256` of `data.lock`: a missing, stale, truncated or foreign file means the JSON (`read_json`). `POB_DATA_NO_CACHE` turns it off.
-//! * Layout: magic, format, sha, table count, then per table name / offset / length; each table is its string table followed by the root value.
+//! * Layout: magic, format, sha, table count, then per table name / offset / length / checksum; each table is its string table followed by the root value.
 
 use std::collections::HashMap;
 use std::fmt;
@@ -17,7 +17,21 @@ use crate::DataError;
 
 const MAGIC: &[u8; 8] = b"POBDATA\n";
 /// Bump when the form changes: an older file is then stale.
-const FORMAT: u32 = 1;
+const FORMAT: u32 = 2;
+
+/// A damaged table is the JSON too, not a panic on the row a lazy reader reaches later. Not a security check: the file is the user's.
+fn checksum(bytes: &[u8]) -> u64 {
+    const PRIME: u64 = 0x0000_0100_0000_01b3;
+    let mut h = 0xcbf2_9ce4_8422_2325_u64 ^ bytes.len() as u64;
+    let (words, rest) = bytes.as_chunks::<8>();
+    for w in words {
+        h = (h ^ u64::from_le_bytes(*w)).wrapping_mul(PRIME).rotate_left(29);
+    }
+    for b in rest {
+        h = (h ^ u64::from(*b)).wrapping_mul(PRIME);
+    }
+    h
+}
 
 const T_NULL: u8 = 0;
 const T_FALSE: u8 = 1;
@@ -211,13 +225,14 @@ pub fn write_cache(dir: &Path, manifest_sha256: &str, out: &Path) -> Result<usiz
     }
     let mut dirent = Vec::new();
     let head_len = MAGIC.len() + 4 + 4 + 8 + 4 + manifest_sha256.len();
-    let dir_len: usize = files.iter().map(|r| 4 + r.len() + 16).sum();
+    let dir_len: usize = files.iter().map(|r| 4 + r.len() + 24).sum();
     let mut offset = (head_len + dir_len) as u64;
     for (rel, t) in files.iter().zip(&tables) {
         dirent.extend_from_slice(&(rel.len() as u32).to_le_bytes());
         dirent.extend_from_slice(rel.as_bytes());
         dirent.extend_from_slice(&offset.to_le_bytes());
         dirent.extend_from_slice(&(t.len() as u64).to_le_bytes());
+        dirent.extend_from_slice(&checksum(t).to_le_bytes());
         offset += t.len() as u64;
     }
     let mut bytes = Vec::with_capacity(offset as usize);
@@ -244,7 +259,7 @@ pub fn write_cache(dir: &Path, manifest_sha256: &str, out: &Path) -> Result<usiz
 #[derive(Debug)]
 pub struct CacheFile {
     path: PathBuf,
-    tables: HashMap<String, (u64, u64)>,
+    tables: HashMap<String, (u64, u64, u64)>,
 }
 
 impl CacheFile {
@@ -278,13 +293,13 @@ impl CacheFile {
             f.read_exact(&mut b).ok()?;
             let mut name = vec![0u8; u32::from_le_bytes(b) as usize];
             f.read_exact(&mut name).ok()?;
-            let mut pos = [0u8; 16];
+            let mut pos = [0u8; 24];
             f.read_exact(&mut pos).ok()?;
-            let (at, len) = (u64_at(&pos, 0)?, u64_at(&pos, 8)?);
+            let (at, len, sum) = (u64_at(&pos, 0)?, u64_at(&pos, 8)?, u64_at(&pos, 16)?);
             if at.checked_add(len)? > file_len {
                 return None;
             }
-            tables.insert(String::from_utf8(name).ok()?, (at, len));
+            tables.insert(String::from_utf8(name).ok()?, (at, len, sum));
         }
         Some(CacheFile {
             path: path.to_path_buf(),
@@ -294,11 +309,14 @@ impl CacheFile {
 
     /// The table of `<data>/<rel>`, if the cache has it and it can be read.
     pub fn table(&self, rel: &str) -> Option<Table> {
-        let &(at, len) = self.tables.get(rel)?;
+        let &(at, len, sum) = self.tables.get(rel)?;
         let mut f = std::fs::File::open(&self.path).ok()?;
         f.seek(SeekFrom::Start(at)).ok()?;
         let mut bytes = vec![0u8; len as usize];
         f.read_exact(&mut bytes).ok()?;
+        if checksum(&bytes) != sum {
+            return None;
+        }
         Table::new(bytes)
     }
 
