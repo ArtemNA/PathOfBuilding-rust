@@ -72,9 +72,14 @@ pub enum GemProp {
     Enabled(bool),
 }
 
-fn run(model: &BuildModel, live: Option<&pob_tree::PassiveSpec>) -> Result<(CalculateResult, pob_calc::CalcRun), String> {
+fn run(
+    model: &BuildModel,
+    live: Option<&pob_tree::PassiveSpec>,
+    export_party: bool,
+) -> Result<(CalculateResult, pob_calc::CalcRun), String> {
     let opts = CalculateOptions {
         live_alloc_pairs: live.map(|l| l.alloc_table_pairs().into_iter().map(f64::from).collect()),
+        export_party,
         ..CalculateOptions::default()
     };
     pob_calc::calculate::calculate_model(Rc::new(model.clone()), opts).map_err(|e| e.0)
@@ -86,7 +91,7 @@ impl Engine {
         let mut model = pob_build::load_build_xml(xml).map_err(|e| format!("XML: {e}"))?;
         crate::calcs_tab::with_default_input(&mut model);
         let extras = SaveExtras::from_xml(xml)?;
-        let (res, calcs) = run(&model, None)?;
+        let (res, calcs) = run(&model, None, extras.import.export_party)?;
         let mut e = Engine {
             model,
             extras,
@@ -199,7 +204,7 @@ impl Engine {
         self.skills_live = None;
         self.main_pending = None;
         self.output_revision += 1;
-        (self.res, self.calcs) = run(&self.model, self.live_spec.as_deref())?;
+        (self.res, self.calcs) = run(&self.model, self.live_spec.as_deref(), self.extras.import.export_party)?;
         *self.config_gates.borrow_mut() = Default::default();
         if let Some(l) = &self.live_spec {
             self.res.env.spec = l.clone();

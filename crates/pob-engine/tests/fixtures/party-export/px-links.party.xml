@@ -1,0 +1,96 @@
+	<Party ShowAdvanceTools="false" append="false" destination="All">
+		<ExportedBuffs name="PartyMemberStats">
+			BlockChance=30
+BlockChanceMax=75
+EnergyShieldRecoveryCap=103
+Life=4961
+MainHand.CritChance=67.7446
+MovementSpeedMod|percent|max=183.2
+		</ExportedBuffs>
+		<ExportedBuffs name="Aura">
+			extraAura
+true|Tree:66771|Onslaught|FLAG|-|-|-
+---
+		</ExportedBuffs>
+		<ExportedBuffs name="Curse">
+			--- Curse Limit ---
+1
+Vulnerability
+144
+false
+15|Skill:Vulnerability|PhysicalDamageTaken|INC|-|-|type=GlobalEffect/effectType=Curse
+25|Skill:Vulnerability|SelfBleedChance|BASE|-|-|type=GlobalEffect/effectType=Curse
+---
+		</ExportedBuffs>
+		<ExportedBuffs name="Link Skills">
+			Destructive Link
+100
+1|Skill:DestructiveLink|MainHandCritIsEqualToParent|FLAG|-|-|type=GlobalEffect/effectType=Link,type=Condition/var=MainHandAttack
+49|Skill:DestructiveLink|CritMultiplier|BASE|-|-|type=GlobalEffect/effectType=Link
+true|Custom:Default|ParentNonUniqueFlasksAppliedToYou|FLAG|-|-|type=GlobalEffect/effectType=Global/unscalable=true
+true|Custom:Default|CurseImmune|FLAG|-|-|-
+true|Custom:Default|ElementalAilmentImmune|FLAG|-|-|-
+---
+Flame Link
+100
+254|Skill:FlameLink|FireMax|BASE|-|-|type=GlobalEffect/effectType=Link
+5|Skill:FlameLink|FireMin|BASE|-|-|type=GlobalEffect/effectType=Link,type=PercentStat/actor=parent/percent=1/stat=Life
+5|Skill:FlameLink|FireMax|BASE|-|-|type=GlobalEffect/effectType=Link,type=PercentStat/actor=parent/percent=1/stat=Life
+169|Skill:FlameLink|FireMin|BASE|-|-|type=GlobalEffect/effectType=Link
+true|Custom:Default|ParentNonUniqueFlasksAppliedToYou|FLAG|-|-|type=GlobalEffect/effectType=Global/unscalable=true
+true|Custom:Default|CurseImmune|FLAG|-|-|-
+true|Custom:Default|ElementalAilmentImmune|FLAG|-|-|-
+---
+Protective Link
+100
+297|Skill:ProtectiveLink|LifeOnBlock|BASE|-|-|type=GlobalEffect/effectType=Link
+1|Skill:ProtectiveLink|BlockAttackChanceIsEqualToParent|FLAG|-|-|type=GlobalEffect/effectType=Link
+1|Skill:ProtectiveLink|MaximumBlockAttackChanceIsEqualToParent|FLAG|-|-|type=GlobalEffect/effectType=Link
+true|Custom:Default|ParentNonUniqueFlasksAppliedToYou|FLAG|-|-|type=GlobalEffect/effectType=Global/unscalable=true
+true|Custom:Default|CurseImmune|FLAG|-|-|-
+true|Custom:Default|ElementalAilmentImmune|FLAG|-|-|-
+---
+Soul Link
+100
+-14|Skill:SoulLink|DamageTaken|MORE|-|-|type=GlobalEffect/effectType=Link
+30|Skill:SoulLink|TakenFromParentESBeforeYou|BASE|-|-|type=GlobalEffect/effectType=Link
+true|Custom:Default|ParentNonUniqueFlasksAppliedToYou|FLAG|-|-|type=GlobalEffect/effectType=Global/unscalable=true
+true|Custom:Default|CurseImmune|FLAG|-|-|-
+true|Custom:Default|ElementalAilmentImmune|FLAG|-|-|-
+---
+Vampiric Link
+100
+1|Skill:VampiricLink|MaximumLifeLeechIsEqualToParent|FLAG|-|-|type=GlobalEffect/effectType=Link
+true|Custom:Default|ParentNonUniqueFlasksAppliedToYou|FLAG|-|-|type=GlobalEffect/effectType=Global/unscalable=true
+true|Custom:Default|CurseImmune|FLAG|-|-|-
+true|Custom:Default|ElementalAilmentImmune|FLAG|-|-|-
+---
+		</ExportedBuffs>
+		<ExportedBuffs name="EnemyConditions">
+			Condition:AgainstDamageOverTime
+Condition:AlreadyBrittle
+Condition:AlreadyChilled
+Condition:AlreadySapped
+Condition:AlreadyScorched
+Condition:AlreadyShocked
+Condition:Burning
+Condition:ChampionIntimidate
+Condition:Intimidated
+Condition:Maimed
+Condition:OnConsecratedGround
+Condition:PinnacleBoss
+Condition:Poisoned
+Condition:RareOrUnique
+Condition:Taunted
+		</ExportedBuffs>
+		<ExportedBuffs name="EnemyMods">
+			ActionSpeed
+-30|15 Mania Stacks|ActionSpeed|INC|-|-|type=GlobalEffect/effectType=Debuff,type=Condition/var=AfflictedByMania
+DamageTaken
+60|15 Mania Stacks|DamageTaken|INC|-|-|type=GlobalEffect/effectType=Debuff,type=Condition/var=AfflictedByMania
+5|Tree:31257|DamageTaken|INC|-|-|type=Condition/var=Taunted
+9|Consecrated Ground|DamageTaken|INC|-|-|-
+DamageTakenConsecratedGround
+9|Item:21:Bottled Faith, Sulphur Flask|DamageTakenConsecratedGround|INC|-|-|type=Condition/var=OnConsecratedGround
+		</ExportedBuffs>
+	</Party>

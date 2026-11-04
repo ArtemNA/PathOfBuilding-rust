@@ -23,6 +23,7 @@ mod ailments;
 pub(crate) mod ally;
 mod buffs;
 mod curses;
+pub mod exports;
 mod flasks;
 mod guards;
 mod reservation;
@@ -2424,8 +2425,11 @@ pub fn perform_skip_ehp(
         actor: party_actor,
         tab: env.party.clone(),
     };
-    // :1312 `partyTabEnableExportBuffs` is only read by the buff-export tail (skipped).
-    skip(env, "1312 partyTab.enableExportBuffs / buff export (P5)");
+    // :1312 `partyTabEnableExportBuffs` ([`buffs::combine`], [`exports`]). The note and the two of the tail stay on a build without `Export Support` (nothing is skipped there; the
+    // fixtures of the pob-ts gates pin them).
+    if !env.enable_export_buffs {
+        skip(env, "1312 partyTab.enableExportBuffs / buff export (P5)");
+    }
 
     // :1315-1324 aegis / minion
     let aegis_item = if env.aegis_mod_list.is_some() {
@@ -2866,10 +2870,12 @@ pub fn perform_skip_ehp(
     // `buffs` / `minionBuffs` as :3713-3718 reads them again (the ally Life pools of other skills' minions)
     let mut ally_buffs: Option<(buffs::Buffs, buffs::Buffs)> = None;
     let mut buff_tables = BuffTables::default();
+    let mut buff_exports: Option<exports::BuffExports> = None;
     match flask_state.as_mut() {
         Some((fx, _)) => {
             // :2193-2995 combine buffs/debuffs/curses/guards ([`buffs`]).
             let mut combined = buffs::combine(env);
+            buff_exports = combined.exports.take();
             // :2727-2729 a Link's `ParentNonUniqueFlasksAppliedToYou` sets the local `nonUniqueFlasksApplyToMinion` (:1609)
             if combined.non_unique_flasks_apply_to_minion {
                 fx.non_unique_flasks_apply_to_minion = true;
@@ -2890,6 +2896,10 @@ pub fn perform_skip_ehp(
                 combined.minion_curse_limit,
                 &ally_curses,
             );
+            // :3244
+            if let Some(x) = buff_exports.as_mut() {
+                x.curse_limit = player.output.num("EnemyCurseLimit");
+            }
             // :3317-3376 guards, then apply everything ([`guards`]).
             guards::guard_slots(env, &combined.guards, &mut combined.buffs, &mut player.output);
             guards::apply(env, &combined.buffs, &combined.minion_buffs, &combined.debuffs, &slots);
@@ -3003,7 +3013,16 @@ pub fn perform_skip_ehp(
     }
 
     // --- :3418-3460 extra auras -----------------------------------------------------------------------------------------
-    // `buffExports["Aura"]["extraAura"]` is only read by the buff-export tail (skipped). `env.minion` is nil.
+    // :3444
+    if let Some(x) = buff_exports.as_mut() {
+        x.aura.insert(
+            "extraAura".to_owned(),
+            exports::ExportedBuff {
+                effect_mult: 1.0,
+                ..exports::ExportedBuff::default()
+            },
+        );
+    }
     for value in list(&mod_db, &["ExtraAura"]) {
         let Value::Mod(m) = value.get("mod") else {
             panic!("Modules/CalcPerform.lua:3419: ExtraAura value without a mod")
@@ -3028,6 +3047,10 @@ pub fn perform_skip_ehp(
                 ok(mdb.borrow_mut().scale_add_list(&mod_list, (1.0 + i / 100.0) * m, false));
             }
             let src = &mod_list[0];
+            // :3461
+            if let Some(x) = buff_exports.as_mut() {
+                x.aura.get_mut("extraAura").expect("made above").mods.push(src.clone());
+            }
             let name: &str = &src.name;
             let blacklisted = name == "Speed" || name == "CritMultiplier" || name == "CritChance";
             if player_ms.flag("totem") && !blacklisted {
@@ -3172,6 +3195,8 @@ pub fn perform_skip_ehp(
         }
     }
     // --- :3797-3801 triggers / mirages / offence ([`crate::offence`]) -------------------------------------------------------
+    // What the export tail reads through its `output` local when `calcs.mirages` replaces `env.player.output` ([`exports::OwnOutput`]).
+    let mut own_output: Option<exports::OwnOutput> = None;
     if skills_on {
         // :3797 `calcs.triggers(env, env.player)` (R7.8); an `Err` is a boundary of the port: offence is not run on that state
         let triggered = if env.skills.as_ref().and_then(|s| s.main_skill) == Some(crate::skills::DETACHED) {
@@ -3182,14 +3207,23 @@ pub fn perform_skip_ehp(
         match triggered {
             Err(what) => env.unimplemented.push(what),
             // :3798 `if not calcs.mirages(env) then calcs.offence(...)` (R7.9); `Err` = a boundary of the port (no offence either)
-            Ok(()) => match crate::mirages::mirages(env, &mut state, hook.as_deref_mut()) {
-                Err(what) => env.unimplemented.push(what),
-                Ok(true) => state.offence_ran = true,
-                Ok(false) => {
-                    crate::offence::offence(env, &mut state, hook);
-                    state.offence_ran = true;
+            Ok(()) => {
+                let before = buff_exports.is_some().then(|| exports::OwnOutput {
+                    scalars: state.player.output.scalars(),
+                    main_hand: state.player.hand_output(0).cloned(),
+                });
+                match crate::mirages::mirages(env, &mut state, hook.as_deref_mut()) {
+                    Err(what) => env.unimplemented.push(what),
+                    Ok(true) => {
+                        own_output = before;
+                        state.offence_ran = true;
+                    }
+                    Ok(false) => {
+                        crate::offence::offence(env, &mut state, hook);
+                        state.offence_ran = true;
+                    }
                 }
-            },
+            }
         }
     } else {
         skip(env, "3797-3801 triggers / mirages / offence (P5)");
@@ -3217,9 +3251,16 @@ pub fn perform_skip_ehp(
         } else {
             skip(env, "3807-3808 calcs.triggers / calcs.offence of env.minion (P5)");
         }
-        skip(env, "3811-3990 buff export, party export (P5)");
-    } else {
+        if !env.enable_export_buffs {
+            skip(env, "3811-3990 buff export, party export (P5)");
+        }
+    } else if !env.enable_export_buffs {
         skip(env, "3803-3990 minion output, buff export, party export (P5)");
+    }
+    // :3838-3957
+    if let Some(mut x) = buff_exports {
+        exports::finish(env, &state, &mut x, own_output.as_ref());
+        env.buff_exports = Some(Box::new(x));
     }
     gem_level_quality(env, &mut state);
     state

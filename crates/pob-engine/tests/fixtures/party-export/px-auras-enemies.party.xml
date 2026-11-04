@@ -1,0 +1,101 @@
+	<Party ShowAdvanceTools="false" append="false" destination="All">
+		<ExportedBuffs name="PartyMemberStats">
+			MovementSpeedMod|percent|max=189.6
+		</ExportedBuffs>
+		<ExportedBuffs name="Aura">
+			Anger
+100
+109|Skill:Anger|FireMin|BASE|-|Attack|type=GlobalEffect/effectType=Aura
+155|Skill:Anger|FireMax|BASE|-|Attack|type=GlobalEffect/effectType=Aura
+109|Skill:Anger|FireMin|BASE|-|Spell|type=GlobalEffect/effectType=Aura
+155|Skill:Anger|FireMax|BASE|-|Spell|type=GlobalEffect/effectType=Aura
+---
+Anger_Debuff
+100
+109|Skill:Anger|FireMin|BASE|-|Attack|type=GlobalEffect/effectType=Aura
+155|Skill:Anger|FireMax|BASE|-|Attack|type=GlobalEffect/effectType=Aura
+109|Skill:Anger|FireMin|BASE|-|Spell|type=GlobalEffect/effectType=Aura
+155|Skill:Anger|FireMax|BASE|-|Spell|type=GlobalEffect/effectType=Aura
+---
+Defiance Banner
+100
+8|Skill:DefianceBanner|SpellSuppressionChance|BASE|-|-|type=GlobalEffect/effectType=Aura
+8|Skill:DefianceBanner|MovementSpeed|INC|-|-|type=GlobalEffect/effectType=Aura
+12|Custom:Default|Damage|INC|Attack|-|-
+---
+Defiance Banner_Debuff
+100
+10|Custom:Default|DamageTaken|INC|-|-|type=GlobalEffect/effectType=AuraDebuff/unscalable=true
+---
+Dread Banner
+100
+4|Skill:DreadBanner|BlockChance|BASE|-|-|type=GlobalEffect/effectType=Aura
+34|Skill:DreadBanner|LifeOnBlock|BASE|-|-|type=GlobalEffect/effectType=Aura
+12|Custom:Default|Damage|INC|Attack|-|-
+---
+Dread Banner_Debuff
+100
+10|Custom:Default|DamageTaken|INC|-|-|type=GlobalEffect/effectType=AuraDebuff/unscalable=true
+---
+Pride
+100
+39|Skill:Pride|PhysicalDamageTaken|MORE|-|-|type=GlobalEffect/effectType=AuraDebuff/modCond=PrideMaxEffect
+---
+War Banner
+100
+8|Skill:WarBanner|Accuracy|INC|-|-|type=GlobalEffect/effectType=Aura
+4|Skill:WarBanner|PhysicalDamage|MORE|-|-|type=GlobalEffect/effectType=Aura,type=SkillType/skillType=20
+12|Custom:Default|Damage|INC|Attack|-|-
+---
+War Banner_Debuff
+100
+10|Custom:Default|DamageTaken|INC|-|-|type=GlobalEffect/effectType=AuraDebuff/unscalable=true
+---
+extraAura
+true|Tree:66771|Onslaught|FLAG|-|-|-
+---
+		</ExportedBuffs>
+		<ExportedBuffs name="Curse">
+			--- Curse Limit ---
+1
+Vulnerability
+144
+false
+25|Skill:Vulnerability|SelfBleedChance|BASE|-|-|type=GlobalEffect/effectType=Curse
+15|Skill:Vulnerability|PhysicalDamageTaken|INC|-|-|type=GlobalEffect/effectType=Curse
+---
+		</ExportedBuffs>
+		<ExportedBuffs name="EnemyConditions">
+			Condition:AgainstDamageOverTime
+Condition:AlreadyBrittle
+Condition:AlreadyChilled
+Condition:AlreadySapped
+Condition:AlreadyScorched
+Condition:AlreadyShocked
+Condition:Burning
+Condition:ChampionIntimidate
+Condition:Intimidated
+Condition:Maimed
+Condition:OnConsecratedGround
+Condition:PinnacleBoss
+Condition:Poisoned
+Condition:RareOrUnique
+Condition:Taunted
+		</ExportedBuffs>
+		<ExportedBuffs name="EnemyMods">
+			ActionSpeed
+-30|15 Mania Stacks|ActionSpeed|INC|-|-|type=GlobalEffect/effectType=Debuff,type=Condition/var=AfflictedByMania
+Damage
+12|Custom:Default|Damage|INC|Attack|-|-
+12|Custom:Default|Damage|INC|Attack|-|-
+12|Custom:Default|Damage|INC|Attack|-|-
+DamageTaken
+60|15 Mania Stacks|DamageTaken|INC|-|-|type=GlobalEffect/effectType=Debuff,type=Condition/var=AfflictedByMania
+5|Tree:31257|DamageTaken|INC|-|-|type=Condition/var=Taunted
+9|Consecrated Ground|DamageTaken|INC|-|-|-
+DamageTakenConsecratedGround
+9|Item:21:Bottled Faith, Sulphur Flask|DamageTakenConsecratedGround|INC|-|-|type=Condition/var=OnConsecratedGround
+PhysicalDamage
+4|Skill:WarBanner|PhysicalDamage|MORE|-|-|type=GlobalEffect/effectType=Aura,type=SkillType/skillType=20
+		</ExportedBuffs>
+	</Party>

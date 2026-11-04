@@ -1,0 +1,125 @@
+	<Party ShowAdvanceTools="false" append="false" destination="All">
+		<ExportedBuffs name="PartyMemberStats">
+			ColdResist=72
+EnduranceChargesMax=3
+EnemyColdResistEqualToYours
+EnemyFireResistEqualToYours
+FireResist=76
+FortificationStacks=20
+MovementSpeedMod|percent|max=212
+PartyMemberFortifyEqualToYours
+PartyMemberMaximumEnduranceChargesEqualToYours
+		</ExportedBuffs>
+		<ExportedBuffs name="Aura">
+			Anger
+100
+109|Skill:Anger|FireMin|BASE|-|Attack|type=GlobalEffect/effectType=Aura
+155|Skill:Anger|FireMax|BASE|-|Attack|type=GlobalEffect/effectType=Aura
+109|Skill:Anger|FireMin|BASE|-|Spell|type=GlobalEffect/effectType=Aura
+155|Skill:Anger|FireMax|BASE|-|Spell|type=GlobalEffect/effectType=Aura
+---
+Clarity
+100
+33.033333333333|Skill:Clarity|ManaRegen|BASE|-|-|type=GlobalEffect/effectType=Aura
+---
+Determination
+100
+49|Skill:Determination|Armour|MORE|-|-|type=GlobalEffect/effectType=Aura
+1026|Skill:Determination|Armour|BASE|-|-|type=GlobalEffect/effectType=Aura
+---
+Haste
+100
+24|Skill:Haste|Speed|INC|Attack|-|type=GlobalEffect/effectType=Aura
+16|Skill:Haste|MovementSpeed|INC|-|-|type=GlobalEffect/effectType=Aura
+24|Skill:Haste|Speed|INC|Cast|-|type=GlobalEffect/effectType=Aura
+---
+Hatred
+100
+39|Skill:Hatred|PhysicalDamageGainAsCold|BASE|-|-|type=GlobalEffect/effectType=Aura
+---
+Malevolence
+100
+20|Skill:Malevolence|Damage|MORE|Dot|-|type=GlobalEffect/effectType=Aura
+19|Skill:Malevolence|Duration|INC|-|-|type=GlobalEffect/effectType=Aura
+---
+Pride
+100
+39|Skill:Pride|PhysicalDamageTaken|MORE|-|-|type=GlobalEffect/effectType=AuraDebuff/modCond=PrideMaxEffect
+---
+Vaal Haste
+100
+31|Skill:VaalHaste|Speed|INC|Attack|-|type=GlobalEffect/effectType=Aura
+20|Skill:VaalHaste|MovementSpeed|INC|-|-|type=GlobalEffect/effectType=Aura
+31|Skill:VaalHaste|Speed|INC|Cast|-|type=GlobalEffect/effectType=Aura
+---
+extraAura
+true|Custom:Default|YourFortifyEqualToParent|FLAG|-|-|type=GlobalEffect/effectType=Global/unscalable=true
+true|Tree:66771|Onslaught|FLAG|-|-|-
+---
+otherEffects
+Sigil of Power|100|4|Skill:SigilOfPower|Multiplier:SigilOfPowerMaxStages|BASE|-|-|type=GlobalEffect/effectType=Buff/unscalable=true
+Sigil of Power|100|7|Skill:SigilOfPower|LightningMin|BASE|-|-|type=Multiplier/limitVar=SigilOfPowerMaxStages/var=SigilOfPowerStage,type=GlobalEffect/effectName=Sigil of Power/effectType=Buff
+Sigil of Power|100|7|Skill:SigilOfPower|LightningMin|BASE|-|-|type=Multiplier/actor=parent/limitVar=SigilOfPowerMaxStages/var=SigilOfPowerStage,type=GlobalEffect/effectName=Sigil of Power/effectType=Buff
+Sigil of Power|100|141|Skill:SigilOfPower|LightningMax|BASE|-|-|type=Multiplier/limitVar=SigilOfPowerMaxStages/var=SigilOfPowerStage,type=GlobalEffect/effectName=Sigil of Power/effectType=Buff
+Sigil of Power|100|141|Skill:SigilOfPower|LightningMax|BASE|-|-|type=Multiplier/actor=parent/limitVar=SigilOfPowerMaxStages/var=SigilOfPowerStage,type=GlobalEffect/effectName=Sigil of Power/effectType=Buff
+---
+		</ExportedBuffs>
+		<ExportedBuffs name="Curse">
+			--- Curse Limit ---
+1
+Enfeeble
+100
+false
+-29|Skill:Enfeeble|Damage|MORE|-|-|type=GlobalEffect/effectType=Curse,type=Condition/neg=true/var=RareOrUnique
+-18|Skill:Enfeeble|Damage|MORE|-|-|type=GlobalEffect/effectType=Curse,type=Condition/var=RareOrUnique
+-19|Skill:Enfeeble|Accuracy|INC|-|-|type=GlobalEffect/effectType=Curse
+---
+Flammability
+75
+false
+25|Skill:Flammability|SelfIgniteChance|BASE|-|-|type=GlobalEffect/effectType=Curse
+-36|Skill:Flammability|FireResist|BASE|-|-|type=GlobalEffect/effectType=Curse
+---
+Sniper&apos;s Mark
+100
+true
+29|Skill:SnipersMark|ProjectileDamageTaken|INC|-|-|type=GlobalEffect/effectType=Curse
+2|Skill:SnipersMark|SelfSplitCount|BASE|-|-|type=GlobalEffect/effectType=Curse
+---
+Vulnerability
+144
+false
+25|Skill:Vulnerability|SelfBleedChance|BASE|-|-|type=GlobalEffect/effectType=Curse
+15|Skill:Vulnerability|PhysicalDamageTaken|INC|-|-|type=GlobalEffect/effectType=Curse
+---
+		</ExportedBuffs>
+		<ExportedBuffs name="EnemyConditions">
+			Condition:AgainstDamageOverTime
+Condition:AlreadyBrittle
+Condition:AlreadyChilled
+Condition:AlreadySapped
+Condition:AlreadyScorched
+Condition:AlreadyShocked
+Condition:Burning
+Condition:ChampionIntimidate
+Condition:Intimidated
+Condition:Maimed
+Condition:OnConsecratedGround
+Condition:PinnacleBoss
+Condition:Poisoned
+Condition:RareOrUnique
+Condition:Taunted
+		</ExportedBuffs>
+		<ExportedBuffs name="EnemyMods">
+			ActionSpeed
+-30|15 Mania Stacks|ActionSpeed|INC|-|-|type=GlobalEffect/effectType=Debuff,type=Condition/var=AfflictedByMania
+Damage
+-19|Skill:SigilOfPower|Damage|MORE|-|-|type=MultiplierThreshold/actor=enemy/thresholdVar=SigilOfPowerMaxStages/var=SigilOfPowerStage,type=GlobalEffect/effectName=Sigil of Power/effectType=Debuff
+DamageTaken
+60|15 Mania Stacks|DamageTaken|INC|-|-|type=GlobalEffect/effectType=Debuff,type=Condition/var=AfflictedByMania
+5|Tree:31257|DamageTaken|INC|-|-|type=Condition/var=Taunted
+9|Consecrated Ground|DamageTaken|INC|-|-|-
+DamageTakenConsecratedGround
+9|Item:21:Bottled Faith, Sulphur Flask|DamageTakenConsecratedGround|INC|-|-|type=Condition/var=OnConsecratedGround
+		</ExportedBuffs>
+	</Party>

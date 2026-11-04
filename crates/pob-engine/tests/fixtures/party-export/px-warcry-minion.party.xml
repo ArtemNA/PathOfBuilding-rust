@@ -1,0 +1,73 @@
+	<Party ShowAdvanceTools="false" append="false" destination="All">
+		<ExportedBuffs name="PartyMemberStats">
+			MovementSpeedMod|percent|max=200.8
+		</ExportedBuffs>
+		<ExportedBuffs name="Aura">
+			Anger
+100
+155|Skill:Anger|FireMax|BASE|-|Spell|type=GlobalEffect/effectType=Aura
+109|Skill:Anger|FireMin|BASE|-|Attack|type=GlobalEffect/effectType=Aura
+155|Skill:Anger|FireMax|BASE|-|Attack|type=GlobalEffect/effectType=Aura
+109|Skill:Anger|FireMin|BASE|-|Spell|type=GlobalEffect/effectType=Aura
+---
+extraAura
+true|Tree:66771|Onslaught|FLAG|-|-|-
+---
+		</ExportedBuffs>
+		<ExportedBuffs name="Curse">
+			--- Curse Limit ---
+1
+Enfeeble
+100
+false
+-29|Skill:Enfeeble|Damage|MORE|-|-|type=GlobalEffect/effectType=Curse,type=Condition/neg=true/var=RareOrUnique
+-18|Skill:Enfeeble|Damage|MORE|-|-|type=GlobalEffect/effectType=Curse,type=Condition/var=RareOrUnique
+-19|Skill:Enfeeble|Accuracy|INC|-|-|type=GlobalEffect/effectType=Curse
+---
+Vulnerability
+144
+false
+15|Skill:Vulnerability|PhysicalDamageTaken|INC|-|-|type=GlobalEffect/effectType=Curse
+25|Skill:Vulnerability|SelfBleedChance|BASE|-|-|type=GlobalEffect/effectType=Curse
+---
+		</ExportedBuffs>
+		<ExportedBuffs name="Warcry Skills">
+			Intimidating Cry
+127.710375
+3|Skill:IntimidatingCry|MovementSpeed|INC|-|-|type=GlobalEffect/div=5/effectType=Warcry/limit=30/warcryPowerBonus=6
+---
+Rallying Cry
+127.710375
+4|Skill:RallyingCry|Dummy|DUMMY|-|-|type=GlobalEffect/effectType=Warcry,type=Multiplier/var=NearbyAlly
+14.88|Rallying Cry|PhysicalMin|BASE|-|Attack|type=GlobalEffect/div=5/effectType=Warcry/limit=30
+59.04|Rallying Cry|PhysicalMax|BASE|-|Attack|type=GlobalEffect/div=5/effectType=Warcry/limit=30
+---
+		</ExportedBuffs>
+		<ExportedBuffs name="EnemyConditions">
+			Condition:AgainstDamageOverTime
+Condition:AlreadyBrittle
+Condition:AlreadyChilled
+Condition:AlreadySapped
+Condition:AlreadyScorched
+Condition:AlreadyShocked
+Condition:Burning
+Condition:ChampionIntimidate
+Condition:Intimidated
+Condition:Maimed
+Condition:OnConsecratedGround
+Condition:PinnacleBoss
+Condition:Poisoned
+Condition:RareOrUnique
+Condition:Taunted
+		</ExportedBuffs>
+		<ExportedBuffs name="EnemyMods">
+			ActionSpeed
+-30|15 Mania Stacks|ActionSpeed|INC|-|-|type=GlobalEffect/effectType=Debuff,type=Condition/var=AfflictedByMania
+DamageTaken
+60|15 Mania Stacks|DamageTaken|INC|-|-|type=GlobalEffect/effectType=Debuff,type=Condition/var=AfflictedByMania
+5|Tree:31257|DamageTaken|INC|-|-|type=Condition/var=Taunted
+9|Consecrated Ground|DamageTaken|INC|-|-|-
+DamageTakenConsecratedGround
+9|Item:21:Bottled Faith, Sulphur Flask|DamageTakenConsecratedGround|INC|-|-|type=Condition/var=OnConsecratedGround
+		</ExportedBuffs>
+	</Party>

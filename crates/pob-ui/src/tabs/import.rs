@@ -1046,7 +1046,7 @@ impl ImportTab {
         *tab.generate_code.on_click.borrow_mut() = Rc::new(move |g: &mut Gfx| f().on_generate(g));
         let f = t.clone();
         *tab.enable_party_export_buffs.change_func.borrow_mut() =
-            Some(Rc::new(move |g: &mut Gfx, state: bool| f().on_export_buffs(g, state)));
+            Some(Rc::new(move |_g: &mut Gfx, state: bool| f().on_export_buffs(state)));
         let f = t.clone();
         *tab.import_code_in.change_func.borrow_mut() = Some(Rc::new(move |g: &mut Gfx, buf: &str, _placeholder: bool| {
             f().import_code_handle(g, buf);
@@ -1113,19 +1113,11 @@ impl ImportTab {
         e.as_ref().is_some_and(pob_engine::engine::Engine::import_export_party)
     }
 
-    /// :507-510. `PartyTab:exportBuffs` is the step R-party-export.
-    fn on_export_buffs(&self, g: &mut Gfx, state: bool) {
+    /// :507-510
+    fn on_export_buffs(&self, state: bool) {
         let b = self.build.upgrade().expect("buildMode");
-        if state {
-            self.enable_party_export_buffs.state.set(false);
-            not_ported(
-                g,
-                "Classes/ImportTab.lua:507-510 enablePartyExportBuffs, Classes/PartyTab.lua:996-1047 exportBuffs (R-party-export)",
-            );
-            return;
-        }
         if let Some(e) = b.engine.borrow_mut().as_mut() {
-            e.import_set_export_party(false);
+            e.import_set_export_party(state);
         }
         b.build_flag.set(true);
     }

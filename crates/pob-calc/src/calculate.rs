@@ -36,6 +36,8 @@ pub struct CalculateOptions {
     pub skills: bool,
     /// `pairs(build.spec.allocNodes)` of an edited live spec (R24): the order the run's `copyTable` walks instead of the fresh load's.
     pub live_alloc_pairs: Option<Vec<f64>>,
+    /// `build.partyTab.enableExportBuffs` (ImportTab.lua:747-748, `<Import exportParty>`; not in the model). [`calculate_with`] reads it from the text.
+    pub export_party: bool,
 }
 
 impl Default for CalculateOptions {
@@ -46,6 +48,7 @@ impl Default for CalculateOptions {
             parse_mode: pob_parser::ParseMode::Full,
             skills: true,
             live_alloc_pairs: None,
+            export_party: false,
         }
     }
 }
@@ -111,9 +114,10 @@ pub fn calculate_file(path: impl AsRef<Path>, opts: CalculateOptions) -> Result<
 /// `calcs.buildOutput(build, "MAIN")` + `EstimatePlayerProgress` for one build text, taken as given. With the skill phase on (the
 /// default) it runs through a fresh [`CalcSession`] (R7.2: the golden is `wipeGlobalCache` + one `buildOutput`); without it, the
 /// pre-R6 path (one initEnv + one perform, the "= pob-ts" gates).
-pub fn calculate_with(xml: &str, opts: CalculateOptions) -> Result<CalculateResult, CalcError> {
+pub fn calculate_with(xml: &str, mut opts: CalculateOptions) -> Result<CalculateResult, CalcError> {
     let t0 = Instant::now();
     let model = pob_build::load_build_xml(xml).map_err(|e| CalcError(format!("XML: {e}")))?;
+    opts.export_party |= export_party_of(xml);
     let load_ms = ms(t0);
     if opts.skills {
         return calculate_session(Rc::new(model), opts, load_ms);
@@ -156,6 +160,21 @@ pub fn calculate_with(xml: &str, opts: CalculateOptions) -> Result<CalculateResu
         config_rebuilt,
         session_log: None,
     })
+}
+
+/// ImportTab.lua:747 `xml.attrib.exportParty == "true"` of the build text.
+fn export_party_of(xml: &str) -> bool {
+    if !xml.contains("exportParty=\"true\"") {
+        return false;
+    }
+    let Ok(doc) = pob_build::parse_xml_document(xml) else {
+        return false;
+    };
+    let Some(pob_build::XmlNode::Element(root)) = doc.first() else {
+        return false;
+    };
+    root.child_elements()
+        .any(|n| n.name == "Import" && n.attr("exportParty") == Some("true"))
 }
 
 /// `calcsTab:BuildOutput()` (CalcsTab.lua:441-474) over an already loaded model, for the engine API (R8.8; the runs are derived from the

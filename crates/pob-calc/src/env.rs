@@ -285,6 +285,10 @@ pub struct Env {
     /// `build.partyTab` after its `Load` (R-party, [`crate::party`]): `env.partyMembers` (CalcPerform.lua:1310) and `enemyModList`
     /// (CalcSetup.lua:697).
     pub party: Rc<crate::party::PartyTab>,
+    /// `build.partyTab.enableExportBuffs` (ImportTab `exportParty`, [`crate::calculate::CalculateOptions::export_party`]).
+    pub enable_export_buffs: bool,
+    /// `PartyTab:setBuffExports` of this env's perform (CalcPerform.lua:3957); `None` = not called.
+    pub buff_exports: Option<Box<crate::perform::exports::BuffExports>>,
 }
 
 impl Env {
