@@ -18,7 +18,7 @@ use winit::dpi::PhysicalSize;
 use winit::event::{ElementState, MouseButton, MouseScrollDelta, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
 use winit::keyboard::{KeyCode, ModifiersState, PhysicalKey};
-use winit::window::{Window, WindowId};
+use winit::window::{Icon, Window, WindowId};
 
 use crate::draw::{DrawList, Frame, Gfx};
 use crate::input::{self, Button, Callback, PhysKey, RawEvent};
@@ -106,6 +106,7 @@ struct Live {
 struct App<M: MainObject> {
     main: M,
     cfg: WindowConfig,
+    icon: Option<Icon>,
     start: Instant,
     live: Option<Live>,
     next_frame: Instant,
@@ -275,7 +276,10 @@ impl<M: MainObject> App<M> {
     fn init(&mut self, el: &ActiveEventLoop) -> Result<(), RunError> {
         let attrs = Window::default_attributes()
             .with_title(self.cfg.title.clone())
+            .with_window_icon(self.icon.clone())
             .with_inner_size(PhysicalSize::new(self.cfg.size.0, self.cfg.size.1));
+        #[cfg(windows)]
+        let attrs = winit::platform::windows::WindowAttributesExtWindows::with_taskbar_icon(attrs, self.icon.clone());
         let window = Arc::new(el.create_window(attrs).map_err(|e| RunError::EventLoop(e.to_string()))?);
         self.stats.window_ready = self.start.elapsed();
         let instance = Renderer::new_instance();
@@ -441,11 +445,26 @@ impl<M: MainObject> ApplicationHandler for App<M> {
 
 /// Opens the window and runs the loop until the window closes (and `can_exit` agrees) or `Exit()` is called.
 pub fn run<M: MainObject>(main: M, cfg: WindowConfig) -> Result<(M, RunStats), RunError> {
+    run_with_icon(main, cfg, None)
+}
+
+/// A PNG as a window icon; an icon that does not decode leaves the default one.
+fn decode_icon(png: &[u8]) -> Option<Icon> {
+    let rgba = ::image::load_from_memory_with_format(png, ::image::ImageFormat::Png)
+        .ok()?
+        .into_rgba8();
+    let (w, h) = rgba.dimensions();
+    Icon::from_rgba(rgba.into_raw(), w, h).ok()
+}
+
+/// [`run`] with the window's icon, a PNG.
+pub fn run_with_icon<M: MainObject>(main: M, cfg: WindowConfig, icon_png: Option<&[u8]>) -> Result<(M, RunStats), RunError> {
     let start = Instant::now();
     let el = EventLoop::new().map_err(|e| RunError::EventLoop(e.to_string()))?;
     let mut app = App {
         main,
         cfg,
+        icon: icon_png.and_then(decode_icon),
         start,
         live: None,
         next_frame: start,

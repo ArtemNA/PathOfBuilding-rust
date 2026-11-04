@@ -344,6 +344,7 @@ fn run(name: &str) -> Run {
         version_number: "?".into(),
         version_branch: Some("?".into()),
         version_platform: Some("?".into()),
+        app_version: None,
     });
     let net = NetScript::new(&sc);
     l.set_transport(net.0.clone());
@@ -666,6 +667,7 @@ fn the_frame_delivers_and_a_failed_callback_is_a_prompt() {
         version_number: "1.2.3".into(),
         version_branch: None,
         version_platform: None,
+        app_version: None,
     });
     let net = std::sync::Arc::new(pob_net::ScriptedTransport::default());
     net.add(

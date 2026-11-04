@@ -219,6 +219,14 @@ thread_local! {
     static MAIN_OBJ: RefCell<Option<Rc<Main>>> = const { RefCell::new(None) };
 }
 
+/// The left of the two lines of [`version_lines`], from the main anchor; the About button ends at 140.
+pub const VERSION_LINES_X: f64 = 144.0;
+
+/// The application's two lines right of Options / About: the port's own version, then the upstream version of its data.
+pub fn version_lines(app: &str, upstream: &str) -> (String, String) {
+    (format!("^8PoB Rust {app}"), format!("^8Data: PoB {upstream}"))
+}
+
 /// The global `main`.
 pub fn main() -> Rc<Main> {
     try_main().expect("attempt to index global 'main' (a nil value)")
@@ -410,16 +418,27 @@ impl Main {
         );
         check.base.shown.set(false);
         m.host.add("checkUpdate", check);
+        // With the application's own version (only pob-app sets it, the user's decision): the port's lines, 4 from the About button like the gap between the buttons.
+        let label_x = if launch().cfg.app_version.is_some() { VERSION_LINES_X } else { 148.0 };
         let fork = LabelControl::new(
             anchor("BOTTOMLEFT", &am, "BOTTOMLEFT"),
-            rect(148.0, -26.0, 0.0, 16.0),
+            rect(label_x, -26.0, 0.0, 16.0),
             String::new(),
         );
-        fork.label.set_fn(|_| "^8PoB Community Fork".to_string());
+        fork.label.set_fn(|_| {
+            let l = launch();
+            match &l.cfg.app_version {
+                Some(app) => version_lines(app, &l.version_number.borrow()).0,
+                None => "^8PoB Community Fork".to_string(),
+            }
+        });
         m.host.add("forkLabel", fork);
-        let ver = LabelControl::new(anchor("BOTTOMLEFT", &am, "BOTTOMLEFT"), rect(148.0, -2.0, 0.0, 16.0), String::new());
+        let ver = LabelControl::new(anchor("BOTTOMLEFT", &am, "BOTTOMLEFT"), rect(label_x, -2.0, 0.0, 16.0), String::new());
         ver.label.set_fn(|_| {
             let l = launch();
+            if let Some(app) = &l.cfg.app_version {
+                return version_lines(app, &l.version_number.borrow()).1;
+            }
             let branch = l.version_branch.borrow().clone();
             format!(
                 "^8{}{}{}",

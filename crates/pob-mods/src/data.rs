@@ -5,17 +5,34 @@
 //! Full loaders are R3 (`pob-data`).
 
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
 use serde_json::Value as Json;
 
-/// `POB_DATA_DIR`, or `<workspace root>/data`.
+/// `<dir>/data` when it holds the converted data.
+fn data_under(dir: &Path) -> Option<PathBuf> {
+    let d = dir.join("data");
+    d.join("manifest.json").is_file().then_some(d)
+}
+
+/// `<folder of the exe>/data` (the package), then `POB_DATA_DIR`, then in a development tree the `data/` nearest above the exe,
+/// or above `CARGO_MANIFEST_DIR` of a cargo run with its target folder elsewhere. No path of the build machine goes into the binary.
 pub fn data_dir() -> PathBuf {
-    match std::env::var_os("POB_DATA_DIR") {
-        Some(d) => PathBuf::from(d),
-        None => PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/../../data")),
+    static EXE_DIR: OnceLock<Option<PathBuf>> = OnceLock::new();
+    let exe_dir = EXE_DIR.get_or_init(|| std::env::current_exe().ok()?.parent().map(Path::to_path_buf));
+    if let Some(d) = exe_dir.as_deref().and_then(data_under) {
+        return d;
     }
+    if let Some(d) = std::env::var_os("POB_DATA_DIR") {
+        return PathBuf::from(d);
+    }
+    let above = |dir: &Path| dir.ancestors().find_map(data_under);
+    exe_dir
+        .as_deref()
+        .and_then(above)
+        .or_else(|| std::env::var_os("CARGO_MANIFEST_DIR").and_then(|d| above(Path::new(&d))))
+        .unwrap_or_else(|| PathBuf::from("data"))
 }
 
 fn load(file: &str) -> Json {

@@ -7,11 +7,19 @@ rust-version.workspace = true
 license.workspace = true
 publish.workspace = true
 
+[features]
+# tools/package.ps1: no console window, the exe's own icon
+package = []
+
 [dependencies]
 serde_json = { workspace = true }
 pob-gfx = { path = "../pob-gfx" }
 pob-net = { path = "../pob-net" }
 pob-ui = { path = "../pob-ui" }
 
-[lints]
-workspace = true
+# The workspace's lints, but `deny` for unsafe_code: `forbid` cannot be lifted for the one `MessageBoxW` call in main.rs.
+[lints.rust]
+unsafe_code = "deny"
+
+[lints.clippy]
+float_cmp = "allow"
