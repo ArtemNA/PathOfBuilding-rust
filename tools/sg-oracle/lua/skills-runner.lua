@@ -295,6 +295,14 @@ local function dump(st)
 	end
 	if main.mode == "BUILD" and st.calcs then d.calcs = calcsDump(main.modes.BUILD) end
 	if main.mode == "BUILD" then d.skills = skillsDump(main.modes.BUILD) end
+	-- U10b: whether the DPS coroutine of the open gem list ran out: `pending` stays set when it yielded or died (GemSelectControl.lua:451, :513)
+	if main.mode == "BUILD" then
+		local sel = main.modes.BUILD.skillsTab.selControl
+		if sel and sel._className == "GemSelectControl" then
+			local c = sel.sortCache
+			d.gemBuilder = { pending = c and c.pendingGems and #c.pendingGems or json.null, running = sel.dpsBuilder and coroutine.status(sel.dpsBuilder) or json.null, flag = sel.dpsBuildFlag and true or false, now = GetTime() }
+		end
+	end
 	if p and p.title == "Spectre Library" then
 		local dest, src = { }, p.controls.source
 		for i, v in ipairs(p.controls.list.list) do dest[i] = v end

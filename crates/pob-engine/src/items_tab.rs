@@ -11,6 +11,18 @@ use pob_items::Item;
 
 use crate::engine::{Engine, active_spec_mut};
 
+thread_local! {
+    /// The gate's sample of a process of the original (see [`set_jewel_order_sample`]).
+    static JEWEL_ORDER_SAMPLE: std::cell::RefCell<Option<Vec<u32>>> = const { std::cell::RefCell::new(None) };
+}
+
+/// `pairs(self.jewels)` (PassiveSpec.lua:1136) decides which of two Abyss jewels gets a node they share, and the order differs between processes of the original (R13; `Populate` writes
+/// the keys in the order of `pairs(self.slots)`): +12 and +21 Intelligence for the same comparison, 3 + 3 of 6 processes. The app keeps the file's order; the gate walks the sockets of its oracle's
+/// process in the comparison's copy of the table.
+pub fn set_jewel_order_sample(sample: Option<Vec<u32>>) {
+    JEWEL_ORDER_SAMPLE.with_borrow_mut(|s| *s = sample);
+}
+
 /// `ItemsTab:CreateUndoState` (:5081-5096): the items as their saved form, the slots through their sets.
 #[derive(Clone)]
 pub struct ItemsUndoState {
@@ -231,10 +243,25 @@ impl Engine {
         }
         self.res_mut().env.items.insert(id as u64, Rc::new(parsed));
         self.sync_item_order();
-        if cluster && self.result().env.spec.jewels.0.iter().any(|(_, i)| *i == id) {
+        let socketed = self.result().env.spec.jewels.0.iter().any(|(_, i)| *i == id);
+        if socketed {
+            // `self.build.itemsTab.items[itemId]` (PassiveSpec.lua:1137, :1155): the next rebuild of the spec reads the jewel under this id as it is now
+            self.refresh_live_jewel_items()?;
+        }
+        if cluster && socketed {
             self.rebuild_cluster_graphs()?;
         }
         Ok(id)
+    }
+
+    /// `itemsTab.items` changed under a socketed id: the spec object lives on with the conquests it has (no rebuild, the next run must not load the model anew) and its next
+    /// `BuildAllDependsAndPaths` reads the new jewel (PassiveSpec.lua:1137, :1155).
+    fn refresh_live_jewel_items(&mut self) -> Result<(), String> {
+        let mut spec = (*self.result().env.spec).clone();
+        spec.set_jewel_items(pob_calc::init_env::spec_jewels_of(&spec.jewels, &self.result().env.items).map_err(|e| e.0)?);
+        self.write_spec_to_model(spec);
+        self.keep_live_conquests();
+        Ok(())
     }
 
     /// `build.spec:BuildClusterJewelGraphs()`.
@@ -609,9 +636,12 @@ impl Engine {
             let mut spec = (*self.result().env.spec).clone();
             spec.jewels = jewels;
             let items = self.result().env.items.clone();
+            spec.set_jewel_items(pob_calc::init_env::spec_jewels_of(&spec.jewels, &items).map_err(|e| e.0)?);
             let lookup = move |id: f64| crate::tree_tab::cluster_lookup(&items, id);
             spec.build_cluster_jewel_graphs(&lookup).map_err(|e| e.0)?;
             self.write_spec_to_model(spec);
+        } else if st.jewels.0.iter().any(|(_, id)| *id > 0.0) {
+            self.refresh_live_jewel_items()?;
         }
         Ok(())
     }
@@ -669,6 +699,12 @@ impl Engine {
                 });
             s.jewels.set(n, id);
         }
+        JEWEL_ORDER_SAMPLE.with_borrow(|sample| {
+            if let Some(order) = sample {
+                let at = |k: f64| order.iter().position(|&o| f64::from(o) == k);
+                s.jewels.0.sort_by_key(|(k, _)| at(*k));
+            }
+        });
         s.set_jewel_items(pob_calc::init_env::spec_jewels_of(&s.jewels, &items).map_err(|e| e.0)?);
         s.build_all_depends_and_paths().map_err(|e| e.0)?;
         Ok(Rc::new(s))

@@ -1,0 +1,980 @@
+{
+"steps": [
+{
+"open": "Generals Perforate Zerker"
+},
+{
+"waitAssets": true
+},
+{
+"cursor": [
+971,
+730
+]
+},
+{
+"hold": [
+"LEFTBUTTON"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+]
+]
+},
+{
+"release": [
+"LEFTBUTTON"
+],
+"events": [
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+]
+},
+{
+"waitAssets": true
+},
+{
+"cursor": [
+-100,
+-100
+],
+"events": [
+[
+"KeyDown",
+"RETURN"
+],
+[
+"KeyUp",
+"RETURN"
+]
+]
+},
+{
+"cursorBuild": [
+"modeItems"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"cursor": [
+1200,
+790
+],
+"clipboard": "Rarity: UNIQUE\nLethal Pride\nTimeless Jewel\nLeague: Legion\nLimited to: 1 Historic\nRadius: Large\nImplicits: 0\nCommanded leadership over 10000 warriors under Kaom\nPassives in radius are Conquered by the Karui\nHistoric\n",
+"hold": [
+"CTRL"
+],
+"events": [
+[
+"KeyDown",
+"v"
+],
+[
+"KeyUp",
+"v"
+]
+],
+"dump": true
+},
+{
+"release": [
+"CTRL"
+]
+},
+{
+"cursor": [
+800,
+600
+],
+"events": [
+[
+"KeyUp",
+"WHEELUP"
+],
+[
+"KeyUp",
+"WHEELUP"
+],
+[
+"KeyUp",
+"WHEELUP"
+],
+[
+"KeyUp",
+"WHEELUP"
+],
+[
+"KeyUp",
+"WHEELUP"
+],
+[
+"KeyUp",
+"WHEELUP"
+],
+[
+"KeyUp",
+"WHEELUP"
+],
+[
+"KeyUp",
+"WHEELUP"
+],
+[
+"KeyUp",
+"WHEELUP"
+],
+[
+"KeyUp",
+"WHEELUP"
+],
+[
+"KeyUp",
+"WHEELUP"
+],
+[
+"KeyUp",
+"WHEELUP"
+],
+[
+"KeyUp",
+"WHEELUP"
+],
+[
+"KeyUp",
+"WHEELUP"
+],
+[
+"KeyUp",
+"WHEELUP"
+],
+[
+"KeyUp",
+"WHEELUP"
+],
+[
+"KeyUp",
+"WHEELUP"
+],
+[
+"KeyUp",
+"WHEELUP"
+],
+[
+"KeyUp",
+"WHEELUP"
+],
+[
+"KeyUp",
+"WHEELUP"
+],
+[
+"KeyUp",
+"WHEELUP"
+],
+[
+"KeyUp",
+"WHEELUP"
+],
+[
+"KeyUp",
+"WHEELUP"
+],
+[
+"KeyUp",
+"WHEELUP"
+],
+[
+"KeyUp",
+"WHEELUP"
+],
+[
+"KeyUp",
+"WHEELUP"
+],
+[
+"KeyUp",
+"WHEELUP"
+],
+[
+"KeyUp",
+"WHEELUP"
+],
+[
+"KeyUp",
+"WHEELUP"
+],
+[
+"KeyUp",
+"WHEELUP"
+],
+[
+"KeyUp",
+"WHEELUP"
+],
+[
+"KeyUp",
+"WHEELUP"
+],
+[
+"KeyUp",
+"WHEELUP"
+],
+[
+"KeyUp",
+"WHEELUP"
+],
+[
+"KeyUp",
+"WHEELUP"
+],
+[
+"KeyUp",
+"WHEELUP"
+],
+[
+"KeyUp",
+"WHEELUP"
+],
+[
+"KeyUp",
+"WHEELUP"
+],
+[
+"KeyUp",
+"WHEELUP"
+],
+[
+"KeyUp",
+"WHEELUP"
+],
+[
+"KeyUp",
+"WHEELUP"
+],
+[
+"KeyUp",
+"WHEELUP"
+],
+[
+"KeyUp",
+"WHEELUP"
+],
+[
+"KeyUp",
+"WHEELUP"
+],
+[
+"KeyUp",
+"WHEELUP"
+],
+[
+"KeyUp",
+"WHEELUP"
+],
+[
+"KeyUp",
+"WHEELUP"
+],
+[
+"KeyUp",
+"WHEELUP"
+],
+[
+"KeyUp",
+"WHEELUP"
+],
+[
+"KeyUp",
+"WHEELUP"
+],
+[
+"KeyUp",
+"WHEELUP"
+],
+[
+"KeyUp",
+"WHEELUP"
+],
+[
+"KeyUp",
+"WHEELUP"
+],
+[
+"KeyUp",
+"WHEELUP"
+],
+[
+"KeyUp",
+"WHEELUP"
+],
+[
+"KeyUp",
+"WHEELUP"
+],
+[
+"KeyUp",
+"WHEELUP"
+],
+[
+"KeyUp",
+"WHEELUP"
+],
+[
+"KeyUp",
+"WHEELUP"
+],
+[
+"KeyUp",
+"WHEELUP"
+],
+[
+"KeyUp",
+"WHEELUP"
+],
+[
+"KeyUp",
+"WHEELUP"
+],
+[
+"KeyUp",
+"WHEELUP"
+],
+[
+"KeyUp",
+"WHEELUP"
+],
+[
+"KeyUp",
+"WHEELUP"
+],
+[
+"KeyUp",
+"WHEELUP"
+],
+[
+"KeyUp",
+"WHEELUP"
+],
+[
+"KeyUp",
+"WHEELUP"
+],
+[
+"KeyUp",
+"WHEELUP"
+],
+[
+"KeyUp",
+"WHEELUP"
+],
+[
+"KeyUp",
+"WHEELUP"
+],
+[
+"KeyUp",
+"WHEELUP"
+],
+[
+"KeyUp",
+"WHEELUP"
+],
+[
+"KeyUp",
+"WHEELUP"
+],
+[
+"KeyUp",
+"WHEELUP"
+],
+[
+"KeyUp",
+"WHEELUP"
+],
+[
+"KeyUp",
+"WHEELUP"
+],
+[
+"KeyUp",
+"WHEELUP"
+],
+[
+"KeyUp",
+"WHEELUP"
+],
+[
+"KeyUp",
+"WHEELUP"
+]
+],
+"dump": true
+},
+{
+"cursor": [
+800,
+600
+]
+},
+{
+"cursorItem": [
+"addDisplayItem"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"cursor": [
+1200,
+790
+],
+"dump": true
+},
+{
+"cursorItem": [
+"slot:Jewel 26725"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"cursorPick": [
+"slot:Jewel 26725",
+7
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"cursor": [
+1200,
+790
+],
+"dump": true
+},
+{
+"cursorBuild": [
+"modeTree"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+]
+},
+{
+"waitAssets": true
+},
+{
+"treeOrder": "u10b-edit-order2"
+},
+{
+"cursor": [
+796,
+388
+],
+"events": [
+[
+"KeyUp",
+"WHEELDOWN"
+],
+[
+"KeyUp",
+"WHEELDOWN"
+],
+[
+"KeyUp",
+"WHEELDOWN"
+],
+[
+"KeyUp",
+"WHEELDOWN"
+],
+[
+"KeyUp",
+"WHEELDOWN"
+]
+]
+},
+{
+"cursor": [
+800,
+400
+]
+},
+{
+"hold": [
+"LEFTBUTTON"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+]
+]
+},
+{
+"cursor": [
+602,
+103
+]
+},
+{
+"release": [
+"LEFTBUTTON"
+],
+"events": [
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+]
+},
+{
+"cursorNode": 33287,
+"events": [
+[
+"KeyUp",
+"WHEELUP"
+],
+[
+"KeyUp",
+"WHEELUP"
+],
+[
+"KeyUp",
+"WHEELUP"
+],
+[
+"KeyUp",
+"WHEELUP"
+]
+]
+},
+{
+"cursorNode": 33287,
+"dump": true,
+"treeTip": true
+},
+{
+"cursorNode": 3644,
+"dump": true,
+"treeTip": true
+},
+{
+"cursorNode": 26725,
+"dump": true,
+"treeTip": true
+},
+{
+"cursor": [
+-100,
+-100
+],
+"dump": true
+},
+{
+"cursorBuild": [
+"modeItems"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"cursor": [
+1200,
+790
+],
+"clipboard": "Rarity: UNIQUE\nLethal Pride\nTimeless Jewel\nLeague: Legion\nLimited to: 1 Historic\nRadius: Large\nImplicits: 0\nCommanded leadership over 9000 warriors under Akoya\nPassives in radius are Conquered by the Karui\nHistoric\n"
+},
+{
+"cursorItemRow": [
+"itemList",
+19
+],
+"events": [
+[
+"KeyUp",
+"WHEELDOWN"
+],
+[
+"KeyUp",
+"WHEELDOWN"
+],
+[
+"KeyUp",
+"WHEELDOWN"
+],
+[
+"KeyUp",
+"WHEELDOWN"
+],
+[
+"KeyUp",
+"WHEELDOWN"
+],
+[
+"KeyUp",
+"WHEELDOWN"
+],
+[
+"KeyUp",
+"WHEELDOWN"
+],
+[
+"KeyUp",
+"WHEELDOWN"
+],
+[
+"KeyUp",
+"WHEELDOWN"
+],
+[
+"KeyUp",
+"WHEELDOWN"
+],
+[
+"KeyUp",
+"WHEELDOWN"
+],
+[
+"KeyUp",
+"WHEELDOWN"
+]
+],
+"dump": true
+},
+{
+"cursorItemRow": [
+"itemList",
+19
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+]
+},
+{
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON",
+true
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"cursor": [
+1200,
+790
+],
+"dump": true
+},
+{
+"cursorItem": [
+"editDisplayItem"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"cursorPopup": [
+"edit"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"hold": [
+"CTRL"
+],
+"events": [
+[
+"KeyDown",
+"a"
+],
+[
+"KeyUp",
+"a"
+],
+[
+"KeyDown",
+"v"
+],
+[
+"KeyUp",
+"v"
+]
+],
+"dump": true
+},
+{
+"release": [
+"CTRL"
+]
+},
+{
+"cursorPopup": [
+"save"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"cursor": [
+1200,
+790
+],
+"dump": true
+},
+{
+"cursorItem": [
+"addDisplayItem"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"cursor": [
+1200,
+790
+],
+"dump": true
+},
+{
+"cursorBuild": [
+"modeTree"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+]
+},
+{
+"waitAssets": true
+},
+{
+"cursorNode": 33287,
+"dump": true,
+"treeTip": true
+},
+{
+"cursorNode": 3644,
+"dump": true,
+"treeTip": true
+},
+{
+"cursorNode": 26725,
+"dump": true,
+"treeTip": true
+},
+{
+"cursor": [
+-100,
+-100
+],
+"dump": true
+},
+{
+"cursorBuild": [
+"modeItems"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"cursor": [
+1200,
+790
+]
+},
+{
+"hold": [
+"CTRL"
+],
+"events": [
+[
+"KeyDown",
+"z"
+],
+[
+"KeyUp",
+"z"
+]
+],
+"dump": true
+},
+{
+"release": [
+"CTRL"
+]
+},
+{
+"cursor": [
+1200,
+790
+],
+"dump": true
+},
+{
+"cursorBuild": [
+"modeTree"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+]
+},
+{
+"waitAssets": true
+},
+{
+"cursorNode": 33287,
+"dump": true,
+"treeTip": true
+},
+{
+"cursorNode": 3644,
+"dump": true,
+"treeTip": true
+},
+{
+"cursorNode": 26725,
+"dump": true,
+"treeTip": true
+},
+{
+"cursor": [
+-100,
+-100
+],
+"dump": true
+},
+{
+"closeBuild": true
+}
+]
+}

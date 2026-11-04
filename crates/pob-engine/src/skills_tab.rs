@@ -11,9 +11,9 @@ use std::rc::Rc;
 use pob_calc::calc_tools::{ActiveSkillView, WeaponView, can_granted_effect_support_active_skill_ext};
 use pob_calc::env::{CalcOverride, GemOverride};
 use pob_calc::pob_build::{self, GemModel, InputValue, SkillSetModel, SocketGroupModel};
-use pob_calc::session::{CalcSession, RunRef};
+use pob_calc::session::RunRef;
 use pob_calc::skills_tab::{GemInstance, SkillSet, SkillsTab, SocketGroup, process_gem_level, process_socket_group};
-use pob_calc::{CalculateOptions, Env};
+use pob_calc::Env;
 use pob_data::skills::Skills;
 
 use crate::engine::{Engine, active_skill_set_mut};
@@ -931,7 +931,7 @@ impl Engine {
     /// [`Engine::gem_edit_run`] as a session over the edited model: an empty cache, and the gem as `Load` makes it. Costs a full `BuildOutput` per call.
     pub fn gem_edit_run_own_session(&self, group: usize, gem: usize, edit: &GemEdit, use_full_dps: Option<bool>) -> Result<RunRef, String> {
         let m = self.model_with_edit(group, gem, edit)?;
-        let sess = CalcSession::new(Rc::new(m), CalculateOptions::default());
+        let sess = self.calc_session(m);
         sess.build_output(pob_calc::session::CalcMode::Main).map_err(|e| e.0)?;
         let calc = sess.get_misc_calculator().map_err(|e| e.0)?;
         let run = calc

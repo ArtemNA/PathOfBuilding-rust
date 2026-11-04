@@ -816,25 +816,7 @@
 "dump": true
 },
 {
-"hold": [
-"CTRL"
-],
-"events": [
-[
-"KeyDown",
-"d"
-],
-[
-"KeyUp",
-"d"
-]
-],
-"dump": true
-},
-{
-"release": [
-"CTRL"
-]
+"jewelOrder": "u10-abyss-jewels"
 },
 {
 "cursor": [
