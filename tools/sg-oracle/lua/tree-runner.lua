@@ -60,6 +60,8 @@ end
 function GetUserPath() return USER end
 -- U3c: no background scripts: FetchLeagues of the Timeless popup (TreeTab.lua:2358) is the network, and `launch:DownloadPage` does nothing without an id
 function LaunchSubScript() return nil end
+-- U10: what a step's `netLeagues` answers: the pages asked since the last one (`launch:DownloadPage` below)
+local pendingPages = { }
 local realGetTime, realIsKeyDown = GetTime, IsKeyDown
 local cursorX, cursorY, nowMs, held = -100, -100, 0, { }
 function GetCursorPos() return cursorX, cursorY end
@@ -109,6 +111,7 @@ end
 local okL, errL = pcall(dofile, POB .. "Launch.lua")
 if not okL then fail("dofile Launch", errL) end
 local L = launch
+L.DownloadPage = function(self, url, callback) pendingPages[#pendingPages + 1] = { url = url, callback = callback } end
 L.CheckForUpdate = function() end
 SetMainObject(runner)
 
@@ -166,6 +169,14 @@ local function buildDump(b)
 	return d
 end
 -- U3b: the tab's state, the steps with `tab: true` (same fields as pob_ui::tabs::tree::debug_dump).
+-- U10: the last trade URL as crates/pob-ui/tests/tree.rs compares it (the text of dkjson.encode has its keys in the order of `pairs`).
+local function timelessTradeUrl()
+	local url = opened[#opened]
+	if not url or not url:find("/trade/search", 1, true) then return nil end
+	local root, code = url:match("^(.*)/([^/]+)$")
+	local helpers = require("Classes.TradeHelpers")
+	return { root = root, search = json.decode(helpers.B64GzipDecode(code), 1, json.null) }
+end
 local function tabDump(b)
 	local t, s = b.treeTab, b.spec
 	local c = t.controls
@@ -221,7 +232,7 @@ local function tabDump(b)
 			q.timeless = { jewelSel = pc.jewelSelect.selIndex, conquerorSel = pc.conquerorSelect.selIndex, conquerors = labels(pc.conquerorSelect), socketSel = pc.socketSelect.selIndex, sockets = labels(pc.socketSelect),
 				nodeSel = pc.nodeSelect.selIndex or "nil", nodes = labels(pc.nodeSelect), fallbackModes = labels(pc.fallbackWeightsList), slider1 = pc.nodeSliderValue.label, slider2 = pc.nodeSlider2Value.label, slider3 = pc.nodeSlider3Value.label,
 				slider2Label = pc.nodeSlider2Label.label, slider2Enabled = pc.nodeSlider2.enabled ~= false, searchList = pc.searchList.buf, searchListFallback = pc.searchListFallback.buf, fallbackShown = pc.searchListFallback.shown and true or false,
-				results = rows, resultSel = pc.searchResults.selIndex or "nil", highlight = pc.searchResults.highlightIndex or "nil", tradeEnabled = pc.searchTradeButton.enabled and true or false, tradeLabel = pc.searchTradeButton.label,
+				results = rows, resultSel = pc.searchResults.selIndex or "nil", highlight = pc.searchResults.highlightIndex or "nil", tradeEnabled = pc.searchTradeButton.enabled and true or false, tradeLabel = pc.searchTradeButton.label, tradeUrl = timelessTradeUrl(), leagues = pc.searchTradeLeagueSelect.list[1] and labels(pc.searchTradeLeagueSelect) or nil, msg = pc.msg.label ~= "" and pc.msg.label or nil,
 				protect = boxes, filter = pc.socketFilter.state and true or false, distance = td.socketFilterDistance or 0, jewelSocket = td.jewelSocket.id }
 		end
 		d.popup = q
@@ -418,6 +429,11 @@ function runner:Step()
 		sc.perf[#sc.perf + 1] = { what = "spec", ms = (os.clock() - t0) * 1000 }
 		return
 	end
+	if st.netLeagues then
+		local q = pendingPages
+		pendingPages = { }
+		for _, page in ipairs(q) do page.callback({ header = "", body = st.netLeagues }, nil) end
+	end
 	if st.search then
 		-- what the search edit's changeFunc does (TreeTab.lua:181)
 		main.modes.BUILD.treeTab.viewer.searchStr = st.search
@@ -549,6 +565,12 @@ function runner:Step()
 		return
 	end
 	if st.cursor then cursorX, cursorY = st.cursor[1], st.cursor[2] end
+	if st.cursorPopup then
+		local c = main.popups[1].controls[st.cursorPopup]
+		local x, y = c:GetPos()
+		local w, h = c:GetSize()
+		cursorX, cursorY = math.floor(x + w / 2), math.floor(y + h / 2)
+	end
 	if st.cursorNode then
 		-- the screen position of a node (PassiveTreeView.lua:281-287) in the 968x712 view of a latest-tree build
 		local b = main.modes.BUILD

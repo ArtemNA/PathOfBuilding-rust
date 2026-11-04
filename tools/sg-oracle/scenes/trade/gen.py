@@ -569,7 +569,7 @@ JEWELS = [{'id': 'j0', 'item': {'rarity': 'Rare', 'name': 'Synth Spark', 'typeLi
                                 'pseudoMods': [{'description': 'Sum: 9'}]}, 'listing': listing(2, 'chaos')}]
 
 
-def row_search(name, row, reply, options=(), extra=(), build=GOLDEN, pre=()):
+def row_search(name, row, reply, options=(), extra=(), build=GOLDEN, pre=(), tip=False):
     n = len(reply['result'])
     net = OPEN_NET + [ok(SEARCH_LG, {'id': 'r1', 'total': 25, 'result': HASHES[:n]}, limits()), ok(FETCH, reply, FETCH_LIMITS)]
     write(name, [
@@ -587,7 +587,8 @@ def row_search(name, row, reply, options=(), extra=(), build=GOLDEN, pre=()):
         FRAME,
         DELIVER,
         FRAME,
-        {'cursorPopup': f'importButton{row}', 'dump': True},
+        {'cursorPopup': f'importButton{row}', 'dump': True, **({'buttonTip': f'importButton{row}'} if tip else {})},
+        *([{'cursorPopup': f'importButton{row}', 'dump': True, 'buttonTip': f'importButton{row}', 'shot': f'{name}-tip'}] if tip else []),
         pop(f'importButton{row}', xml=True),
         *extra,
         {'events': [['KeyDown', 'ESCAPE'], ['KeyUp', 'ESCAPE']], 'dump': True},
@@ -596,6 +597,9 @@ def row_search(name, row, reply, options=(), extra=(), build=GOLDEN, pre=()):
 
 row_search('row-megalomaniac', 19, {'result': MEGA})
 row_search('row-megalomaniac2', 28, {'result': MEGA}, build='Generals Perforate Zerker', pre=[{'cursor': [640, 400], 'events': WHEEL + WHEEL + WHEEL + WHEEL + WHEEL + WHEEL, 'dump': True}])
+# U10: the compare lines of a Megalomaniac's tooltip (TradeQuery.lua:1225-1238): the build whose evaluation goes through the added nodes
+MEGA_REAL = [{**MEGA[0], 'item': {**MEGA[0]['item'], 'explicitMods': [{'description': f'1 Added Passive Skill is {n}'} for n in ('Heavy Hitter', 'Martial Prowess', 'Feed the Fury')]}}]
+row_search('row-megalomaniac-tip', 28, {'result': MEGA_REAL}, build='Generals Perforate Zerker', pre=[{'cursor': [640, 400], 'events': WHEEL + WHEEL + WHEEL + WHEEL + WHEEL + WHEEL, 'dump': True}], tip=True)
 row_search('row-watchers', 20, {'result': WATCHERS}, options=[pop('jewelSlot'), drop('jewelSlot', 2)])
 row_search('row-pearl', 21, {'result': PEARLS}, options=[pop('ringSlot'), drop('ringSlot', 2)])
 row_search('row-socket', 16, {'result': JEWELS})

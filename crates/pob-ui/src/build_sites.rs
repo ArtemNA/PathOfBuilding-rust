@@ -46,6 +46,18 @@ pub const SITE_NET: [(&str, &str, &str, &str, &str); 8] = [
     ),
 ];
 
+/// `linkURL` of the sites (BuildSiteTools.lua:19-42).
+const SITE_LINK: [&str; 8] = [
+    "maxroll%.gg/poe/pob/%1",
+    "pob.codes/b/%1",
+    "pobb.in/%1",
+    "poe.ninja/poe1/pob/%1",
+    "pastebin.com/%1",
+    "pastebin.com/%1",
+    "rentry.co/%1",
+    "poedb.tw/pob/%1",
+];
+
 /// `link:gsub(websiteInfo.regexURL, websiteInfo.downloadURL)` (BuildSiteTools.lua:100), `site` 1-based.
 pub fn site_code_url(link: &str, site: usize) -> String {
     let (regex, download, ..) = SITE_NET[site - 1];
@@ -65,6 +77,39 @@ pub fn download_build(link: &str, site: usize, callback: impl FnOnce(&mut Gfx, b
             None => callback(g, true, response.body),
         },
     );
+}
+
+/// The pattern `^pob:[/\\]*<id>[/\\]+(.+)` of a site (BuildSiteTools.lua:93, :122).
+fn uri_pattern(site: usize) -> String {
+    format!("^pob:[/\\]*{}[/\\]+(.+)", crate::tabs::import::WEBSITES[site].1.to_ascii_lowercase())
+}
+
+/// `uri:gsub(pattern, "https://" .. url)` of the first site that matches, in the list's order.
+fn uri_replace(uri: &str, url: impl Fn(usize) -> &'static str) -> Option<String> {
+    (0..crate::tabs::import::WEBSITES.len()).find_map(|site| {
+        let pat = uri_pattern(site);
+        let repl = format!("https://{}", url(site));
+        let (out, n) = pob_lua::gsub(uri.as_bytes(), pat.as_bytes(), pob_lua::Repl::Str(repl.as_bytes()), None).expect("pattern");
+        (n > 0).then(|| String::from_utf8_lossy(&out).into_owned())
+    })
+}
+
+/// `buildSites.ParseImportLinkFromURI(uri)` (:117-129). Main.lua:72 keeps the result in a local nothing reads: the import link of the build is the third argument of the callback.
+pub fn parse_import_link_from_uri(uri: &str) -> Option<String> {
+    uri_replace(uri, |site| SITE_LINK[site])
+}
+
+/// `buildSites.DownloadBuild(link, nil, callback)`, the branch of a program start (:91-99, :101-112): `callback(isSuccess, data, siteCodeURL)`.
+pub fn download_build_from_uri(uri: &str, g: &mut Gfx, callback: impl FnOnce(&mut Gfx, bool, String, Option<String>) + 'static) {
+    let Some(code_url) = uri_replace(uri, |site| SITE_NET[site].1) else {
+        callback(g, false, "Download information not found".to_string(), None);
+        return;
+    };
+    let url = code_url.clone();
+    launch().download_page(&url, PageParams::default(), move |g, response, err| match err {
+        Some(e) => callback(g, false, e, Some(code_url)),
+        None => callback(g, true, response.body, Some(code_url)),
+    });
 }
 
 /// `buildSites.UploadBuild(buildCode, websiteInfo)` + `RegisterSubScript` (:47-82): `callback(pasteLink, errMsg)`. `false`: the sub-script did not start.

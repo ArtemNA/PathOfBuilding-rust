@@ -356,13 +356,36 @@ impl Main {
         });
         MAIN_OBJ.with(|g| *g.borrow_mut() = Some(Rc::clone(&m)));
         m.sync_flags();
-        // `arg[1]` (import a build from a URI) is U8.
-        m.set_mode("BUILD", vec![ModeArg::Bool(false), ModeArg::Str("Unnamed build".into())]);
+        // :71-84 `arg[1]`: a build from a URI
+        let start_uri = l.start_uri.borrow_mut().take();
+        let ignore_build = start_uri.is_some();
+        if let Some(uri) = start_uri {
+            let _ = crate::build_sites::parse_import_link_from_uri(&uri);
+            crate::build_sites::download_build_from_uri(&uri, g, |_, ok, data, import_link| {
+                let m = main();
+                if !ok {
+                    m.set_mode("BUILD", vec![ModeArg::Bool(false), ModeArg::Str(data)]);
+                    return;
+                }
+                let xml = pob_build::decode_build_code(&data).map(|b| String::from_utf8_lossy(&b).into_owned());
+                let mut args = vec![ModeArg::Bool(false), ModeArg::Str("Imported Build".into())];
+                // `Inflate` of a bad code is nil: a new build under this name, and `unpack(self.newModeArgs)` stops at the hole, so without the link too (seen in the original)
+                if let Some(xml) = xml {
+                    args.extend([ModeArg::Str(xml), ModeArg::Bool(false)]);
+                    args.extend(import_link.map(ModeArg::Str));
+                }
+                m.set_mode("BUILD", args);
+                m.new_mode_change_to_tree.set(true);
+            });
+        }
+        if !ignore_build {
+            m.set_mode("BUILD", vec![ModeArg::Bool(false), ModeArg::Str("Unnamed build".into())]);
+        }
         if l.dev_mode.get() {
             unreachable!("devMode is never set in the port (launch.rs)");
         }
         match &l.cfg.user_path {
-            None => m.open_path_popup(g, "", "Could not obtain Documents path", false),
+            None => m.open_path_popup(g, "", "Could not obtain Documents path", ignore_build),
             Some(p) => *m.user_path.borrow_mut() = Some(format!("{p}/{}/", l.cfg.user_folder)),
         }
         // `self:LoadTree(latestTreeVersion)`: PassiveTree:LoadImage("Background2.png", …, "ASYNC") (PassiveTree.lua:262-263, :909-932).
@@ -372,7 +395,7 @@ impl Main {
         }
         let up = m.user_path.borrow().clone();
         if let Some(up) = up {
-            m.change_user_path(g, &up, false);
+            m.change_user_path(g, &up, ignore_build);
         }
         // Bottom bar (Main.lua:224-265).
         let am: ControlRef = m.anchor_main.clone();
@@ -527,7 +550,10 @@ impl Main {
             if let Some(m) = m {
                 m.init(f, &args);
             }
-            // `newModeChangeToTree` (import from a link, U8) sets `viewMode = "TREE"` of the build mode.
+            // `newModeChangeToTree`: the only mode set with it is BUILD
+            if self.new_mode_change_to_tree.get() {
+                *self.build_mode.view_mode.borrow_mut() = "TREE".into();
+            }
             self.new_mode_change_to_tree.set(false);
         }
         let vp = Rect::new(0.0, 0.0, screen_w, screen_h);

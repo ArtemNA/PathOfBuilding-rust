@@ -168,6 +168,24 @@ impl Engine {
         Ok(count)
     }
 
+    /// `Build:AddStatComparesToTooltip(tooltip, baseOutput, compareOutput, header, nodeCount)` over the tables of `TradeQuery:ReduceOutput`: they have no `Minion`, so only the player's list.
+    pub fn stat_compare_small(
+        &self,
+        base: &std::collections::HashMap<String, f64>,
+        cmp: &std::collections::HashMap<String, f64>,
+        header: &str,
+        node_count: f64,
+    ) -> Result<Vec<String>, String> {
+        let res = self.result();
+        let mb = MinionBorrow::new(res);
+        let denv = DisplayEnv::new(res, &mb)?;
+        let state = &res.perform.player;
+        let (bv, cv) = (ActorView::small(state, &res.env, base), ActorView::small(state, &res.env, cmp));
+        let mut lines = Vec::new();
+        self.compare_stat_list(&mut lines, DISPLAY_STATS, denv.player.skill_flags, &bv, &cv, header, Some(node_count))?;
+        Ok(lines)
+    }
+
     /// PassiveTreeView.lua:1684-1729 on spec node `i`: the differences of allocating / deallocating it and its path. `trace_path`:
     /// `self.tracePath` (indices into `spec.nodes`).
     pub fn node_stat_compare(

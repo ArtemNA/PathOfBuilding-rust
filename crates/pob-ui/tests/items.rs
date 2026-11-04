@@ -71,6 +71,21 @@ impl Sandbox {
         let w = r#"<TradeSearchWeights><Stat stat="FullDPS" label="old label" weightMult="1.5"/><Stat stat="NoSuchStat" label="gone" weightMult="2"/><Stat stat="Life" label="zero" weightMult="0"/></TradeSearchWeights><TradeSearchWeights><Stat stat="TotalEHP" weightMult="0.125"/><Stat stat="Armour" label="not a number" weightMult="x"/></TradeSearchWeights></Items>"#;
         let x = std::fs::read_to_string(format!("{}/spec/TestBuilds/3.13/OccVortex.xml", scene::pob_root())).expect("golden");
         std::fs::write(builds.join("Trade Weights Test.xml"), x.replacen("</Items>", w, 1)).expect("weights build");
+        // U10: a build for a game version the program does not support (the same edit as items-runner.lua)
+        let x = std::fs::read_to_string(format!("{}/spec/TestBuilds/3.13/OccVortex.xml", scene::pob_root())).expect("golden");
+        let at = x.find("targetVersion=\"").expect("targetVersion") + "targetVersion=\"".len();
+        let end = at + x[at..].find('"').expect("quote");
+        std::fs::write(builds.join("Old Version Test.xml"), format!("{}2_6{}", &x[..at], &x[end..])).expect("old build");
+        // U10: a skill with `minionUses` for the drag onto mainSkillMinion (the same edit as items-runner.lua)
+        let x = std::fs::read_to_string(format!("{}/spec/TestBuilds/3.13/OccVortex.xml", scene::pob_root())).expect("golden");
+        let at = x.find("<Skills ").expect("<Skills");
+        let end = at + x[at..].find('>').expect(">") + 1;
+        let g = r#"<Skill mainActiveSkillCalcs="1" enabled="true" mainActiveSkill="1"><Gem level="20" gemId="Metadata/Items/Gems/SkillGemAnimateGuardian" skillId="AnimateGuardian" qualityId="Default" quality="0" enabled="true" nameSpec="Animate Guardian"/></Skill>"#;
+        let x = format!("{}{g}{}", &x[..end], &x[end..]);
+        let at = x.find("mainSocketGroup=\"").expect("mainSocketGroup") + "mainSocketGroup=\"".len();
+        let end = at + x[at..].find('"').expect("quote");
+        let x = format!("{}1{}", &x[..at], &x[end..]);
+        std::fs::write(builds.join("Guardian Test.xml"), x).expect("guardian build");
         for b in local_builds("items") {
             let src = format!("{BUILDS_329}{b}.xml");
             let src = if std::path::Path::new(&src).exists() {
@@ -120,6 +135,9 @@ fn dump(g: &Gfx, st: &Value, tp: &TestPlatform) -> Value {
     d.insert("popups".into(), json!(m.popups.borrow().len()));
     if let Some(p) = m.popups.borrow().first() {
         d.insert("popupTitle".into(), json!(p.title.get(g)));
+    }
+    if st["popupOnly"].as_bool() == Some(true) {
+        return Value::Object(d);
     }
     d.insert("clipboard".into(), json!(tp.state().clipboard.unwrap_or_else(|| "nil".into())));
     let tab = b.items_tab.borrow().clone().expect("itemsTab");
@@ -175,6 +193,9 @@ fn oracle_state(o: &Value, st: &Value, name: &str) -> Value {
     d.insert("popups".into(), s["popups"].clone());
     if !s["popupTitle"].is_null() {
         d.insert("popupTitle".into(), s["popupTitle"].clone());
+    }
+    if st["popupOnly"].as_bool() == Some(true) {
+        return Value::Object(d);
     }
     d.insert("clipboard".into(), s["clipboard"].clone());
     d.insert("items".into(), s["items"].clone());
@@ -237,6 +258,16 @@ fn cursor_step(gfx: &mut Gfx, st: &Value, cur: &mut (f64, f64)) {
             .debug_child(c[0].as_str().expect("parent"), c[1].as_str().expect("child"))
             .unwrap_or_else(|| panic!("child {c:?}"));
         *cur = centre(gfx, &*n, off(c, 2), off(c, 3));
+    } else if let Some(c) = st["cursorPopupChild"].as_array() {
+        let p = m.popups.borrow()[0].clone();
+        let list = p.control(c[0].as_str().expect("name"));
+        let any: &dyn std::any::Any = &*list;
+        let host = any
+            .downcast_ref::<pob_ui::controls::list::ListControl<usize>>()
+            .map(|l| &l.host)
+            .expect("a list of the popup");
+        let n = host.get(c[1].as_str().expect("child")).expect("child");
+        *cur = centre(gfx, &*n, 0.0, 0.0);
     } else if let Some(c) = st["cursorSkillCtl"].as_str() {
         let t = b.skills_tab.borrow().clone().expect("skillsTab");
         *cur = t.debug_control_pos(gfx, c, 0.0, 0.0);
@@ -302,6 +333,8 @@ fn run(name: &str) -> Run {
         serde_json::from_str(&std::fs::read_to_string(scene::oracle_dir().join(format!("scenes/items/{name}.json"))).expect("scenario"))
             .expect("json");
     let sandbox = Sandbox::new(name);
+    pob_ui::tabs::item_popups::set_affix_order_sample(None);
+    pob_ui::tabs::items::set_shared_slot_order_sample(None);
     let tp = TestPlatform::new();
     let mut gfx = Gfx::with_platform(&scene::fonts_dir(), scene::SCREEN, 1.0, Box::new(tp.clone())).expect("fonts");
     gfx.set_dpi_scale_override_percent(100);
@@ -363,6 +396,28 @@ fn run(name: &str) -> Run {
             let view = view.as_mut().expect("view");
             view.set_order_sample(ids, conns);
             view.set_sub_graph_order_sample(subs);
+            continue;
+        }
+        // U10: `launch.devMode` and the ALT key
+        if let Some(on) = st["devAlt"].as_bool() {
+            pob_ui::launch::launch().dev_mode.set(on);
+            gfx.input(RawEvent::Key {
+                key: pob_gfx::input::PhysKey::Alt,
+                pressed: on,
+            });
+            continue;
+        }
+        // R13: the orders of `pairs` of this oracle process
+        let sample = |o: &str| -> Vec<String> {
+            let rec = oracle_record(o).unwrap_or_else(|| panic!("fixtures/items/{o}.json"));
+            rec["ids"].as_array().expect("ids").iter().map(|v| v.as_str().expect("id").to_string()).collect()
+        };
+        if let Some(o) = st["affixOrder"].as_str() {
+            pob_ui::tabs::item_popups::set_affix_order_sample(Some(sample(o)));
+            continue;
+        }
+        if let Some(o) = st["sharedSlotOrder"].as_str() {
+            pob_ui::tabs::items::set_shared_slot_order_sample(Some(sample(o)));
             continue;
         }
         if st["closeBuild"].as_bool() == Some(true) {

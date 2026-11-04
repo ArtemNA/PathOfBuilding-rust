@@ -422,8 +422,18 @@ fn run(name: &str) -> Run {
         frame(&mut gfx, &l);
         out.ms.push(((i + 1) as u64, t0.elapsed().as_secs_f64() * 1e3));
         if st["dump"].as_bool() == Some(true) {
-            out.dumps
-                .push(((i + 1) as u64, dump(&gfx, &tp, &net, st["xml"].as_bool() == Some(true))));
+            let mut d = dump(&gfx, &tp, &net, st["xml"].as_bool() == Some(true));
+            // U10: the lines of a button's tooltip
+            if let Some(n) = st["buttonTip"].as_str() {
+                let p = main().popups.borrow()[0].clone();
+                let c = p.control(n);
+                let any: &dyn std::any::Any = &*c;
+                let b = any.downcast_ref::<pob_ui::controls::basic::ButtonControl>().expect("a button");
+                let lines: Vec<String> =
+                    b.tip.tooltip.borrow().lines.iter().map(|l| l.text.clone().unwrap_or_else(|| "<sep>".to_string())).collect();
+                d["buttonTip"] = json!(lines);
+            }
+            out.dumps.push(((i + 1) as u64, d));
         }
         if let Some(shot) = st["shot"].as_str() {
             let list = frame(&mut gfx, &l);

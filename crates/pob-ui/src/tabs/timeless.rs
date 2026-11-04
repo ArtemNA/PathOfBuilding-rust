@@ -1,6 +1,5 @@
 //! `TreeTab:FindTimelessJewel` (TreeTab.lua:1169-2876), `TimelessJewelListControl`, `TimelessJewelSocketControl` (the socket viewer: `DropDownControl::post_draw`).
 //!
-//! `unimplemented` (a note, no crash): the trade URL and the league list (the network, U8), what needs the items tab (`AddItemStatDifferences`, sockets: U6).
 
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
@@ -17,7 +16,8 @@ use crate::controls::list::{ByRef, ListControl, ListHooks};
 use crate::controls::popup::PopupDialog;
 use crate::controls::scroll_bar::SliderControl;
 use crate::undo::UndoHost;
-use crate::modules::main::{main, not_ported, note_not_ported};
+use crate::modules::main::{main, note_not_ported};
+use serde_json::json;
 use crate::sg;
 use crate::tooltip::Tooltip;
 
@@ -229,6 +229,12 @@ pub struct TimelessPersist {
     last_search_more: Cell<bool>,
     trade_type_index: Cell<Option<usize>>,
     selected_realm_index: Cell<Option<usize>>,
+    /// `self.tradeLeaguesList` (TreeTab.lua:188).
+    trade_leagues: RefCell<HashMap<String, Vec<String>>>,
+    /// `self.timelessJewelLeagueSelect`.
+    league_select: RefCell<Option<String>>,
+    /// `self.tradeQueryRequests`.
+    requests: crate::trade::requests::TradeQueryRequests,
 }
 
 /// The locals of `FindTimelessJewel`.
@@ -245,6 +251,10 @@ struct Local {
     slider_label: String,
     slider2_label: String,
     highlight: Cell<Option<usize>>,
+    /// `controls.searchTradeButton.lastSearch`.
+    last_search: Cell<Option<(usize, usize)>>,
+    /// The URL of the last `OpenURL` of the popup, for the gate's dump.
+    last_trade_url: RefCell<Option<String>>,
 }
 
 thread_local! {
@@ -1366,6 +1376,165 @@ fn shared_of(socket: Option<JewelSocket>, desired: IndexMap<String, Desired>) ->
     }
 }
 
+/// The `Open Trade URL` button (TreeTab.lua:2220-2321).
+fn open_trade_url(g: &mut Gfx) {
+    let t = tab();
+    let list = ctl::<ListControl<Row>>("searchResults");
+    let n = t.timeless.results.borrow().len();
+    let more = ctl::<CheckBoxControl>("searchMore").state.get();
+    let (jewel, conqueror, devotion1, devotion2) = {
+        let s = t.timeless.shared.borrow();
+        (jewel_id(), s.conqueror, s.devotion1, s.devotion2)
+    };
+    let sel = list.sel_index.get();
+    let (mut start_row, mut end_row) = match local(|l| l.highlight.get()) {
+        Some(h) if !more => {
+            let s = sel.expect("selIndex");
+            (s.min(h), s.max(h))
+        }
+        _ => {
+            let start = sel.unwrap_or(1);
+            let max_filters = if more { 180 } else { 10 };
+            (start, start + max_filters / if conqueror == 1 { 3 } else { 1 })
+        }
+    };
+    // lua numbers: the count can go below zero when the selected row is past the list
+    let mut seed_count = (n as i64 - start_row as i64).min(end_row as i64 - start_row as i64) + 1;
+    if let Some((prev_row, prev_count)) = local(|l| l.last_search.get())
+        && prev_row == start_row
+        && prev_count as i64 == seed_count
+    {
+        start_row = end_row + 1;
+        if start_row > n {
+            return;
+        }
+        seed_count = ((n - start_row + 1) as i64).min(seed_count);
+        end_row = start_row + seed_count as usize - 1;
+    }
+    list.sel_index.set(Some(start_row));
+    list.scroll_bar_v.set_offset((start_row as f64 - 1.0) * 16.0);
+    local(|l| {
+        l.highlight.set(Some(end_row));
+        l.last_search.set(Some((start_row, seed_count as usize)));
+    });
+    let ids = &pob_data::rules::rules().timeless_jewel_trade_ids[jewel - 1];
+    let keystones: Vec<String> = ids["keystone"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|v| v.as_str().map(str::to_owned))
+        .collect();
+    let trade_ids: Vec<String> = if jewel >= 7 {
+        vec![keystones[0].clone()]
+    } else if conqueror > 1 {
+        vec![keystones[conqueror - 2].clone()]
+    } else {
+        keystones[..3].to_vec()
+    };
+    let mut seed_trades = Vec::new();
+    {
+        let results = t.timeless.results.borrow();
+        for i in start_row..start_row + seed_count.max(0) as usize {
+            let seed = results[i - 1].0.seed;
+            for id in &trade_ids {
+                seed_trades.push(json!({ "id": id, "value": { "min": seed, "max": seed } }));
+            }
+        }
+    }
+    let option = ["securable", "available", "onlineleague", "online", "any"][t.timeless.trade_type_index.get().unwrap_or(1) - 1];
+    let mut stats = vec![json!({ "filters": seed_trades, "type": "count", "value": { "min": 1 } })];
+    if let Some(devotion) = ids.get("devotion").and_then(|d| d.as_array()) {
+        let mut filters = Vec::new();
+        if devotion1 > 1 {
+            filters.push(json!({ "id": devotion[devotion1 - 2] }));
+        }
+        if devotion2 > 1 {
+            filters.push(json!({ "id": devotion[devotion2 - 2] }));
+        }
+        if !filters.is_empty() {
+            stats.push(json!({ "filters": filters, "type": "and" }));
+        }
+    }
+    let search = json!({ "status": { "option": option }, "stats": stats });
+    let realm = ctl::<DropDownControl>("realmSelection")
+        .get_sel_value()
+        .and_then(|v| v.label)
+        .expect("realm")
+        .to_lowercase();
+    let Some(league) = ctl::<DropDownControl>("searchTradeLeagueSelect").get_sel_value().and_then(|v| v.label) else {
+        // the list of leagues has not come: `league:gsub` of TradeQueryRequests.lua:509
+        panic!("Classes/TradeQueryRequests.lua:509: attempt to index local 'league' (a nil value)");
+    };
+    let url = crate::trade::requests::build_url(
+        "https://www.pathofexile.com/trade/search",
+        Some(&realm),
+        &league,
+        Some(&crate::trade::helpers::b64_gzip_encode(&crate::trade::dkjson::encode(&search))),
+    );
+    g.open_url(&url);
+    g.copy(&url);
+    local(|l| *l.last_trade_url.borrow_mut() = Some(url));
+    ctl::<ButtonControl>("searchTradeButton").label.set("Open Next Trade URL".to_string());
+}
+
+/// A trade URL as the gate compares it: the text of `dkjson.encode` has its keys in the order of `pairs` (R13).
+fn trade_url_parts(url: &str) -> serde_json::Value {
+    let (root, code) = url.rsplit_once('/').expect("a trade URL");
+    let text = crate::trade::helpers::b64_gzip_decode(code).expect("the query");
+    json!({ "root": root, "search": serde_json::from_str::<serde_json::Value>(&text).expect("json") })
+}
+
+/// `updateLeagues()` (TreeTab.lua:2344-2382).
+fn update_leagues(g: &mut Gfx) {
+    let t = tab();
+    let realm_id = ctl::<DropDownControl>("realmSelection")
+        .get_sel_value()
+        .and_then(|v| v.label)
+        .expect("realm")
+        .to_lowercase();
+    let league_select = ctl::<DropDownControl>("searchTradeLeagueSelect");
+    let list = t.timeless.trade_leagues.borrow_mut().entry(realm_id.clone()).or_default().clone();
+    if !list.is_empty() {
+        league_select.set_list(g, Some(drop_items(list.clone())));
+        // restore the last league selected
+        let last = t.timeless.league_select.borrow().clone();
+        if let Some(i) = list.iter().position(|l| Some(l) == last.as_ref()) {
+            league_select.set_sel(g, i as i64 + 1, false);
+        }
+        return;
+    }
+    let msg = ctl::<LabelControl>("msg");
+    let weak_tab = Rc::downgrade(&t);
+    let realm = realm_id.clone();
+    t.timeless.requests.fetch_leagues(
+        &realm_id,
+        Rc::new(move |g: &mut Gfx, leagues: Vec<String>, err: Option<String>| {
+            if let Some(err) = err {
+                msg.label.set(format!("^1Error fetching league list, default league will be used\n{err}^7"));
+                return;
+            }
+            let Some(t) = weak_tab.upgrade() else { return };
+            let mut league_list = t.timeless.trade_leagues.borrow().get(&realm).cloned().unwrap_or_default();
+            let mut temp: Vec<String> = Vec::new();
+            for league in leagues {
+                if !matches!(league.as_str(), "Standard" | "Ruthless" | "Hardcore" | "Hardcore Ruthless") {
+                    if league.contains("Hardcore") || league.contains("Ruthless") {
+                        league_list.push(league);
+                    } else {
+                        // the dynamic, base league goes first: the league shown on load
+                        temp.push(league);
+                        temp.extend(league_list.iter().cloned());
+                        league_list.clone_from(&temp);
+                    }
+                }
+            }
+            league_list.extend(["Standard", "Hardcore", "Ruthless", "Hardcore Ruthless"].map(str::to_owned));
+            t.timeless.trade_leagues.borrow_mut().insert(realm.clone(), league_list.clone());
+            league_select.set_list(g, Some(drop_items(league_list)));
+        }),
+    );
+}
+
 /// The `Search` button (:2805-2870).
 fn on_search(g: &mut Gfx) {
     let t = tab();
@@ -2473,12 +2642,12 @@ pub fn find_timeless_jewel(g: &mut Gfx) {
     let rs: ControlRef = results.clone();
     reg("searchResults", results);
     reg("msg", LabelControl::new(None, rect(-280.0, 5.0, 0.0, 20.0), String::new()));
-    // :2220-2427 the trade block: the network
+    // :2220-2427 the trade block
     let trade = ButtonControl::new(
         anchor("BOTTOMRIGHT", &rs, "TOPRIGHT"),
         rect(0.0, -row_spacing, 170.0, button_height),
         "Open Trade URL".to_string(),
-        |g| not_ported(g, "TreeTab.lua:2220-2321 Open Trade URL: the network (U8, the user's decision)"),
+        open_trade_url,
     );
     trade.base.enabled.set(!t.timeless.results.borrow().is_empty());
     trade.tip.set_tooltip_func(|tooltip: &mut Tooltip, g: &Gfx, ()| {
@@ -2504,7 +2673,9 @@ pub fn find_timeless_jewel(g: &mut Gfx) {
         anchor("RIGHT", &tr, "LEFT"),
         rect(-label_spacing, 0.0, 140.0, button_height),
         Vec::new(),
-        None,
+        Some(Rc::new(|_g: &mut Gfx, _index, v: &DropItem| {
+            *tab().timeless.league_select.borrow_mut() = v.label.clone();
+        })),
         None,
         false,
     );
@@ -2521,17 +2692,19 @@ pub fn find_timeless_jewel(g: &mut Gfx) {
         anchor("BOTTOMLEFT", &lr, "TOPLEFT"),
         rect(0.0, -row_spacing, 50.0, button_height),
         drop_items(["PC", "Sony", "Xbox"].map(str::to_string)),
-        Some(Rc::new(|_g: &mut Gfx, index, _v: &DropItem| {
+        Some(Rc::new(|g: &mut Gfx, index, _v: &DropItem| {
             tab().timeless.selected_realm_index.set(Some(index));
-            note_not_ported("TreeTab.lua:2344-2386 updateLeagues: FetchLeagues is the network (U8)");
+            update_leagues(g);
         })),
         None,
         false,
     );
-    realm.sel_index.set(t.timeless.selected_realm_index.get().unwrap_or(1));
-    note_not_ported("TreeTab.lua:2344-2386 updateLeagues: FetchLeagues is the network (U8)");
     let rr: ControlRef = realm.clone();
-    reg("realmSelection", realm);
+    reg("realmSelection", realm.clone());
+    // :2388-2392 the previous choice; `selFunc` by hand: it does not run when the selection stays
+    realm.set_sel(g, t.timeless.selected_realm_index.get().unwrap_or(1) as i64, false);
+    tab().timeless.selected_realm_index.set(Some(realm.sel_index.get()));
+    update_leagues(g);
     label(
         "realmLabel",
         anchor("TOPRIGHT", &rr, "TOPLEFT"),
@@ -2730,6 +2903,9 @@ pub fn debug_dump(g: &Gfx) -> serde_json::Value {
                 .unwrap_or_default()
         })
         .collect();
+    let trade_url = local(|l| l.last_trade_url.borrow().clone()).map(|u| trade_url_parts(&u));
+    let leagues = Some(labels("searchTradeLeagueSelect")).filter(|l| !l.is_empty());
+    let msg = Some(text("msg")).filter(|m| !m.is_empty());
     json!({
         "jewelSel": sel("jewelSelect"),
         "conquerorSel": sel("conquerorSelect"),
@@ -2752,6 +2928,9 @@ pub fn debug_dump(g: &Gfx) -> serde_json::Value {
         "highlight": local(|l| l.highlight.get()).map_or(json!("nil"), |v| json!(v)),
         "tradeEnabled": ctl::<ButtonControl>("searchTradeButton").base.enabled.get(g),
         "tradeLabel": ctl::<ButtonControl>("searchTradeButton").label.get(g),
+        "tradeUrl": trade_url,
+        "leagues": leagues,
+        "msg": msg,
         "protect": boxes,
         "filter": ctl::<CheckBoxControl>("socketFilter").state.get(),
         "distance": data.socket_filter_distance,

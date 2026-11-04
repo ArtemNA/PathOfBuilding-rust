@@ -1138,7 +1138,26 @@ impl Control for GemSelectControl {
             *self.edit.host.sel_control.borrow_mut() = None;
         }
         if key == "F1" && self.mouse_over_comp(g).0 {
-            crate::modules::main::note_not_ported("Classes/GemSelectControl.lua:833-851 itemLib.wiki.openGem (U6)");
+            // :833-851
+            let id = if self.dropped.get() {
+                let list = self.list.borrow();
+                let of = |i: usize| list.get(i.wrapping_sub(1)).filter(|id| self.gems.borrow().contains(*id)).cloned();
+                let sel = self.sel_index.get();
+                match self.hover_sel.get().and_then(of) {
+                    Some(id) => Some(id),
+                    None if sel > 0 => Some(of(sel as usize).expect("Modules/ItemTools.lua:458: attempt to index local 'gemData' (a nil value)")),
+                    None if !self.no_matches.get() => Some(of(1).expect("Modules/ItemTools.lua:458: attempt to index local 'gemData' (a nil value)")),
+                    None => None,
+                }
+            } else {
+                let tab = self.tab.upgrade().expect("skillsTab");
+                let index = self.index.get();
+                let group = tab.display_index();
+                group.and_then(|at| tab.read(|e| e.socket_groups()[at - 1].gem_list.get(index.wrapping_sub(1)).and_then(|x| x.gem_data.clone())))
+            };
+            if let Some(d) = id.as_deref().and_then(gem_of) {
+                crate::tabs::items::wiki_open_gem(g, d);
+            }
         }
         let me: ControlRef = self.clone();
         let edit: ControlRef = self.edit.clone();

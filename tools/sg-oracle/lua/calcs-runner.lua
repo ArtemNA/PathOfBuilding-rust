@@ -279,6 +279,12 @@ local function dump(st)
 		if v.tooltip then for i, l in ipairs(v.tooltip.lines) do d.tooltip[i] = (l.text or "<sep>") end end
 	end
 	if main.mode == "BUILD" then d.calcs = calcsDump(main.modes.BUILD) end
+	if st.bdTip then
+		-- U10: the item tooltip of a cell
+		local bd = main.modes.BUILD.calcsTab.controls.breakdown
+		d.calcs.bdTip = { }
+		for i, l in ipairs(bd.tooltip.lines) do d.calcs.bdTip[i] = l.text or "<sep>" end
+	end
 	d.writesRefused = table.concat(writesRefused, ",")
 	if runner.bfTrace then d.bfTrace = runner.bfTrace runner.bfTrace = { } end
 	return d

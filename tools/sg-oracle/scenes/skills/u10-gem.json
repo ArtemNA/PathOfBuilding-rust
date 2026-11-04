@@ -1,0 +1,410 @@
+{
+"steps": [
+{
+"open": "OccVortex"
+},
+{
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON",
+false
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"cursorBuild": [
+"modeSkills"
+],
+"dump": true
+},
+{
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON",
+false
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"cursorSkill": [
+"sortGemsByDPS"
+],
+"dump": true
+},
+{
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON",
+false
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"cursorRow": 2,
+"dump": true
+},
+{
+"cursorSkill": [
+"gemSlot1Name"
+],
+"dump": true
+},
+{
+"events": [
+[
+"KeyDown",
+"F1",
+false
+],
+[
+"KeyUp",
+"F1"
+]
+],
+"cursorSkill": [
+"gemSlot1Name"
+],
+"dump": true,
+"wantOpened": true
+},
+{
+"events": [
+[
+"KeyDown",
+"F1",
+false
+],
+[
+"KeyUp",
+"F1"
+]
+],
+"cursorSkill": [
+"gemSlot2Name"
+],
+"dump": true,
+"wantOpened": true
+},
+{
+"events": [
+[
+"KeyDown",
+"F1",
+false
+],
+[
+"KeyUp",
+"F1"
+]
+],
+"cursorSkill": [
+"gemSlot3Name"
+],
+"dump": true,
+"wantOpened": true
+},
+{
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON",
+false
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"cursorSkill": [
+"gemSlot3Name"
+],
+"dump": true
+},
+{
+"cursorSkill": [
+"gemSlot3Name"
+],
+"hold": [
+"CTRL"
+],
+"events": [
+[
+"KeyDown",
+"a",
+false
+],
+[
+"KeyUp",
+"a"
+]
+],
+"dump": true
+},
+{
+"release": [
+"CTRL"
+]
+},
+{
+"events": [
+[
+"Char",
+"f"
+],
+[
+"Char",
+"i"
+],
+[
+"Char",
+"r"
+],
+[
+"Char",
+"e"
+],
+[
+"Char",
+"b"
+]
+],
+"dump": true
+},
+{
+"events": [
+[
+"KeyDown",
+"F1",
+false
+],
+[
+"KeyUp",
+"F1"
+]
+],
+"cursorSkill": [
+"gemSlot3Name"
+],
+"dump": true,
+"wantOpened": true
+},
+{
+"events": [
+[
+"KeyDown",
+"DOWN",
+false
+],
+[
+"KeyUp",
+"DOWN"
+]
+],
+"dump": true
+},
+{
+"events": [
+[
+"KeyDown",
+"F1",
+false
+],
+[
+"KeyUp",
+"F1"
+]
+],
+"cursorSkill": [
+"gemSlot3Name"
+],
+"dump": true,
+"wantOpened": true
+},
+{
+"cursorSkill": [
+"gemSlot3Name",
+0,
+31
+],
+"dump": true
+},
+{
+"events": [
+[
+"KeyDown",
+"F1",
+false
+],
+[
+"KeyUp",
+"F1"
+]
+],
+"cursorSkill": [
+"gemSlot3Name",
+0,
+31
+],
+"dump": true,
+"wantOpened": true
+},
+{
+"events": [
+[
+"KeyDown",
+"ESCAPE",
+false
+],
+[
+"KeyUp",
+"ESCAPE"
+]
+],
+"cursorSkill": [
+"gemSlot3Name"
+],
+"dump": true
+},
+{
+"events": [
+[
+"KeyDown",
+"F1",
+false
+],
+[
+"KeyUp",
+"F1"
+]
+],
+"cursorSkill": [
+"gemSlot3Name"
+],
+"dump": true,
+"wantOpened": true
+},
+{
+"cursor": [
+1000,
+780
+],
+"dump": true,
+"wantOpened": true
+},
+{
+"closeBuild": true
+},
+{
+"defaultGemQuality": 20
+},
+{
+"openNew": true
+},
+{
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON",
+false
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"cursorBuild": [
+"modeSkills"
+],
+"dump": true
+},
+{
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON",
+false
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"cursorList": "new",
+"dump": true
+},
+{
+"events": [
+[
+"Char",
+"f"
+],
+[
+"Char",
+"i"
+],
+[
+"Char",
+"r"
+],
+[
+"Char",
+"e"
+],
+[
+"Char",
+"b"
+],
+[
+"Char",
+"a"
+],
+[
+"Char",
+"l"
+],
+[
+"Char",
+"l"
+]
+],
+"dump": true
+},
+{
+"events": [
+[
+"KeyDown",
+"RETURN",
+false
+],
+[
+"KeyUp",
+"RETURN"
+]
+],
+"dump": true
+},
+{
+"cursor": [
+1000,
+780
+],
+"dump": true,
+"shot": "u10-new-quality"
+},
+{
+"defaultGemQuality": 0
+},
+{
+"closeBuild": true
+}
+]
+}

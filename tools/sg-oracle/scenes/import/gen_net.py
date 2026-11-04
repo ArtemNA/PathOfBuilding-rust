@@ -680,6 +680,30 @@ write('net-compare-code', [
     AWAY | {"dump": True, "shot": "net-compare-code"},
 ])
 
+# U10: the start of the program with a URI (Main.lua:71-84); one scene per process of the original: run them one by one (uri-gen.ps1 is not needed: -ScriptArgs <scene>)
+URI_SCENES = []
+def write_uri(name, uri, net, shot=None):
+    steps = [{"dump": True}, DELIVER, AWAY | {"dump": True, "xml": True}, {"waitAssets": True}, {"cursor": [1200, 790], "dump": True, **({"shot": shot} if shot else {})}]
+    write(name, steps, net)
+    p = f'{OUT}/{name}.json'
+    d = json.load(open(p))
+    d["uri"] = uri
+    json.dump(d, open(p, 'w', newline='\n'), indent=0)
+    URI_SCENES.append(name)
+write_uri('uri-pobbin', 'pob://pobbin/abc123', [ok("https://pobb.in/pob/abc123", CODE)], 'uri-pobbin')
+write_uri('uri-maxroll-backslash', 'pob:\\\\maxroll\\xyz', [ok("https://maxroll.gg/poe/api/pob/xyz", CODE)])
+write_uri('uri-404', 'pob://pobcodes/abc123', [fail("https://api.pob.codes/abc123/raw", 404)])
+write_uri('uri-error', 'pob://poeninja/abc123', [err("https://poe.ninja/poe1/pob/raw/abc123", "synthetic failure")])
+write_uri('uri-unknown', 'pob://nosuchsite/abc123', [])
+write_uri('uri-bad-code', 'pob://pastebin/abc123', [ok("https://pastebin.com/raw/abc123", "not a build")])
+
+# U10: the width of PartyTab.lua:53-57 (> 1350)
+write('party-wide', [{"openNew": True}, AWAY | {"dump": True}, PARTY, AWAY | {"dump": True}, TAB, PARTY])
+_p = f'{OUT}/party-wide.json'
+_d = json.load(open(_p))
+_d["screen"] = [1800, 800]
+json.dump(_d, open(_p, 'w', newline='\n'), indent=0)
+
 idx = json.load(open(f'{OUT}/index.json'))
 names = write.__defaults__[1]
 for n in names:

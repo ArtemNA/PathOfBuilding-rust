@@ -1,0 +1,296 @@
+{
+"steps": [
+{
+"open": "OccVortex"
+},
+{
+"cursorBuild": [
+"modeItems"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"cursorItem": [
+"setManage"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true,
+"shot": "u10-sets-manage"
+},
+{
+"cursorPopupRow": [
+"setList",
+1
+]
+},
+{
+"hold": [
+"LEFTBUTTON"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"cursorPopupRow": [
+"sharedList",
+1
+],
+"dump": true,
+"shot": "u10-sets-drag"
+},
+{
+"release": [
+"LEFTBUTTON"
+],
+"events": [
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"cursorPopupRow": [
+"sharedList",
+1
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"cursorPopupChild": [
+"sharedList",
+"rename"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"cursorPopup": [
+"edit"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+],
+[
+"Char",
+"Y"
+]
+],
+"dump": true
+},
+{
+"cursorPopup": [
+"save"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"sharedSlotOrder": "u10-sets-slots"
+},
+{
+"cursorPopupRow": [
+"sharedList",
+1
+],
+"dump": true,
+"shot": "u10-sets-renamed"
+},
+{
+"hold": [
+"LEFTBUTTON"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"cursorPopupRow": [
+"setList",
+1
+],
+"dump": true
+},
+{
+"release": [
+"LEFTBUTTON"
+],
+"events": [
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"cursorPopupRow": [
+"sharedList",
+1
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"cursorPopupChild": [
+"sharedList",
+"delete"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true,
+"shot": "u10-sets-delete"
+},
+{
+"cursor": [
+1200,
+790
+],
+"events": [
+[
+"KeyDown",
+"RETURN"
+],
+[
+"KeyUp",
+"RETURN"
+]
+],
+"dump": true
+},
+{
+"cursor": [
+1200,
+790
+],
+"dump": true,
+"shot": "u10-sets-deleted"
+},
+{
+"cursorPopup": [
+"close"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"cursor": [
+1200,
+790
+],
+"hold": [
+"CTRL"
+],
+"events": [
+[
+"KeyDown",
+"s"
+],
+[
+"KeyUp",
+"s"
+]
+],
+"dump": true,
+"file": "OccVortex.xml",
+"fileOut": "u10-sets-save.xml"
+},
+{
+"release": [
+"CTRL"
+]
+},
+{
+"closeBuild": true
+}
+]
+}

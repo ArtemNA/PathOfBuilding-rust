@@ -117,6 +117,12 @@ impl Sandbox {
             )
             .expect("copy golden");
         }
+        // U10: a skill for the only option of type `float` (the same edit as config-runner.lua)
+        let x = std::fs::read_to_string(format!("{}/spec/TestBuilds/3.13/OccVortex.xml", scene::pob_root())).expect("golden");
+        let at = x.find("<Skills ").expect("<Skills");
+        let end = at + x[at..].find('>').expect(">") + 1;
+        let g = r#"<Skill mainActiveSkillCalcs="1" enabled="true" mainActiveSkill="1"><Gem level="20" gemId="Metadata/Items/Gems/SkillGemIntuitiveLink" skillId="IntuitiveLink" qualityId="Default" quality="0" enabled="true" nameSpec="Intuitive Link"/></Skill>"#;
+        std::fs::write(builds.join("Float Test.xml"), format!("{}{g}{}", &x[..end], &x[end..])).expect("float build");
         for b in local_builds("config") {
             // a local copy next to the fixtures when builds/pc has no such build
             let src = format!("{BUILDS}{b}.xml");

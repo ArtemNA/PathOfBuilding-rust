@@ -221,6 +221,9 @@ fn dump(g: &Gfx, tp: &TestPlatform, net: &NetScript, want_xml: bool) -> Value {
         "clipboard".into(),
         json!(tp.state().clipboard.map_or_else(|| "nil".to_string(), |c| xml_of(&c))),
     );
+    if g.foreground_requested() {
+        d.insert("foreground".into(), json!(true));
+    }
     d.insert("netLog".into(), json!(net.log()));
     d.insert("netReal".into(), json!(0));
     if want_xml {
@@ -360,7 +363,9 @@ fn run(name: &str) -> Run {
             .expect("json");
     let sandbox = Sandbox::new(name);
     let tp = TestPlatform::new();
-    let mut gfx = Gfx::with_platform(&scene::fonts_dir(), scene::SCREEN, 1.0, Box::new(tp.clone())).expect("fonts");
+    // U10: `screen` of a scene: the layout of a wider screen, states only
+    let screen = sc["screen"].as_array().map_or(scene::SCREEN, |s| (s[0].as_u64().expect("w") as u32, s[1].as_u64().expect("h") as u32));
+    let mut gfx = Gfx::with_platform(&scene::fonts_dir(), screen, 1.0, Box::new(tp.clone())).expect("fonts");
     gfx.set_dpi_scale_override_percent(100);
     gfx.input(RawEvent::Cursor { x: -100.0, y: -100.0 });
     let root = scene::pob_root();
@@ -378,6 +383,8 @@ fn run(name: &str) -> Run {
     l.set_transport(net.0.clone());
     l.hold_sub_scripts(true);
     pob_ui::poe_api::set_os_time(None);
+    // U10: `arg[1]` of Main.lua:71
+    *l.start_uri.borrow_mut() = sc["uri"].as_str().map(str::to_owned);
     l.on_init(&mut gfx);
     assert!(l.prompt_msg.borrow().is_none(), "startup error: {:?}", l.prompt_msg.borrow());
     main().background.wait();

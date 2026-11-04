@@ -1,5 +1,4 @@
 //! The panel of the display item (ItemsTab.lua:334-1213) and what it calls: `SetDisplayItem` (:2087-2171), `Update*Controls` (:2029-2084, :2195-2548), `CreateDisplayItemFromRaw` (:2001-2011), `CopyAnointsAndEldritchImplicits` (:1959-1998), `CraftItem` (:2679-2763), `EditDisplayItemText` (:2766-2818), `EnchantDisplayItem` (:2821-3030), `AnointDisplayItem` (:3138-3175), `CorruptDisplayItem` (:3178-3571), `AddCustomModifierToDisplayItem` (:3576-3927), `AddCrucibleModifierToDisplayItem` (:3930-4039).
-//! `not_ported` (a note, no crash): `Buy similar` (U8), `AddImplicitPopup`, the `Sort by` lists of the popups other than `Default` (`calcFunc` per entry).
 
 use std::cell::{Cell, RefCell};
 use std::collections::HashSet;
@@ -19,7 +18,7 @@ use crate::controls::edit::{EditArgs, EditControl};
 use crate::controls::scroll_bar::SliderControl;
 use crate::host::InputEvents;
 use crate::item_tooltip::format_mod_line;
-use crate::modules::main::{BareControl, main, not_ported};
+use crate::modules::main::{BareControl, main};
 use crate::sg;
 use crate::tooltip::Tooltip;
 
@@ -509,12 +508,10 @@ impl Panel {
             &cr,
             120.0,
             0.0,
-            Rc::new(|g| {
-                not_ported(
-                    g,
-                    "Classes/ItemsTab.lua:572 addImplicit.AddImplicitToDisplayItem (Modules/AddImplicitPopup.lua)",
-                )
-            }),
+            {
+                let t1 = t.clone();
+                Rc::new(move |g| t1().add_implicit_popup(g))
+            },
             Rc::new(|i| {
                 let ty = i.ty.as_deref().unwrap_or("");
                 ty != "Tincture"
@@ -2501,7 +2498,7 @@ impl ItemsTab {
 
     /// `ItemsTab:AddCrucibleModifierToDisplayItem()` (:3930-4039).
     pub(crate) fn add_crucible_modifier(&self, g: &mut Gfx) {
-        not_ported(g, "Classes/ItemsTab.lua:3930-4039 AddCrucibleModifierToDisplayItem");
+        self.add_crucible_modifier_popup(g);
     }
 }
 

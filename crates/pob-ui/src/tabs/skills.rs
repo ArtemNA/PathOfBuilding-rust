@@ -388,9 +388,7 @@ impl ListHooks<GroupRef> for SkillListHooks {
             // :202-208 `itemLib.wiki.openGem`
             let name = t.read(|e| e.socket_groups()[index - 1].gem_list.first().and_then(|g| g.gem_data.clone()));
             if let Some(d) = name.as_deref().and_then(gem_of) {
-                let support = pob_data::skills::skills().get(&d.granted_effect_id).is_some_and(|x| x.support);
-                let n = if support { format!("{} Support", d.name) } else { d.name.clone() };
-                crate::tabs::items::wiki_open(g, &n);
+                crate::tabs::items::wiki_open_gem(g, d);
             }
         } else if key == "RIGHTBUTTON" {
             if sg::is_key_down(g, "CTRL") {
@@ -1672,7 +1670,7 @@ impl SkillsTab {
 /// `new("SkillsTab")` (:82-438) + the `Load` of the model's options.
 #[allow(clippy::too_many_lines)]
 pub fn new_skills_tab(g: &mut Gfx, build: Weak<BuildMode>) -> Rc<SkillsTab> {
-    let (opts, default_gem_level, default_quality) = {
+    let (opts, default_gem_level, default_quality, no_load) = {
         let b = build.upgrade().expect("buildMode");
         let eng = b.engine.borrow();
         let e = eng.as_ref().expect("engine");
@@ -1680,6 +1678,7 @@ pub fn new_skills_tab(g: &mut Gfx, build: Weak<BuildMode>) -> Rc<SkillsTab> {
             e.model().skills.clone(),
             e.model().skills.default_gem_level.clone(),
             e.model().skills.default_gem_quality,
+            e.extras().no_skills_section,
         )
     };
     let tab = Rc::new_cyclic(|me: &Weak<SkillsTab>| {
@@ -2325,17 +2324,19 @@ pub fn new_skills_tab(g: &mut Gfx, build: Weak<BuildMode>) -> Rc<SkillsTab> {
     });
     tab.host.add("imbuedSupport", imbued.clone());
     *tab.imbued_support.borrow_mut() = Some(imbued);
-    // SkillsTab:Load (:523-571)
-    sel_by_value(&tab.default_level, &default_gem_level);
-    tab.default_quality.set_text(g, &tostring_num(default_quality), false);
-    if let Some(s) = opts.sort_gems_by_dps {
-        tab.sort_gems_by_dps.state.set(s);
+    // SkillsTab:Load (:523-571), only of a build with `<Skills>`
+    if !no_load {
+        sel_by_value(&tab.default_level, &default_gem_level);
+        tab.default_quality.set_text(g, &tostring_num(default_quality), false);
+        if let Some(s) = opts.sort_gems_by_dps {
+            tab.sort_gems_by_dps.state.set(s);
+        }
+        if let Some(s) = opts.show_legacy_gems {
+            tab.show_legacy.state.set(s);
+        }
+        sel_by_value(&tab.show_support, &opts.show_support_gem_types);
+        sel_by_value(&tab.sort_field, &opts.sort_gems_by_dps_field);
     }
-    if let Some(s) = opts.show_legacy_gems {
-        tab.show_legacy.state.set(s);
-    }
-    sel_by_value(&tab.show_support, &opts.show_support_gem_types);
-    sel_by_value(&tab.sort_field, &opts.sort_gems_by_dps_field);
     tab.create_gem_slot(g, 1);
     {
         let s1 = tab.gem_slots.borrow()[0].clone();
@@ -2392,7 +2393,9 @@ pub fn new_skills_tab(g: &mut Gfx, build: Weak<BuildMode>) -> Rc<SkillsTab> {
     let st = tab.read(Engine::skills_load_undo_state).unwrap_or_else(|e| panic!("{e}"));
     tab.undo.undo.borrow_mut().clear();
     tab.undo.redo.borrow_mut().clear();
-    tab.undo.undo.borrow_mut().push(Rc::new(st));
+    if !no_load {
+        tab.undo.undo.borrow_mut().push(Rc::new(st));
+    }
     tab
 }
 

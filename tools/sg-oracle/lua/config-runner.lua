@@ -53,6 +53,10 @@ do
 			.. group(gem:format("SkillGemIncinerate", "Incinerate", "Incinerate"))
 	end, 1)
 	writeAll(USER .. "/Path of Building/Builds/Spectre Test.xml", x)
+	-- U10: a skill for the only option of type `float` (ConfigOptions.lua:527); the same edit as crates/pob-ui/tests/config.rs
+	local y = readAll(POB_ROOT .. "spec/TestBuilds/3.13/OccVortex.xml")
+	y = y:gsub("(<Skills [^>]*>)", function(m) return m .. '<Skill mainActiveSkillCalcs="1" enabled="true" mainActiveSkill="1"><Gem level="20" gemId="Metadata/Items/Gems/SkillGemIntuitiveLink" skillId="IntuitiveLink" qualityId="Default" quality="0" enabled="true" nameSpec="Intuitive Link"/></Skill>' end, 1)
+	writeAll(USER .. "/Path of Building/Builds/Float Test.xml", y)
 end
 	-- U7: a loadout over a second tree and a second config set (the same edit as crates/pob-ui/tests/config.rs).
 	do

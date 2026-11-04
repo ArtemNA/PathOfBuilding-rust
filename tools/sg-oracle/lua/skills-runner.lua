@@ -268,6 +268,10 @@ local function dump(st)
 	if main.mode == "BUILD" and main.modes.BUILD.controls and main.modes.BUILD.controls.statBox then
 		d.build = buildDump(main.modes.BUILD)
 	end
+	if st.wantOpened then
+		d.opened = { }
+		for i, u in ipairs(opened) do d.opened[i] = u end
+	end
 	if st.file then
 		local f = realOpen(main.buildPath .. st.file, "rb")
 		d.file = f and "saved" or "missing"
@@ -606,7 +610,7 @@ function runner:Step()
 	self.frames = self.frames + 1
 	if not self.sc then
 		local ok, bg = pcall(function() return main.tree[latestTreeVersion].assets.Background2.handle end)
-		if not ok or launch.promptMsg or self.frames > 900 + 2000 * self.idx then
+		if not ok or launch.promptMsg or self.frames > 900 + 8000 * self.idx then
 			writeAll(OUT .. "startup-error.json", json.encode({ err = tostring(bg), prompt = launch.promptMsg or "nil" }, { indent = true }))
 			return self:Finish()
 		end
@@ -701,6 +705,7 @@ function runner:Step()
 		writeAll(OUT .. st.variantOrder .. ".json", json.encode({ gems = gems }) .. "\n")
 		return
 	end
+	if st.defaultGemQuality then main.defaultGemQuality = st.defaultGemQuality return end
 	if st.openNew then
 		-- U3b: a new build (BuildListControl's New: no file)
 		main:SetMode("BUILD", false, "Unnamed build")

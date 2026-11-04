@@ -145,7 +145,8 @@ fn window_requests_and_console() {
         g.take_requests(),
         WindowRequests {
             title: Some("Path of Building".into()),
-            exit: Some(None)
+            exit: Some(None),
+            foreground: false,
         }
     );
     assert_eq!(g.take_requests(), WindowRequests::default());

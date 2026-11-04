@@ -187,6 +187,9 @@ fn dump(g: &Gfx, st: &Value, tp: &TestPlatform) -> Value {
             "minionLibrary": c.main_skill_minion_library.is_shown(g),
         }),
     );
+    if st["wantOpened"].as_bool() == Some(true) {
+        d.insert("opened".into(), json!(tp.state().opened));
+    }
     if let Some(f) = st["file"].as_str() {
         let p = format!("{}{f}", main().build_path.borrow());
         d.insert(
@@ -231,6 +234,9 @@ fn oracle_state(o: &Value, st: &Value, name: &str) -> Value {
             "mainSkillMinionSkill": b["mainSkillMinionSkill"], "buildLoadouts": b["buildLoadouts"], "minionLibrary": b["minionLibrary"],
         }),
     );
+    if st["wantOpened"].as_bool() == Some(true) {
+        d.insert("opened".into(), if s["opened"].is_null() { json!([]) } else { s["opened"].clone() });
+    }
     if let Some(out) = st["fileOut"].as_str() {
         let p = scene::oracle_dir().join(format!("fixtures/skills/{out}"));
         let t = std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("{name}: {}: {e}", p.display()));
@@ -412,6 +418,22 @@ fn run(name: &str) -> Run {
                 .as_mut()
                 .expect("view")
                 .set_order_sample(ids, conns);
+            continue;
+        }
+        // U10: `main.defaultGemQuality`, and a new build
+        if let Some(q) = st["defaultGemQuality"].as_f64() {
+            main().s.borrow_mut().default_gem_quality = Some(q);
+            continue;
+        }
+        if st["openNew"].as_bool() == Some(true) {
+            main().set_mode(
+                "BUILD",
+                vec![
+                    pob_ui::modules::main::ModeArg::Bool(false),
+                    pob_ui::modules::main::ModeArg::Str("Unnamed build".to_string()),
+                ],
+            );
+            frame(&mut gfx, &l);
             continue;
         }
         if st["closeBuild"].as_bool() == Some(true) {

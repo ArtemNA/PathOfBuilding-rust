@@ -116,6 +116,8 @@ pub struct WindowRequests {
     pub title: Option<String>,
     /// `Exit([msg])`: leave the main loop after the current callback.
     pub exit: Option<Option<String>>,
+    /// `SetForeground()`: bring the window to the front.
+    pub foreground: bool,
 }
 
 /// Lines kept by `ConPrintf` (the original's console is an in-app overlay; here stderr + this ring).
@@ -232,6 +234,16 @@ impl Gfx {
     /// `SetWindowTitle(title)`.
     pub fn set_window_title(&mut self, title: &str) {
         self.requests.title = Some(title.to_string());
+    }
+
+    /// `SetForeground()` (Classes/PoEAPI.lua:148): the window comes back from the browser after the OAuth login.
+    pub fn set_foreground(&mut self) {
+        self.requests.foreground = true;
+    }
+
+    /// A `SetForeground()` the window loop has not taken yet.
+    pub fn foreground_requested(&self) -> bool {
+        self.requests.foreground
     }
 
     /// `Exit([msg])`: after the current callback the loop calls `OnExit` (not `CanExit`) and ends (oracle traces:

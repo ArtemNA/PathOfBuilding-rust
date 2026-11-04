@@ -15,7 +15,7 @@ use pob_mods::ModType;
 
 use crate::colors::color_code;
 use crate::common::{not_supported_mod_tooltips, show_flavour_text};
-use crate::modules::main::{Main, main, note_not_ported};
+use crate::modules::main::{Main, main};
 use crate::sg;
 use crate::tooltip::{Tooltip, TooltipColor};
 
@@ -78,7 +78,13 @@ pub fn format_mod_line(ml: &ModLine, db_mode: bool) -> Option<String> {
         } else {
             ""
         };
-        return Some(format!("{}{line}{tail}", cc("UNSUPPORTED")));
+        // ItemTools.lua:445-447
+        let dev = if crate::launch::launch().dev_mode_alt.get() {
+            format!("   ^1'{}'", ml.extra.as_deref().unwrap_or(""))
+        } else {
+            String::new()
+        };
+        return Some(format!("{}{line}{tail}{dev}", cc("UNSUPPORTED")));
     }
     let code = [
         ("fractured", "FRACTURED"),
@@ -1024,6 +1030,13 @@ pub fn add_item_tooltip(t: &mut Tooltip, g: &Gfx, e: &Engine, item: &Rc<Item>, a
         );
     }
     add_item_stat_differences(t, g, e, item, a);
+    // :4712-4718 modifier debugging info
+    if crate::launch::launch().dev_mode_alt.get() {
+        t.add_separator(Some(10.0));
+        for m in mods.into_iter().flatten() {
+            t.add_line(g, 14.0, Some(&format!("^7{}", pob_mods::format::format_mod(&m.m))));
+        }
+    }
 }
 
 fn influence_color(key: &str) -> String {
@@ -1384,12 +1397,7 @@ pub fn add_item_stat_differences(t: &mut Tooltip, g: &Gfx, e: &Engine, item: &Rc
             if let Some(n) = slot.node_id
                 && (changes_tree(sel.as_ref()) || changes_tree(Some(item)))
             {
-                match e.spec_for_jewel_comparison(n, ov.rep_item.clone()) {
-                    Ok(s) => ov.spec = Some(s),
-                    // the abyss conquests of PassiveSpec.lua:1134-1151: the comparison runs on the current spec
-                    Err(er) if er.contains("unimplemented") => note_not_ported(&er),
-                    Err(er) => panic!("{er}"),
-                }
+                ov.spec = Some(e.spec_for_jewel_comparison(n, ov.rep_item.clone()).unwrap_or_else(|er| panic!("{er}")));
             }
             let out = e.item_override_run(ov).unwrap_or_else(|er| panic!("{er}"));
             (sel, out)

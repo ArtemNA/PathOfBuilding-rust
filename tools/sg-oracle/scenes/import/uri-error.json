@@ -1,0 +1,36 @@
+{
+"net": [
+{
+"url": "https://poe.ninja/poe1/pob/raw/abc123",
+"error": "synthetic failure"
+}
+],
+"steps": [
+{
+"dump": true
+},
+{
+"netDeliver": true,
+"dump": true
+},
+{
+"cursor": [
+1200,
+790
+],
+"dump": true,
+"xml": true
+},
+{
+"waitAssets": true
+},
+{
+"cursor": [
+1200,
+790
+],
+"dump": true
+}
+],
+"uri": "pob://poeninja/abc123"
+}

@@ -354,7 +354,12 @@ fn run(name: &str) -> Run {
             out.perf.push((label.to_string(), t0.elapsed().as_secs_f64() * 1e3));
         }
         if st["dump"].as_bool() == Some(true) {
-            out.dumps.push(((i + 1) as u64, dump(&gfx)));
+            let mut d = dump(&gfx);
+            if st["bdTip"].as_bool() == Some(true) {
+                let tab = main().build_mode.calcs_tab.borrow().clone().expect("calcsTab");
+                d["calcs"]["bdTip"] = json!(tab.breakdown.debug_tooltip());
+            }
+            out.dumps.push(((i + 1) as u64, d));
         }
         if let Some(shot) = st["shot"].as_str() {
             let list = frame(&mut gfx, &l);

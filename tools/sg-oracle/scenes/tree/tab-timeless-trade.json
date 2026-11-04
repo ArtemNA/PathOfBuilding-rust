@@ -1,0 +1,698 @@
+{
+"steps": [
+{
+"open": "Generals Perforate Zerker"
+},
+{
+"waitAssets": true
+},
+{
+"cursor": [
+-100,
+-100
+],
+"time": 10000
+},
+{
+"cursor": [
+971,
+730
+]
+},
+{
+"hold": [
+"LEFTBUTTON"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+]
+]
+},
+{
+"release": [
+"LEFTBUTTON"
+],
+"events": [
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true,
+"tab": true
+},
+{
+"waitAssets": true
+},
+{
+"treeOrder": "order-tltrade"
+},
+{
+"events": [
+[
+"KeyDown",
+"RETURN"
+],
+[
+"KeyUp",
+"RETURN"
+]
+],
+"dump": true,
+"tab": true
+},
+{
+"cursor": [
+-100,
+-100
+],
+"dump": true,
+"tab": true
+},
+{
+"cursor": [
+690,
+786
+]
+},
+{
+"hold": [
+"LEFTBUTTON"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+]
+]
+},
+{
+"release": [
+"LEFTBUTTON"
+],
+"events": [
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true,
+"tab": true
+},
+{
+"cursor": [
+742,
+139
+]
+},
+{
+"hold": [
+"LEFTBUTTON"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+]
+]
+},
+{
+"release": [
+"LEFTBUTTON"
+],
+"events": [
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true,
+"tab": true
+},
+{
+"cursor": [
+742,
+169
+]
+},
+{
+"hold": [
+"LEFTBUTTON"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+]
+]
+},
+{
+"release": [
+"LEFTBUTTON"
+],
+"events": [
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true,
+"tab": true
+},
+{
+"cursor": [
+-100,
+-100
+],
+"dump": true,
+"tab": true
+},
+{
+"cursor": [
+742,
+185
+]
+},
+{
+"hold": [
+"LEFTBUTTON"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+]
+]
+},
+{
+"release": [
+"LEFTBUTTON"
+],
+"events": [
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true,
+"tab": true
+},
+{
+"cursor": [
+742,
+228
+],
+"dump": true,
+"tab": true
+},
+{
+"cursor": [
+742,
+228
+]
+},
+{
+"hold": [
+"LEFTBUTTON"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+]
+]
+},
+{
+"release": [
+"LEFTBUTTON"
+],
+"events": [
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true,
+"tab": true
+},
+{
+"cursor": [
+742,
+323
+]
+},
+{
+"hold": [
+"LEFTBUTTON"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+]
+]
+},
+{
+"release": [
+"LEFTBUTTON"
+],
+"events": [
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true,
+"tab": true
+},
+{
+"cursor": [
+742,
+366
+],
+"dump": true,
+"tab": true
+},
+{
+"cursor": [
+742,
+366
+]
+},
+{
+"hold": [
+"LEFTBUTTON"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+]
+]
+},
+{
+"release": [
+"LEFTBUTTON"
+],
+"events": [
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true,
+"tab": true
+},
+{
+"cursor": [
+742,
+323
+]
+},
+{
+"hold": [
+"LEFTBUTTON"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+]
+]
+},
+{
+"release": [
+"LEFTBUTTON"
+],
+"events": [
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true,
+"tab": true
+},
+{
+"cursor": [
+742,
+405
+]
+},
+{
+"hold": [
+"LEFTBUTTON"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+]
+]
+},
+{
+"release": [
+"LEFTBUTTON"
+],
+"events": [
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true,
+"tab": true
+},
+{
+"cursor": [
+-100,
+-100
+],
+"dump": true,
+"tab": true
+},
+{
+"cursor": [
+720,
+254
+],
+"dump": true,
+"tab": true
+},
+{
+"cursor": [
+720,
+254
+]
+},
+{
+"hold": [
+"LEFTBUTTON"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+]
+]
+},
+{
+"release": [
+"LEFTBUTTON"
+],
+"events": [
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true,
+"tab": true
+},
+{
+"cursor": [
+-100,
+-100
+],
+"dump": true,
+"tab": true
+},
+{
+"cursor": [
+620,
+300
+]
+},
+{
+"hold": [
+"LEFTBUTTON"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+]
+]
+},
+{
+"release": [
+"LEFTBUTTON"
+],
+"events": [
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true,
+"tab": true
+},
+{
+"cursor": [
+-100,
+-100
+],
+"dump": true,
+"tab": true
+},
+{
+"cursor": [
+550,
+672
+]
+},
+{
+"hold": [
+"LEFTBUTTON"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+]
+]
+},
+{
+"release": [
+"LEFTBUTTON"
+],
+"events": [
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true,
+"tab": true
+},
+{
+"cursor": [
+-100,
+-100
+],
+"dump": true,
+"tab": true
+},
+{
+"cursor": [
+-100,
+-100
+],
+"netLeagues": "{\"result\": [{\"id\": \"Keepers\", \"realm\": \"pc\"}, {\"id\": \"Hardcore Keepers\", \"realm\": \"pc\"}, {\"id\": \"Ruthless Keepers\", \"realm\": \"pc\"}, {\"id\": \"Standard\", \"realm\": \"pc\"}, {\"id\": \"Hardcore\", \"realm\": \"pc\"}, {\"id\": \"Ruthless\", \"realm\": \"pc\"}, {\"id\": \"Hardcore Ruthless\", \"realm\": \"pc\"}, {\"id\": \"Sony League\", \"realm\": \"sony\"}]}",
+"dump": true,
+"tab": true
+},
+{
+"cursor": [
+-100,
+-100
+],
+"dump": true,
+"tab": true
+},
+{
+"cursorPopup": "searchTradeButton"
+},
+{
+"hold": [
+"LEFTBUTTON"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+]
+]
+},
+{
+"release": [
+"LEFTBUTTON"
+],
+"events": [
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true,
+"tab": true,
+"shot": "tl-trade-opened"
+},
+{
+"cursor": [
+-100,
+-100
+],
+"dump": true,
+"tab": true
+},
+{
+"cursorPopup": "searchTradeButton"
+},
+{
+"hold": [
+"LEFTBUTTON"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+]
+]
+},
+{
+"release": [
+"LEFTBUTTON"
+],
+"events": [
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true,
+"tab": true
+},
+{
+"cursorPopup": "searchMore"
+},
+{
+"hold": [
+"LEFTBUTTON"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+]
+]
+},
+{
+"release": [
+"LEFTBUTTON"
+],
+"events": [
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true,
+"tab": true
+},
+{
+"cursorPopup": "searchTradeButton"
+},
+{
+"hold": [
+"LEFTBUTTON"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+]
+]
+},
+{
+"release": [
+"LEFTBUTTON"
+],
+"events": [
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true,
+"tab": true
+},
+{
+"cursorPopup": "searchTradeButton"
+},
+{
+"hold": [
+"LEFTBUTTON"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+]
+]
+},
+{
+"release": [
+"LEFTBUTTON"
+],
+"events": [
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true,
+"tab": true
+},
+{
+"cursorPopup": "tradeTypeSelection"
+},
+{
+"hold": [
+"LEFTBUTTON"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+]
+]
+},
+{
+"release": [
+"LEFTBUTTON"
+],
+"events": [
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true,
+"tab": true
+},
+{
+"cursorPopup": "tradeTypeSelection"
+},
+{
+"cursor": [
+-100,
+-100
+],
+"dump": true,
+"tab": true
+}
+]
+}

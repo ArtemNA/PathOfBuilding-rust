@@ -325,7 +325,8 @@ pub struct Item {
     pub no_caster: bool,
     pub no_attack: bool,
     pub restrict_damage_type: bool,
-    pub only_damage_type: Option<&'static str>,
+    /// `self.only<Type>Damage`, in the order of [`crate::craft::DAMAGE_TYPES`].
+    pub only_damage_type: [bool; 5],
     /// `self[influence.key] = true`, indexed like `INFLUENCE_INFO`.
     pub influence: [bool; 8],
 
@@ -1932,10 +1933,10 @@ impl Item {
             self.restrict_tag = true;
             self.no_attack = true;
         } else {
-            for dt in ["cold", "fire", "lightning", "chaos", "physical"] {
+            for (i, dt) in crate::craft::DAMAGE_TYPES.iter().enumerate() {
                 if ll == format!("cannot roll modifiers of non-{dt} damage types") {
                     self.restrict_damage_type = true;
-                    self.only_damage_type = Some(dt);
+                    self.only_damage_type[i] = true;
                 }
             }
         }

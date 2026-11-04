@@ -274,6 +274,28 @@ impl Engine {
         self.skill_select_in(&self.result().env, self.main_socket_group(), false)
     }
 
+    /// `mainSocketGroup.displaySkillList[mainActiveSkill].activeEffect.grantedEffect.minionUses[slot]` (Build.lua:543-545).
+    pub fn main_skill_minion_uses(&self, slot: &str) -> bool {
+        let env = &self.result().env;
+        let Some(st) = env.skills.as_ref() else { return false };
+        let list = st.tab.socket_group_list();
+        let Some(group) = list.get((self.main_socket_group() as usize).wrapping_sub(1)) else {
+            return false;
+        };
+        let Some(display) = group.display_skill_list.as_ref() else {
+            return false;
+        };
+        let Some(si) = display.get((group.main_active_skill.unwrap_or(1.0) as usize).wrapping_sub(1)) else {
+            return false;
+        };
+        let ae = st.skill(*si).active_effect.borrow();
+        st.skills.effects[ae.granted_effect]
+            .minion_uses
+            .as_ref()
+            .and_then(|u| u.get(slot).copied())
+            .unwrap_or(false)
+    }
+
     /// `RefreshSkillSelectControls(section.controls, self.input.skill_number, "Calcs")` (CalcsTab.lua:145): the `*Calcs` fields of the CALCS run.
     pub fn skill_select_calcs(&self) -> Result<SkillSelect, String> {
         let main_group = match self.calcs_input().get("skill_number") {

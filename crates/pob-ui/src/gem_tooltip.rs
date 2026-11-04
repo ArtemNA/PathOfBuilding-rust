@@ -359,6 +359,12 @@ fn add_common(
         if known {
             line(t, &format!("{}{l}", cc("MAGIC")));
         } else {
+            // GemTooltip.lua:202-204
+            let l = if crate::launch::launch().dev_mode_alt.get() {
+                format!("{l} ^1{}", map.get(&l).map_or("", String::as_str))
+            } else {
+                l
+            };
             let mut x = format!("{}{l}", cc("UNSUPPORTED"));
             if not_supported_mod_tooltips() {
                 x.push_str(" ^8(Not supported in PoB yet)");
