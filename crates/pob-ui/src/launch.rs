@@ -281,9 +281,12 @@ impl Launch {
 
     /// `launch:DownloadPage(url, callback, params)` (Launch.lua:259-324).
     pub fn download_page(&self, url: &str, params: PageParams, cb: impl FnOnce(&mut Gfx, PageResponse, Option<String>) + 'static) {
+        // :265 `ConPrintf("Downloading page at: %s", url)`, :312 `ConPrintf("Download complete. Status: %s", errMsg or "OK")`
+        eprintln!("Downloading page at: {url}");
         let req = self.net_request(url, params.header, params.body.map(String::into_bytes), true);
         self.launch_sub(pob_net::Job::Http(req), move |g, outcome| {
             let (response, err) = page_of(outcome);
+            eprintln!("Download complete. Status: {}", err.as_deref().unwrap_or("OK"));
             cb(g, response, err);
         });
     }

@@ -55,14 +55,17 @@ impl Platform for SystemPlatform {
 
     fn open_url(&mut self, url: &str) {
         // Like the original's `ShellExecute(open)`: the shell picks the handler. No new crates (UI-ARCH §10 п. 8).
-        let program = if cfg!(windows) {
-            "explorer"
+        // Not `explorer`: it splits a long URL with several `%20` into separate links (the OAuth `scope`).
+        let mut command = if cfg!(windows) {
+            let mut c = std::process::Command::new("rundll32");
+            c.arg("url.dll,FileProtocolHandler");
+            c
         } else if cfg!(target_os = "macos") {
-            "open"
+            std::process::Command::new("open")
         } else {
-            "xdg-open"
+            std::process::Command::new("xdg-open")
         };
-        let _ = std::process::Command::new(program).arg(url).spawn();
+        let _ = command.arg(url).spawn();
     }
 }
 

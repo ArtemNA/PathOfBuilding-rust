@@ -17,7 +17,7 @@ use winit::application::ApplicationHandler;
 use winit::dpi::PhysicalSize;
 use winit::event::{ElementState, MouseButton, MouseScrollDelta, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
-use winit::keyboard::{KeyCode, PhysicalKey};
+use winit::keyboard::{KeyCode, ModifiersState, PhysicalKey};
 use winit::window::{Window, WindowId};
 
 use crate::draw::{DrawList, Frame, Gfx};
@@ -111,6 +111,7 @@ struct App<M: MainObject> {
     next_frame: Instant,
     stats: RunStats,
     error: Option<RunError>,
+    modifiers: ModifiersState,
 }
 
 /// Physical key -> the original's key (US positions; GLFW maps keys by scancode, so names ignore the layout).
@@ -221,8 +222,13 @@ fn button(b: MouseButton) -> Option<Button> {
     })
 }
 
+/// A key held with Ctrl types nothing: `KeyEvent::text` ignores Ctrl and would give the `v` of Ctrl+V after the paste, GLFW gives no character there. Ctrl+Alt is AltGr on Windows and does type.
+fn types_text(modifiers: ModifiersState) -> bool {
+    !modifiers.control_key() || modifiers.alt_key()
+}
+
 /// `winit` window event -> platform events, in delivery order (a key press with text = the key, then its characters).
-fn raw_events(event: &WindowEvent) -> Vec<RawEvent> {
+fn raw_events(event: &WindowEvent, modifiers: ModifiersState) -> Vec<RawEvent> {
     match event {
         WindowEvent::KeyboardInput { event, .. } => {
             let key = match event.physical_key {
@@ -231,7 +237,10 @@ fn raw_events(event: &WindowEvent) -> Vec<RawEvent> {
             };
             let pressed = event.state == ElementState::Pressed;
             let mut v = vec![RawEvent::Key { key, pressed }];
-            if pressed && let Some(t) = &event.text {
+            if pressed
+                && types_text(modifiers)
+                && let Some(t) = &event.text
+            {
                 v.extend(t.chars().flat_map(input::char_units).map(RawEvent::Char));
             }
             v
@@ -405,8 +414,9 @@ impl<M: MainObject> ApplicationHandler for App<M> {
                 live.last = None;
             }
             WindowEvent::RedrawRequested => self.frame(),
+            WindowEvent::ModifiersChanged(m) => self.modifiers = m.state(),
             _ => {
-                for ev in raw_events(&event) {
+                for ev in raw_events(&event, self.modifiers) {
                     dispatch(&mut self.main, gfx, ev);
                     if gfx.exit_requested() {
                         break;
@@ -441,10 +451,25 @@ pub fn run<M: MainObject>(main: M, cfg: WindowConfig) -> Result<(M, RunStats), R
         next_frame: start,
         stats: RunStats::default(),
         error: None,
+        modifiers: ModifiersState::empty(),
     };
     el.run_app(&mut app).map_err(|e| RunError::EventLoop(e.to_string()))?;
     if let Some(e) = app.error {
         return Err(e);
     }
     Ok((app.main, app.stats))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn ctrl_types_nothing_but_altgr_does() {
+        assert!(types_text(ModifiersState::empty()));
+        assert!(types_text(ModifiersState::SHIFT));
+        assert!(!types_text(ModifiersState::CONTROL));
+        assert!(!types_text(ModifiersState::CONTROL | ModifiersState::SHIFT));
+        assert!(types_text(ModifiersState::CONTROL | ModifiersState::ALT));
+    }
 }
