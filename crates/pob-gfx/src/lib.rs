@@ -23,6 +23,7 @@ pub mod platform;
 pub mod render;
 pub mod screenshot;
 pub mod text;
+pub mod trace;
 pub mod window;
 
 pub use draw::{Align, Command, DrawList, Frame, Gfx, GfxError, WindowRequests};

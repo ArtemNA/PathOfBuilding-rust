@@ -150,17 +150,26 @@ pub(crate) fn apply_mod_cache(raw: &mut [RawEntry]) -> Result<usize, DataError> 
             .and_then(|l| index.get(l))
             .copied()
             .ok_or_else(|| bad("no such mod-cache line"))?;
+        apply_to_entry(&mut raw[i], &[p])?;
+    }
+    Ok(mine.len())
+}
+
+/// `apply_mod_cache` for one entry and its patches, in file order.
+pub(crate) fn apply_to_entry(raw: &mut RawEntry, list: &[&Patch]) -> Result<(), DataError> {
+    for p in list {
+        let bad = |m: &str| DataError(format!("pob-data: patch {} {:?}: {m}", p.file, p.path));
         if p.path.get(1).and_then(Json::as_str) != Some("mods") {
             return Err(bad("expected [line, \"mods\", ...]"));
         }
-        let mods = raw[i].mods.take().ok_or_else(|| bad("the entry has no mods"))?;
+        let mods = raw.mods.take().ok_or_else(|| bad("the entry has no mods"))?;
         let mut arr = Json::Array(mods);
         let r = apply_at(&mut arr, &p.path[2..], p);
         let Json::Array(mods) = arr else { unreachable!() };
-        raw[i].mods = Some(mods);
+        raw.mods = Some(mods);
         r?;
     }
-    Ok(mine.len())
+    Ok(())
 }
 
 // --- mod-parser-upvalues.json (R5.5b0) -------------------------------------------------------------------------------------

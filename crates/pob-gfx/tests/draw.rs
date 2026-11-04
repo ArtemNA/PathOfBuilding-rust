@@ -150,3 +150,59 @@ fn image_handles_sync_async_and_errors() {
     assert_eq!(bad.image_size(), (0, 0));
     assert!(bad.load_lua(test_png(), &["WRONG"]).is_err());
 }
+
+/// `load_lazy` = `load` at every point the caller can see: the size, the pixels, the flags; an `ASYNC` one draws nothing until it is there.
+#[test]
+fn lazy_load_is_the_same_image() {
+    let eager = ImageHandle::new();
+    eager.load(test_png(), &[LoadFlag::Clamp]).unwrap();
+    let want = eager.texture().unwrap();
+
+    let sync = ImageHandle::new();
+    sync.load_lazy(test_png(), &[LoadFlag::Clamp]).unwrap();
+    assert_eq!(sync.image_size(), (8, 8));
+    assert!(format!("{sync:?}").contains("lazy"), "the size did not decode it: {sync:?}");
+    let t = sync.texture().unwrap();
+    assert_eq!((t.width, t.height, t.clamp), (8, 8, true));
+    assert_eq!(&*t.pixels().unwrap(), &*want.pixels().unwrap());
+
+    let fetched = ImageHandle::new();
+    fetched.load_lazy(test_png(), &[LoadFlag::Clamp]).unwrap();
+    fetched.prefetch();
+    assert_eq!(fetched.image_size(), (8, 8));
+    assert_eq!(&*fetched.texture().unwrap().pixels().unwrap(), &*want.pixels().unwrap());
+
+    let lazy_async = ImageHandle::new();
+    lazy_async.load_lazy(test_png(), &[LoadFlag::Async, LoadFlag::Clamp]).unwrap();
+    assert!(format!("{lazy_async:?}").contains("lazy"));
+    lazy_async.wait();
+    assert_eq!(lazy_async.image_size(), (8, 8));
+    assert_eq!(&*lazy_async.texture().unwrap().pixels().unwrap(), &*want.pixels().unwrap());
+
+    let bad = ImageHandle::new();
+    assert!(bad.load_lazy("no/such/file.png", &[]).is_err());
+    assert_eq!(bad.image_size(), (0, 0));
+    assert!(bad.texture().is_none());
+}
+
+/// A renderer that lets the pixels go draws the same frame, again and again.
+#[test]
+fn released_pixels_draw_the_same() {
+    let h = ImageHandle::new();
+    h.load(test_png(), &[]).unwrap();
+    let frame = |g: &mut pob_gfx::Gfx| {
+        let mut f = g.begin_frame();
+        f.draw_image(Some(&h), 0.0, 0.0, 32.0, 32.0, None).unwrap();
+        f.finish()
+    };
+    let mut g = gfx();
+    let list = frame(&mut g);
+    let mut keep = pob_gfx::Renderer::new_offscreen().unwrap();
+    let want = keep.render_to_rgba(&list).unwrap();
+    assert!(h.texture().unwrap().pixels().is_some());
+    let mut release = pob_gfx::Renderer::new_offscreen().unwrap();
+    release.release_uploaded_pixels();
+    assert_eq!(release.render_to_rgba(&list).unwrap(), want);
+    assert!(h.texture().unwrap().pixels().is_none());
+    assert_eq!(release.render_to_rgba(&frame(&mut g)).unwrap(), want);
+}

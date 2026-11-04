@@ -76,3 +76,6 @@
 # U8d: the Trade and Buy similar oracle (screenshots and states)
 /tools/sg-oracle/fixtures/trade/
 /tools/sg-oracle/fixtures/audit/trade-runner*.json
+
+# U9b: the binary form of data/ (crates/pob-data/examples/gen_data_cache.rs)
+/data.cache

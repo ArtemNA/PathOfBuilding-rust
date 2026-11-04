@@ -4,12 +4,14 @@
 //! * Root: `POB_DATA_DIR`, else `<workspace>/data`; the lock file is `data.lock` next to that directory.
 //! * First access to any file checks `data.lock` against `data/manifest.json` (sha256 + pobSha + converterVersion,
 //!   RUST-ARCH §8); a mismatch is a start-up error (`ensure_data`), and loaders panic with it.
+//! * `read_json` answers from the binary `data.cache` beside `data/` when it is there and belongs to this lock, else from the JSON (`bincache`).
 //! * Every loader parses its file once per process (`OnceLock`), except the mod cache: its `pob_mods::Mod`s hold `Rc`s, so
 //!   it is cached per thread (`mod_cache`).
 //! * Order (D13): JSON objects are read into insertion-ordered maps -- the converter wrote them key-sorted.
 
 #![forbid(unsafe_code)]
 
+pub mod bincache;
 pub mod cluster_jewels;
 pub mod config_options;
 pub mod constants;
@@ -133,6 +135,17 @@ pub fn ensure_data() -> Result<&'static Path, DataError> {
 
 /// Read and parse `<data>/<rel>` (after the lock check).
 pub fn read_json<T: DeserializeOwned>(rel: &str) -> Result<T, DataError> {
+    ensure_data()?;
+    if let Some(table) = bincache::cache().and_then(|c| c.table(rel))
+        && let Ok(v) = table.read()
+    {
+        return Ok(v);
+    }
+    read_json_file(rel)
+}
+
+/// `read_json` from the JSON file itself.
+pub fn read_json_file<T: DeserializeOwned>(rel: &str) -> Result<T, DataError> {
     let dir = ensure_data()?;
     let path = dir.join(rel);
     let text = std::fs::read_to_string(&path).map_err(|e| DataError(format!("pob-data: {}: {e}", path.display())))?;

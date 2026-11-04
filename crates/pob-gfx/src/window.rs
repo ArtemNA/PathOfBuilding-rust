@@ -23,7 +23,7 @@ use winit::window::{Window, WindowId};
 use crate::draw::{DrawList, Frame, Gfx};
 use crate::input::{self, Button, Callback, PhysKey, RawEvent};
 use crate::platform::SystemPlatform;
-use crate::render::{RenderError, Renderer};
+use crate::render::{RenderError, Renderer, RendererCore};
 
 /// Frame period of the original (§11: ~30 ms, ~33 fps).
 pub const FRAME_PERIOD: Duration = Duration::from_millis(30);
@@ -94,13 +94,59 @@ impl std::fmt::Display for RunError {
 
 impl std::error::Error for RunError {}
 
-struct Live {
-    window: Arc<Window>,
-    surface: wgpu::Surface<'static>,
+/// What the GPU thread hands over: the slow part of creating a renderer (adapter, device, pipelines).
+struct GpuStart {
+    adapter: wgpu::Adapter,
+    core: RendererCore,
+    ready: Duration,
+}
+
+/// The renderer and the surface's configuration, once the GPU thread is done and something is to be drawn.
+struct Gpu {
     config: wgpu::SurfaceConfiguration,
     renderer: Renderer,
+}
+
+struct Live {
+    window: Arc<Window>,
+    surface: Arc<wgpu::Surface<'static>>,
+    /// The GPU thread until the first frame has something to present: the data of the first `OnFrame` loads meanwhile.
+    gpu_start: Option<std::thread::JoinHandle<Result<GpuStart, RenderError>>>,
+    gpu: Option<Gpu>,
     gfx: Gfx,
     last: Option<DrawList>,
+}
+
+impl Live {
+    /// Waits for the GPU thread and configures the surface, on this thread (creating the swap chain may talk to the window).
+    fn ensure_gpu(&mut self, stats: &mut RunStats) -> Result<(), RunError> {
+        let Some(handle) = self.gpu_start.take() else { return Ok(()) };
+        let start = handle
+            .join()
+            .map_err(|_| RunError::Render(RenderError::Device("the GPU thread panicked".into())))?
+            .map_err(RunError::Render)?;
+        stats.gpu_ready = start.ready;
+        let caps = self.surface.get_capabilities(&start.adapter);
+        // Non-sRGB target: the original blends in gamma space (GL ES via ANGLE without sRGB framebuffers).
+        let format = caps.formats.iter().copied().find(|f| !f.is_srgb()).unwrap_or(caps.formats[0]);
+        let mut renderer = Renderer::from_core(start.core, format);
+        renderer.release_uploaded_pixels();
+        let size = self.window.inner_size();
+        let config = wgpu::SurfaceConfiguration {
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+            format,
+            width: size.width.max(1),
+            height: size.height.max(1),
+            present_mode: wgpu::PresentMode::AutoVsync,
+            desired_maximum_frame_latency: 2,
+            alpha_mode: caps.alpha_modes[0],
+            view_formats: vec![],
+            color_space: wgpu::SurfaceColorSpace::default(),
+        };
+        self.surface.configure(renderer.device(), &config);
+        self.gpu = Some(Gpu { config, renderer });
+        Ok(())
+    }
 }
 
 struct App<M: MainObject> {
@@ -278,40 +324,41 @@ impl<M: MainObject> App<M> {
             .with_inner_size(PhysicalSize::new(self.cfg.size.0, self.cfg.size.1));
         let window = Arc::new(el.create_window(attrs).map_err(|e| RunError::EventLoop(e.to_string()))?);
         self.stats.window_ready = self.start.elapsed();
+        crate::trace::mark("window");
         let instance = Renderer::new_instance();
-        let surface = instance
-            .create_surface(Arc::clone(&window))
-            .map_err(|e| RunError::Render(RenderError::Device(e.to_string())))?;
-        let adapter = Renderer::request_adapter(&instance, Some(&surface)).map_err(RunError::Render)?;
-        let caps = surface.get_capabilities(&adapter);
-        // Non-sRGB target: the original blends in gamma space (GL ES via ANGLE without sRGB framebuffers).
-        let format = caps.formats.iter().copied().find(|f| !f.is_srgb()).unwrap_or(caps.formats[0]);
-        let renderer = Renderer::with_adapter(&adapter, format).map_err(RunError::Render)?;
-        self.stats.gpu_ready = self.start.elapsed();
+        let surface = Arc::new(
+            instance
+                .create_surface(Arc::clone(&window))
+                .map_err(|e| RunError::Render(RenderError::Device(e.to_string())))?,
+        );
         let size = window.inner_size();
-        let config = wgpu::SurfaceConfiguration {
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
-            format,
-            width: size.width.max(1),
-            height: size.height.max(1),
-            present_mode: wgpu::PresentMode::AutoVsync,
-            desired_maximum_frame_latency: 2,
-            alpha_mode: caps.alpha_modes[0],
-            view_formats: vec![],
-            color_space: wgpu::SurfaceColorSpace::default(),
-        };
-        surface.configure(renderer.device(), &config);
+        let (thread_surface, start) = (Arc::clone(&surface), self.start);
+        let gpu_start = std::thread::Builder::new()
+            .name("gpu start".into())
+            .spawn(move || {
+                let adapter = Renderer::request_adapter(&instance, Some(&thread_surface))?;
+                let core = RendererCore::new(&adapter)?;
+                crate::trace::mark(&format!("gpu ({})", adapter.get_info().name));
+                Ok(GpuStart {
+                    adapter,
+                    core,
+                    ready: start.elapsed(),
+                })
+            })
+            .map_err(|e| RunError::Render(RenderError::Device(e.to_string())))?;
         // `GetTime()` counts from `run()` (the original: from process start).
         let platform = Box::new(SystemPlatform::new(self.start));
         let mut gfx =
             Gfx::with_platform(&self.cfg.fonts_dir, (size.width, size.height), window.scale_factor(), platform).map_err(RunError::Font)?;
         self.stats.fonts_ready = self.start.elapsed();
+        crate::trace::mark("fonts");
         self.main.on_init(&mut gfx);
+        crate::trace::mark("on_init");
         self.live = Some(Live {
             window,
             surface,
-            config,
-            renderer,
+            gpu_start: Some(gpu_start),
+            gpu: None,
             gfx,
             last: None,
         });
@@ -320,16 +367,25 @@ impl<M: MainObject> App<M> {
 
     fn frame(&mut self) {
         let Some(live) = self.live.as_mut() else { return };
-        if live.window.is_minimized() == Some(true) || live.config.width == 0 || live.config.height == 0 {
+        let size = live.window.inner_size();
+        if live.window.is_minimized() == Some(true) || size.width == 0 || size.height == 0 {
             return;
         }
         let mut frame = live.gfx.begin_frame();
         self.main.on_frame(&mut frame);
         let list = frame.finish();
         self.stats.frames += 1;
+        if self.stats.frames == 1 {
+            crate::trace::mark("first OnFrame");
+        }
+        if let Err(e) = live.ensure_gpu(&mut self.stats) {
+            self.error = Some(e);
+            return;
+        }
+        let gpu = live.gpu.as_mut().expect("ensure_gpu");
         if live.gfx.frame_wants_screenshot() {
             // Written even when the frame is elided (identical to the previous one).
-            match live.renderer.render_to_rgba(&list) {
+            match gpu.renderer.render_to_rgba(&list) {
                 Ok(rgba) => match crate::screenshot::save(&rgba, list.size.0, list.size.1, live.gfx.screenshot_dir()) {
                     Ok(p) => {
                         self.stats.screenshots += 1;
@@ -346,17 +402,18 @@ impl<M: MainObject> App<M> {
         let tex = match live.surface.get_current_texture() {
             wgpu::CurrentSurfaceTexture::Success(t) | wgpu::CurrentSurfaceTexture::Suboptimal(t) => t,
             _ => {
-                live.surface.configure(live.renderer.device(), &live.config);
+                live.surface.configure(gpu.renderer.device(), &gpu.config);
                 return;
             }
         };
         let view = tex.texture.create_view(&wgpu::TextureViewDescriptor::default());
-        live.renderer.render(&list, &view);
+        gpu.renderer.render(&list, &view);
         live.window.pre_present_notify();
-        live.renderer.present(tex);
+        gpu.renderer.present(tex);
         self.stats.presented += 1;
         if self.stats.first_frame.is_none() {
             self.stats.first_frame = Some(self.start.elapsed());
+            crate::trace::mark("first present");
         }
         live.last = Some(list);
     }
@@ -399,10 +456,12 @@ impl<M: MainObject> ApplicationHandler for App<M> {
                 }
             }
             WindowEvent::Resized(size) => {
-                live.config.width = size.width;
-                live.config.height = size.height;
-                if size.width > 0 && size.height > 0 {
-                    live.surface.configure(live.renderer.device(), &live.config);
+                if let Some(gpu) = live.gpu.as_mut() {
+                    gpu.config.width = size.width;
+                    gpu.config.height = size.height;
+                    if size.width > 0 && size.height > 0 {
+                        live.surface.configure(gpu.renderer.device(), &gpu.config);
+                    }
                 }
                 let scale = live.window.scale_factor();
                 gfx.set_screen((size.width, size.height), scale);
@@ -413,7 +472,13 @@ impl<M: MainObject> ApplicationHandler for App<M> {
                 gfx.set_screen(s, *scale_factor);
                 live.last = None;
             }
-            WindowEvent::RedrawRequested => self.frame(),
+            WindowEvent::RedrawRequested => {
+                self.frame();
+                if self.error.is_some() {
+                    el.exit();
+                    return;
+                }
+            }
             WindowEvent::ModifiersChanged(m) => self.modifiers = m.state(),
             _ => {
                 for ev in raw_events(&event, self.modifiers) {
@@ -442,6 +507,7 @@ impl<M: MainObject> ApplicationHandler for App<M> {
 /// Opens the window and runs the loop until the window closes (and `can_exit` agrees) or `Exit()` is called.
 pub fn run<M: MainObject>(main: M, cfg: WindowConfig) -> Result<(M, RunStats), RunError> {
     let start = Instant::now();
+    crate::trace::mark("run");
     let el = EventLoop::new().map_err(|e| RunError::EventLoop(e.to_string()))?;
     let mut app = App {
         main,

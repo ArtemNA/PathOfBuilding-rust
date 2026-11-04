@@ -1,4 +1,4 @@
-//! Cold load of every R3 data file in a fresh process (serde, no binary cache): one line per file and the total, in ms.
+//! Cold load of every R3 data file in a fresh process: one line per file and the total, in ms. From `data.cache` if there is one (POB_DATA_NO_CACHE=1: the JSON).
 //! Run several times for a median:  cargo run --release -p pob-data --example cold_load
 
 use std::time::Instant;
