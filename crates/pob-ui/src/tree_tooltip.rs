@@ -328,7 +328,7 @@ fn add_node_tooltip(
             .is_some();
         if has_jewel {
             let jewel = spec.jewels.get(f64::from(node.id)).copied().and_then(|id| e.result().env.item(id).cloned());
-            let tab = crate::modules::main::main().build_mode.items_tab.borrow().clone();
+            let tab = view.owner_build().items_tab.borrow().clone();
             if let (Some(jewel), Some(tab)) = (jewel, tab) {
                 tab.add_socket_tooltip(&mut view.tooltip, g, &jewel, node.id);
             }

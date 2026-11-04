@@ -1,0 +1,230 @@
+{
+"steps": [
+{
+"open": "Generals Perforate Zerker"
+},
+{
+"cursorBuild": [
+"modeCompare"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true,
+"perfClick": "open tab"
+},
+{
+"compareImport": [
+"Dual Wield Cospris CoC",
+"Cospris"
+]
+},
+{
+"cursor": [
+1200,
+790
+]
+},
+{
+"perf": 30
+},
+{
+"cursorCompare": [
+"subTabTree"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"perfClick": "switch Tree"
+},
+{
+"cursor": [
+1200,
+790
+]
+},
+{
+"perf": 30
+},
+{
+"cursorCompare": [
+"subTabSkills"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"perfClick": "switch Skills"
+},
+{
+"cursor": [
+1200,
+790
+]
+},
+{
+"perf": 30
+},
+{
+"cursorCompare": [
+"subTabItems"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"perfClick": "switch Items"
+},
+{
+"cursor": [
+1200,
+790
+]
+},
+{
+"perf": 30
+},
+{
+"cursorCompare": [
+"subTabCalcs"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"perfClick": "switch Calcs"
+},
+{
+"cursor": [
+1200,
+790
+]
+},
+{
+"perf": 30
+},
+{
+"cursorCompare": [
+"subTabConfig"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"perfClick": "switch Config"
+},
+{
+"cursor": [
+1200,
+790
+]
+},
+{
+"perf": 30
+},
+{
+"cursorCompare": [
+"subTabSummary"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"perfClick": "switch Summary"
+},
+{
+"cursor": [
+1200,
+790
+]
+},
+{
+"perf": 30
+},
+{
+"cursorCompare": [
+"cmpSocketGroup"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+]
+},
+{
+"cursorCompareRow": [
+"cmpSocketGroup",
+2
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+]
+},
+{
+"cursor": [
+1200,
+790
+],
+"perfClick": "recalc entry"
+},
+{
+"closeBuild": true
+}
+]
+}

@@ -1,0 +1,157 @@
+{
+"steps": [
+{
+"open": "Dual Savior"
+},
+{
+"cursorBuild": [
+"modeCompare"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true,
+"shot": "summary-empty"
+},
+{
+"compareImport": [
+"OccVortex",
+"OccVortex"
+]
+},
+{
+"cursor": [
+1200,
+790
+],
+"dump": true,
+"shot": "summary-one"
+},
+{
+"cursor": [
+700,
+500
+],
+"events": [
+[
+"KeyDown",
+"WHEELDOWN"
+],
+[
+"KeyUp",
+"WHEELDOWN"
+]
+],
+"dump": true,
+"shot": "summary-scrolled"
+},
+{
+"events": [
+[
+"KeyDown",
+"WHEELUP"
+],
+[
+"KeyUp",
+"WHEELUP"
+]
+],
+"dump": true
+},
+{
+"compareImport": [
+"Generals Perforate Zerker",
+"Other - Zerker"
+]
+},
+{
+"cursor": [
+1200,
+790
+],
+"dump": true,
+"shot": "summary-two"
+},
+{
+"cursorCompare": [
+"compareBuildSelect"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+]
+},
+{
+"cursorCompareRow": [
+"compareBuildSelect",
+1
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+]
+},
+{
+"cursor": [
+1200,
+790
+],
+"dump": true
+},
+{
+"cursorCompare": [
+"removeBtn"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
+"cursorCompare": [
+"removeBtn"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true,
+"shot": "summary-removed"
+},
+{
+"closeBuild": true
+}
+]
+}

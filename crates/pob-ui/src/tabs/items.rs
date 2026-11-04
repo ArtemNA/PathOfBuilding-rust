@@ -531,6 +531,11 @@ impl ItemsTab {
 
     /// `self.items[id]`-less tooltip: `AddItemTooltip(tooltip, item, slot, dbMode)`.
     pub fn add_tooltip(&self, tooltip: &mut Tooltip, g: &Gfx, item: &Rc<Item>, slot: Option<&CompareSlot>, db_mode: bool) {
+        self.add_tooltip_width(tooltip, g, item, slot, db_mode, None);
+    }
+
+    /// `AddItemTooltip(tooltip, item, slot, dbMode, maxWidth)`.
+    pub fn add_tooltip_width(&self, tooltip: &mut Tooltip, g: &Gfx, item: &Rc<Item>, slot: Option<&CompareSlot>, db_mode: bool, max_width: Option<f64>) {
         // :4911: the branch of the items that are not a flask or a tincture
         if !item.base.as_ref().is_some_and(|b| b.flask.is_some() || b.tincture.is_some()) {
             self.update_sockets(g);
@@ -545,7 +550,7 @@ impl ItemsTab {
         let args = ItemTooltipArgs {
             slot,
             db_mode,
-            max_width: None,
+            max_width,
             compare_slots,
             in_items_tab: self.build().view_mode.borrow().as_str() == "ITEMS",
             empty_flask_slots,
@@ -913,7 +918,7 @@ impl ItemsTab {
     }
 
     /// `self.socketViewer` over `ItemSlotHelper.DrawViewer` (ItemSlotHelper.lua:10-37).
-    fn draw_socket_viewer(&self, f: &mut Frame<'_>, node_id: u32, x: f64, y: f64, w: f64, h: f64) {
+    pub(crate) fn draw_socket_viewer(&self, f: &mut Frame<'_>, node_id: u32, x: f64, y: f64, w: f64, h: f64) {
         let spec = self.read(Engine::spec_rc);
         let Some(node) = spec.node(node_id) else { return };
         sg::set_draw_layer(f, None, 15);

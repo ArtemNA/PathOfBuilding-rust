@@ -185,7 +185,7 @@ pub struct ConfigTab {
 }
 
 /// `string:matchOrPattern(pattern)`'s `generateOrPatterns` (Common.lua:1039-1070): the keys of its table (a Lua table: unordered, the test only asks for any).
-fn generate_or_patterns(pattern: &str) -> Vec<String> {
+pub(crate) fn generate_or_patterns(pattern: &str) -> Vec<String> {
     struct Sub {
         open: usize,
         close: usize,
@@ -719,6 +719,26 @@ impl ConfigTab {
             }
             Kind::Bare(_) => {}
         }
+    }
+
+    /// The tooltip of the control of `var`, what CompareTab.lua:1170-1173 reuses.
+    pub(crate) fn tooltip_of_var(&self, tt: &mut Tooltip, g: &Gfx, var: &str, mode: &str, value: Option<&DropItem>) {
+        match self.var_index.get(var) {
+            Some(i) => self.var_tooltip(tt, g, *i, mode, value),
+            None => tt.clear(false),
+        }
+    }
+
+    /// `configVisibility.isRelevantForBuild(varData, build)` (Modules/ConfigVisibility.lua:55-141).
+    pub(crate) fn is_relevant_var(&self, var: &str) -> bool {
+        let Some(i) = self.var_index.get(var) else { return false };
+        let v = &self.vars[*i];
+        v.gates.is_empty() || self.e(|e| v.gates.iter().all(|gate| self.gate_passes(e, v, gate)))
+    }
+
+    /// `configVisibility.isShowAllExcluded(varData)` (:144-155).
+    pub(crate) fn is_show_all_excluded_var(&self, var: &str) -> bool {
+        self.var_index.get(var).is_some_and(|i| self.vars[*i].excluded)
     }
 
     /// :835-837

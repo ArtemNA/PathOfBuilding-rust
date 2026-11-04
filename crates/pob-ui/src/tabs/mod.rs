@@ -2,6 +2,7 @@
 
 pub mod calc_breakdown;
 pub mod calcs;
+pub mod compare;
 pub mod config;
 pub mod config_mod_browser;
 pub mod gem_select;

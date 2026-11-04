@@ -54,6 +54,13 @@ impl Engine {
         self.misc_dirty.set(true);
     }
 
+    /// `wipeGlobalCache()` of another build (CompareEntry.lua:183, :251, Build.lua:1260): the cache is one for all of them, the `calcFunc` this build already has runs over an empty one next.
+    pub fn wipe_misc_cache(&self) {
+        if let Ok(calc) = self.misc_calculator() {
+            calc.session().wipe_global_cache();
+        }
+    }
+
     /// `self.items`.
     pub fn items(&self) -> &IndexMap<u64, Rc<Item>> {
         &self.result().env.items

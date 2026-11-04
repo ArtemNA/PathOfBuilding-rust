@@ -55,7 +55,46 @@ pub fn draw_quad(f: &mut Frame<'_>, xy: [f64; 8]) {
 
 /// `DrawString(left, top, align, height, font, text)`.
 pub fn draw_string(f: &mut Frame<'_>, left: f64, top: f64, align_name: Option<&str>, height: f64, font_name: &str, text: &str) {
+    TEXT_LOG.with_borrow_mut(|l| {
+        if let Some(l) = l.as_mut() {
+            l.1.push(format!(
+                "{}|{}|{}|{}|{font_name}|{text}",
+                pob_lua::tostring_num(left),
+                pob_lua::tostring_num(top),
+                align_name.unwrap_or("nil"),
+                pob_lua::tostring_num(height)
+            ));
+        }
+    });
     f.draw_string(left, top, align(align_name), height, font(font_name), text);
+}
+
+thread_local! {
+    /// The gate of the Compare tab: (recording now, the `DrawString`s of the tab's next `Draw`).
+    static TEXT_LOG: std::cell::RefCell<Option<(bool, Vec<String>)>> = const { std::cell::RefCell::new(None) };
+    static TEXT_ARMED: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+    static TEXT_DONE: std::cell::RefCell<Vec<String>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
+/// The gate: record the `DrawString`s of the next [`text_log_begin`] .. [`text_log_end`].
+pub fn text_log_arm() {
+    TEXT_ARMED.set(true);
+}
+
+pub fn text_log_begin() {
+    if TEXT_ARMED.replace(false) {
+        TEXT_LOG.with_borrow_mut(|l| *l = Some((true, Vec::new())));
+    }
+}
+
+pub fn text_log_end() {
+    if let Some(l) = TEXT_LOG.with_borrow_mut(Option::take) {
+        TEXT_DONE.with_borrow_mut(|d| *d = l.1);
+    }
+}
+
+pub fn text_log_take() -> Vec<String> {
+    TEXT_DONE.with_borrow_mut(std::mem::take)
 }
 
 /// `DrawStringWidth(height, font, text)` (an integer in the original; Lua numbers are doubles).
