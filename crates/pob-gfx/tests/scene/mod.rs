@@ -132,7 +132,12 @@ impl Scene {
             size: (size[0].as_u64().expect("w") as u32, size[1].as_u64().expect("h") as u32),
             dpi: v["dpi"].as_u64().unwrap_or(100) as u32,
             images,
-            calls: v["calls"].as_array().expect("calls").iter().map(|c| decode(name, c.as_array().expect("call"))).collect(),
+            calls: v["calls"]
+                .as_array()
+                .expect("calls")
+                .iter()
+                .map(|c| decode(name, c.as_array().expect("call")))
+                .collect(),
         }
     }
 
@@ -145,7 +150,10 @@ impl Scene {
     /// Physical crop of the oracle screenshot: `ceil(size * dpi / 100)` (run.ps1).
     pub fn crop(&self) -> (u32, u32) {
         let k = f64::from(self.dpi) / 100.0;
-        ((f64::from(self.size.0) * k).ceil() as u32, (f64::from(self.size.1) * k).ceil() as u32)
+        (
+            (f64::from(self.size.0) * k).ceil() as u32,
+            (f64::from(self.size.1) * k).ceil() as u32,
+        )
     }
 
     /// One frame of the scene as the runner draws it: reset (`SetDrawLayer(0,0)`, `SetViewport()`,

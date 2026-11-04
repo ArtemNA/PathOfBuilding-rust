@@ -1813,7 +1813,12 @@ impl TradeQuery {
             tooltip.add_separator(Some(10.0));
             let dns = entry.dns.as_ref().expect("evaluationEntry.DNs");
             let node_combo = dns.join(" ^8+^7 ");
-            let base = self.only_weighted_base_output.borrow().get(&(row, index)).cloned().unwrap_or_default();
+            let base = self
+                .only_weighted_base_output
+                .borrow()
+                .get(&(row, index))
+                .cloned()
+                .unwrap_or_default();
             let lines = self
                 .tab()
                 .read(|e| {

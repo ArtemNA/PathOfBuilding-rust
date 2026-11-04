@@ -449,9 +449,20 @@ fn preset_boss_skills(v: &ConfigValue, c: &mut ApplyCtx<'_>) -> LuaResult<()> {
 }
 
 pub static HAND_PORTED: [ApplyEntry; 10] = [
-    e("enemyIsBoss", 2086, 2222, "0c63f14001520552cd4d5379f9f5636ba8e881470124bbf61cba1ddd6ee5d316", enemy_is_boss),
-    e("presetBossSkills", 2272, 2351, "5ee18b51ad867d8b1a16034a80ab73595ed76988455c03766b7301bf005e7203", preset_boss_skills),
-
+    e(
+        "enemyIsBoss",
+        2086,
+        2222,
+        "0c63f14001520552cd4d5379f9f5636ba8e881470124bbf61cba1ddd6ee5d316",
+        enemy_is_boss,
+    ),
+    e(
+        "presetBossSkills",
+        2272,
+        2351,
+        "5ee18b51ad867d8b1a16034a80ab73595ed76988455c03766b7301bf005e7203",
+        preset_boss_skills,
+    ),
     // ---- Map Modifiers (R3.5b): `local function mapAffixDropDownFunction` (:117-130), shared by the 8 dropdowns -------
     e("MapPrefix1", 117, 130, MAP_AFFIX_SHA, map_affix),
     e("MapPrefix2", 117, 130, MAP_AFFIX_SHA, map_affix),

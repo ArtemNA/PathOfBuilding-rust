@@ -181,7 +181,15 @@ impl Engine {
         let state = &res.perform.player;
         let (bv, cv) = (ActorView::small(state, &res.env, base), ActorView::small(state, &res.env, cmp));
         let mut lines = Vec::new();
-        self.compare_stat_list(&mut lines, DISPLAY_STATS, denv.player.skill_flags, &bv, &cv, header, Some(node_count))?;
+        self.compare_stat_list(
+            &mut lines,
+            DISPLAY_STATS,
+            denv.player.skill_flags,
+            &bv,
+            &cv,
+            header,
+            Some(node_count),
+        )?;
         Ok(lines)
     }
 

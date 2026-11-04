@@ -2842,7 +2842,9 @@ impl Item {
             (5, &self.crucible_mod_lines),
         ] {
             for (i, ml) in list.iter().enumerate() {
-                if ml.show_slider == Some(true) || (ml.mod_id.is_some() && ml.new_mod_id.is_some() && self.get_mod_line_variant_count(ml) > 0) {
+                if ml.show_slider == Some(true)
+                    || (ml.mod_id.is_some() && ml.new_mod_id.is_some() && self.get_mod_line_variant_count(ml) > 0)
+                {
                     out.push((lid, i));
                 }
             }

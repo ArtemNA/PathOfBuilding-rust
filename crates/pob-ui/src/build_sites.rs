@@ -81,7 +81,10 @@ pub fn download_build(link: &str, site: usize, callback: impl FnOnce(&mut Gfx, b
 
 /// The pattern `^pob:[/\\]*<id>[/\\]+(.+)` of a site (BuildSiteTools.lua:93, :122).
 fn uri_pattern(site: usize) -> String {
-    format!("^pob:[/\\]*{}[/\\]+(.+)", crate::tabs::import::WEBSITES[site].1.to_ascii_lowercase())
+    format!(
+        "^pob:[/\\]*{}[/\\]+(.+)",
+        crate::tabs::import::WEBSITES[site].1.to_ascii_lowercase()
+    )
 }
 
 /// `uri:gsub(pattern, "https://" .. url)` of the first site that matches, in the list's order.

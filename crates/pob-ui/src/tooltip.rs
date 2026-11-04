@@ -95,7 +95,14 @@ pub struct Tooltip {
 
 /// `headerInfluence` (Tooltip.lua:60-76).
 fn header_influence(name: &str) -> String {
-    format!("Assets/{}icon.png", if name == "Foulborn" { "breach".to_string() } else { name.to_lowercase() })
+    format!(
+        "Assets/{}icon.png",
+        if name == "Foulborn" {
+            "breach".to_string()
+        } else {
+            name.to_lowercase()
+        }
+    )
 }
 
 /// `foilTypes` (Tooltip.lua:502-516).

@@ -92,7 +92,10 @@ fn scenes_equal_original() {
             .iter()
             .map(|e| {
                 let c = e[2].as_array().expect("rgba");
-                (e[0].as_u64().expect("index") as usize, std::array::from_fn(|k| c[k].as_f64().expect("number")))
+                (
+                    e[0].as_u64().expect("index") as usize,
+                    std::array::from_fn(|k| c[k].as_f64().expect("number")),
+                )
             })
             .collect();
         let got: Vec<(usize, [f64; 4])> = logs.iter().map(|(i, c)| (*i, c.map(f64::from))).collect();

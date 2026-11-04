@@ -29,7 +29,14 @@ impl MainObject for Demo {
         f.set_draw_color(0.08, 0.1, 0.12, 1.0);
         f.draw_image(None, 0.0, 0.0, w, h, None).unwrap();
         f.set_draw_color(1.0, 1.0, 1.0, 1.0);
-        f.draw_string(10.0, 10.0, Align::Left, 16.0, FontFamily::Var, "pob-gfx U1.2 ^xFF8000window^7 smoke test");
+        f.draw_string(
+            10.0,
+            10.0,
+            Align::Left,
+            16.0,
+            FontFamily::Var,
+            "pob-gfx U1.2 ^xFF8000window^7 smoke test",
+        );
         f.draw_string(0.0, 40.0, Align::Center, 24.0, FontFamily::FontinSc, "Path of Building (Rust)");
         f.set_draw_layer(Some(10), None).unwrap();
         f.set_draw_color(0.2, 0.2, 0.4, 1.0);

@@ -87,7 +87,10 @@ fn load_flavour(root: &str) -> HashMap<String, Vec<String>> {
     let mut m = HashMap::new();
     for (k, lines) in &v.as_tab().expect("the flavour text is a table").fields {
         if let (crate::lua_data::LuaKey::Str(k), Some(lines)) = (k, lines.as_tab()) {
-            m.insert(k.to_string(), lines.arr.iter().filter_map(|x| x.as_str().map(str::to_string)).collect());
+            m.insert(
+                k.to_string(),
+                lines.arr.iter().filter_map(|x| x.as_str().map(str::to_string)).collect(),
+            );
         }
     }
     m
@@ -125,7 +128,10 @@ pub fn make_flavour(root: &str) -> Result<crate::lua_data::LuaVal, String> {
         .into_iter()
         .map(|(id, lines)| {
             let arr = lines.into_iter().map(|l| LuaVal::Str(l.into())).collect();
-            (LuaKey::Str(id.into()), LuaVal::Table(std::rc::Rc::new(LuaTab { arr, fields: Vec::new() })))
+            (
+                LuaKey::Str(id.into()),
+                LuaVal::Table(std::rc::Rc::new(LuaTab { arr, fields: Vec::new() })),
+            )
         })
         .collect();
     Ok(LuaVal::Table(std::rc::Rc::new(LuaTab { arr: Vec::new(), fields })))

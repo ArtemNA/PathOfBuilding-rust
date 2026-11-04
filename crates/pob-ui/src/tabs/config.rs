@@ -876,7 +876,10 @@ impl ConfigTab {
 
     /// `listOrSingleIfTooltip` (:244-258) of one `if*` key.
     fn dev_gate_text(&self, i: usize, gate: ConfigGate) -> Option<String> {
-        let g = self.vars[i].gates.iter().find(|g| matches!(g.kind, GateKind::Env(k) if k == gate))?;
+        let g = self.vars[i]
+            .gates
+            .iter()
+            .find(|g| matches!(g.kind, GateKind::Env(k) if k == gate))?;
         let mut out: Option<String> = None;
         for opt in &g.opts {
             if let Some(text) = self.e(|e| e.config_dev_tooltip(gate, opt)) {

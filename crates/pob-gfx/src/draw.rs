@@ -338,7 +338,11 @@ impl Gfx {
 
     /// `GetScreenScale()`: the DPI override when set, else the system scale.
     pub fn get_screen_scale(&self) -> f64 {
-        if self.dpi_override == 0 { self.system_scale } else { f64::from(self.dpi_override) / 100.0 }
+        if self.dpi_override == 0 {
+            self.system_scale
+        } else {
+            f64::from(self.dpi_override) / 100.0
+        }
     }
 
     /// `GetVirtualScreenSize()` (Lua, Common.lua:1118-1126): `floor(w / scale), floor(h / scale)`.
@@ -530,17 +534,17 @@ impl Frame<'_> {
         // SimpleGraphic takes `left`/`width` as floats and adds them in float (`tree_pixels_equal_original`: 53 pixels up to Δ7 without this)
         let (r, b) = (f64::from(left as f32 + width as f32), f64::from(top as f32 + height as f32));
         let [tl, tt, tr, tb] = tc.unwrap_or([0.0, 0.0, 1.0, 1.0]);
-        self.push(tex, [[left, top], [r, top], [r, b], [left, b]], [[tl, tt], [tr, tt], [tr, tb], [tl, tb]], false);
+        self.push(
+            tex,
+            [[left, top], [r, top], [r, b], [left, b]],
+            [[tl, tt], [tr, tt], [tr, tb], [tl, tb]],
+            false,
+        );
         Ok(())
     }
 
     /// `DrawImageQuad(img|nil, x1, y1, …, x4, y4[, s1, t1, …, s4, t4])`.
-    pub fn draw_image_quad(
-        &mut self,
-        img: Option<&ImageHandle>,
-        xy: [f64; 8],
-        st: Option<[f64; 8]>,
-    ) -> Result<(), GfxError> {
+    pub fn draw_image_quad(&mut self, img: Option<&ImageHandle>, xy: [f64; 8], st: Option<[f64; 8]>) -> Result<(), GfxError> {
         let Some(tex) = self.image_texture(img)? else { return Ok(()) };
         let st = st.unwrap_or([0.0, 0.0, 1.0, 0.0, 1.0, 1.0, 0.0, 1.0]);
         let p = |k: usize| [xy[2 * k], xy[2 * k + 1]];
@@ -569,7 +573,11 @@ impl Frame<'_> {
             (h[main].height, h[sub].height)
         };
         let main_tex = self.gfx.atlas(font, main_h);
-        let sub_tex = if sub == main { Rc::clone(&main_tex) } else { self.gfx.atlas(font, sub_h) };
+        let sub_tex = if sub == main {
+            Rc::clone(&main_tex)
+        } else {
+            self.gfx.atlas(font, sub_h)
+        };
         let screen_w = f64::from(self.gfx.screen.0);
         let (left, top) = (left * s, top * s);
         let Gfx {

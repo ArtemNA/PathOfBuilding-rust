@@ -367,9 +367,10 @@ impl CalcBreakdownControl {
                     // :2139 the row keeps the text only; the item of the requirement is one of the build's
                     None => {
                         let text = row.cells.get(key)?;
-                        e.item_order().into_iter().filter_map(|i| e.item_by_id(i)).find(|i| {
-                            crate::colors::color_code(&i.rarity).is_some_and(|c| format!("{c}{}", i.name) == *text)
-                        })
+                        e.item_order()
+                            .into_iter()
+                            .filter_map(|i| e.item_by_id(i))
+                            .find(|i| crate::colors::color_code(&i.rarity).is_some_and(|c| format!("{c}{}", i.name) == *text))
                     }
                 });
                 let mut t = self.tooltip.borrow_mut();
@@ -535,7 +536,12 @@ impl CalcBreakdownControl {
     /// `debug`: the state the gate compares.
     /// The lines of the tooltip of a cell.
     pub fn debug_tooltip(&self) -> Vec<String> {
-        self.tooltip.borrow().lines.iter().map(|l| l.text.clone().unwrap_or_else(|| "<sep>".to_string())).collect()
+        self.tooltip
+            .borrow()
+            .lines
+            .iter()
+            .map(|l| l.text.clone().unwrap_or_else(|| "<sep>".to_string()))
+            .collect()
     }
 
     pub fn debug_dump(&self, g: &Gfx) -> serde_json::Value {

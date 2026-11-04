@@ -423,7 +423,12 @@ fn run(name: &str) -> Run {
         // R13: the orders of `pairs` of this oracle process
         let sample = |o: &str| -> Vec<String> {
             let rec = oracle_record(o).unwrap_or_else(|| panic!("fixtures/items/{o}.json"));
-            rec["ids"].as_array().expect("ids").iter().map(|v| v.as_str().expect("id").to_string()).collect()
+            rec["ids"]
+                .as_array()
+                .expect("ids")
+                .iter()
+                .map(|v| v.as_str().expect("id").to_string())
+                .collect()
         };
         if let Some(o) = st["affixOrder"].as_str() {
             pob_ui::tabs::item_popups::set_affix_order_sample(Some(sample(o)));

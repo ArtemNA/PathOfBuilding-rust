@@ -259,12 +259,16 @@ pub fn rare_like_unique(title_lower: &str) -> Option<&'static RareLikeUnique> {
                     prefix_limit: num("prefixLimit"),
                     suffix_limit: num("suffixLimit"),
                     ignore_mod_type: v.get("ignoreModType").and_then(serde_json::Value::as_bool).unwrap_or(false),
-                    valid_bases: v.get("validBases").and_then(|x| x.get("bases")).and_then(serde_json::Value::as_array).map(|l| {
-                        l.iter()
-                            .filter_map(|b| b.get("base").and_then(|x| x.get("tags")))
-                            .filter_map(|tags| serde_json::from_value(tags.clone()).ok())
-                            .collect()
-                    }),
+                    valid_bases: v
+                        .get("validBases")
+                        .and_then(|x| x.get("bases"))
+                        .and_then(serde_json::Value::as_array)
+                        .map(|l| {
+                            l.iter()
+                                .filter_map(|b| b.get("base").and_then(|x| x.get("tags")))
+                                .filter_map(|tags| serde_json::from_value(tags.clone()).ok())
+                                .collect()
+                        }),
                     supports_custom_modifiers: v
                         .get("supportsCustomModifiers")
                         .and_then(serde_json::Value::as_object)

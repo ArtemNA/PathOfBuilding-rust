@@ -255,7 +255,11 @@ impl Package {
     /// The table `key`: `None` if this cache has no say in it.
     pub fn table(&self, key: &str) -> Option<Result<LuaVal, String>> {
         let Package::Open { cache, .. } = self else { return None };
-        Some(cache.raw(key)?.and_then(|b| decode(&b).map_err(|e| format!("{FILE}: '{key}': {e}: the file is damaged"))))
+        Some(
+            cache
+                .raw(key)?
+                .and_then(|b| decode(&b).map_err(|e| format!("{FILE}: '{key}': {e}: the file is damaged"))),
+        )
     }
 
     pub fn copies(&self) -> Result<Option<&Copies>, String> {
@@ -287,7 +291,9 @@ impl Package {
             return Ok(None);
         };
         let path = format!("{root}{to}");
-        let got = std::fs::metadata(&path).map_err(|e| format!("{FILE}: '{rel}' is a copy of '{to}': {e}"))?.len();
+        let got = std::fs::metadata(&path)
+            .map_err(|e| format!("{FILE}: '{rel}' is a copy of '{to}': {e}"))?
+            .len();
         if got != *len {
             return Err(format!("{FILE}: '{rel}' is a copy of '{to}' of {len} bytes, the file has {got}"));
         }
@@ -298,7 +304,10 @@ impl Package {
 /// The package of a root, once per process and root. The tests of the damaged files use [`Package::open`].
 fn package(root: &str) -> Arc<Package> {
     static OPENED: OnceLock<Mutex<HashMap<String, Arc<Package>>>> = OnceLock::new();
-    let mut m = OPENED.get_or_init(Default::default).lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    let mut m = OPENED
+        .get_or_init(Default::default)
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     m.entry(root.to_string())
         .or_insert_with(|| {
             // Without the lock nothing can be said to match; the data check of the start reports it

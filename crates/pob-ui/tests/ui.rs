@@ -28,8 +28,12 @@ const BUILDS: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../builds/pc/3.29/
 fn local_builds(key: &str) -> Vec<String> {
     let p = concat!(env!("CARGO_MANIFEST_DIR"), "/../../builds/local-builds.json");
     let v: Option<serde_json::Value> = std::fs::read_to_string(p).ok().and_then(|t| serde_json::from_str(&t).ok());
-    v.and_then(|v| v[key].as_array().map(|a| a.iter().filter_map(|x| x.as_str().map(str::to_owned)).collect()))
-        .unwrap_or_default()
+    v.and_then(|v| {
+        v[key]
+            .as_array()
+            .map(|a| a.iter().filter_map(|x| x.as_str().map(str::to_owned)).collect())
+    })
+    .unwrap_or_default()
 }
 
 /// The gates need the personal builds and the oracle's records of them (`fixtures/ui/`), neither is in git.

@@ -214,7 +214,9 @@ fn flavour_table(name: &str) -> Option<Vec<(String, Vec<String>)>> {
             let mut out: HashMap<String, Vec<(String, Vec<String>)>> = HashMap::new();
             let strs = |t: &LuaTab| t.arr.iter().filter_map(|l| l.as_str().map(str::to_string)).collect::<Vec<_>>();
             for (name, rows) in &v.as_tab().expect("the flavour text is a table").fields {
-                let (LuaKey::Str(name), Some(rows)) = (name, rows.as_tab()) else { continue };
+                let (LuaKey::Str(name), Some(rows)) = (name, rows.as_tab()) else {
+                    continue;
+                };
                 let rows = rows.arr.iter().filter_map(LuaVal::as_tab);
                 let rows = rows.filter_map(|r| {
                     let id = r.get_num(1.0)?.as_str()?.to_string();
@@ -268,7 +270,10 @@ pub fn make_flavour(root: &str) -> Result<LuaVal, String> {
         .into_iter()
         .map(|(n, rows)| {
             let rows = rows.into_iter().map(|(i, ls)| {
-                list(vec![LuaVal::Str(i.into()), list(ls.into_iter().map(|l| LuaVal::Str(l.into())).collect())])
+                list(vec![
+                    LuaVal::Str(i.into()),
+                    list(ls.into_iter().map(|l| LuaVal::Str(l.into())).collect()),
+                ])
             });
             (LuaKey::Str(n.into()), list(rows.collect()))
         })
@@ -1428,7 +1433,10 @@ pub fn add_item_stat_differences(t: &mut Tooltip, g: &Gfx, e: &Engine, item: &Rc
             if let Some(n) = slot.node_id
                 && (changes_tree(sel.as_ref()) || changes_tree(Some(item)))
             {
-                ov.spec = Some(e.spec_for_jewel_comparison(n, ov.rep_item.clone()).unwrap_or_else(|er| panic!("{er}")));
+                ov.spec = Some(
+                    e.spec_for_jewel_comparison(n, ov.rep_item.clone())
+                        .unwrap_or_else(|er| panic!("{er}")),
+                );
             }
             let out = e.item_override_run(ov).unwrap_or_else(|er| panic!("{er}"));
             (sel, out)

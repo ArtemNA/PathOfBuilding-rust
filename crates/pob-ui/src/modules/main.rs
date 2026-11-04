@@ -442,7 +442,11 @@ impl Main {
         check.base.shown.set(false);
         m.host.add("checkUpdate", check);
         // With the application's own version (only pob-app sets it, the user's decision): the port's lines, 4 from the About button like the gap between the buttons.
-        let label_x = if launch().cfg.app_version.is_some() { VERSION_LINES_X } else { 148.0 };
+        let label_x = if launch().cfg.app_version.is_some() {
+            VERSION_LINES_X
+        } else {
+            148.0
+        };
         let fork = LabelControl::new(
             anchor("BOTTOMLEFT", &am, "BOTTOMLEFT"),
             rect(label_x, -26.0, 0.0, 16.0),
@@ -456,7 +460,11 @@ impl Main {
             }
         });
         m.host.add("forkLabel", fork);
-        let ver = LabelControl::new(anchor("BOTTOMLEFT", &am, "BOTTOMLEFT"), rect(label_x, -2.0, 0.0, 16.0), String::new());
+        let ver = LabelControl::new(
+            anchor("BOTTOMLEFT", &am, "BOTTOMLEFT"),
+            rect(label_x, -2.0, 0.0, 16.0),
+            String::new(),
+        );
         ver.label.set_fn(|_| {
             let l = launch();
             if let Some(app) = &l.cfg.app_version {

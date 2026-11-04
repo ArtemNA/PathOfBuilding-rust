@@ -1630,7 +1630,10 @@ pub fn make_planner_versions(root: &str) -> Result<LuaVal, String> {
             out.push((LuaKey::Num(f64::from(k)), LuaVal::Str(c[1].as_str().into())));
         }
     }
-    Ok(LuaVal::Table(Rc::new(LuaTab { arr: Vec::new(), fields: out })))
+    Ok(LuaVal::Table(Rc::new(LuaTab {
+        arr: Vec::new(),
+        fields: out,
+    })))
 }
 
 /// What `decodeTreeLink` and `decodePoePlannerTreeLink` share after the decode (:702-710, :720-729).

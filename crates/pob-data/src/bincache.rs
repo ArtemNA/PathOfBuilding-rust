@@ -333,7 +333,10 @@ impl CacheFile {
             let mut bytes = vec![0u8; len as usize];
             f.read_exact(&mut bytes).map_err(io)?;
             if checksum(&bytes) != sum {
-                return Err(format!("{}: the checksum of '{rel}' differs: the file is damaged", self.path.display()));
+                return Err(format!(
+                    "{}: the checksum of '{rel}' differs: the file is damaged",
+                    self.path.display()
+                ));
             }
             Ok(bytes)
         };

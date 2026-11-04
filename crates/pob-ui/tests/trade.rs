@@ -429,8 +429,14 @@ fn run(name: &str) -> Run {
                 let c = p.control(n);
                 let any: &dyn std::any::Any = &*c;
                 let b = any.downcast_ref::<pob_ui::controls::basic::ButtonControl>().expect("a button");
-                let lines: Vec<String> =
-                    b.tip.tooltip.borrow().lines.iter().map(|l| l.text.clone().unwrap_or_else(|| "<sep>".to_string())).collect();
+                let lines: Vec<String> = b
+                    .tip
+                    .tooltip
+                    .borrow()
+                    .lines
+                    .iter()
+                    .map(|l| l.text.clone().unwrap_or_else(|| "<sep>".to_string()))
+                    .collect();
                 d["buttonTip"] = json!(lines);
             }
             out.dumps.push(((i + 1) as u64, d));

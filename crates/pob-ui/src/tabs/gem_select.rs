@@ -1145,15 +1145,26 @@ impl Control for GemSelectControl {
                 let sel = self.sel_index.get();
                 match self.hover_sel.get().and_then(of) {
                     Some(id) => Some(id),
-                    None if sel > 0 => Some(of(sel as usize).expect("Modules/ItemTools.lua:458: attempt to index local 'gemData' (a nil value)")),
-                    None if !self.no_matches.get() => Some(of(1).expect("Modules/ItemTools.lua:458: attempt to index local 'gemData' (a nil value)")),
+                    None if sel > 0 => {
+                        Some(of(sel as usize).expect("Modules/ItemTools.lua:458: attempt to index local 'gemData' (a nil value)"))
+                    }
+                    None if !self.no_matches.get() => {
+                        Some(of(1).expect("Modules/ItemTools.lua:458: attempt to index local 'gemData' (a nil value)"))
+                    }
                     None => None,
                 }
             } else {
                 let tab = self.tab.upgrade().expect("skillsTab");
                 let index = self.index.get();
                 let group = tab.display_index();
-                group.and_then(|at| tab.read(|e| e.socket_groups()[at - 1].gem_list.get(index.wrapping_sub(1)).and_then(|x| x.gem_data.clone())))
+                group.and_then(|at| {
+                    tab.read(|e| {
+                        e.socket_groups()[at - 1]
+                            .gem_list
+                            .get(index.wrapping_sub(1))
+                            .and_then(|x| x.gem_data.clone())
+                    })
+                })
             };
             if let Some(d) = id.as_deref().and_then(gem_of) {
                 crate::tabs::items::wiki_open_gem(g, d);

@@ -6,7 +6,7 @@
 mod scene;
 
 use pob_gfx::{Gfx, Renderer};
-use scene::{Scene, SCREEN};
+use scene::{SCREEN, Scene};
 use std::time::Instant;
 
 fn main() {
@@ -22,7 +22,12 @@ fn main() {
     let t0 = Instant::now();
     let mut renderer = Renderer::new_offscreen().expect("renderer");
     let info = renderer.adapter_info().clone();
-    println!("adapter: {} ({:?}), init {:.1} ms", info.name, info.backend, t0.elapsed().as_secs_f64() * 1e3);
+    println!(
+        "adapter: {} ({:?}), init {:.1} ms",
+        info.name,
+        info.backend,
+        t0.elapsed().as_secs_f64() * 1e3
+    );
     let out = scene::out_dir();
     println!(
         "{:<15} {:>9} {:>7} {:>8} {:>5} | {:>7} {:>6} {:>5} | bbox",
@@ -67,7 +72,10 @@ fn main() {
                 std::hint::black_box(renderer.render_to_rgba(&list).expect("render"));
             }
             let gpu = t.elapsed().as_secs_f64() * 1e3 / f64::from(perf);
-            println!("  perf: {} commands, record {rec:.1} µs/frame, render+readback {gpu:.2} ms/frame", list.commands.len());
+            println!(
+                "  perf: {} commands, record {rec:.1} µs/frame, render+readback {gpu:.2} ms/frame",
+                list.commands.len()
+            );
         }
     }
 }

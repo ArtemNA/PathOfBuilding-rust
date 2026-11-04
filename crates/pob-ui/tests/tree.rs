@@ -291,7 +291,11 @@ fn cursor_find(kind: &str) -> (f64, f64) {
     };
     if matches!(kind, "freeNotable" | "freeNormal" | "allocNormal") {
         // U10c: the smallest id of a kind of node in the view
-        let ty = if kind == "freeNotable" { pob_tree::NodeType::Notable } else { pob_tree::NodeType::Normal };
+        let ty = if kind == "freeNotable" {
+            pob_tree::NodeType::Notable
+        } else {
+            pob_tree::NodeType::Normal
+        };
         for n in &spec.nodes {
             if (kind == "allocNormal") == n.alloc && n.ty() == ty && n.ascendancy_name().is_none() && n.id < 65536 {
                 take(n.id, n);

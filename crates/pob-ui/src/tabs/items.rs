@@ -740,7 +740,12 @@ impl ItemsTab {
             ItemRow::Obj(i) => i.clone(),
         };
         let mut slot_name = item.get_primary_slot();
-        let second = self.read(|e| e.item_sets().iter().find(|s| s.id == set_id).is_some_and(|s| s.use_second_weapon_set));
+        let second = self.read(|e| {
+            e.item_sets()
+                .iter()
+                .find(|s| s.id == set_id)
+                .is_some_and(|s| s.use_second_weapon_set)
+        });
         if self.slot(&slot_name).weapon_set.get() == Some(1.0) && second {
             slot_name = format!("{slot_name} Swap");
         }
@@ -761,7 +766,12 @@ impl ItemsTab {
         } else {
             self.edit(|e| {
                 e.set_item_set_slot(set_id, &slot_name, id);
-                let alt = e.item_sets().iter().find(|s| s.id == set_id).and_then(|s| s.slots.get(&alt_slot)).map_or(0.0, |s| s.item_id);
+                let alt = e
+                    .item_sets()
+                    .iter()
+                    .find(|s| s.id == set_id)
+                    .and_then(|s| s.slots.get(&alt_slot))
+                    .map_or(0.0, |s| s.item_id);
                 if alt != 0.0 && e.item_by_id(alt).is_none_or(|i| !e.is_item_valid_in_set(&i, &alt_slot, set_id)) {
                     e.set_item_set_slot(set_id, &alt_slot, 0.0);
                 }
@@ -3679,7 +3689,17 @@ impl ItemsTab {
                 }
             }
             // U10: the popups of AddImplicit, Crucible and the rest of Corrupt
-            for n in ["implicit3", "implicit4", "implicit5", "modGroupSelect", "modSelectNode1", "modSelectNode2", "modSelectNode3", "modSelectNode4", "modSelectNode5"] {
+            for n in [
+                "implicit3",
+                "implicit4",
+                "implicit5",
+                "modGroupSelect",
+                "modSelectNode1",
+                "modSelectNode2",
+                "modSelectNode3",
+                "modSelectNode4",
+                "modSelectNode5",
+            ] {
                 if !names.iter().any(|x| x == n) {
                     continue;
                 }
@@ -3862,7 +3882,9 @@ impl DragTarget<f64> for SharedSetTarget {
             set.title.clone()
         });
         let m = main();
-        m.shared_item_set_list.borrow_mut().push(crate::modules::main::SharedItemSet { title, slots });
+        m.shared_item_set_list
+            .borrow_mut()
+            .push(crate::modules::main::SharedItemSet { title, slots });
         let l = self.0.upgrade().expect("list");
         let n = l.list.borrow().len();
         l.list.borrow_mut().push(n);

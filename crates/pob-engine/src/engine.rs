@@ -208,7 +208,12 @@ impl Engine {
         self.skills_live = None;
         self.main_pending = None;
         self.output_revision += 1;
-        (self.res, self.calcs) = run(&self.model, self.live_spec.as_deref(), self.extras.import.export_party, self.kept_spec())?;
+        (self.res, self.calcs) = run(
+            &self.model,
+            self.live_spec.as_deref(),
+            self.extras.import.export_party,
+            self.kept_spec(),
+        )?;
         *self.config_gates.borrow_mut() = Default::default();
         if let Some(l) = &self.live_spec {
             self.res.env.spec = l.clone();

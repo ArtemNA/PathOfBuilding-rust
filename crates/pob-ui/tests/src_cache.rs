@@ -20,7 +20,9 @@ fn upstream() -> String {
 
 fn lock_sha() -> String {
     let dir = pob_data::ensure_data().expect("data.lock");
-    pob_data::verify_lock(dir, &pob_data::lock_path(dir)).expect("data.lock").manifest_sha256
+    pob_data::verify_lock(dir, &pob_data::lock_path(dir))
+        .expect("data.lock")
+        .manifest_sha256
 }
 
 /// The package of the test run, made once. Every test takes its own copy of what it spoils.
@@ -77,7 +79,10 @@ fn the_form_keeps_the_order_and_every_bit() {
     // `same` sees what it must see: an order, a bit
     let swapped = parse_return(b"return { a=1, b=2 }").unwrap();
     assert!(!same(&swapped, &parse_return(b"return { b=2, a=1 }").unwrap()));
-    assert!(!same(&parse_return(b"return { 0.0 }").unwrap(), &parse_return(b"return { -0.0 }").unwrap()));
+    assert!(!same(
+        &parse_return(b"return { 0.0 }").unwrap(),
+        &parse_return(b"return { -0.0 }").unwrap()
+    ));
     // a damaged table is an error, whichever byte
     let bytes = encode(&v);
     assert!(decode(&bytes[..bytes.len() - 1]).is_err());
@@ -90,7 +95,10 @@ fn the_form_keeps_the_order_and_every_bit() {
 fn a_checkout_has_no_table_and_reads_the_text() {
     let root = upstream();
     assert!(!Path::new(&root).join(FILE).exists());
-    assert_eq!(src_cache::resolve(&root, "TreeData/3_29/tree.lua"), format!("{root}TreeData/3_29/tree.lua"));
+    assert_eq!(
+        src_cache::resolve(&root, "TreeData/3_29/tree.lua"),
+        format!("{root}TreeData/3_29/tree.lua")
+    );
     let t = src_cache::read_lua(&root, "Data/CurrencyNames.lua").expect("the text");
     assert!(t.as_tab().is_some());
 }
@@ -218,7 +226,9 @@ fn a_wrong_record_of_the_copies_fails() {
     let dir = sandbox("record");
     write_tables(MAGIC, &with_copies(&t, &recs), &sha, &dir.join(FILE)).expect("write");
     copy_tree(&pkg.join("TreeData"), &dir.join("TreeData"));
-    let e = Package::open(&root_of(&dir), &sha).resolve(&root_of(&dir), path).expect_err("the reader");
+    let e = Package::open(&root_of(&dir), &sha)
+        .resolve(&root_of(&dir), path)
+        .expect_err("the reader");
     assert!(e.contains("bytes"), "{e}");
     let e = verify(&upstream(), &dir, &sha).expect_err("the check of the package");
     assert!(e.contains("bytes"), "{e}");
@@ -231,7 +241,12 @@ fn a_wrong_record_of_the_copies_fails() {
     std::fs::write(&canonical, bytes).expect("write");
     write_tables(MAGIC, &t, &sha, &dir.join(FILE)).expect("write");
     let root = root_of(&dir);
-    assert!(Package::open(&root, &sha).resolve(&root, path).expect("the size is right").is_some());
+    assert!(
+        Package::open(&root, &sha)
+            .resolve(&root, path)
+            .expect("the size is right")
+            .is_some()
+    );
     let e = verify(&upstream(), &dir, &sha).expect_err("the check of the package");
     assert!(e.contains("other bytes"), "{e}");
 
@@ -300,7 +315,13 @@ fn art_digest(a: &TreeArt) -> String {
     names.sort();
     for n in names {
         let x = &a.assets[n];
-        let _ = writeln!(s, "asset {n} {} {} {:?}", bits(x.width.get()), bits(x.height.get()), x.tc.map(|t| t.map(bits)));
+        let _ = writeln!(
+            s,
+            "asset {n} {} {} {:?}",
+            bits(x.width.get()),
+            bits(x.height.get()),
+            x.tc.map(|t| t.map(bits))
+        );
     }
     let mut names: Vec<_> = a.sprite_map.keys().collect();
     names.sort();
@@ -308,7 +329,13 @@ fn art_digest(a: &TreeArt) -> String {
         let mut tys: Vec<_> = a.sprite_map[n].iter().collect();
         tys.sort_by_key(|(k, _)| k.as_str());
         for (ty, x) in tys {
-            let _ = writeln!(s, "sprite {n} {ty} {} {} {:?}", bits(x.width.get()), bits(x.height.get()), x.tc.map(|t| t.map(bits)));
+            let _ = writeln!(
+                s,
+                "sprite {n} {ty} {} {} {:?}",
+                bits(x.width.get()),
+                bits(x.height.get()),
+                x.tc.map(|t| t.map(bits))
+            );
         }
     }
     for c in &a.connectors {
@@ -352,7 +379,14 @@ fn art_digest(a: &TreeArt) -> String {
             x.flavour_rect.map(|r| (bits(r.0), bits(r.1)))
         );
     }
-    let _ = writeln!(s, "{} {} {} {}", a.has_class_ascendancies, bits(a.size), bits(a.version_num), a.async_handles.len());
+    let _ = writeln!(
+        s,
+        "{} {} {} {}",
+        a.has_class_ascendancies,
+        bits(a.size),
+        bits(a.version_num),
+        a.async_handles.len()
+    );
     s
 }
 
@@ -418,7 +452,10 @@ fn the_tree_tables_are_projections() {
             // the orders of `pairs`
             let (t, p) = (text.as_tab().unwrap(), v.as_tab().unwrap());
             for part in ["nodes", "groups"] {
-                let keys = |t: &LuaTab| t.tab(part).map(|x| x.fields.iter().map(|(k, _)| format!("{k:?}")).collect::<Vec<_>>());
+                let keys = |t: &LuaTab| {
+                    t.tab(part)
+                        .map(|x| x.fields.iter().map(|(k, _)| format!("{k:?}")).collect::<Vec<_>>())
+                };
                 assert_eq!(keys(t), keys(p), "{key} {part}");
             }
             n += 1;

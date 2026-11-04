@@ -570,7 +570,10 @@ fn config_states_equal_original() {
             let p = scene::oracle_dir().join(format!("fixtures/config/{n}.json"));
             let oracle: Value =
                 serde_json::from_str(&std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("{}: {e}", p.display()))).expect("texts");
-            eprintln!("{n}: {} vars with a text, the if* keys that gave one: {branches:?}", oracle.as_object().map_or(0, serde_json::Map::len));
+            eprintln!(
+                "{n}: {} vars with a text, the if* keys that gave one: {branches:?}",
+                oracle.as_object().map_or(0, serde_json::Map::len)
+            );
             *dev_branches.entry(n.clone()).or_default() = branches.clone();
             if let Some(d) = first_diff(&sorted_lines(&oracle), &sorted_lines(texts), n) {
                 failures.push(format!("{name}: {d}"));
@@ -599,10 +602,23 @@ fn config_states_equal_original() {
     eprintln!("dumps compared {compared}, differ {}", failures.len());
     // U10c: every `if*` key with a dev tooltip and data gave a text somewhere, or the comparison above proves nothing about it
     if !dev_branches.is_empty() {
-        for gate in ["Cond", "MinionCond", "EnemyCond", "CondTrue", "Mult", "EnemyMult", "Stat", "TagType", "Mod"] {
+        for gate in [
+            "Cond",
+            "MinionCond",
+            "EnemyCond",
+            "CondTrue",
+            "Mult",
+            "EnemyMult",
+            "Stat",
+            "TagType",
+            "Mod",
+        ] {
             let n: usize = dev_branches.values().filter_map(|b| b.get(gate)).sum();
             eprintln!("dev tooltip of {gate}: {n} vars");
-            assert!(n > 0 || std::env::var("POB_CONFIG_SCENES").is_ok(), "no scene shows the dev tooltip of {gate}");
+            assert!(
+                n > 0 || std::env::var("POB_CONFIG_SCENES").is_ok(),
+                "no scene shows the dev tooltip of {gate}"
+            );
         }
     }
     assert!(

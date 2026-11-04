@@ -103,7 +103,8 @@ fn load_scope(name: &str) -> Arc<Scope> {
         return s;
     }
     let root = crate::launch::launch().cfg.script_path.clone();
-    let v = src_cache::read_lua(&root, &format!("Data/StatDescriptions/{name}.lua")).unwrap_or_else(|e| panic!("Modules/StatDescriber.lua:15: {e}"));
+    let v = src_cache::read_lua(&root, &format!("Data/StatDescriptions/{name}.lua"))
+        .unwrap_or_else(|e| panic!("Modules/StatDescriber.lua:15: {e}"));
     let scope = Arc::new(scope_of(&v));
     SCOPES.with_borrow_mut(|m| m.insert(name.to_string(), scope.clone()));
     scope

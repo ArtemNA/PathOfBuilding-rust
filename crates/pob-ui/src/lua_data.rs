@@ -256,11 +256,17 @@ pub fn parse_return(src: &[u8]) -> Result<LuaVal, String> {
     let mut p = Parser { s: src, i: at + 6 };
     p.skip_ws();
     // `local tree={ ... }return tree` (the first word after `return` is a name, and `return` itself came after the table)
-    let name_end = src[p.i..].iter().position(|c| !(c.is_ascii_alphanumeric() || *c == b'_')).map_or(src.len(), |n| p.i + n);
+    let name_end = src[p.i..]
+        .iter()
+        .position(|c| !(c.is_ascii_alphanumeric() || *c == b'_'))
+        .map_or(src.len(), |n| p.i + n);
     let name = &src[p.i..name_end];
     if name.first().is_some_and(u8::is_ascii_alphabetic) && !matches!(name, b"true" | b"false" | b"nil") {
         let local = [b"local ", name, b"="].concat();
-        let start = src.windows(local.len()).position(|w| w == local).ok_or("return of an unknown name")?;
+        let start = src
+            .windows(local.len())
+            .position(|w| w == local)
+            .ok_or("return of an unknown name")?;
         p.i = start + local.len();
     }
     p.value()

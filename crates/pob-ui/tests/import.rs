@@ -364,7 +364,9 @@ fn run(name: &str) -> Run {
     let sandbox = Sandbox::new(name);
     let tp = TestPlatform::new();
     // U10: `screen` of a scene: the layout of a wider screen, states only
-    let screen = sc["screen"].as_array().map_or(scene::SCREEN, |s| (s[0].as_u64().expect("w") as u32, s[1].as_u64().expect("h") as u32));
+    let screen = sc["screen"].as_array().map_or(scene::SCREEN, |s| {
+        (s[0].as_u64().expect("w") as u32, s[1].as_u64().expect("h") as u32)
+    });
     let mut gfx = Gfx::with_platform(&scene::fonts_dir(), screen, 1.0, Box::new(tp.clone())).expect("fonts");
     gfx.set_dpi_scale_override_percent(100);
     gfx.input(RawEvent::Cursor { x: -100.0, y: -100.0 });

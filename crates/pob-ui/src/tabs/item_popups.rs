@@ -751,7 +751,13 @@ impl ItemsTab {
         let build_scourge_list: Rc<dyn Fn(usize, usize, &str)> = {
             let (drops, lists) = (drops.clone(), lists.clone());
             Rc::new(move |control: usize, other: usize, mod_type: &str| {
-                let selected = |d: &DropDownControl| if d.sel_index.get() > 1 { mod_at(d, d.sel_index.get()) } else { None };
+                let selected = |d: &DropDownControl| {
+                    if d.sel_index.get() > 1 {
+                        mod_at(d, d.sel_index.get())
+                    } else {
+                        None
+                    }
+                };
                 let self_mod = selected(&drops[control]);
                 let other_mod = selected(&drops[other]);
                 let mut l = vec![DropItem::table("None")];
@@ -794,7 +800,9 @@ impl ItemsTab {
         let sort_mod_type: Rc<dyn Fn(&str, Option<&PowerStat>)> = {
             let (lists, me, cur) = (lists.clone(), self.me.clone(), current.clone());
             Rc::new(move |mod_type: &str, stat: Option<&PowerStat>| {
-                let Some(mut list) = lists.borrow().get(mod_type).cloned() else { return };
+                let Some(mut list) = lists.borrow().get(mod_type).cloned() else {
+                    return;
+                };
                 if let Some(stat) = stat {
                     let t = me.upgrade().expect("itemsTab");
                     let d = t.display_item.borrow().clone().expect("displayItem");
@@ -834,8 +842,13 @@ impl ItemsTab {
         };
         // `applySort(stat)` (:3323-3348)
         let apply_sort: Rc<dyn Fn(Option<&PowerStat>)> = {
-            let (cur, drops, sort_mod_type, build_corrupt_lists, build_scourge_list) =
-                (current.clone(), drops.clone(), sort_mod_type, build_corrupt_lists.clone(), build_scourge_list.clone());
+            let (cur, drops, sort_mod_type, build_corrupt_lists, build_scourge_list) = (
+                current.clone(),
+                drops.clone(),
+                sort_mod_type,
+                build_corrupt_lists.clone(),
+                build_scourge_list.clone(),
+            );
             Rc::new(move |stat: Option<&PowerStat>| {
                 let current = cur.borrow().clone();
                 if current == "ScourgeUpside" {
@@ -874,7 +887,13 @@ impl ItemsTab {
                 let line = ml.line.clone();
                 let scalar = ml.value_scalar;
                 let format_label: Rc<dyn Fn(&Gfx, f64) -> (String, usize)> = Rc::new(move |g: &Gfx, corrupted: f64| {
-                    let line = pob_items::apply_range::apply_range(&line, mod_range, Some(scalar.unwrap_or(1.0)), Some(corrupted), pob_calc::ParseMode::Full);
+                    let line = pob_items::apply_range::apply_range(
+                        &line,
+                        mod_range,
+                        Some(scalar.unwrap_or(1.0)),
+                        Some(corrupted),
+                        pob_calc::ParseMode::Full,
+                    );
                     let lines = crate::common::wrap_string(g, &format!("^7{line}"), 16.0, 430.0);
                     (lines.join("\n"), lines.len())
                 });
@@ -1181,7 +1200,13 @@ impl ItemsTab {
         for ml in &item.crucible_mod_lines {
             item_mod_map.insert(ml.line.clone());
         }
-        let label_of = |m: &AffixMod| m.lines.iter().map(|l| self.check_line_for_allocates(l)).collect::<Vec<_>>().join("/");
+        let label_of = |m: &AffixMod| {
+            m.lines
+                .iter()
+                .map(|l| self.check_line_for_allocates(l))
+                .collect::<Vec<_>>()
+                .join("/")
+        };
         let mut mod_list: [Vec<Option<CrucibleRow>>; 5] = std::array::from_fn(|_| vec![None]);
         let mut node_selections: Vec<(usize, String)> = Vec::new();
         let set_node = |sel: &mut Vec<(usize, String)>, node: usize, id: &str| {
@@ -1201,7 +1226,11 @@ impl ItemsTab {
                 .flatten()
                 .filter_map(|x| x.as_f64().map(|v| v as usize))
                 .collect();
-            let has = |i: usize| m.lines.get(i).is_some_and(|l| item_mod_map.contains(&self.check_line_for_allocates(l)));
+            let has = |i: usize| {
+                m.lines
+                    .get(i)
+                    .is_some_and(|l| item_mod_map.contains(&self.check_line_for_allocates(l)))
+            };
             if has(0) && (m.lines.len() < 2 || has(1)) {
                 let taken = node_selections.iter().any(|(n, _)| *n == locations[0]);
                 if taken && locations.len() > 1 {
@@ -1325,7 +1354,17 @@ impl ItemsTab {
             "close".into(),
             ButtonControl::new(None, rect(45.0, 157.0, 80.0, 20.0), "Cancel".to_string(), |_g| main().close_popup()),
         );
-        main().open_popup(g, 710.0, 185.0, "Add Crucible Modifier to Item", controls, Some("save"), None, None, None);
+        main().open_popup(
+            g,
+            710.0,
+            185.0,
+            "Add Crucible Modifier to Item",
+            controls,
+            Some("save"),
+            None,
+            None,
+            None,
+        );
     }
 
     /// `ItemsTab:AddCustomModifierToDisplayItem()` (:3576-3927).
@@ -1584,12 +1623,18 @@ fn enchant_with(display: &Item, line: &str, slot: usize) -> Item {
 /// A `Data/*.lua` table with no `data/` file, read from the checkout (as `stat_describer.rs`): a table's positional strings are its `lines`.
 fn lua_data(rel: &str) -> serde_json::Value {
     let root = crate::launch::launch().cfg.script_path.clone();
-    let v = crate::src_cache::product(&root, &popup_key(rel), |root| Ok(json_to_lua(&popup_table(root, rel)?))).unwrap_or_else(|e| panic!("{rel}: {e}"));
+    let v = crate::src_cache::product(&root, &popup_key(rel), |root| Ok(json_to_lua(&popup_table(root, rel)?)))
+        .unwrap_or_else(|e| panic!("{rel}: {e}"));
     lua_to_json(&v)
 }
 
 /// The files [`lua_data`] is asked for.
-pub const POPUP_TABLES: [&str; 4] = ["Data/Crucible.lua", "Data/BeastCraft.lua", "Data/DelveDropOnly.lua", "Data/IncursionDropOnly.lua"];
+pub const POPUP_TABLES: [&str; 4] = [
+    "Data/Crucible.lua",
+    "Data/BeastCraft.lua",
+    "Data/DelveDropOnly.lua",
+    "Data/IncursionDropOnly.lua",
+];
 
 /// The table of `rel` in `src.cache`.
 pub fn popup_key(rel: &str) -> String {
@@ -1614,7 +1659,10 @@ pub fn json_to_lua(v: &serde_json::Value) -> LuaVal {
         Value::Number(n) => LuaVal::Num(n.as_f64().expect("a number")),
         Value::String(s) => LuaVal::Str(s.as_str().into()),
         Value::Array(a) => tab(a.iter().map(json_to_lua).collect(), Vec::new()),
-        Value::Object(m) => tab(Vec::new(), m.iter().map(|(k, v)| (LuaKey::Str(k.as_str().into()), json_to_lua(v))).collect()),
+        Value::Object(m) => tab(
+            Vec::new(),
+            m.iter().map(|(k, v)| (LuaKey::Str(k.as_str().into()), json_to_lua(v))).collect(),
+        ),
     }
 }
 

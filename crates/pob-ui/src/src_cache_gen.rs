@@ -54,7 +54,9 @@ fn each_value(t: &LuaTab, f: &dyn Fn(&LuaVal) -> LuaVal) -> LuaVal {
 
 fn ascendancy(v: &LuaVal) -> LuaVal {
     let Some(a) = v.as_tab() else { return v.clone() };
-    with_fields(a, |k, x| matches!(k, "id" | "flavourText" | "flavourTextColour" | "flavourTextRect").then(|| x.clone()))
+    with_fields(a, |k, x| {
+        matches!(k, "id" | "flavourText" | "flavourTextColour" | "flavourTextRect").then(|| x.clone())
+    })
 }
 
 fn class(v: &LuaVal) -> LuaVal {
@@ -192,7 +194,10 @@ pub fn generate(root: &str, out: &Path, manifest_sha256: &str) -> Result<Stats, 
         let bytes = std::fs::read(tree_data.join(&rel)).map_err(|e| format!("{rel}: {e}"))?;
         st.files_in += 1;
         st.bytes_in += bytes.len() as u64;
-        groups.entry((bytes.len() as u64, pob_data::sha256::sha256_hex(&bytes))).or_default().push(rel);
+        groups
+            .entry((bytes.len() as u64, pob_data::sha256::sha256_hex(&bytes)))
+            .or_default()
+            .push(rel);
     }
     let mut copies = Vec::new();
     for ((len, _), paths) in &groups {
@@ -208,7 +213,10 @@ pub fn generate(root: &str, out: &Path, manifest_sha256: &str) -> Result<Stats, 
                     arr: vec![LuaVal::Str(format!("TreeData/{keep}").into()), LuaVal::Num(*len as f64)],
                     fields: Vec::new(),
                 };
-                copies.push((LuaKey::Str(format!("treedata/{}", p.to_ascii_lowercase()).into()), LuaVal::Table(Rc::new(rec))));
+                copies.push((
+                    LuaKey::Str(format!("treedata/{}", p.to_ascii_lowercase()).into()),
+                    LuaVal::Table(Rc::new(rec)),
+                ));
             }
         }
     }
@@ -246,7 +254,10 @@ pub fn verify(root: &str, out: &Path, manifest_sha256: &str) -> Result<(usize, u
     if !matches!(p, Package::Open { .. }) {
         return Err(format!("{}: not the cache of this data", out.join(FILE).display()));
     }
-    let lua: Vec<String> = walk(out)?.into_iter().filter(|f| f.to_ascii_lowercase().ends_with(".lua")).collect();
+    let lua: Vec<String> = walk(out)?
+        .into_iter()
+        .filter(|f| f.to_ascii_lowercase().ends_with(".lua"))
+        .collect();
     if !lua.is_empty() {
         return Err(format!("the package has {} Lua files: {}", lua.len(), lua[0]));
     }

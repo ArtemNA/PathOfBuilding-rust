@@ -15,11 +15,11 @@ use crate::controls::edit::{EditArgs, EditControl};
 use crate::controls::list::{ByRef, ListControl, ListHooks};
 use crate::controls::popup::PopupDialog;
 use crate::controls::scroll_bar::SliderControl;
-use crate::undo::UndoHost;
 use crate::modules::main::main;
-use serde_json::json;
 use crate::sg;
 use crate::tooltip::Tooltip;
+use crate::undo::UndoHost;
+use serde_json::json;
 
 const JEWEL_TYPES: [(&str, &str, usize); 11] = [
     ("Glorious Vanity", "vaal", 1),
@@ -727,7 +727,10 @@ impl ListHooks<Row> for ListH {
         if let Some(items) = items {
             let item = Rc::new(pob_items::Item::parse_with(&text, None, false));
             if item.base.is_some() {
-                let socket = v.0.socket_id.or_else(|| tt.timeless.shared.borrow().socket.as_ref().map(|s| s.id)).filter(|i| *i != -1.0);
+                let socket =
+                    v.0.socket_id
+                        .or_else(|| tt.timeless.shared.borrow().socket.as_ref().map(|s| s.id))
+                        .filter(|i| *i != -1.0);
                 items.add_stat_differences(tooltip, g, &item, socket.map(|i| i as u32));
             }
         }
@@ -745,7 +748,9 @@ impl ListHooks<Row> for ListH {
             let added = {
                 let b = main().build_mode.clone();
                 let mut eng = b.engine.borrow_mut();
-                eng.as_mut().expect("engine").add_item(&pob_items::Item::parse_with(&text, None, false), None)
+                eng.as_mut()
+                    .expect("engine")
+                    .add_item(&pob_items::Item::parse_with(&text, None, false), None)
             };
             let added = added.unwrap_or_else(|e| panic!("{e}"));
             let b = main().build_mode.clone();
@@ -754,13 +759,17 @@ impl ListHooks<Row> for ListH {
                 && let Some(items) = &items
             {
                 // :340-347
-                let socket = v.0.socket_id.or_else(|| t.timeless.shared.borrow().socket.as_ref().map(|s| s.id)).filter(|i| *i != -1.0);
+                let socket =
+                    v.0.socket_id
+                        .or_else(|| t.timeless.shared.borrow().socket.as_ref().map(|s| s.id))
+                        .filter(|i| *i != -1.0);
                 if let Some(n) = socket {
                     let n = n as u32;
                     let slot = items.sockets.borrow().get(&n).cloned();
                     let ok = slot.as_ref().is_some_and(|s| {
                         items.read(|e| {
-                            e.spec_rc().alloc_nodes.contains_key(&n) && e.item_by_id(added).is_some_and(|i| e.is_item_valid_for_slot(&i, &s.slot_name))
+                            e.spec_rc().alloc_nodes.contains_key(&n)
+                                && e.item_by_id(added).is_some_and(|i| e.is_item_valid_for_slot(&i, &s.slot_name))
                         })
                     });
                     if let (Some(s), true) = (slot, ok) {
@@ -1478,7 +1487,10 @@ fn open_trade_url(g: &mut Gfx) {
         .and_then(|v| v.label)
         .expect("realm")
         .to_lowercase();
-    let Some(league) = ctl::<DropDownControl>("searchTradeLeagueSelect").get_sel_value().and_then(|v| v.label) else {
+    let Some(league) = ctl::<DropDownControl>("searchTradeLeagueSelect")
+        .get_sel_value()
+        .and_then(|v| v.label)
+    else {
         // the list of leagues has not come: `league:gsub` of TradeQueryRequests.lua:509
         panic!("Classes/TradeQueryRequests.lua:509: attempt to index local 'league' (a nil value)");
     };
@@ -1491,7 +1503,9 @@ fn open_trade_url(g: &mut Gfx) {
     g.open_url(&url);
     g.copy(&url);
     local(|l| *l.last_trade_url.borrow_mut() = Some(url));
-    ctl::<ButtonControl>("searchTradeButton").label.set("Open Next Trade URL".to_string());
+    ctl::<ButtonControl>("searchTradeButton")
+        .label
+        .set("Open Next Trade URL".to_string());
 }
 
 /// A trade URL as the gate compares it: the text of `dkjson.encode` has its keys in the order of `pairs` (R13).
@@ -1527,7 +1541,8 @@ fn update_leagues(g: &mut Gfx) {
         &realm_id,
         Rc::new(move |g: &mut Gfx, leagues: Vec<String>, err: Option<String>| {
             if let Some(err) = err {
-                msg.label.set(format!("^1Error fetching league list, default league will be used\n{err}^7"));
+                msg.label
+                    .set(format!("^1Error fetching league list, default league will be used\n{err}^7"));
                 return;
             }
             let Some(t) = weak_tab.upgrade() else { return };
@@ -1652,7 +1667,10 @@ fn build_stat_mod_lists(tree: &pob_tree::PassiveTree, id: &str, sorted: &[String
 /// `data.describeStats({ [stat] = 100, others = 0 }, "stat_descriptions")[1]` (:2002-2006). `stats`: the keys of `legionPassive.stats`, which are its `sortedStats` (test `legion_stat_lines.rs`).
 pub fn legion_stat_line(stats: &[String], stat: &str) -> Option<String> {
     let values: Vec<(String, f64)> = stats.iter().map(|k| (k.clone(), if k == stat { 100.0 } else { 0.0 })).collect();
-    crate::stat_describer::describe_stats(&values, "stat_descriptions", false).0.into_iter().next()
+    crate::stat_describer::describe_stats(&values, "stat_descriptions", false)
+        .0
+        .into_iter()
+        .next()
 }
 
 /// `newNode.divisor = ...modList[1].value` (:2052, :2094).
@@ -2900,7 +2918,14 @@ fn install_socket_viewer(drop: &Rc<DropDownControl>, ids: Rc<Vec<f64>>) {
 pub fn debug_results_tooltip(c: &ControlRef) -> Option<Vec<String>> {
     let any: &dyn std::any::Any = &**c;
     let l = any.downcast_ref::<ListControl<Row>>()?;
-    Some(l.tooltip.borrow().lines.iter().map(|x| x.text.clone().unwrap_or_else(|| "<sep>".to_string())).collect())
+    Some(
+        l.tooltip
+            .borrow()
+            .lines
+            .iter()
+            .map(|x| x.text.clone().unwrap_or_else(|| "<sep>".to_string()))
+            .collect(),
+    )
 }
 
 /// The `timeless` part of the `tabDump` of tree-runner.lua.

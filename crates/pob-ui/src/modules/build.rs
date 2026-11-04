@@ -390,7 +390,17 @@ impl BuildMode {
                 w.upgrade().expect("buildMode").close_build(g);
             }),
         );
-        main().open_popup(g, 580.0, 200.0, "Game Version", controls, Some("convert"), None, Some("cancel"), None);
+        main().open_popup(
+            g,
+            580.0,
+            200.0,
+            "Game Version",
+            controls,
+            Some("convert"),
+            None,
+            Some("cancel"),
+            None,
+        );
     }
 
     pub fn init_args(&self) -> (ModeArg, ModeArg) {
@@ -525,7 +535,11 @@ impl BuildMode {
             LabelControl::new(None, rect(0.0, 20.0, 0.0, 16.0), "^7Enter new build name:".to_string()),
         );
         // `not self.dbFileName and main.predefinedBuildName or (self.buildName or self.dbFileName):gsub(…)`
-        let predefined = main().predefined_build_name.borrow().clone().filter(|_| self.db_file_name.borrow().path().is_none());
+        let predefined = main()
+            .predefined_build_name
+            .borrow()
+            .clone()
+            .filter(|_| self.db_file_name.borrow().path().is_none());
         let init = predefined.unwrap_or_else(|| {
             let bn = self.build_name.borrow().clone();
             let src = bn
@@ -706,7 +720,17 @@ impl BuildMode {
             "cancel".into(),
             ButtonControl::new(None, rect(45.0, 70.0, 80.0, 20.0), "Cancel".to_string(), |_g| main().close_popup()),
         );
-        main().open_popup(g, 370.0, 100.0, "Set Name", controls, Some("save"), Some("edit"), Some("cancel"), None);
+        main().open_popup(
+            g,
+            370.0,
+            100.0,
+            "Set Name",
+            controls,
+            Some("save"),
+            Some("edit"),
+            Some("cancel"),
+            None,
+        );
     }
 
     fn sync_loadouts(&self, g: &mut Gfx) {
@@ -1625,7 +1649,13 @@ fn loadout_set_ids(m: &pob_build::BuildModel, value: &str) -> Option<(usize, f64
         }
         None
     };
-    let specs: Vec<(f64, Option<String>)> = m.tree.specs.iter().enumerate().map(|(i, s)| ((i + 1) as f64, s.title.clone())).collect();
+    let specs: Vec<(f64, Option<String>)> = m
+        .tree
+        .specs
+        .iter()
+        .enumerate()
+        .map(|(i, s)| ((i + 1) as f64, s.title.clone()))
+        .collect();
     let mut spec_id = None;
     for (i, s) in m.tree.specs.iter().enumerate() {
         let t = s.title.clone().unwrap_or_else(|| "Default".into());
@@ -1638,9 +1668,21 @@ fn loadout_set_ids(m: &pob_build::BuildModel, value: &str) -> Option<(usize, f64
             break;
         }
     }
-    let item_id = if m.item_sets.len() == 1 { 1.0 } else { find_set(m.item_sets.iter().map(|s| (s.id, s.title.clone())).collect())? };
-    let skill_id = if m.skills.sets.len() == 1 { 1.0 } else { find_set(m.skills.sets.iter().map(|s| (s.id, s.title.clone())).collect())? };
-    let config_id = if m.config.sets.len() == 1 { 1.0 } else { find_set(m.config.sets.iter().map(|s| (s.id, s.title.clone())).collect())? };
+    let item_id = if m.item_sets.len() == 1 {
+        1.0
+    } else {
+        find_set(m.item_sets.iter().map(|s| (s.id, s.title.clone())).collect())?
+    };
+    let skill_id = if m.skills.sets.len() == 1 {
+        1.0
+    } else {
+        find_set(m.skills.sets.iter().map(|s| (s.id, s.title.clone())).collect())?
+    };
+    let config_id = if m.config.sets.len() == 1 {
+        1.0
+    } else {
+        find_set(m.config.sets.iter().map(|s| (s.id, s.title.clone())).collect())?
+    };
     Some((spec_id?, item_id, skill_id, config_id))
 }
 
@@ -1769,7 +1811,9 @@ impl Mode for BuildMode {
                 let parsed = match pob_build::parse_xml_document(x) {
                     Err(e) => Err(format!("^1{e}")),
                     Ok(doc) => match doc.first() {
-                        Some(pob_build::XmlNode::Element(e)) if e.name == "PathOfBuilding" => Engine::load_xml(x).map_err(|e| format!("^1{e}")),
+                        Some(pob_build::XmlNode::Element(e)) if e.name == "PathOfBuilding" => {
+                            Engine::load_xml(x).map_err(|e| format!("^1{e}"))
+                        }
                         _ => Err("^1Error parsing 'Unnamed build': 'PathOfBuilding' root element missing".to_string()),
                     },
                 };
@@ -2160,7 +2204,8 @@ impl Mode for BuildMode {
         let config_mod = self.config_tab.borrow().as_ref().is_some_and(|t| t.undo.mod_flag.get());
         let skills_mod = self.skills_tab.borrow().as_ref().is_some_and(|t| t.undo.mod_flag.get());
         let items_mod = self.items_tab.borrow().as_ref().is_some_and(|t| t.undo.mod_flag.get());
-        self.unsaved.set(self.mod_flag.get() || calcs_mod || notes_mod || party_mod || config_mod || skills_mod || items_mod);
+        self.unsaved
+            .set(self.mod_flag.get() || calcs_mod || notes_mod || party_mod || config_mod || skills_mod || items_mod);
         sg::set_draw_layer(f, Some(5), 0);
         sg::set_draw_color(f, 0.2, 0.2, 0.2);
         sg::draw_rect(f, 0.0, 0.0, screen_w, 28.0);
