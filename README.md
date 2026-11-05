@@ -1,6 +1,6 @@
 # Path of Building (Rust)
 
-A fast, cross-platform rewrite of [Path of Building](https://github.com/PathOfBuildingCommunity/PathOfBuilding), the build planner for Path of Exile, in Rust: the calculation engine and the whole desktop interface.
+A fast, cross-platform rewrite of [Path of Building Community](https://github.com/PathOfBuildingCommunity/PathOfBuilding), the community fork of Path of Building, the build planner for Path of Exile, in Rust: the calculation engine and the whole desktop interface.
 
 **This is not a fork.** No Lua runs in it and it does not share the original's code base or history: the engine and the UI were rewritten from scratch. Its logic, however, is a faithful port of the original's, and it uses the original's data (see [Credits](#credits-and-licenses)). All the credit for the planner, its calculations and its data belongs to the Path of Building Community.
 
@@ -77,6 +77,6 @@ Then copy `target/release/pob-app` into an unpacked release package and run it t
 
 ## Credits and licenses
 
-- **Path of Building** © Path of Building Community, under the MIT license. This project ports its logic. Next to the program, packages carry its unchanged fonts, tree data and assets, and data converted from it, with its license in `LICENSE-PathOfBuilding.md`.
+- **Path of Building Community**, the community fork of Path of Building. Copyright (c) 2016 David Gowor, under the MIT license: see [LICENSE-PathOfBuilding.md](LICENSE-PathOfBuilding.md). This project ports its logic. Next to the program, packages carry its unchanged fonts, tree data and assets, and data converted from it, with the same license file.
 - **Game data and art** © Grinding Gear Games.
 - **The code of this project** is under the MIT license: see [LICENSE](LICENSE).
