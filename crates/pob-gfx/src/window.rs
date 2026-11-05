@@ -1,10 +1,11 @@
 //! The `winit` main loop: window + surface, callbacks of a [`MainObject`] (`OnInit`, `OnFrame`, `OnKeyDown`, `OnKeyUp`,
 //! `OnChar`, `CanExit`, `OnExit`), frame cadence, window requests (`SetWindowTitle`, `Exit`) and `TakeScreenshot`.
 //!
-//! Cadence (UI-ARCH §11): the original draws a frame about every 30 ms both idle and under input
-//! (`glfwWaitEventsTimeout`), and none while minimised. Here: `ControlFlow::WaitUntil(last + 30 ms)`, input callbacks run
-//! as events arrive (between frames), `OnFrame` once per tick; a frame whose draw list equals the previous one is
-//! not re-presented (like `r_elideFrames`).
+//! Cadence: the original has no frame timer of its own, `OnFrame` follows the display (120 fps on a 119 Hz monitor, measured by
+//! `tools/sg-oracle/lua/frame-rate-probe.lua`, with or without input), and none while minimised. Here: a frame that changed the picture is
+//! followed by the next one at once, and presenting paces them to the display. A frame whose draw list equals the previous one is not
+//! re-presented (like `r_elideFrames`), so nothing paces it: the next comes after [`IDLE_FRAME_PERIOD`], or at the next input.
+//! Input callbacks run as events arrive (between frames). [`MIN_FRAME_PERIOD`] holds when presenting does not wait (a hidden window).
 //!
 //! Input: `winit` events become platform-neutral [`RawEvent`]s (physical key positions, typed text as UTF-16 units, wheel
 //! messages, the OS cursor) and go through [`dispatch`] — the same path the oracle replay tests use (`tests/input.rs`).
@@ -25,8 +26,10 @@ use crate::input::{self, Button, Callback, PhysKey, RawEvent};
 use crate::platform::SystemPlatform;
 use crate::render::{RenderError, Renderer, RendererCore};
 
-/// Frame period of the original (§11: ~30 ms, ~33 fps).
-pub const FRAME_PERIOD: Duration = Duration::from_millis(30);
+/// The period of frames while the picture does not change and no input comes.
+pub const IDLE_FRAME_PERIOD: Duration = Duration::from_millis(30);
+/// The shortest period of frames, whatever else asks for one (250 fps).
+pub const MIN_FRAME_PERIOD: Duration = Duration::from_millis(4);
 
 /// The Lua "main object" (`SetMainObject`, Launch.lua:17): the host calls these between/at frames.
 pub trait MainObject {
@@ -156,6 +159,8 @@ struct App<M: MainObject> {
     start: Instant,
     live: Option<Live>,
     next_frame: Instant,
+    /// When the last frame was asked for.
+    last_frame: Instant,
     stats: RunStats,
     error: Option<RunError>,
     modifiers: ModifiersState,
@@ -420,6 +425,7 @@ impl<M: MainObject> App<M> {
             crate::trace::mark("first present");
         }
         live.last = Some(list);
+        self.next_frame = Instant::now();
     }
 
     /// Applies `SetWindowTitle` / `Exit` made by the last callback.
@@ -489,6 +495,7 @@ impl<M: MainObject> ApplicationHandler for App<M> {
             WindowEvent::ModifiersChanged(m) => self.modifiers = m.state(),
             _ => {
                 for ev in raw_events(&event, self.modifiers) {
+                    self.next_frame = Instant::now();
                     dispatch(&mut self.main, gfx, ev);
                     if gfx.exit_requested() {
                         break;
@@ -501,13 +508,15 @@ impl<M: MainObject> ApplicationHandler for App<M> {
 
     fn about_to_wait(&mut self, el: &ActiveEventLoop) {
         let now = Instant::now();
-        if now >= self.next_frame {
+        let earliest = self.last_frame + MIN_FRAME_PERIOD;
+        if now >= self.next_frame && now >= earliest {
             if let Some(live) = &self.live {
                 live.window.request_redraw();
             }
-            self.next_frame = now + FRAME_PERIOD;
+            self.last_frame = now;
+            self.next_frame = now + IDLE_FRAME_PERIOD;
         }
-        el.set_control_flow(ControlFlow::WaitUntil(self.next_frame));
+        el.set_control_flow(ControlFlow::WaitUntil(self.next_frame.max(self.last_frame + MIN_FRAME_PERIOD)));
     }
 }
 
@@ -537,6 +546,7 @@ pub fn run_with_icon<M: MainObject>(main: M, cfg: WindowConfig, icon_png: Option
         start,
         live: None,
         next_frame: start,
+        last_frame: start,
         stats: RunStats::default(),
         error: None,
         modifiers: ModifiersState::empty(),
