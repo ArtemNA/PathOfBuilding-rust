@@ -15,7 +15,6 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use winit::application::ApplicationHandler;
-use winit::dpi::PhysicalSize;
 use winit::event::{ElementState, MouseButton, MouseScrollDelta, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
 use winit::keyboard::{KeyCode, ModifiersState, PhysicalKey};
@@ -225,6 +224,9 @@ fn phys_key(code: KeyCode) -> PhysKey {
         K::Escape => PhysKey::Escape,
         K::ShiftLeft | K::ShiftRight => PhysKey::Shift,
         K::ControlLeft | K::ControlRight => PhysKey::Ctrl,
+        // The UI asks for `CTRL` only; on a Mac its shortcuts are the ones of Cmd, and Ctrl keeps working too.
+        #[cfg(target_os = "macos")]
+        K::SuperLeft | K::SuperRight => PhysKey::Ctrl,
         K::AltLeft | K::AltRight => PhysKey::Alt,
         K::Pause => PhysKey::Pause,
         K::PageUp => PhysKey::PageUp,
@@ -276,7 +278,22 @@ fn button(b: MouseButton) -> Option<Button> {
 
 /// A key held with Ctrl types nothing: `KeyEvent::text` ignores Ctrl and would give the `v` of Ctrl+V after the paste, GLFW gives no character there. Ctrl+Alt is AltGr on Windows and does type.
 fn types_text(modifiers: ModifiersState) -> bool {
+    // Cmd is `CTRL` on a Mac (`phys_key`), and Cmd+Alt is no AltGr there.
+    #[cfg(target_os = "macos")]
+    if modifiers.super_key() {
+        return false;
+    }
     !modifiers.control_key() || modifiers.alt_key()
+}
+
+/// Cmd+Q: the same way out as the close button.
+#[cfg(target_os = "macos")]
+fn quit_shortcut(event: &WindowEvent, modifiers: ModifiersState) -> bool {
+    matches!(event, WindowEvent::KeyboardInput { event, .. }
+        if event.state == ElementState::Pressed
+            && !event.repeat
+            && event.physical_key == PhysicalKey::Code(KeyCode::KeyQ)
+            && modifiers.super_key())
 }
 
 /// `winit` window event -> platform events, in delivery order (a key press with text = the key, then its characters).
@@ -325,10 +342,15 @@ fn raw_events(event: &WindowEvent, modifiers: ModifiersState) -> Vec<RawEvent> {
 
 impl<M: MainObject> App<M> {
     fn init(&mut self, el: &ActiveEventLoop) -> Result<(), RunError> {
+        // A Mac counts windows in points: 1280x800 pixels on Retina is a window of 640x400, too small for the UI's layout.
+        #[cfg(target_os = "macos")]
+        let inner_size = winit::dpi::LogicalSize::new(self.cfg.size.0, self.cfg.size.1);
+        #[cfg(not(target_os = "macos"))]
+        let inner_size = winit::dpi::PhysicalSize::new(self.cfg.size.0, self.cfg.size.1);
         let attrs = Window::default_attributes()
             .with_title(self.cfg.title.clone())
             .with_window_icon(self.icon.clone())
-            .with_inner_size(PhysicalSize::new(self.cfg.size.0, self.cfg.size.1));
+            .with_inner_size(inner_size);
         #[cfg(windows)]
         let attrs = winit::platform::windows::WindowAttributesExtWindows::with_taskbar_icon(attrs, self.icon.clone());
         let window = Arc::new(el.create_window(attrs).map_err(|e| RunError::EventLoop(e.to_string()))?);
@@ -460,14 +482,20 @@ impl<M: MainObject> ApplicationHandler for App<M> {
     fn window_event(&mut self, el: &ActiveEventLoop, _id: WindowId, event: WindowEvent) {
         let Some(live) = self.live.as_mut() else { return };
         let gfx = &mut live.gfx;
-        match &event {
-            WindowEvent::CloseRequested => {
-                if self.main.can_exit(gfx) {
-                    self.main.on_exit(gfx);
-                    el.exit();
-                    return;
-                }
+        #[cfg(target_os = "macos")]
+        let close = quit_shortcut(&event, self.modifiers) || matches!(event, WindowEvent::CloseRequested);
+        #[cfg(not(target_os = "macos"))]
+        let close = matches!(event, WindowEvent::CloseRequested);
+        if close {
+            if self.main.can_exit(gfx) {
+                self.main.on_exit(gfx);
+                el.exit();
+                return;
             }
+            self.apply_requests(el);
+            return;
+        }
+        match &event {
             WindowEvent::Resized(size) => {
                 if let Some(gpu) = live.gpu.as_mut() {
                     gpu.config.width = size.width;
@@ -538,7 +566,12 @@ fn decode_icon(png: &[u8]) -> Option<Icon> {
 pub fn run_with_icon<M: MainObject>(main: M, cfg: WindowConfig, icon_png: Option<&[u8]>) -> Result<(M, RunStats), RunError> {
     let start = Instant::now();
     crate::trace::mark("run");
-    let el = EventLoop::new().map_err(|e| RunError::EventLoop(e.to_string()))?;
+    // winit's default menu quits by `terminate:`, past `can_exit` and `on_exit`: `quit_shortcut` takes its place.
+    #[cfg(target_os = "macos")]
+    let el = winit::platform::macos::EventLoopBuilderExtMacOS::with_default_menu(&mut EventLoop::builder(), false).build();
+    #[cfg(not(target_os = "macos"))]
+    let el = EventLoop::new();
+    let el = el.map_err(|e| RunError::EventLoop(e.to_string()))?;
     let mut app = App {
         main,
         cfg,
@@ -569,5 +602,16 @@ mod tests {
         assert!(!types_text(ModifiersState::CONTROL));
         assert!(!types_text(ModifiersState::CONTROL | ModifiersState::SHIFT));
         assert!(types_text(ModifiersState::CONTROL | ModifiersState::ALT));
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn cmd_is_ctrl_on_a_mac() {
+        assert!(matches!(phys_key(KeyCode::SuperLeft), PhysKey::Ctrl));
+        assert!(matches!(phys_key(KeyCode::SuperRight), PhysKey::Ctrl));
+        assert!(matches!(phys_key(KeyCode::ControlLeft), PhysKey::Ctrl));
+        assert!(!types_text(ModifiersState::SUPER));
+        assert!(!types_text(ModifiersState::SUPER | ModifiersState::ALT));
+        assert!(types_text(ModifiersState::ALT));
     }
 }
