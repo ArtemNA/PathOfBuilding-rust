@@ -1,17 +1,80 @@
-# pob-rust
+# Path of Building (Rust)
 
-A personal port of **Path of Building** (Path of Exile build planner, MIT, (c) Path of Building Community) from Lua to **Rust**: the calculation core
-and the desktop interface. Not a fork for publication; the goal is speed for one user.
+A fast, cross-platform rewrite of [Path of Building](https://github.com/PathOfBuildingCommunity/PathOfBuilding), the build planner for Path of Exile, in Rust: the calculation engine and the whole desktop interface.
 
-## Mandates
+**This is not a fork.** No Lua runs in it and it does not share the original's code base or history: the engine and the UI were rewritten from scratch. Its logic, however, is a faithful port of the original's, and it uses the original's data (see [Credits](#credits-and-licenses)). All the credit for the planner, its calculations and its data belongs to the Path of Building Community.
 
-- **R-M1. Number parity.** Every `getStats()` key is bit for bit with desktop PoB (LuaJIT); checked by goldens, the wasm oracle and LuaJIT in docker.
-  Quirks and typos of upstream are reproduced literally; anything skipped is an explicit `unimplemented`.
-- **R-M2. Data is not moved by hand.** The source is the pob-ts converter (`data/*.json` with `manifest.json`/pobSha); closures in the data are registries with a sha.
-- **R-M3. The interface as in the original.** Our own implementation of the SimpleGraphic API (`winit` + `wgpu`, the same bitmap fonts and assets) and a port of the Lua UI classes.
-- **R-M4. Speed comes after correctness.** Optimizations only for modules in parity, with a before/after benchmark; mass recalculations run in parallel.
+It is unofficial and not affiliated with Path of Building Community or Grinding Gear Games.
 
-## Attribution
+## Why use it
 
-Path of Building is (c) Path of Building Community, MIT license (`PathOfBuilding/LICENSE.md`); game data is (c) Grinding Gear Games.
-Fonts and assets are used from a local checkout of the original and are not copied into the git of this repo.
+- **Faster.** See the numbers below.
+- **Less memory.** The peak is about 40% lower.
+- **Runs on more systems.** Windows and Linux, without Wine. macOS is in progress.
+- **Same numbers as the original.** 426 reference builds match the original bit for bit, on about 320,000 values.
+- **Same interface.** All the tabs: Tree, Skills, Items, Calcs, Config, Notes, Import/Export, Party, Compare, Trade. Screens are compared with recordings of the original, pixel by pixel.
+- **Your builds stay safe.** It keeps its data in its own folder and never changes the original's.
+
+## Speed and memory
+
+Measured on one Windows machine with the same builds. Your numbers will differ.
+
+| | This app | Original |
+|---|---|---|
+| Power calculation | ~2.3 s | ~15 s |
+| Opening the Items tab | 2.3 ms | 10 ms |
+| Recalculation after equipping an item | 51 ms | 77 ms |
+| Memory in steady use | 363–389 MB | 446–491 MB |
+| Peak memory | 461 MB | 757 MB |
+
+Not everything is faster: the first hover over an item takes 12–15 ms against 8–12 ms in the original.
+
+## Platforms
+
+| System | State |
+|---|---|
+| Windows x64 | Installer and zip. Tested. |
+| Linux x64 | Archive, glibc 2.28 or newer (Ubuntu 20.04+, Debian 10+, RHEL 8+). Early: the numbers are tested, a real desktop session is still being checked. |
+| macOS | Compiles, not yet tested, no download yet. |
+
+## Install
+
+Downloads are on the [Releases](../../releases) page. The files are not signed, so your system may warn you.
+
+**Windows.** Run `pob-rust-<version>-windows-x64-setup.exe`. It needs no administrator rights and installs over an older version. It can also open `pob://` links, and gives them back to the original on uninstall. Or unpack the zip anywhere and run `Path of Building (Rust).exe`, keeping the files next to it.
+
+**Linux.** Unpack the archive to a folder of your own and add a command for it:
+
+```bash
+tar -xzf pob-rust-<version>-linux-x64.tar.gz -C ~/.local/share
+mv ~/.local/share/pob-rust-<version>-linux-x64 ~/.local/share/pob-rust
+mkdir -p ~/.local/bin
+ln -s ~/.local/share/pob-rust/"Path of Building (Rust)" ~/.local/bin/pob-rust
+```
+
+Then run `pob-rust`. You need a Vulkan or OpenGL driver, and `libxkbcommon-x11` on an X11 session. To update, replace the folder: your builds are not in it.
+
+Builds and settings live in `Documents/Path of Building (Rust)`.
+
+## Known limitations
+
+- No automatic updates: download new versions by hand.
+- Game data updates arrive with new releases of this app, not on their own.
+- On Linux and macOS, `sin` and `pow` of the system's math library can differ from Windows in the last bit. The 426 reference builds are not affected, but a tree node's position is, far below what can be seen.
+- Tree images can differ from the original by a few pixels, because the order of `pairs` in the original differs from run to run.
+
+## Building from source
+
+You need the Rust version in `rust-toolchain.toml`. The game data and art are not in this repository, so take them from a release package:
+
+```bash
+cargo build --release -p pob-app
+```
+
+Then copy `target/release/pob-app` into an unpacked release package and run it there. `tools/package-unix.sh` makes a package for Linux or macOS, and `tools/package.ps1` with `tools/installer.ps1` for Windows.
+
+## Credits and licenses
+
+- **Path of Building** © Path of Building Community, under the MIT license. This project ports its logic. Next to the program, packages carry its unchanged fonts, tree data and assets, and data converted from it, with its license in `LICENSE-PathOfBuilding.md`.
+- **Game data and art** © Grinding Gear Games.
+- **The code of this project** is under the MIT license: see [LICENSE](LICENSE).
