@@ -12,6 +12,15 @@ use std::rc::{Rc, Weak};
 use crate::draw::DrawList;
 use crate::image::Texture;
 
+/// The GPU API of each system, the ones `Cargo.toml` turns on (`WGPU_BACKEND` overrides).
+const DEFAULT_BACKENDS: wgpu::Backends = if cfg!(windows) {
+    wgpu::Backends::DX12
+} else if cfg!(target_os = "macos") {
+    wgpu::Backends::METAL
+} else {
+    wgpu::Backends::VULKAN.union(wgpu::Backends::GL)
+};
+
 /// Format of the frame texture the main pass draws into (non-sRGB: the original blends in gamma space).
 const FRAME_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8Unorm;
 
@@ -96,7 +105,7 @@ impl Renderer {
     /// Creates an instance + adapter + device. `surface` (window path) constrains the adapter.
     pub fn new_instance() -> wgpu::Instance {
         wgpu::Instance::new(wgpu::InstanceDescriptor {
-            backends: wgpu::Backends::from_env().unwrap_or(wgpu::Backends::DX12),
+            backends: wgpu::Backends::from_env().unwrap_or(DEFAULT_BACKENDS),
             ..wgpu::InstanceDescriptor::new_without_display_handle()
         })
     }

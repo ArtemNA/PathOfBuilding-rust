@@ -62,13 +62,12 @@ fn find_root(args: &[String]) -> Result<PathBuf, String> {
     }
 }
 
-/// The title of an error box.
-const ERROR_TITLE: &str = pob_ui::launch::APP_NAME;
-
 #[cfg(windows)]
 #[allow(unsafe_code)]
 fn message_box(text: &str) {
     use std::ffi::c_void;
+    /// The title of an error box.
+    const ERROR_TITLE: &str = pob_ui::launch::APP_NAME;
     #[link(name = "user32")]
     unsafe extern "system" {
         fn MessageBoxW(hwnd: *mut c_void, text: *const u16, caption: *const u16, kind: u32) -> i32;

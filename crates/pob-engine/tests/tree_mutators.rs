@@ -23,7 +23,7 @@ fn inputs() -> Vec<(String, String)> {
         &std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/../../tools/upstream.json")).expect("upstream"),
     )
     .expect("json");
-    let root = upstream["pobRoot"].as_str().expect("pobRoot");
+    let root = std::env::var("POB_ROOT").unwrap_or_else(|_| upstream["pobRoot"].as_str().expect("pobRoot").to_string());
     let mut out = Vec::new();
     let golden = format!("{root}/spec/TestBuilds/3.13/Generals Perforate Zerker.xml");
     out.push(("golden".to_string(), std::fs::read_to_string(golden).expect("golden")));

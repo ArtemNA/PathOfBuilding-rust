@@ -78,6 +78,9 @@ pub fn new_file_search(spec: &str, find_dirs: bool) -> Option<FileSearch> {
         let modified = e.metadata().and_then(|m| m.modified()).map(filetime).unwrap_or(0.0);
         entries.push((name, modified));
     }
+    // Elsewhere `read_dir` has no order of its own: the order NTFS gives the original.
+    #[cfg(not(windows))]
+    entries.sort_by_cached_key(|(name, _)| name.to_uppercase());
     (!entries.is_empty()).then_some(FileSearch { entries, pos: 0 })
 }
 
@@ -142,7 +145,11 @@ pub fn get_cloud_provider(_path: &str) -> Option<(String, String, String)> {
 /// `windows-sys` is a U9 question), with `/` separators like the original's paths.
 pub fn get_user_path() -> Option<String> {
     let home = std::env::var("USERPROFILE").or_else(|_| std::env::var("HOME")).ok()?;
-    Some(format!("{}/Documents", home.replace('\\', "/")))
+    let documents = format!("{}/Documents", home.replace('\\', "/"));
+    // A Linux home may have no such folder, and `MakeDir` of the data folder makes one level only.
+    #[cfg(not(windows))]
+    let _ = std::fs::create_dir_all(&documents);
+    Some(documents)
 }
 
 #[cfg(test)]

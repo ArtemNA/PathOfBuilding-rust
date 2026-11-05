@@ -8,7 +8,7 @@ fn golden() -> String {
         &std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/../../tools/upstream.json")).expect("upstream"),
     )
     .expect("json");
-    let root = upstream["pobRoot"].as_str().expect("pobRoot");
+    let root = std::env::var("POB_ROOT").unwrap_or_else(|_| upstream["pobRoot"].as_str().expect("pobRoot").to_string());
     std::fs::read_to_string(format!("{root}/spec/TestBuilds/3.13/Generals Perforate Zerker.xml")).expect("golden")
 }
 
