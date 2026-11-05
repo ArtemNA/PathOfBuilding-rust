@@ -353,6 +353,12 @@ impl<M: MainObject> App<M> {
             .with_inner_size(inner_size);
         #[cfg(windows)]
         let attrs = winit::platform::windows::WindowAttributesExtWindows::with_taskbar_icon(attrs, self.icon.clone());
+        // The name that ties the window to `pob-rust.desktop` (tools/linux-install.sh): the desktop's taskbar takes the icon from there.
+        #[cfg(all(unix, not(target_os = "macos")))]
+        let attrs = {
+            let attrs = winit::platform::wayland::WindowAttributesExtWayland::with_name(attrs, "pob-rust", "pob-rust");
+            winit::platform::x11::WindowAttributesExtX11::with_name(attrs, "pob-rust", "pob-rust")
+        };
         let window = Arc::new(el.create_window(attrs).map_err(|e| RunError::EventLoop(e.to_string()))?);
         self.stats.window_ready = self.start.elapsed();
         crate::trace::mark("window");

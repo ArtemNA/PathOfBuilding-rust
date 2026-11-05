@@ -43,16 +43,15 @@ Downloads are on the [Releases](../../releases) page. The files are not signed, 
 
 **Windows.** Run `pob-rust-<version>-windows-x64-setup.exe`. It needs no administrator rights and installs over an older version. It can also open `pob://` links, and gives them back to the original on uninstall. Or unpack the zip anywhere and run `Path of Building (Rust).exe`, keeping the files next to it.
 
-**Linux.** Unpack the archive to a folder of your own and add a command for it:
+**Linux.** Unpack the archive and run its installer. It needs no `sudo` and adds the app to your applications menu and a `pob-rust` command:
 
 ```bash
-tar -xzf pob-rust-<version>-linux-x64.tar.gz -C ~/.local/share
-mv ~/.local/share/pob-rust-<version>-linux-x64 ~/.local/share/pob-rust
-mkdir -p ~/.local/bin
-ln -s ~/.local/share/pob-rust/"Path of Building (Rust)" ~/.local/bin/pob-rust
+tar -xzf pob-rust-<version>-linux-x64.tar.gz
+cd pob-rust-<version>-linux-x64
+./install.sh
 ```
 
-Then run `pob-rust`. You need a Vulkan or OpenGL driver, and `libxkbcommon-x11` on an X11 session. To update, replace the folder: your builds are not in it.
+Run a newer `install.sh` to update, and `~/.local/share/pob-rust/install.sh --uninstall` to remove it; neither touches your builds. `./install.sh --pob-links` also makes the app open `pob://` links. Without installing, you can also run `./"Path of Building (Rust)"` right from the unpacked folder. You need a Vulkan or OpenGL driver, and `libxkbcommon-x11` on an X11 session.
 
 **macOS.** Unpack `pob-rust-<version>-macos-arm64.tar.gz` and run `Path of Building (Rust)` from the folder, keeping the files next to it. There is no `.app` yet, and as the archive is not signed, macOS may refuse to open it until you allow it in System Settings > Privacy & Security. Cmd works as Ctrl. Cmd+Q asks about unsaved changes, as closing the window does, and the standard app menu with Hide is not there for now.
 

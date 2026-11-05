@@ -35,6 +35,11 @@ rm -rf "$out"
 mkdir -p "$out"
 (cd "$src" && tar --exclude='*.exe' -cf - .) | tar -C "$out" -xf -
 cp "$exe" "$out/Path of Building (Rust)"
+if [ "$os" = linux ]; then
+    cp tools/linux-install.sh "$out/install.sh"
+    chmod +x "$out/install.sh"
+    cp crates/pob-app/assets/icon.png "$out/pob-rust.png"
+fi
 tar -C dist -czf "dist/$name.tar.gz" "$name"
 rm -rf "$out"
 ls -l "dist/$name.tar.gz"
