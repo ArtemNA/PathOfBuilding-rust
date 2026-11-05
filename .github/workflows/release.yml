@@ -1,0 +1,126 @@
+# A tag `v<version>` builds the packages of every system and leaves them in a draft release, to be checked and published by hand.
+# Windows builds the package from upstream and the converted data; Linux and macOS take its files and add their own exe (tools/package-unix.sh).
+# The converted data is not in git: it is the asset `pob-data.zip` of the draft release `data-<first 9 of pobSha>`, checked against data.lock by tools/package.ps1.
+name: release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: The tag to build
+        required: true
+
+permissions:
+  contents: write
+
+env:
+  TAG: ${{ inputs.tag || github.ref_name }}
+  GH_TOKEN: ${{ github.token }}
+  GH_REPO: ${{ github.repository }}
+
+jobs:
+  windows:
+    runs-on: windows-2022
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
+      - name: The tag is the version of Cargo.toml
+        run: |
+          $cargo = Get-Content Cargo.toml -Raw
+          if ($cargo -notmatch '(?m)^version\s*=\s*"([^"]+)"') { throw 'no version' }
+          if ("v$($Matches[1])" -ne $env:TAG) { throw "tag $env:TAG, Cargo.toml $($Matches[1])" }
+      - name: Upstream at the pinned commit, where tools/upstream.json says
+        run: |
+          $up = Get-Content tools/upstream.json -Raw | ConvertFrom-Json
+          New-Item -ItemType Directory -Force $up.pobRoot | Out-Null
+          git -C $up.pobRoot init -q
+          git -C $up.pobRoot config core.autocrlf true
+          git -C $up.pobRoot remote add origin https://github.com/PathOfBuildingCommunity/PathOfBuilding.git
+          git -C $up.pobRoot fetch -q --depth 1 origin $up.pobSha
+          git -C $up.pobRoot checkout -q FETCH_HEAD
+      - name: Converted data
+        run: |
+          $up = Get-Content tools/upstream.json -Raw | ConvertFrom-Json
+          gh release download "data-$($up.pobSha.Substring(0, 9))" -p pob-data.zip -D $env:RUNNER_TEMP
+          tar -xf "$env:RUNNER_TEMP/pob-data.zip"
+      - name: Inno Setup
+        run: choco install innosetup --no-progress -y
+      - name: Package, zip and installer
+        run: |
+          ./tools/package.ps1
+          Push-Location dist
+          tar -a -c -f "pob-rust-$($env:TAG.TrimStart('v'))-windows-x64.zip" pob-rust
+          Pop-Location
+          ./tools/installer.ps1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: files
+          path: dist/pob-rust/
+          retention-days: 1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: |
+            dist/*.zip
+            dist/*-setup.exe
+          retention-days: 3
+          compression-level: 0
+
+  unix:
+    needs: windows
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { runner: ubuntu-24.04, name: linux }
+          - { runner: macos-14, name: macos }
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: files
+          path: ${{ runner.temp }}/files
+      - name: zig, for the glibc floor
+        if: matrix.name == 'linux'
+        run: |
+          pip3 install --break-system-packages cargo-zigbuild
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      - name: Package
+        run: bash tools/package-unix.sh "$RUNNER_TEMP/files"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.name }}
+          path: dist/*.tar.gz
+          retention-days: 3
+          compression-level: 0
+
+  draft:
+    needs: [windows, unix]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: out
+          pattern: '{windows,linux,macos}'
+          merge-multiple: true
+      - name: Draft release with the checksums
+        run: |
+          cd out
+          sha256sum * > "$RUNNER_TEMP/sha256.txt"
+          {
+            echo 'Draft built by the release workflow. Replace this text before publishing.'
+            echo
+            echo '```'
+            cat "$RUNNER_TEMP/sha256.txt"
+            echo '```'
+          } > "$RUNNER_TEMP/notes.md"
+          gh release create "$TAG" --draft --verify-tag --title "Path of Building (Rust) ${TAG#v}" --notes-file "$RUNNER_TEMP/notes.md" ./*

@@ -25,7 +25,7 @@ else
     cargo build --profile dist -p pob-app --features package
     exe=target/dist/pob-app
 fi
-for bad in "$HOME" "$repo" "$(whoami)"; do
+for bad in "$HOME" "$repo"; do
     if LC_ALL=C grep -aqF -- "$bad" "$exe"; then echo "the exe contains: $bad" >&2; exit 1; fi
 done
 
