@@ -2,7 +2,7 @@
 
 A fast, cross-platform rewrite of [Path of Building Community](https://github.com/PathOfBuildingCommunity/PathOfBuilding), the community fork of Path of Building, the build planner for Path of Exile, in Rust: the calculation engine and the whole desktop interface.
 
-**This is not a fork.** No Lua runs in it and it does not share the original's code base or history: the engine and the UI were rewritten from scratch. Its logic, however, is a faithful port of the original's, and it uses the original's data (see [Credits](#credits-and-licenses)). All the credit for the planner, its calculations and its data belongs to the Path of Building Community.
+**This is not a fork in the usual sense, but a complete rewrite that stays as close to the original as possible.** No Lua runs in it and it does not share the original's git history, while its logic is a faithful port of the original's and it uses the original's data (see [Credits](#credits-and-licenses)). All the credit for the planner, its calculations and its data belongs to the Path of Building Community.
 
 It is unofficial and not affiliated with Path of Building Community or Grinding Gear Games.
 
