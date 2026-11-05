@@ -225,6 +225,9 @@ fn phys_key(code: KeyCode) -> PhysKey {
         K::Escape => PhysKey::Escape,
         K::ShiftLeft | K::ShiftRight => PhysKey::Shift,
         K::ControlLeft | K::ControlRight => PhysKey::Ctrl,
+        // The UI asks for `CTRL` only; on a Mac its shortcuts are the ones of Cmd, and Ctrl keeps working too.
+        #[cfg(target_os = "macos")]
+        K::SuperLeft | K::SuperRight => PhysKey::Ctrl,
         K::AltLeft | K::AltRight => PhysKey::Alt,
         K::Pause => PhysKey::Pause,
         K::PageUp => PhysKey::PageUp,
@@ -276,6 +279,11 @@ fn button(b: MouseButton) -> Option<Button> {
 
 /// A key held with Ctrl types nothing: `KeyEvent::text` ignores Ctrl and would give the `v` of Ctrl+V after the paste, GLFW gives no character there. Ctrl+Alt is AltGr on Windows and does type.
 fn types_text(modifiers: ModifiersState) -> bool {
+    // Cmd is `CTRL` on a Mac (`phys_key`), and Cmd+Alt is no AltGr there.
+    #[cfg(target_os = "macos")]
+    if modifiers.super_key() {
+        return false;
+    }
     !modifiers.control_key() || modifiers.alt_key()
 }
 
@@ -569,5 +577,16 @@ mod tests {
         assert!(!types_text(ModifiersState::CONTROL));
         assert!(!types_text(ModifiersState::CONTROL | ModifiersState::SHIFT));
         assert!(types_text(ModifiersState::CONTROL | ModifiersState::ALT));
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn cmd_is_ctrl_on_a_mac() {
+        assert!(matches!(phys_key(KeyCode::SuperLeft), PhysKey::Ctrl));
+        assert!(matches!(phys_key(KeyCode::SuperRight), PhysKey::Ctrl));
+        assert!(matches!(phys_key(KeyCode::ControlLeft), PhysKey::Ctrl));
+        assert!(!types_text(ModifiersState::SUPER));
+        assert!(!types_text(ModifiersState::SUPER | ModifiersState::ALT));
+        assert!(types_text(ModifiersState::ALT));
     }
 }
