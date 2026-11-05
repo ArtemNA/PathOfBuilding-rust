@@ -15,7 +15,6 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use winit::application::ApplicationHandler;
-use winit::dpi::PhysicalSize;
 use winit::event::{ElementState, MouseButton, MouseScrollDelta, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
 use winit::keyboard::{KeyCode, ModifiersState, PhysicalKey};
@@ -333,10 +332,15 @@ fn raw_events(event: &WindowEvent, modifiers: ModifiersState) -> Vec<RawEvent> {
 
 impl<M: MainObject> App<M> {
     fn init(&mut self, el: &ActiveEventLoop) -> Result<(), RunError> {
+        // A Mac counts windows in points: 1280x800 pixels on Retina is a window of 640x400, too small for the UI's layout.
+        #[cfg(target_os = "macos")]
+        let inner_size = winit::dpi::LogicalSize::new(self.cfg.size.0, self.cfg.size.1);
+        #[cfg(not(target_os = "macos"))]
+        let inner_size = winit::dpi::PhysicalSize::new(self.cfg.size.0, self.cfg.size.1);
         let attrs = Window::default_attributes()
             .with_title(self.cfg.title.clone())
             .with_window_icon(self.icon.clone())
-            .with_inner_size(PhysicalSize::new(self.cfg.size.0, self.cfg.size.1));
+            .with_inner_size(inner_size);
         #[cfg(windows)]
         let attrs = winit::platform::windows::WindowAttributesExtWindows::with_taskbar_icon(attrs, self.icon.clone());
         let window = Arc::new(el.create_window(attrs).map_err(|e| RunError::EventLoop(e.to_string()))?);
