@@ -10,9 +10,9 @@ It is unofficial and not affiliated with Path of Building Community or Grinding 
 
 - **Faster.** See the numbers below.
 - **Less memory.** The peak is about 40% lower.
-- **Runs on more systems.** Windows and Linux, without Wine. macOS is in progress.
-- **Same numbers as the original.** 426 reference builds match the original bit for bit, on about 320,000 values.
-- **Same interface.** All the tabs: Tree, Skills, Items, Calcs, Config, Notes, Import/Export, Party, Compare, Trade. Screens are compared with recordings of the original, pixel by pixel.
+- **Runs on more systems.** Windows, macOS and Linux, natively, without Wine.
+- **Same numbers as the original.** 426 reference builds match the original bit for bit, on about 320,000 values, on all three systems.
+- **Same interface.** All the tabs: Tree, Skills, Items, Calcs, Config, Notes, Import/Export, Party, Compare, Trade. On Windows, screens are compared with recordings of the original, pixel by pixel.
 - **Your builds stay safe.** It keeps its data in its own folder and never changes the original's.
 
 ## Speed and memory
@@ -35,7 +35,7 @@ Not everything is faster: the first hover over an item takes 12–15 ms against 
 |---|---|
 | Windows x64 | Installer and zip. Tested. |
 | Linux x64 | Archive, glibc 2.28 or newer (Ubuntu 20.04+, Debian 10+, RHEL 8+). Early: the numbers are tested, a real desktop session is still being checked. |
-| macOS | Compiles, not yet tested, no download yet. |
+| macOS on Apple Silicon | Archive, not signed. Tested on an M1. Intel Macs are not tested. |
 
 ## Install
 
@@ -54,6 +54,8 @@ ln -s ~/.local/share/pob-rust/"Path of Building (Rust)" ~/.local/bin/pob-rust
 
 Then run `pob-rust`. You need a Vulkan or OpenGL driver, and `libxkbcommon-x11` on an X11 session. To update, replace the folder: your builds are not in it.
 
+**macOS.** Unpack `pob-rust-<version>-macos-arm64.tar.gz` and run `Path of Building (Rust)` from the folder, keeping the files next to it. There is no `.app` yet, and as the archive is not signed, macOS may refuse to open it until you allow it in System Settings > Privacy & Security. Cmd works as Ctrl. Cmd+Q asks about unsaved changes, as closing the window does, and the standard app menu with Hide is not there for now.
+
 Builds and settings live in `Documents/Path of Building (Rust)`.
 
 ## Known limitations
@@ -62,6 +64,7 @@ Builds and settings live in `Documents/Path of Building (Rust)`.
 - Game data updates arrive with new releases of this app, not on their own.
 - On Linux and macOS, `sin` and `pow` of the system's math library can differ from Windows in the last bit. The 426 reference builds are not affected, but a tree node's position is, far below what can be seen.
 - Tree images can differ from the original by a few pixels, because the order of `pairs` in the original differs from run to run.
+- On macOS, stretched UI sprites can differ slightly from the original: the GPU filters them differently. The cause is not fully proven yet.
 
 ## Building from source
 
