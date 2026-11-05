@@ -286,6 +286,16 @@ fn types_text(modifiers: ModifiersState) -> bool {
     !modifiers.control_key() || modifiers.alt_key()
 }
 
+/// Cmd+Q: the same way out as the close button.
+#[cfg(target_os = "macos")]
+fn quit_shortcut(event: &WindowEvent, modifiers: ModifiersState) -> bool {
+    matches!(event, WindowEvent::KeyboardInput { event, .. }
+        if event.state == ElementState::Pressed
+            && !event.repeat
+            && event.physical_key == PhysicalKey::Code(KeyCode::KeyQ)
+            && modifiers.super_key())
+}
+
 /// `winit` window event -> platform events, in delivery order (a key press with text = the key, then its characters).
 fn raw_events(event: &WindowEvent, modifiers: ModifiersState) -> Vec<RawEvent> {
     match event {
@@ -472,14 +482,20 @@ impl<M: MainObject> ApplicationHandler for App<M> {
     fn window_event(&mut self, el: &ActiveEventLoop, _id: WindowId, event: WindowEvent) {
         let Some(live) = self.live.as_mut() else { return };
         let gfx = &mut live.gfx;
-        match &event {
-            WindowEvent::CloseRequested => {
-                if self.main.can_exit(gfx) {
-                    self.main.on_exit(gfx);
-                    el.exit();
-                    return;
-                }
+        #[cfg(target_os = "macos")]
+        let close = quit_shortcut(&event, self.modifiers) || matches!(event, WindowEvent::CloseRequested);
+        #[cfg(not(target_os = "macos"))]
+        let close = matches!(event, WindowEvent::CloseRequested);
+        if close {
+            if self.main.can_exit(gfx) {
+                self.main.on_exit(gfx);
+                el.exit();
+                return;
             }
+            self.apply_requests(el);
+            return;
+        }
+        match &event {
             WindowEvent::Resized(size) => {
                 if let Some(gpu) = live.gpu.as_mut() {
                     gpu.config.width = size.width;
@@ -550,7 +566,12 @@ fn decode_icon(png: &[u8]) -> Option<Icon> {
 pub fn run_with_icon<M: MainObject>(main: M, cfg: WindowConfig, icon_png: Option<&[u8]>) -> Result<(M, RunStats), RunError> {
     let start = Instant::now();
     crate::trace::mark("run");
-    let el = EventLoop::new().map_err(|e| RunError::EventLoop(e.to_string()))?;
+    // winit's default menu quits by `terminate:`, past `can_exit` and `on_exit`: `quit_shortcut` takes its place.
+    #[cfg(target_os = "macos")]
+    let el = winit::platform::macos::EventLoopBuilderExtMacOS::with_default_menu(&mut EventLoop::builder(), false).build();
+    #[cfg(not(target_os = "macos"))]
+    let el = EventLoop::new();
+    let el = el.map_err(|e| RunError::EventLoop(e.to_string()))?;
     let mut app = App {
         main,
         cfg,
