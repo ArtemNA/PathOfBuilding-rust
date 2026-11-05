@@ -15,9 +15,16 @@ case "$(uname -m)" in x86_64) arch=x64 ;; arm64 | aarch64) arch=arm64 ;; *) echo
 cargo_home=${CARGO_HOME:-$HOME/.cargo}
 rustup_home=${RUSTUP_HOME:-$HOME/.rustup}
 cd "$repo"
-RUSTFLAGS="--remap-path-prefix=$repo=src --remap-path-prefix=$cargo_home=cargo --remap-path-prefix=$rustup_home=rustup" \
+export RUSTFLAGS="--remap-path-prefix=$repo=src --remap-path-prefix=$cargo_home=cargo --remap-path-prefix=$rustup_home=rustup"
+if [ "$os" = linux ]; then
+    # A plain build asks for the glibc of the machine it was built on: this one runs from glibc 2.28 on. Needs zig and cargo-zigbuild.
+    target=$(uname -m)-unknown-linux-gnu
+    cargo zigbuild --profile dist -p pob-app --features package --target "$target.2.28"
+    exe=target/$target/dist/pob-app
+else
     cargo build --profile dist -p pob-app --features package
-exe=target/dist/pob-app
+    exe=target/dist/pob-app
+fi
 for bad in "$HOME" "$repo" "$(whoami)"; do
     if LC_ALL=C grep -aqF -- "$bad" "$exe"; then echo "the exe contains: $bad" >&2; exit 1; fi
 done
