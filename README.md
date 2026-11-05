@@ -34,7 +34,7 @@ Not everything is faster: the first hover over an item takes 12–15 ms against 
 | System | State |
 |---|---|
 | Windows x64 | Installer and zip. Tested. |
-| Linux x64 | Archive, glibc 2.28 or newer (Ubuntu 20.04+, Debian 10+, RHEL 8+). Early: the numbers are tested, a real desktop session is still being checked. |
+| Linux x64 | Archive, glibc 2.28 or newer (Ubuntu 20.04+, Debian 10+, RHEL 8+). Tested on Ubuntu 24.04 with KDE Plasma on Wayland and XWayland. Other desktops and a plain X11 session are not tested. |
 | macOS on Apple Silicon | Archive, not signed. Tested on an M1. Intel Macs are not tested. |
 
 ## Install
