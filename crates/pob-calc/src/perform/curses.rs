@@ -104,7 +104,9 @@ fn extra_curses_for(env: &Env, mod_db: &pob_mods::StoreRef, curses: &mut Vec<Cur
         );
     }
     let skills = env.skills.as_ref().expect("skills on").skills.clone();
-    for value in ok(mod_db.borrow().list(None, &["ExtraCurse"])) {
+    // Taken first: as the head of the `for` the borrow would last the whole loop, and a curse on the player writes to this store.
+    let extra_curses = ok(mod_db.borrow().list(None, &["ExtraCurse"]));
+    for value in extra_curses {
         let skill_id = value.get("skillId");
         // `env.data.skills[value.skillId]` -- a nil/unknown id is a nil grantedEffect: skipped.
         let Some(ge_idx) = skill_id.as_str().and_then(|id| skills.index.get(id).copied()) else {
