@@ -8,7 +8,7 @@ use pob_optimizer::{Eval, Goal, Locks, Options, evaluate, optimize};
 const USAGE: &str = "usage: pob-optimizer probe <build.xml> [--secs N] [--round N] [--threads N] [--seed N]
        [--dps-weight N] [--ehp-weight N] [--min-res N] [--min-chaos N] [--min-ehp N] [--out best.xml]
        [--forbid-node a,b] [--require-node a,b] [--forbid-gem a,b]   (names, or node ids)
-       [--swap-supports] [--item-slots Helmet,Gloves,...] [--forbid-item a,b]";
+       [--swap-supports] [--allow-tattoos] [--item-slots Helmet,Gloves,...] [--forbid-item a,b]";
 
 fn value(args: &[String], name: &str) -> Option<String> {
     args.iter().position(|a| a == name).and_then(|i| args.get(i + 1)).cloned()
@@ -61,6 +61,7 @@ fn run(args: &[String]) -> Result<(), String> {
     drop(spec);
     let mut locks = locks;
     locks.swap_supports = args.iter().any(|a| a == "--swap-supports");
+    locks.tattoos = args.iter().any(|a| a == "--allow-tattoos");
     locks.item_slots = list(args, "--item-slots");
     locks.forbid_items = list(args, "--forbid-item").iter().map(|g| g.to_lowercase()).collect();
     println!(
@@ -90,6 +91,7 @@ fn run(args: &[String]) -> Result<(), String> {
     for (why, n) in &r.rejected {
         println!("  rejected {n:>6}: {}", why.label());
     }
+    println!("tried by kind: {:?}", r.tried_by_kind);
     println!("rounds with an improvement: {}", r.steps.len());
     for s in &r.steps {
         println!(

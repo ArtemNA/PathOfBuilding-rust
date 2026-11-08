@@ -348,3 +348,64 @@ fn a_support_swap_keeps_the_active_gem_and_a_unique_goes_on() {
     assert!(r.tried > 0);
     assert_eq!(evaluate(&after).dps, r.best.dps);
 }
+
+fn with_a_tattoo() -> (Engine, pob_tree::PassiveSpec, u32) {
+    let (mut e, mut base) = base_spec();
+    let list = moves(&base, 5000, 19, &Locks::default());
+    let node = list[0].remove;
+    let tattoo = base
+        .tree
+        .tattoo()
+        .expect("tattoos")
+        .nodes
+        .values()
+        .next()
+        .cloned()
+        .expect("a tattoo");
+    base.hash_overrides.insert(node, tattoo);
+    recalculate(&mut e, base.clone()).expect("tattooed");
+    (e, base, node)
+}
+
+#[test]
+fn tattoos_are_left_alone_unless_allowed() {
+    let (_e, base, node) = with_a_tattoo();
+    let off = Locks::default();
+    for m in moves(&base, 5000, 19, &off) {
+        assert_ne!(m.remove, node);
+        let s = apply(&base, m, &off).expect("move");
+        assert!(s.alloc_nodes.contains_key(&node), "{m:?} lost the tattooed node");
+    }
+    let on = Locks {
+        tattoos: true,
+        ..Locks::default()
+    };
+    assert!(
+        moves(&base, 5000, 19, &on).iter().any(|m| m.remove == node),
+        "allowed, the tattooed node is an ordinary one: the check above is not empty"
+    );
+}
+
+#[test]
+fn allowed_tattoos_are_in_every_round_and_survive_a_save() {
+    let (e, base) = base_spec();
+    let locks = Locks {
+        tattoos: true,
+        ..Locks::default()
+    };
+    let list = pob_optimizer::candidates(&e, &locks, &[], 80, 21).expect("candidates");
+    let tattoos: Vec<&Change> = list.iter().filter(|c| matches!(c, Change::Tattoo { .. })).collect();
+    assert!(!tattoos.is_empty(), "allowed tattoos must be among the variants");
+    let off = pob_optimizer::candidates(&e, &Locks::default(), &[], 80, 21).expect("candidates");
+    assert!(!off.iter().any(|c| matches!(c, Change::Tattoo { .. })), "off by default");
+
+    let Change::Tattoo { node, dn } = tattoos[0].clone() else {
+        unreachable!()
+    };
+    let mut f = Engine::load_xml(&golden()).expect("load");
+    let guard = ConfigGuard::new(&f);
+    let v = pob_optimizer::try_change(&mut f, &base, tattoos[0], &locks, &guard).expect("tattoo");
+    let fresh = Engine::load_xml(&f.save_xml().expect("save")).expect("reload");
+    assert_eq!((evaluate(&fresh).dps, evaluate(&fresh).ehp), (v.dps, v.ehp));
+    assert_eq!(fresh.spec_rc().hash_overrides.get(&node).map(|t| t.dn.clone()), Some(dn));
+}

@@ -1578,6 +1578,7 @@ dependencies = [
  "pob-data",
  "pob-engine",
  "pob-items",
+ "pob-lua",
  "pob-tree",
  "serde_json",
 ]

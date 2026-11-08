@@ -40,6 +40,8 @@ pub struct Locks {
     pub item_slots: Vec<String>,
     /// Unique names never tried, lower case.
     pub forbid_items: Vec<String>,
+    /// Off: the build's tattoos stay and no new one is tried. On: every round holds variants with new ones.
+    pub tattoos: bool,
 }
 
 impl Locks {
@@ -74,12 +76,23 @@ impl Locks {
 
     /// Whether the tree `after`, made from `before`, keeps every lock.
     pub fn allow(&self, before: &PassiveSpec, after: &PassiveSpec) -> bool {
+        if !self.tattoos && !keeps_tattoos(before, after) {
+            return false;
+        }
         self.require.iter().all(|id| after.alloc_nodes.contains_key(id))
             && !after
                 .alloc_nodes
                 .keys()
                 .any(|id| self.forbid.contains(id) && !before.alloc_nodes.contains_key(id))
     }
+}
+
+/// Every tattooed node the tree had allocated is still allocated.
+fn keeps_tattoos(before: &PassiveSpec, after: &PassiveSpec) -> bool {
+    before
+        .hash_overrides
+        .keys()
+        .all(|id| !before.alloc_nodes.contains_key(id) || after.alloc_nodes.contains_key(id))
 }
 
 /// What a variant is judged by.
@@ -370,6 +383,9 @@ pub fn moves(base: &PassiveSpec, max: usize, seed: u64, locks: &Locks) -> Vec<Mo
         if freed == 0 || freed > MOST_POINTS_FREED || !locks.require.iter().all(|id| s.alloc_nodes.contains_key(id)) {
             continue;
         }
+        if !locks.tattoos && !keeps_tattoos(base, &s) {
+            continue;
+        }
         let reachable = |i: usize| {
             let n = &s.nodes[i];
             i != r
@@ -452,6 +468,11 @@ pub enum Change {
         gem: usize,
         gem_id: String,
     },
+    /// The tattoo called `dn` on the allocated node `node`.
+    Tattoo {
+        node: u32,
+        dn: String,
+    },
     /// `raw` (an item's text) in the gear slot.
     Item {
         slot: String,
@@ -473,6 +494,7 @@ impl Change {
                     .map_or(gem_id.as_str(), |g| g.name.as_str());
                 format!("gem: group {group} slot {gem} -> {shown}")
             }
+            Change::Tattoo { node, dn } => format!("tattoo: {} -> {dn}", name(*node)),
             Change::Item { slot, name, .. } => format!("item: {slot} -> {name}"),
         }
     }
@@ -485,6 +507,12 @@ pub fn try_change(e: &mut Engine, base: &PassiveSpec, c: &Change, locks: &Locks,
         Change::Support { group, gem, gem_id } => {
             e.set_gem_id(*group, *gem, Some(gem_id))?;
             e.set_gem_quality(*group, *gem, Some(20.0))?;
+        }
+        Change::Tattoo { node, dn } => {
+            let mut s = base.clone();
+            let tattoo = s.tree.tattoo().map_err(|x| x.0)?.nodes.get(dn).cloned().ok_or("unknown tattoo")?;
+            s.hash_overrides.insert(*node, tattoo);
+            e.write_spec_to_model(s);
         }
         Change::Item { slot, raw, .. } => {
             e.replace_item_text(raw, slot)?;
@@ -501,6 +529,59 @@ pub fn try_change(e: &mut Engine, base: &PassiveSpec, c: &Change, locks: &Locks,
 fn plain_support(name: &str) -> bool {
     let n = name.to_lowercase();
     !(n.starts_with("awakened ") || n.starts_with("vaal ") || ["empower", "enlighten", "enhance"].iter().any(|x| n.contains(x)))
+}
+
+/// The game's limit of tattoos on one character.
+const MOST_TATTOOS: usize = 50;
+
+/// The number in a tattoo's "Limited to N" line.
+fn limit_of(sd: &[String]) -> Option<usize> {
+    sd.iter().find_map(|l| {
+        l.strip_prefix("Limited to ")
+            .and_then(|r| r.split_whitespace().next())
+            .and_then(|n| n.parse().ok())
+    })
+}
+
+/// Tattoos the build could still take, on nodes it has: the test of TreeTab.lua:856-859, without the legacy ones.
+fn tattoo_changes(base: &PassiveSpec, max: usize, rng: &mut Rng) -> Result<Vec<Change>, String> {
+    if base.hash_overrides.len() >= MOST_TATTOOS {
+        return Ok(Vec::new());
+    }
+    let data = pob_data::tattoo::tattoo_passives().map_err(|e| e.0)?;
+    let matches = |s: &str, pat: &str| matches!(pob_lua::match_(s.as_bytes(), pat.as_bytes(), None), Ok(Some(_)));
+    let mut out = Vec::new();
+    for &i in base.alloc_nodes.values() {
+        let n = &base.nodes[i];
+        if base.hash_overrides.contains_key(&n.id) || n.is_subgraph_node() || n.tree_node().ascendancy_name.is_some() {
+            continue;
+        }
+        let tree = n.tree_node();
+        let value = tree.sd.first().map_or("", String::as_str);
+        let linked = n.linked.len() as f64;
+        for (_, t) in data.nodes.iter() {
+            let kind = t.target_type.strip_prefix("Small ").unwrap_or(&t.target_type);
+            let fits = matches(&tree.dn, kind)
+                || (!t.target_value.is_empty() && matches(value, &t.target_value))
+                || (t.target_type == "Small Attribute" && ["Intelligence", "Strength", "Dexterity"].contains(&tree.dn.as_str()))
+                || (t.target_type == "Keystone" && n.ty() == NodeType::Keystone);
+            if !fits || t.minimum_connected > linked || t.legacy == Some(true) {
+                continue;
+            }
+            let used = base.hash_overrides.values().filter(|o| o.dn == t.dn).count();
+            if limit_of(&t.sd).is_some_and(|l| used >= l) {
+                continue;
+            }
+            out.push(Change::Tattoo {
+                node: n.id,
+                dn: t.dn.clone(),
+            });
+        }
+    }
+    out.sort_by(|a, b| format!("{a:?}").cmp(&format!("{b:?}")));
+    rng.shuffle(&mut out);
+    out.truncate(max);
+    Ok(out)
 }
 
 fn support_changes(e: &Engine, goal: &Goal, max: usize, rng: &mut Rng) -> Vec<Change> {
@@ -606,6 +687,10 @@ fn candidates_for(
         Vec::new()
     };
     extra.extend(item_changes(db, locks, share, &mut rng));
+    if locks.tattoos {
+        // Held back from the tree's share, so a round always has them when the build can take any.
+        extra.extend(tattoo_changes(&base, share, &mut rng)?);
+    }
     list.truncate(max.saturating_sub(extra.len()));
     list.extend(extra);
     Ok(list)
@@ -640,6 +725,8 @@ pub struct Report {
     pub rejected: BTreeMap<Rejected, usize>,
     pub seconds: f64,
     pub load_ms: f64,
+    /// Variants tried, by kind of change.
+    pub tried_by_kind: BTreeMap<&'static str, usize>,
     pub calc_ms_median: f64,
 }
 
@@ -708,6 +795,7 @@ pub fn optimize(xml: &str, goal: &Goal, locks: &Locks, opt: Options) -> Result<R
     let mut rejected = BTreeMap::new();
     let (mut tried, mut accepted) = (0, 0);
     let mut times = Vec::new();
+    let mut by_kind: BTreeMap<&'static str, usize> = BTreeMap::new();
     let mut n = 0u64;
     while Instant::now() < deadline {
         n += 1;
@@ -723,6 +811,13 @@ pub fn optimize(xml: &str, goal: &Goal, locks: &Locks, opt: Options) -> Result<R
         let mut top: Option<(f64, Change, Eval)> = None;
         for (c, r, ms) in results {
             times.push(ms);
+            let kind = match c {
+                Change::Tree(_) => "tree",
+                Change::Support { .. } => "gem",
+                Change::Tattoo { .. } => "tattoo",
+                Change::Item { .. } => "item",
+            };
+            *by_kind.entry(kind).or_insert(0) += 1;
             let v = match r {
                 Ok(v) => v,
                 Err(_) => {
@@ -776,6 +871,7 @@ pub fn optimize(xml: &str, goal: &Goal, locks: &Locks, opt: Options) -> Result<R
         rejected,
         seconds: begin.elapsed().as_secs_f64(),
         load_ms,
+        tried_by_kind: by_kind,
         calc_ms_median: times.get(times.len() / 2).copied().unwrap_or(0.0),
     })
 }
