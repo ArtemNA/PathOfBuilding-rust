@@ -3,10 +3,11 @@
 use std::process::ExitCode;
 
 use pob_engine::engine::Engine;
-use pob_optimizer::{Eval, Goal, Options, evaluate, optimize};
+use pob_optimizer::{Eval, Goal, Locks, Options, evaluate, optimize};
 
 const USAGE: &str = "usage: pob-optimizer probe <build.xml> [--secs N] [--round N] [--threads N] [--seed N]
-       [--dps-weight N] [--ehp-weight N] [--min-res N] [--min-chaos N] [--min-ehp N] [--out best.xml]";
+       [--dps-weight N] [--ehp-weight N] [--min-res N] [--min-chaos N] [--min-ehp N] [--out best.xml]
+       [--forbid-node a,b] [--require-node a,b] [--forbid-gem a,b]   (names, or node ids)";
 
 fn value(args: &[String], name: &str) -> Option<String> {
     args.iter().position(|a| a == name).and_then(|i| args.get(i + 1)).cloned()
@@ -17,6 +18,12 @@ fn number<T: std::str::FromStr>(args: &[String], name: &str, default: T) -> Resu
         None => Ok(default),
         Some(v) => v.parse().map_err(|_| format!("{name}: not a number: {v}")),
     }
+}
+
+fn list(args: &[String], name: &str) -> Vec<String> {
+    value(args, name).map_or_else(Vec::new, |v| {
+        v.split(',').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect()
+    })
 }
 
 fn pct(a: f64, b: f64) -> String {
@@ -46,7 +53,16 @@ fn run(args: &[String]) -> Result<(), String> {
         min_ehp: optional("--min-ehp")?,
         dps_weight: number(args, "--dps-weight", 1.0)?,
         ehp_weight: number(args, "--ehp-weight", 1.0)?,
+        forbid_gems: list(args, "--forbid-gem").iter().map(|g| g.to_lowercase()).collect(),
     };
+    let spec = Engine::load_xml(&xml)?.spec_rc();
+    let locks = Locks::resolve(&spec, &list(args, "--forbid-node"), &list(args, "--require-node"))?;
+    drop(spec);
+    println!(
+        "locks: {} forbidden nodes, {} required nodes",
+        locks.forbid.len(),
+        locks.require.len()
+    );
     let opt = Options {
         seconds: number(args, "--secs", 60.0)?,
         moves_per_round: number(args, "--round", 400)?,
@@ -54,7 +70,7 @@ fn run(args: &[String]) -> Result<(), String> {
         seed: number(args, "--seed", 1)?,
     };
     println!("{goal:?}\n{opt:?}");
-    let r = optimize(&xml, &goal, opt)?;
+    let r = optimize(&xml, &goal, &locks, opt)?;
     let (a, b): (&Eval, &Eval) = (&r.start, &r.best);
     println!(
         "tried {} variants in {:.1} s ({:.0}/s on {} threads), allowed {}, load {:.0} ms, recalculation median {:.1} ms",
