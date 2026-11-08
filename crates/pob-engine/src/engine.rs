@@ -494,7 +494,7 @@ impl Engine {
     }
 
     /// The `nodes` / `masteryEffects` / class / tattoos the live spec would save, into the model (PassiveSpec.lua:199-202, 3dbca4463 #10338: sorted ids).
-    pub(crate) fn write_spec_to_model(&mut self, spec: pob_tree::PassiveSpec) {
+    pub fn write_spec_to_model(&mut self, spec: pob_tree::PassiveSpec) {
         let sm = active_spec_mut(&mut self.model);
         let mut ids = spec.alloc_table_pairs();
         ids.sort_unstable();

@@ -1570,6 +1570,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "pob-optimizer"
+version = "0.1.4"
+dependencies = [
+ "pob-calc",
+ "pob-engine",
+ "pob-tree",
+]
+
+[[package]]
 name = "pob-parser"
 version = "0.1.4"
 dependencies = [

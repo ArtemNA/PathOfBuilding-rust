@@ -1,0 +1,16 @@
+[package]
+name = "pob-optimizer"
+description = "Searches for better variants of a build with the calculation engine, under the user's locks and goals"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+pob-engine = { path = "../pob-engine" }
+pob-calc = { path = "../pob-calc" }
+pob-tree.workspace = true
+
+[lints]
+workspace = true
