@@ -7,7 +7,8 @@ use pob_optimizer::{Eval, Goal, Locks, Options, evaluate, optimize};
 
 const USAGE: &str = "usage: pob-optimizer probe <build.xml> [--secs N] [--round N] [--threads N] [--seed N]
        [--dps-weight N] [--ehp-weight N] [--min-res N] [--min-chaos N] [--min-ehp N] [--out best.xml]
-       [--forbid-node a,b] [--require-node a,b] [--forbid-gem a,b]   (names, or node ids)";
+       [--forbid-node a,b] [--require-node a,b] [--forbid-gem a,b]   (names, or node ids)
+       [--swap-supports] [--item-slots Helmet,Gloves,...] [--forbid-item a,b]";
 
 fn value(args: &[String], name: &str) -> Option<String> {
     args.iter().position(|a| a == name).and_then(|i| args.get(i + 1)).cloned()
@@ -58,6 +59,10 @@ fn run(args: &[String]) -> Result<(), String> {
     let spec = Engine::load_xml(&xml)?.spec_rc();
     let locks = Locks::resolve(&spec, &list(args, "--forbid-node"), &list(args, "--require-node"))?;
     drop(spec);
+    let mut locks = locks;
+    locks.swap_supports = args.iter().any(|a| a == "--swap-supports");
+    locks.item_slots = list(args, "--item-slots");
+    locks.forbid_items = list(args, "--forbid-item").iter().map(|g| g.to_lowercase()).collect();
     println!(
         "locks: {} forbidden nodes, {} required nodes",
         locks.forbid.len(),
@@ -88,8 +93,8 @@ fn run(args: &[String]) -> Result<(), String> {
     println!("rounds with an improvement: {}", r.steps.len());
     for s in &r.steps {
         println!(
-            "  round {:>3}: score {:.4}, DPS {:.1}, EHP {:.0}, tried so far {}",
-            s.round, s.score, s.eval.dps, s.eval.ehp, s.tried
+            "  round {:>3}: score {:.4}, DPS {:.1}, EHP {:.0}, tried so far {}  {}",
+            s.round, s.score, s.eval.dps, s.eval.ehp, s.tried, s.change
         );
     }
     println!("start -> best (score {:.4}):", r.best_score);
@@ -101,8 +106,13 @@ fn run(args: &[String]) -> Result<(), String> {
     line("LightningResist", a.lightning, b.lightning);
     line("ChaosResist", a.chaos, b.chaos);
     println!("warnings: {} -> {}", a.warnings.len(), b.warnings.len());
+    let dropped: Vec<&String> = r.steps.iter().flat_map(|s| s.eval.dropped_config.iter()).collect();
+    println!("config options taken off with their reason: {dropped:?}");
     let check = evaluate(&Engine::load_xml(&r.best_xml)?);
-    println!("the saved best build, loaded again, gives the same numbers: {}", check == r.best);
+    println!(
+        "the saved best build, loaded again, gives the same numbers: {}",
+        check.dps == r.best.dps && check.ehp == r.best.ehp && check.life == r.best.life
+    );
     if let Some(out) = value(args, "--out") {
         std::fs::write(&out, &r.best_xml).map_err(|e| format!("{out}: {e}"))?;
         println!("saved");

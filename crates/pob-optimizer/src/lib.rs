@@ -1,13 +1,16 @@
 //! A search for better variants of a build. The engine is the only judge: every variant is a full recalculation, and a variant that breaks a
-//! hard condition of [`Goal`] is dropped whatever its score. It moves passive points and chooses masteries, within the user's [`Locks`]; gems and items are not
-//! touched yet.
+//! hard condition of [`Goal`] is dropped whatever its score. It moves passive points, chooses masteries, swaps support gems of the main skill and tries unique items, within the user's
+//! [`Locks`]. A config option that only made sense with what a change removed is taken off ([`ConfigGuard`]): upstream keeps applying a hidden option otherwise.
 
 use std::collections::{BTreeMap, HashSet};
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Instant;
 
+use pob_build::InputValue;
 use pob_calc::StatValue;
+use pob_data::config_options::{ConfigVar, config_options};
+use pob_engine::config_tab::ConfigGate;
 use pob_engine::engine::Engine;
 use pob_tree::{NodeType, PassiveSpec};
 
@@ -31,6 +34,12 @@ pub struct Locks {
     pub forbid: HashSet<u32>,
     /// Node ids never lost, also when a node they hang on is removed.
     pub require: HashSet<u32>,
+    /// Whether support gems of the main group may be swapped. The active gem is never touched.
+    pub swap_supports: bool,
+    /// Gear slots that may get another item; empty = none.
+    pub item_slots: Vec<String>,
+    /// Unique names never tried, lower case.
+    pub forbid_items: Vec<String>,
 }
 
 impl Locks {
@@ -86,6 +95,8 @@ pub struct Eval {
     pub warnings: Vec<String>,
     /// The names of the enabled gems of the enabled groups, lower case.
     pub gems: Vec<String>,
+    /// Config options taken off because the change removed their reason.
+    pub dropped_config: Vec<String>,
 }
 
 fn stat(e: &Engine, key: &str) -> f64 {
@@ -123,7 +134,123 @@ pub fn evaluate(e: &Engine) -> Eval {
         chaos: stat(e, "ChaosResist"),
         warnings: e.stat_list().warnings.clone(),
         gems,
+        dropped_config: Vec::new(),
     }
+}
+
+fn truthy(v: Option<&InputValue>) -> bool {
+    !matches!(v, None | Some(InputValue::Bool(false)))
+}
+
+fn opts(j: &serde_json::Value) -> Vec<String> {
+    match j {
+        serde_json::Value::String(s) => vec![s.clone()],
+        serde_json::Value::Array(a) => a.iter().filter_map(|x| x.as_str().map(str::to_owned)).collect(),
+        _ => Vec::new(),
+    }
+}
+
+/// `control.shown` of one option (ConfigTab.lua:353-364, the `if*` keys of :382-662), without the search box and the "show all" toggle. An unknown key counts as shown.
+fn var_shown(e: &Engine, v: &ConfigVar) -> bool {
+    let transfigured = v.gates.get("includeTransfigured").is_some_and(|x| x.as_bool() == Some(true));
+    let input = &e.config_state().input;
+    let var_set = v.var.as_ref().is_some_and(|n| truthy(input.get(n)));
+    let imply: Vec<String> = ["implyCond", "implyCondList"]
+        .iter()
+        .filter_map(|k| v.gates.get(*k))
+        .flat_map(opts)
+        .collect();
+    let implied = var_set && imply.iter().any(|c| e.config_gate(ConfigGate::Cond, c));
+    v.gates.iter().all(|(k, val)| {
+        let (gate, uses_imply) = match k.as_str() {
+            "ifOption" => return opts(val).iter().any(|o| truthy(input.get(o))),
+            "ifCond" => (ConfigGate::Cond, true),
+            "ifMinionCond" => (ConfigGate::MinionCond, true),
+            "ifEnemyCond" => (ConfigGate::EnemyCond, true),
+            "ifCondTrue" => (ConfigGate::CondTrue, false),
+            "ifMult" => (ConfigGate::Mult, true),
+            "ifEnemyMult" => (ConfigGate::EnemyMult, true),
+            "ifStat" => (ConfigGate::Stat, true),
+            "ifTagType" => (ConfigGate::TagType, true),
+            "ifFlag" => (ConfigGate::Flag, false),
+            "ifMod" => (ConfigGate::Mod, true),
+            "ifSkill" if transfigured => (ConfigGate::SkillTransfigured, false),
+            "ifSkill" => (ConfigGate::Skill, false),
+            "ifSkillFlag" => (ConfigGate::SkillFlag, false),
+            "ifSkillData" => (ConfigGate::SkillData, false),
+            _ => return true,
+        };
+        (uses_imply && implied) || opts(val).iter().any(|o| e.config_gate(gate, o))
+    })
+}
+
+/// The config options the user set and the build showed at the start. Upstream's `BuildModList` applies an option whether it is shown or not, so an option whose reason
+/// has gone (the item with that condition was replaced) would still add its effect: such an option goes with its reason. An option already hidden at the start was the user's own choice, and stays.
+#[derive(Clone, Debug, Default)]
+pub struct ConfigGuard {
+    watched: Vec<String>,
+}
+
+impl ConfigGuard {
+    pub fn new(e: &Engine) -> ConfigGuard {
+        let input = &e.config_state().input;
+        let watched = config_options()
+            .vars
+            .iter()
+            .filter(|v| !v.gates.is_empty())
+            .filter(|v| {
+                v.var
+                    .as_ref()
+                    .is_some_and(|n| input.get(n).is_some_and(|cur| *cur != e.config_default_state(n, cur)))
+            })
+            .filter(|v| var_shown(e, v))
+            .filter_map(|v| v.var.clone())
+            .collect();
+        ConfigGuard { watched }
+    }
+
+    pub fn watched(&self) -> &[String] {
+        &self.watched
+    }
+
+    /// The watched options that are hidden now.
+    pub fn orphans(&self, e: &Engine) -> Vec<String> {
+        self.watched
+            .iter()
+            .filter(|name| {
+                config_options()
+                    .vars
+                    .iter()
+                    .find(|v| v.var.as_deref() == Some(name.as_str()))
+                    .is_some_and(|v| !var_shown(e, v))
+            })
+            .cloned()
+            .collect()
+    }
+
+    /// Takes the orphans off and recalculates. Hiding one can hide another (`ifOption`), so it goes on until none is left.
+    pub fn settle(&self, e: &mut Engine) -> Result<Vec<String>, String> {
+        let mut dropped = Vec::new();
+        loop {
+            let now: Vec<String> = self.orphans(e).into_iter().filter(|n| !dropped.contains(n)).collect();
+            if now.is_empty() {
+                return Ok(dropped);
+            }
+            for n in now {
+                e.set_config(&n, None)?;
+                dropped.push(n);
+            }
+            settle(e)?;
+        }
+    }
+}
+
+fn settle(e: &mut Engine) -> Result<(), String> {
+    e.refresh()?;
+    if e.model().character_level_auto_mode {
+        e.refresh()?;
+    }
+    Ok(())
 }
 
 /// Why a variant is not allowed.
@@ -311,11 +438,177 @@ pub fn apply(base: &PassiveSpec, m: Move, locks: &Locks) -> Result<PassiveSpec, 
 /// The engine's full recalculation of a tree, as the application does after a click.
 pub fn recalculate(e: &mut Engine, spec: PassiveSpec) -> Result<Eval, String> {
     e.write_spec_to_model(spec);
-    e.refresh()?;
-    if e.model().character_level_auto_mode {
-        e.refresh()?;
-    }
+    settle(e)?;
     Ok(evaluate(e))
+}
+
+/// One change a variant is made of.
+#[derive(Clone, Debug, PartialEq)]
+pub enum Change {
+    Tree(Move),
+    /// Another support gem in slot `gem` of socket group `group` (both 1-based).
+    Support {
+        group: usize,
+        gem: usize,
+        gem_id: String,
+    },
+    /// `raw` (an item's text) in the gear slot.
+    Item {
+        slot: String,
+        name: String,
+        raw: String,
+    },
+}
+
+impl Change {
+    pub fn describe(&self, base: &PassiveSpec) -> String {
+        let name = |id: u32| base.node(id).map_or_else(|| id.to_string(), |n| n.dn().to_string());
+        match self {
+            Change::Tree(m) => format!("tree: {} -> {}", name(m.remove), name(m.add)),
+            Change::Support { group, gem, gem_id } => {
+                let shown = pob_data::gems::gems()
+                    .gems
+                    .0
+                    .get(gem_id)
+                    .map_or(gem_id.as_str(), |g| g.name.as_str());
+                format!("gem: group {group} slot {gem} -> {shown}")
+            }
+            Change::Item { slot, name, .. } => format!("item: {slot} -> {name}"),
+        }
+    }
+}
+
+/// Makes the change on an engine holding the build, recalculates and takes off what lost its reason.
+pub fn try_change(e: &mut Engine, base: &PassiveSpec, c: &Change, locks: &Locks, guard: &ConfigGuard) -> Result<Eval, String> {
+    match c {
+        Change::Tree(m) => e.write_spec_to_model(apply(base, *m, locks)?),
+        Change::Support { group, gem, gem_id } => {
+            e.set_gem_id(*group, *gem, Some(gem_id))?;
+            e.set_gem_quality(*group, *gem, Some(20.0))?;
+        }
+        Change::Item { slot, raw, .. } => {
+            e.replace_item_text(raw, slot)?;
+        }
+    }
+    settle(e)?;
+    let dropped = guard.settle(e)?;
+    let mut v = evaluate(e);
+    v.dropped_config = dropped;
+    Ok(v)
+}
+
+/// A support swap never picks these by itself: they are the expensive or special ones.
+fn plain_support(name: &str) -> bool {
+    let n = name.to_lowercase();
+    !(n.starts_with("awakened ") || n.starts_with("vaal ") || ["empower", "enlighten", "enhance"].iter().any(|x| n.contains(x)))
+}
+
+fn support_changes(e: &Engine, goal: &Goal, max: usize, rng: &mut Rng) -> Vec<Change> {
+    let group = e.model().main_socket_group as usize;
+    let db = &pob_data::gems::gems().gems.0;
+    let allowed: Vec<&str> = db
+        .iter()
+        .filter(|(_, g)| plain_support(&g.name) && !goal.forbid_gems.contains(&g.name.to_lowercase()))
+        .map(|(id, _)| id.as_str())
+        .collect();
+    let Ok(can) = e.gem_can_support(group, &allowed, false) else {
+        return Vec::new();
+    };
+    let states = e.gem_states(group);
+    let have: HashSet<String> = (1..=states.len()).filter_map(|g| e.gem_id_at(group, g)).collect();
+    let mut ids: Vec<String> = can.into_iter().filter(|id| !have.contains(id)).collect();
+    ids.sort_unstable();
+    let mut out = Vec::new();
+    for (i, s) in states.iter().enumerate() {
+        if !s.3 {
+            continue;
+        }
+        for id in &ids {
+            out.push(Change::Support {
+                group,
+                gem: i + 1,
+                gem_id: id.clone(),
+            });
+        }
+    }
+    rng.shuffle(&mut out);
+    out.truncate(max);
+    out
+}
+
+/// (name, slots, text) of every unique a gear slot can take, in the database's order.
+pub fn uniques() -> Result<Vec<(String, Vec<String>, String)>, String> {
+    let j: serde_json::Value = pob_data::read_json("uniques.json").map_err(|e| e.to_string())?;
+    let mut out = Vec::new();
+    for raws in j["byType"].as_object().into_iter().flatten().map(|(_, v)| v) {
+        for raw in raws.as_array().into_iter().flatten().filter_map(|x| x.as_str()) {
+            let item = pob_items::Item::parse(&pob_build::sanitise_text(raw), &pob_items::ItemOptions::default());
+            let Some(base) = item.base else { continue };
+            let slots: Vec<String> = match base.ty.as_str() {
+                "Ring" => vec!["Ring 1".into(), "Ring 2".into()],
+                "Helmet" | "Gloves" | "Boots" | "Amulet" | "Belt" | "Body Armour" => vec![base.ty.clone()],
+                _ => continue,
+            };
+            out.push((item.name.clone(), slots, raw.to_string()));
+        }
+    }
+    Ok(out)
+}
+
+fn item_changes(db: &[(String, Vec<String>, String)], locks: &Locks, max: usize, rng: &mut Rng) -> Vec<Change> {
+    let mut out = Vec::new();
+    for (name, slots, raw) in db {
+        if locks.forbid_items.contains(&name.to_lowercase()) {
+            continue;
+        }
+        for s in slots.iter().filter(|s| locks.item_slots.contains(s)) {
+            out.push(Change::Item {
+                slot: s.clone(),
+                name: name.clone(),
+                raw: raw.clone(),
+            });
+        }
+    }
+    rng.shuffle(&mut out);
+    out.truncate(max);
+    out
+}
+
+/// The changes of one round: a quarter at most for gems and for items, the rest for the tree.
+pub fn candidates(e: &Engine, locks: &Locks, db: &[(String, Vec<String>, String)], max: usize, seed: u64) -> Result<Vec<Change>, String> {
+    candidates_for(e, &NO_GOAL, locks, db, max, seed)
+}
+
+const NO_GOAL: Goal = Goal {
+    min_elemental_resist: f64::NEG_INFINITY,
+    min_chaos_resist: None,
+    min_ehp: None,
+    dps_weight: 1.0,
+    ehp_weight: 1.0,
+    forbid_gems: Vec::new(),
+};
+
+fn candidates_for(
+    e: &Engine,
+    goal: &Goal,
+    locks: &Locks,
+    db: &[(String, Vec<String>, String)],
+    max: usize,
+    seed: u64,
+) -> Result<Vec<Change>, String> {
+    let base = e.spec_rc();
+    let mut rng = Rng(seed.wrapping_mul(0x9E37_79B9).max(1));
+    let share = max / 4;
+    let mut list: Vec<Change> = moves(&base, max, seed, locks).into_iter().map(Change::Tree).collect();
+    let mut extra = if locks.swap_supports {
+        support_changes(e, goal, share, &mut rng)
+    } else {
+        Vec::new()
+    };
+    extra.extend(item_changes(db, locks, share, &mut rng));
+    list.truncate(max.saturating_sub(extra.len()));
+    list.extend(extra);
+    Ok(list)
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -332,6 +625,7 @@ pub struct Step {
     pub tried: usize,
     pub score: f64,
     pub eval: Eval,
+    pub change: String,
 }
 
 #[derive(Clone, Debug)]
@@ -349,8 +643,16 @@ pub struct Report {
     pub calc_ms_median: f64,
 }
 
-/// One round: every move from `xml` on its own, on `threads` workers, each with its own engine (the engine is not `Send`).
-fn round(xml: &str, list: &[Move], locks: &Locks, threads: usize, deadline: Instant) -> Vec<(Move, Result<Eval, String>, f64)> {
+/// One round: every change from `xml` on its own, on `threads` workers, each with its own engine (the engine is not `Send`). A tree change is undone by the next one writing its own tree;
+/// anything else, or a change that took a config option off, gets a fresh engine.
+fn round(
+    xml: &str,
+    list: &[Change],
+    locks: &Locks,
+    guard: &ConfigGuard,
+    threads: usize,
+    deadline: Instant,
+) -> Vec<(Change, Result<Eval, String>, f64)> {
     let next = AtomicUsize::new(0);
     let out = Mutex::new(Vec::with_capacity(list.len()));
     std::thread::scope(|sc| {
@@ -359,14 +661,25 @@ fn round(xml: &str, list: &[Move], locks: &Locks, threads: usize, deadline: Inst
                 let Ok(mut e) = Engine::load_xml(xml) else { return };
                 let base = (*e.spec_rc()).clone();
                 let mut mine = Vec::new();
+                let mut dirty = false;
+                let mut touched = false;
                 loop {
                     let i = next.fetch_add(1, Ordering::Relaxed);
                     if i >= list.len() || Instant::now() >= deadline {
                         break;
                     }
                     let t = Instant::now();
-                    let r = apply(&base, list[i], locks).and_then(|s| recalculate(&mut e, s));
-                    mine.push((list[i], r, t.elapsed().as_secs_f64() * 1000.0));
+                    // A tree change writes the whole tree, so it may follow another one; anything else must start from the build itself.
+                    if dirty || (touched && !matches!(list[i], Change::Tree(_))) {
+                        let Ok(fresh) = Engine::load_xml(xml) else { break };
+                        e = fresh;
+                    }
+                    // A panic of the engine on one variant must not end the search; that variant is refused and its engine replaced.
+                    let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| try_change(&mut e, &base, &list[i], locks, guard)))
+                        .unwrap_or_else(|_| Err("the engine panicked".into()));
+                    touched = true;
+                    dirty = !matches!(list[i], Change::Tree(_)) || !matches!(&r, Ok(v) if v.dropped_config.is_empty());
+                    mine.push((list[i].clone(), r, t.elapsed().as_secs_f64() * 1000.0));
                 }
                 if let Ok(mut o) = out.lock() {
                     o.extend(mine);
@@ -377,7 +690,7 @@ fn round(xml: &str, list: &[Move], locks: &Locks, threads: usize, deadline: Inst
     out.into_inner().unwrap_or_default()
 }
 
-/// Greedy search: each round takes the best allowed move and goes on from there, until the time is up or no move helps.
+/// Greedy search: each round takes the best allowed change and goes on from there, until the time is up or no change helps.
 pub fn optimize(xml: &str, goal: &Goal, locks: &Locks, opt: Options) -> Result<Report, String> {
     let begin = Instant::now();
     let deadline = begin + std::time::Duration::from_secs_f64(opt.seconds);
@@ -385,6 +698,9 @@ pub fn optimize(xml: &str, goal: &Goal, locks: &Locks, opt: Options) -> Result<R
     let mut e = Engine::load_xml(xml)?;
     let load_ms = load.elapsed().as_secs_f64() * 1000.0;
     let start = evaluate(&e);
+    // The options are judged against the build the user brought, for the whole search.
+    let guard = ConfigGuard::new(&e);
+    let db = if locks.item_slots.is_empty() { Vec::new() } else { uniques()? };
     let mut cur_xml = xml.to_string();
     let mut cur_score = 1.0;
     let mut best = start.clone();
@@ -396,14 +712,16 @@ pub fn optimize(xml: &str, goal: &Goal, locks: &Locks, opt: Options) -> Result<R
     while Instant::now() < deadline {
         n += 1;
         let base = (*e.spec_rc()).clone();
-        let list = moves(&base, opt.moves_per_round, opt.seed.wrapping_add(n), locks);
+        let mut rng = Rng(opt.seed.wrapping_add(n).wrapping_mul(0x9E37_79B9).max(1));
+        let mut list = candidates_for(&e, goal, locks, &db, opt.moves_per_round, opt.seed.wrapping_add(n))?;
+        rng.shuffle(&mut list);
         if list.is_empty() {
             break;
         }
-        let results = round(&cur_xml, &list, locks, opt.threads, deadline);
+        let results = round(&cur_xml, &list, locks, &guard, opt.threads, deadline);
         tried += results.len();
-        let mut top: Option<(f64, Move, Eval)> = None;
-        for (m, r, ms) in results {
+        let mut top: Option<(f64, Change, Eval)> = None;
+        for (c, r, ms) in results {
             times.push(ms);
             let v = match r {
                 Ok(v) => v,
@@ -419,25 +737,31 @@ pub fn optimize(xml: &str, goal: &Goal, locks: &Locks, opt: Options) -> Result<R
             accepted += 1;
             let s = score(&v, goal, &start);
             if s > cur_score && top.as_ref().is_none_or(|t| s > t.0) {
-                top = Some((s, m, v));
+                top = Some((s, c, v));
             }
         }
-        let Some((s, m, v)) = top else { break };
-        let next = apply(&base, m, locks)?;
-        let again = recalculate(&mut e, next)?;
+        let Some((s, c, v)) = top else { break };
+        let mut fresh = Engine::load_xml(&cur_xml)?;
+        let again = try_change(&mut fresh, &base, &c, locks, &guard)?;
         if again != v {
-            return Err(format!("the same move gave different numbers on another engine: {m:?}"));
+            return Err(format!("the same change gave different numbers on another engine: {c:?}"));
         }
-        cur_xml = e.save_xml()?;
+        cur_xml = fresh.save_xml()?;
         // A fresh engine from the XML: what the user gets is what was scored.
         e = Engine::load_xml(&cur_xml)?;
         cur_score = s;
-        best = v;
+        let mut kept = evaluate(&e);
+        if kept.dps != v.dps || kept.ehp != v.ehp {
+            return Err(format!("the saved build scores differently from the variant: {c:?}"));
+        }
+        kept.dropped_config = v.dropped_config;
+        best = kept;
         steps.push(Step {
             round: n as usize,
             tried,
             score: s,
             eval: best.clone(),
+            change: c.describe(&base),
         });
     }
     times.sort_by(f64::total_cmp);

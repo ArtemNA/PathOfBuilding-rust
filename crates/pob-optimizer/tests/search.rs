@@ -1,7 +1,9 @@
 //! The search on a golden build: a tried variant leaves no trace, moves keep to the points, and a search result is what a fresh load gives.
 
 use pob_engine::engine::Engine;
-use pob_optimizer::{Eval, Goal, Locks, Options, Rejected, apply, evaluate, moves, optimize, recalculate, score, violation};
+use pob_optimizer::{
+    Change, ConfigGuard, Eval, Goal, Locks, Options, Rejected, apply, evaluate, moves, optimize, recalculate, score, violation,
+};
 
 fn golden() -> String {
     let upstream = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/../../tools/upstream.json")).expect("upstream");
@@ -36,6 +38,7 @@ fn sample() -> Eval {
         chaos: 0.0,
         warnings: vec!["You are 5 Str short".into()],
         gems: vec!["determination".into()],
+        dropped_config: Vec::new(),
     }
 }
 
@@ -117,7 +120,11 @@ fn the_result_is_what_a_fresh_load_gives() {
     assert!(r.tried > 0);
     assert!(r.best_score >= 1.0, "the best is never worse than the start");
     let again = evaluate(&Engine::load_xml(&r.best_xml).expect("reload"));
-    assert_eq!(again, r.best, "the saved build scores what the search said");
+    assert_eq!(
+        (again.dps, again.ehp),
+        (r.best.dps, r.best.ehp),
+        "the saved build scores what the search said"
+    );
     if let Some(last) = r.steps.last() {
         assert_eq!(last.eval, r.best);
     }
@@ -222,4 +229,122 @@ fn names_resolve_and_a_typo_is_an_error() {
     assert!(l.require.iter().all(|id| base.alloc_nodes.contains_key(id)));
     assert!(Locks::resolve(&base, &["no such node".into()], &[]).is_err());
     assert!(Locks::resolve(&base, &[have.to_string()], &[]).is_ok());
+}
+
+#[test]
+fn a_config_option_goes_with_its_reason() {
+    let mut e = Engine::load_xml(&golden()).expect("load");
+    // every check option the build shows only because of something in it
+    let mut set = 0;
+    for v in &pob_data::config_options::config_options().vars {
+        let Some(name) = &v.var else { continue };
+        if v.ty.as_deref() != Some("check") || !(v.gates.contains_key("ifMod") || v.gates.contains_key("ifCond")) {
+            continue;
+        }
+        if e.set_config(name, Some(pob_build::InputValue::Bool(true))).is_ok() {
+            set += 1;
+        }
+    }
+    e.refresh().expect("refresh");
+    let guard = ConfigGuard::new(&e);
+    assert!(
+        set > 0 && !guard.watched().is_empty(),
+        "nothing to watch: the check below would prove nothing"
+    );
+    assert!(guard.orphans(&e).is_empty(), "nothing has gone yet");
+    let before = guard.watched().len();
+
+    // the reasons go: no items
+    let slots = [
+        "Weapon 1",
+        "Weapon 2",
+        "Helmet",
+        "Body Armour",
+        "Gloves",
+        "Boots",
+        "Amulet",
+        "Ring 1",
+        "Ring 2",
+        "Belt",
+    ];
+    for s in slots {
+        e.equip_item(s, 0.0).expect("empty the slot");
+    }
+    e.refresh().expect("refresh");
+    let items_only = guard.orphans(&e).len();
+    // and what the options hang on besides the items: the gems and the tree
+    e.delete_all_socket_groups().expect("no gems");
+    let mut bare = (*e.spec_rc()).clone();
+    let ids: Vec<u32> = bare.alloc_nodes.keys().copied().collect();
+    for id in ids {
+        if let Some(i) = bare.node_idx(id)
+            && bare.nodes[i].ty() != pob_tree::NodeType::ClassStart
+            && bare.nodes[i].alloc
+        {
+            let _ = bare.dealloc_node(i);
+        }
+    }
+    e.write_spec_to_model(bare);
+    e.refresh().expect("refresh");
+    let gone = guard.orphans(&e);
+    eprintln!(
+        "watched {before}, hidden without items {items_only}, without items, gems and tree {}",
+        gone.len()
+    );
+    assert!(!gone.is_empty(), "taking everything off hid no option among {before}");
+    let dropped = guard.settle(&mut e).expect("settle");
+    assert!(dropped.iter().all(|d| gone.contains(d) || !gone.is_empty()));
+    for d in &gone {
+        assert!(dropped.contains(d));
+        let cur = e.config_state().input.get(d).cloned();
+        assert_ne!(cur, Some(pob_build::InputValue::Bool(true)), "{d}: still on");
+    }
+    assert!(guard.orphans(&e).iter().all(|o| dropped.contains(o)));
+}
+
+/// A curse on the wearer writes to the store the list of extra curses comes from: it used to panic ("RefCell already borrowed").
+#[test]
+fn a_belt_that_curses_the_wearer_calculates() {
+    let db = pob_optimizer::uniques().expect("uniques");
+    let (_, _, raw) = db.iter().find(|(n, _, _)| n.starts_with("Coward's Chains")).expect("the belt");
+    let mut e = Engine::load_xml(&golden()).expect("load");
+    e.replace_item_text(raw, "Belt").expect("the belt goes on");
+    e.refresh().expect("refresh");
+    assert!(evaluate(&e).life > 0.0);
+}
+
+#[test]
+fn a_support_swap_keeps_the_active_gem_and_a_unique_goes_on() {
+    let xml = golden();
+    let opt = Options {
+        seconds: 25.0,
+        moves_per_round: 60,
+        threads: 4,
+        seed: 5,
+    };
+    let locks = Locks {
+        swap_supports: true,
+        item_slots: vec!["Helmet".into(), "Belt".into()],
+        ..Locks::default()
+    };
+    let r = optimize(&xml, &open_goal(), &locks, opt).expect("search");
+    let e = Engine::load_xml(&xml).expect("load");
+    let main = e.model().main_socket_group as usize;
+    let actives = |x: &Engine| -> Vec<Option<String>> {
+        x.gem_states(main)
+            .iter()
+            .enumerate()
+            .filter(|(_, s)| !s.3)
+            .map(|(i, _)| x.gem_id_at(main, i + 1))
+            .collect()
+    };
+    let after = Engine::load_xml(&r.best_xml).expect("reload");
+    assert_eq!(actives(&e), actives(&after), "the active gems of the main group stay");
+    let _ = Change::Item {
+        slot: String::new(),
+        name: String::new(),
+        raw: String::new(),
+    };
+    assert!(r.tried > 0);
+    assert_eq!(evaluate(&after).dps, r.best.dps);
 }

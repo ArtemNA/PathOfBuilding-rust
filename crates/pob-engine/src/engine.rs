@@ -787,6 +787,15 @@ impl Engine {
     /// (ItemsTab.lua:1959-1998) is not ported on this path: when it would look at an equipped item it is an explicit error. This is the API of the
     /// oracle's `engine_addItemText`, called by tests only; the window goes through `ItemsTab::copy_anoints_ex` of pob-ui (ItemsTab.lua:2005, TradeQuery.lua:1098).
     pub fn add_item_text(&mut self, text: &str, slot_name: &str) -> Result<f64, String> {
+        self.add_item_text_inner(text, slot_name, false)
+    }
+
+    /// [`Engine::add_item_text`] over an equipped item, which keeps nothing of it (no anoints or eldritch implicits are carried over): for trying another item in a slot.
+    pub fn replace_item_text(&mut self, text: &str, slot_name: &str) -> Result<f64, String> {
+        self.add_item_text_inner(text, slot_name, true)
+    }
+
+    fn add_item_text_inner(&mut self, text: &str, slot_name: &str, replace: bool) -> Result<f64, String> {
         const BASE_SLOTS: [&str; 18] = [
             "Weapon 1",
             "Weapon 2",
@@ -849,7 +858,8 @@ impl Engine {
         } else {
             base.ty.clone()
         };
-        if let Some(s) = env.ordered_slots.iter().find(|s| s.node_id.is_none() && s.slot_name == item_type)
+        if !replace
+            && let Some(s) = env.ordered_slots.iter().find(|s| s.node_id.is_none() && s.slot_name == item_type)
             && env.item(s.sel_item_id).is_some()
         {
             return Err(format!(

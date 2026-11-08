@@ -1573,9 +1573,13 @@ dependencies = [
 name = "pob-optimizer"
 version = "0.1.4"
 dependencies = [
+ "pob-build",
  "pob-calc",
+ "pob-data",
  "pob-engine",
+ "pob-items",
  "pob-tree",
+ "serde_json",
 ]
 
 [[package]]

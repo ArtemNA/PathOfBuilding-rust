@@ -11,6 +11,10 @@ publish.workspace = true
 pob-engine = { path = "../pob-engine" }
 pob-calc = { path = "../pob-calc" }
 pob-tree.workspace = true
+pob-build.workspace = true
+pob-data.workspace = true
+pob-items.workspace = true
+serde_json.workspace = true
 
 [lints]
 workspace = true
