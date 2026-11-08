@@ -503,3 +503,20 @@ fn a_cluster_goes_in_keeps_to_the_points_and_survives_a_save() {
     assert!(ok > 0, "no cluster variant calculated: {last_err}");
     assert!(with_notables > 0, "no cluster variant took a notable");
 }
+
+#[test]
+fn a_stopped_search_ends_with_what_it_has() {
+    let control = pob_optimizer::Control::default();
+    control.stop.store(true, std::sync::atomic::Ordering::Relaxed);
+    let opt = Options {
+        seconds: 600.0,
+        moves_per_round: 100,
+        threads: 2,
+        seed: 1,
+    };
+    let began = std::time::Instant::now();
+    let r = pob_optimizer::optimize_with(&golden(), &open_goal(), &Locks::default(), opt, &control).expect("search");
+    assert!(began.elapsed().as_secs() < 60, "the stop was not heard");
+    assert_eq!(r.tried, 0);
+    assert_eq!(r.best, r.start);
+}

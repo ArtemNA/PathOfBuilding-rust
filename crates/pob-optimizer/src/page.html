@@ -1,0 +1,266 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Build Optimizer</title>
+<style>
+:root { --bg:#f5f6f7; --panel:#fff; --fg:#1b2127; --muted:#5d6974; --line:#d6dce1; --accent:#1d5c63; --good:#1b6a42; --bad:#a3322a; }
+@media (prefers-color-scheme: dark) { :root { --bg:#14191d; --panel:#1c2329; --fg:#e6ebee; --muted:#a0acb6; --line:#333e47; --accent:#7cc4cc; --good:#7fd1a3; --bad:#f0a29a; } }
+* { box-sizing:border-box }
+body { margin:0; background:var(--bg); color:var(--fg); font:15px/1.45 system-ui,"Segoe UI",sans-serif }
+main { max-width:1100px; margin:0 auto; padding:24px 16px 56px; display:grid; gap:16px }
+h1 { font-size:22px; margin:0 } h2 { font-size:15px; margin:0 0 10px; color:var(--accent) }
+p.note { margin:4px 0 0; color:var(--muted) }
+section { background:var(--panel); border:1px solid var(--line); border-radius:6px; padding:14px 16px }
+.grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); gap:16px }
+label { display:block; margin:8px 0 3px; color:var(--muted); font-size:13px }
+label.check { display:flex; gap:8px; align-items:center; color:var(--fg); font-size:15px; margin:7px 0 }
+input[type=number], input[type=text], textarea { width:100%; padding:7px 9px; border:1px solid var(--line); border-radius:4px; background:var(--bg); color:var(--fg); font:inherit }
+textarea { min-height:44px; resize:vertical } #build { min-height:92px; font-family:ui-monospace,Consolas,monospace; font-size:12px }
+.slots { display:flex; flex-wrap:wrap; gap:4px 16px }
+.row { display:flex; gap:10px; align-items:center; flex-wrap:wrap }
+button { padding:8px 18px; border:0; border-radius:4px; background:var(--accent); color:var(--panel); font:inherit; font-weight:600; cursor:pointer }
+button.quiet { background:transparent; color:var(--fg); border:1px solid var(--line) } button:disabled { opacity:.5; cursor:default }
+#state { color:var(--muted) } #error { color:var(--bad); white-space:pre-wrap }
+.table { overflow-x:auto } table { border-collapse:collapse; width:100%; font-variant-numeric:tabular-nums }
+th, td { text-align:left; padding:6px 10px; border-bottom:1px solid var(--line) } th { color:var(--muted); font-size:13px; font-weight:600 }
+td.num, th.num { text-align:right } .up { color:var(--good) } .down { color:var(--bad) }
+#code { min-height:70px; font-family:ui-monospace,Consolas,monospace; font-size:12px }
+.chips { position:relative; display:flex; flex-wrap:wrap; gap:5px; padding:5px 6px; min-height:38px; border:1px solid var(--line); border-radius:4px; background:var(--bg) }
+.chips:focus-within { outline:2px solid var(--accent); outline-offset:-1px }
+.chip { display:inline-flex; align-items:center; gap:5px; padding:1px 4px 1px 9px; border-radius:12px; background:var(--panel); border:1px solid var(--line); font-size:13px }
+.chip button { all:unset; cursor:pointer; padding:0 5px; color:var(--muted); line-height:1.3 }
+.chips input { flex:1; min-width:90px; border:0; outline:0; background:transparent; color:var(--fg); font:inherit; padding:2px }
+.menu { position:absolute; z-index:5; left:-1px; right:-1px; top:100%; margin:3px 0 0; padding:3px; list-style:none; max-height:260px; overflow:auto; background:var(--panel); border:1px solid var(--line); border-radius:4px; box-shadow:0 4px 14px rgba(0,0,0,.25) }
+.menu li { padding:5px 9px; border-radius:3px; cursor:pointer } .menu li.on, .menu li:hover { background:var(--bg); color:var(--accent) }
+.menu li.empty { color:var(--muted); cursor:default; background:transparent }
+[hidden] { display:none !important }
+</style>
+</head>
+<body>
+<main>
+<header>
+  <h1>Build Optimizer</h1>
+  <p class="note">Experimental. Everything runs on this computer. The result is the best found, not a proven best, and is only as right as the calculations are.</p>
+</header>
+
+<section>
+  <h2>Build</h2>
+  <label for="build">Paste a build code or XML</label>
+  <textarea id="build" spellcheck="false"></textarea>
+</section>
+
+<div class="grid">
+  <section>
+    <h2>What to improve</h2>
+    <label for="dpsWeight">Damage weight</label><input id="dpsWeight" type="number" min="0" step="0.5" value="1">
+    <label for="ehpWeight">Survival (EHP) weight</label><input id="ehpWeight" type="number" min="0" step="0.5" value="1">
+    <label for="seconds">Seconds to search</label><input id="seconds" type="number" min="1" max="3600" value="60">
+  </section>
+  <section>
+    <h2>Must hold</h2>
+    <label for="minRes">Fire, cold and lightning resistance at least</label><input id="minRes" type="number" value="75">
+    <label for="minChaos">Chaos resistance at least (empty: no limit)</label><input id="minChaos" type="number">
+    <label for="minEhp">EHP at least (empty: no limit)</label><input id="minEhp" type="number">
+    <p class="note">Requirements and mana are checked too: a variant with a new warning is dropped.</p>
+  </section>
+  <section>
+    <h2>Passive tree</h2>
+    <label for="requireNodes">Never remove these nodes </label><div class="chips" id="requireNodes" data-source="have"></div>
+    <label for="forbidNodes">Never take these nodes</label><div class="chips" id="forbidNodes" data-source="nodes"></div>
+    <label class="check"><input id="tattoos" type="checkbox">Allow tattoos</label>
+    <p class="note">Off: your tattoos stay and no new ones are tried.</p>
+  </section>
+  <section>
+    <h2>Cluster jewels</h2>
+    <label class="check"><input id="clusters" type="checkbox">Allow cluster jewels</label>
+    <label for="forbidClusterMods">Forbidden notables or small-passive types</label><div class="chips" id="forbidClusterMods" data-source="clusterMods"></div>
+    <label for="forbidClusterCombos">Forbidden combinations: pick a mod, type +, pick the next</label><div class="chips" id="forbidClusterCombos" data-source="clusterMods" data-combo="1"></div>
+  </section>
+  <section>
+    <h2>Gems</h2>
+    <label class="check"><input id="swapSupports" type="checkbox">Swap support gems of the main skill</label>
+    <p class="note">The main skill itself is never changed.</p>
+    <label for="forbidGems">Forbidden gems and auras</label><div class="chips" id="forbidGems" data-source="gems"></div>
+  </section>
+  <section>
+    <h2>Items</h2>
+    <label>Slots that may get a unique item</label>
+    <div class="slots" id="slots"></div>
+    <label for="forbidItems">Forbidden uniques</label><div class="chips" id="forbidItems" data-source="uniques"></div>
+  </section>
+</div>
+
+<section>
+  <div class="row">
+    <button id="run">Optimize</button>
+    <button id="stop" class="quiet" disabled>Stop</button>
+    <span id="state" aria-live="polite"></span>
+  </div>
+  <div id="error"></div>
+</section>
+
+<section id="result" hidden>
+  <h2>Result</h2>
+  <div class="table"><table id="compare"></table></div>
+  <p class="note" id="summary"></p>
+  <label for="code">Build code: paste it into Import/Export</label>
+  <textarea id="code" readonly></textarea>
+  <div class="row" style="margin-top:8px"><button id="copy" class="quiet">Copy</button></div>
+</section>
+
+<section id="stepsBox" hidden>
+  <h2>Changes, in the order they were taken</h2>
+  <div class="table"><table id="steps"></table></div>
+</section>
+</main>
+
+<script>
+const $ = id => document.getElementById(id);
+const SLOTS = ["Helmet", "Body Armour", "Gloves", "Boots", "Amulet", "Ring 1", "Ring 2", "Belt"];
+for (const s of SLOTS) {
+  const l = document.createElement("label"); l.className = "check";
+  const c = document.createElement("input"); c.type = "checkbox"; c.value = s; c.className = "slot";
+  l.append(c, s); $("slots").append(l);
+}
+const fmt = n => typeof n === "number" ? n.toLocaleString("en-US", { maximumFractionDigits: 1 }) : "";
+const text = id => $(id).value;
+let catalogData = {};
+const chipFields = {};
+function chipField(el) {
+  const values = [], source = el.dataset.source, combo = !!el.dataset.combo;
+  const input = document.createElement("input"); input.setAttribute("aria-label", "Search"); input.autocomplete = "off";
+  const menu = document.createElement("ul"); menu.className = "menu"; menu.hidden = true; menu.setAttribute("role", "listbox");
+  el.append(input, menu);
+  let active = 0, items = [];
+  function draw() {
+    el.querySelectorAll(".chip").forEach(c => c.remove());
+    values.forEach((v, i) => {
+      const c = document.createElement("span"); c.className = "chip"; c.append(v);
+      const x = document.createElement("button"); x.type = "button"; x.textContent = "×"; x.setAttribute("aria-label", "Remove " + v);
+      x.onclick = () => { values.splice(i, 1); draw(); };
+      c.append(x); el.insertBefore(c, input);
+    });
+  }
+  const parts = () => combo ? input.value.split("+").map(s => s.trim()) : [input.value.trim()];
+  function open() {
+    const q = parts().at(-1).toLowerCase(), list = catalogData[source] || [];
+    if (!list.length) { menu.replaceChildren(); const li = document.createElement("li"); li.className = "empty"; li.textContent = "Paste a build first"; menu.append(li); menu.hidden = false; items = []; return; }
+    const taken = new Set(values.map(v => v.toLowerCase()).concat(parts().slice(0, -1).map(s => s.toLowerCase())));
+    items = list.filter(n => n.toLowerCase().includes(q) && !taken.has(n.toLowerCase()));
+    items.sort((a, b) => a.toLowerCase().indexOf(q) - b.toLowerCase().indexOf(q));
+    items = items.slice(0, 12); active = 0; paint();
+  }
+  function paint() {
+    menu.replaceChildren();
+    if (!items.length) { const li = document.createElement("li"); li.className = "empty"; li.textContent = "Nothing found"; menu.append(li); }
+    items.forEach((n, i) => {
+      const li = document.createElement("li"); li.textContent = n; li.setAttribute("role", "option"); if (i === active) li.className = "on";
+      li.onmousedown = e => { e.preventDefault(); pick(n); };
+      menu.append(li);
+    });
+    menu.hidden = false;
+    menu.children[active]?.scrollIntoView({ block: "nearest" });
+  }
+  function pick(n) {
+    if (combo) {
+      const done = parts().slice(0, -1).concat(n);
+      if (done.length < 2) { input.value = n + " + "; open(); return; }
+      values.push(done.join(" + "));
+    } else { values.push(n); }
+    input.value = ""; draw(); open();
+  }
+  input.onfocus = open; input.oninput = open;
+  input.onblur = () => { menu.hidden = true; };
+  input.onkeydown = e => {
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") { e.preventDefault(); if (items.length) { active = (active + (e.key === "ArrowDown" ? 1 : items.length - 1)) % items.length; paint(); } }
+    else if (e.key === "Enter") { e.preventDefault(); if (items[active]) pick(items[active]); }
+    else if (e.key === "Escape") { menu.hidden = true; }
+    else if (e.key === "Backspace" && !input.value && values.length) { values.pop(); draw(); }
+  };
+  el.onclick = e => { if (e.target === el) input.focus(); };
+  chipFields[el.id] = values;
+}
+document.querySelectorAll(".chips").forEach(chipField);
+const chips = id => chipFields[id].join("\n");
+let catalogTimer = null;
+$("build").oninput = () => {
+  clearTimeout(catalogTimer);
+  catalogTimer = setTimeout(async () => {
+    if (!text("build").trim()) { catalogData = {}; return; }
+    const r = await fetch("/api/catalog", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ build: text("build") }) });
+    const d = await r.json();
+    if (r.ok) { catalogData = d; $("error").textContent = ""; } else { catalogData = {}; $("error").textContent = d.error; }
+  }, 300);
+};
+function config() {
+  return {
+    build: text("build"), dpsWeight: text("dpsWeight"), ehpWeight: text("ehpWeight"), seconds: text("seconds"),
+    minRes: text("minRes"), minChaos: text("minChaos"), minEhp: text("minEhp"),
+    requireNodes: chips("requireNodes"), forbidNodes: chips("forbidNodes"),
+    tattoos: $("tattoos").checked, clusters: $("clusters").checked,
+    forbidClusterMods: chips("forbidClusterMods"), forbidClusterCombos: chips("forbidClusterCombos"),
+    swapSupports: $("swapSupports").checked, forbidGems: chips("forbidGems"),
+    itemSlots: [...document.querySelectorAll(".slot:checked")].map(c => c.value).join("\n"), forbidItems: chips("forbidItems"),
+  };
+}
+let timer = null;
+function running(on) { $("run").disabled = on; $("stop").disabled = !on; }
+function cell(row, v, cls) { const td = row.insertCell(); td.textContent = v; if (cls) td.className = cls; return td; }
+function showSteps(steps) {
+  $("stepsBox").hidden = !steps.length;
+  const t = $("steps"); t.replaceChildren();
+  const h = t.insertRow();
+  for (const [v, c] of [["#"], ["Change"], ["Damage", "num"], ["EHP", "num"]]) { const th = document.createElement("th"); th.textContent = v; if (c) th.className = c; h.append(th); }
+  steps.forEach((s, i) => {
+    const r = t.insertRow(); cell(r, i + 1);
+    cell(r, s.change + (s.dropped.length ? "  (config removed: " + s.dropped.join(", ") + ")" : ""));
+    cell(r, fmt(s.dps), "num"); cell(r, fmt(s.ehp), "num");
+  });
+}
+function showResult(d) {
+  $("result").hidden = false;
+  const rows = [["Damage", "dps"], ["EHP", "ehp"], ["Life", "life"], ["Fire resistance", "fire"], ["Cold resistance", "cold"], ["Lightning resistance", "lightning"], ["Chaos resistance", "chaos"]];
+  const t = $("compare"); t.replaceChildren();
+  const h = t.insertRow();
+  for (const [v, c] of [[""], ["Start", "num"], ["Best", "num"], ["Change", "num"]]) { const th = document.createElement("th"); th.textContent = v; if (c) th.className = c; h.append(th); }
+  for (const [label, k] of rows) {
+    const a = d.start[k], b = d.best[k], r = t.insertRow(); cell(r, label); cell(r, fmt(a), "num"); cell(r, fmt(b), "num");
+    const p = a ? (b / a - 1) * 100 : 0;
+    cell(r, (p > 0 ? "+" : "") + p.toFixed(1) + "%", "num " + (p > 0.05 ? "up" : p < -0.05 ? "down" : ""));
+  }
+  const kinds = Object.entries(d.byKind).map(([k, n]) => n + " " + k).join(", ");
+  const why = d.rejected.map(x => x.n + " " + x.why).concat(d.refused.map(x => x.n + " refused: " + x.why)).join("; ");
+  $("summary").textContent = "Tried " + d.tried + " variants in " + d.seconds.toFixed(0) + " s (" + kinds + "). Dropped: " + (why || "none") + ".";
+  $("code").value = d.code;
+}
+async function poll() {
+  const d = await (await fetch("/api/status")).json();
+  if (d.state === "running") {
+    $("state").textContent = "Searching: " + d.tried + " variants, " + d.steps.length + " improvements";
+    showSteps(d.steps); return;
+  }
+  clearInterval(timer); timer = null; running(false);
+  if (d.state === "error") { $("state").textContent = ""; $("error").textContent = d.error; }
+  if (d.state === "done") { $("state").textContent = "Done."; showResult(d); showSteps(d.steps); }
+}
+$("run").onclick = async () => {
+  $("error").textContent = ""; $("result").hidden = true; $("stepsBox").hidden = true;
+  const c = config();
+  const r = await fetch("/api/run", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(c) });
+  if (!r.ok) { $("error").textContent = (await r.json()).error; return; }
+  running(true); $("state").textContent = "Starting...";
+  timer = setInterval(poll, 1000);
+};
+$("stop").onclick = () => fetch("/api/stop", { method: "POST" });
+$("copy").onclick = () => navigator.clipboard.writeText($("code").value);
+// A reloaded page picks the search up where it is.
+fetch("/api/status").then(r => r.json()).then(d => {
+  if (d.state === "running") { running(true); timer = setInterval(poll, 1000); }
+  if (d.state === "done") { $("state").textContent = "Done."; showResult(d); showSteps(d.steps); }
+  if (d.state === "error") { $("error").textContent = d.error; }
+});
+</script>
+</body>
+</html>

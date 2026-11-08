@@ -4,7 +4,7 @@
 
 use std::collections::{BTreeMap, HashSet};
 use std::sync::Mutex;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::time::Instant;
 
 use pob_build::InputValue;
@@ -758,6 +758,31 @@ fn cluster_changes(base: &PassiveSpec, locks: &Locks, max: usize, rng: &mut Rng)
     Ok(out)
 }
 
+/// Every name a cluster jewel's mods can be forbidden by: the notables and the small-passive types.
+pub fn cluster_mod_names() -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    if let Ok(serde_json::Value::Object(table)) = serde_json::from_str::<serde_json::Value>(CLUSTER_NOTABLES) {
+        for entry in table.values() {
+            for side in ["prefix", "suffix"] {
+                out.extend(
+                    entry[side]
+                        .as_array()
+                        .into_iter()
+                        .flatten()
+                        .filter_map(|x| x.as_str())
+                        .map(str::to_owned),
+                );
+            }
+        }
+    }
+    for (_, jewel) in pob_data::cluster_jewels::cluster_jewels().jewels.iter() {
+        out.extend(jewel.skills.iter().map(|(_, s)| s.name.clone()));
+    }
+    out.sort_unstable();
+    out.dedup();
+    out
+}
+
 /// The game's limit of tattoos on one character.
 const MOST_TATTOOS: usize = 50;
 
@@ -927,6 +952,20 @@ fn candidates_for(
     Ok(list)
 }
 
+/// What a running search shows to the outside, and how to stop it.
+#[derive(Default)]
+pub struct Control {
+    pub stop: AtomicBool,
+    pub progress: Mutex<Progress>,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct Progress {
+    pub tried: usize,
+    pub round: usize,
+    pub steps: Vec<Step>,
+}
+
 #[derive(Clone, Copy, Debug)]
 pub struct Options {
     pub seconds: f64,
@@ -972,6 +1011,7 @@ fn round(
     guard: &ConfigGuard,
     threads: usize,
     deadline: Instant,
+    stop: &AtomicBool,
 ) -> Vec<(Change, Result<Eval, String>, f64)> {
     let next = AtomicUsize::new(0);
     let out = Mutex::new(Vec::with_capacity(list.len()));
@@ -985,7 +1025,7 @@ fn round(
                 let mut touched = false;
                 loop {
                     let i = next.fetch_add(1, Ordering::Relaxed);
-                    if i >= list.len() || Instant::now() >= deadline {
+                    if i >= list.len() || Instant::now() >= deadline || stop.load(Ordering::Relaxed) {
                         break;
                     }
                     let t = Instant::now();
@@ -1012,6 +1052,11 @@ fn round(
 
 /// Greedy search: each round takes the best allowed change and goes on from there, until the time is up or no change helps.
 pub fn optimize(xml: &str, goal: &Goal, locks: &Locks, opt: Options) -> Result<Report, String> {
+    optimize_with(xml, goal, locks, opt, &Control::default())
+}
+
+/// [`optimize`] that reports its progress to `control` and ends early when told to, with the best so far.
+pub fn optimize_with(xml: &str, goal: &Goal, locks: &Locks, opt: Options, control: &Control) -> Result<Report, String> {
     let begin = Instant::now();
     let deadline = begin + std::time::Duration::from_secs_f64(opt.seconds);
     let load = Instant::now();
@@ -1031,7 +1076,7 @@ pub fn optimize(xml: &str, goal: &Goal, locks: &Locks, opt: Options) -> Result<R
     let mut by_kind: BTreeMap<&'static str, usize> = BTreeMap::new();
     let mut engine_errors: BTreeMap<String, usize> = BTreeMap::new();
     let mut n = 0u64;
-    while Instant::now() < deadline {
+    while Instant::now() < deadline && !control.stop.load(Ordering::Relaxed) {
         n += 1;
         let base = (*e.spec_rc()).clone();
         let mut rng = Rng(opt.seed.wrapping_add(n).wrapping_mul(0x9E37_79B9).max(1));
@@ -1040,8 +1085,12 @@ pub fn optimize(xml: &str, goal: &Goal, locks: &Locks, opt: Options) -> Result<R
         if list.is_empty() {
             break;
         }
-        let results = round(&cur_xml, &list, locks, &guard, opt.threads, deadline);
+        let results = round(&cur_xml, &list, locks, &guard, opt.threads, deadline, &control.stop);
         tried += results.len();
+        if let Ok(mut p) = control.progress.lock() {
+            p.tried = tried;
+            p.round = n as usize;
+        }
         let mut top: Option<(f64, Change, Eval)> = None;
         for (c, r, ms) in results {
             times.push(ms);
@@ -1094,6 +1143,9 @@ pub fn optimize(xml: &str, goal: &Goal, locks: &Locks, opt: Options) -> Result<R
             eval: best.clone(),
             change: c.describe(&base),
         });
+        if let Ok(mut p) = control.progress.lock() {
+            p.steps = steps.clone();
+        }
     }
     times.sort_by(f64::total_cmp);
     Ok(Report {

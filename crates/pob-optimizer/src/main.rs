@@ -2,10 +2,13 @@
 
 use std::process::ExitCode;
 
+mod server;
+
 use pob_engine::engine::Engine;
 use pob_optimizer::{Eval, Goal, Locks, Options, evaluate, optimize};
 
-const USAGE: &str = "usage: pob-optimizer probe <build.xml> [--secs N] [--round N] [--threads N] [--seed N]
+const USAGE: &str = "usage: pob-optimizer serve [--port N]   (the page, on 127.0.0.1)
+       pob-optimizer probe <build.xml> [--secs N] [--round N] [--threads N] [--seed N]
        [--dps-weight N] [--ehp-weight N] [--min-res N] [--min-chaos N] [--min-ehp N] [--out best.xml]
        [--forbid-node a,b] [--require-node a,b] [--forbid-gem a,b]   (names, or node ids)
        [--swap-supports] [--allow-tattoos] [--allow-clusters] [--forbid-cluster-mod a,b] [--forbid-cluster-combo a+b,c+d] [--item-slots Helmet,Gloves,...] [--forbid-item a,b]";
@@ -135,6 +138,7 @@ fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let result = match args.first().map(String::as_str) {
         Some("probe") => run(&args[1..]),
+        Some("serve") => number(&args, "--port", 7878).and_then(server::serve),
         _ => Err(USAGE.to_string()),
     };
     match result {
