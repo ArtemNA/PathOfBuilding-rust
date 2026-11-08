@@ -409,3 +409,97 @@ fn allowed_tattoos_are_in_every_round_and_survive_a_save() {
     assert_eq!((evaluate(&fresh).dps, evaluate(&fresh).ehp), (v.dps, v.ehp));
     assert_eq!(fresh.spec_rc().hash_overrides.get(&node).map(|t| t.dn.clone()), Some(dn));
 }
+
+fn cluster_locks() -> Locks {
+    Locks {
+        clusters: true,
+        ..Locks::default()
+    }
+}
+
+fn cluster_names(list: &[Change]) -> Vec<String> {
+    list.iter()
+        .filter_map(|c| match c {
+            Change::Cluster { name, .. } => Some(name.to_lowercase()),
+            _ => None,
+        })
+        .collect()
+}
+
+#[test]
+fn clusters_are_off_by_default_and_in_every_round_when_allowed() {
+    let (e, _) = base_spec();
+    let off = pob_optimizer::candidates(&e, &Locks::default(), &[], 120, 23).expect("candidates");
+    assert!(cluster_names(&off).is_empty(), "off by default");
+    let on = pob_optimizer::candidates(&e, &cluster_locks(), &[], 120, 23).expect("candidates");
+    assert!(!cluster_names(&on).is_empty(), "allowed clusters must be among the variants");
+}
+
+#[test]
+fn forbidden_cluster_mods_and_combinations_never_appear() {
+    let (e, _) = base_spec();
+    let on = pob_optimizer::candidates(&e, &cluster_locks(), &[], 400, 29).expect("candidates");
+    let names = cluster_names(&on);
+    // a notable the free search really does pick, or the bans below prove nothing
+    let large = names.iter().find(|n| n.contains(", ")).expect("a jewel with two notables");
+    let notes: Vec<String> = large
+        .split(": ")
+        .nth(1)
+        .expect("notables")
+        .trim_end_matches(')')
+        .split(", ")
+        .map(str::to_owned)
+        .collect();
+    let mut banned = cluster_locks();
+    banned.forbid_cluster_mods = vec![notes[0].clone()];
+    let list = pob_optimizer::candidates(&e, &banned, &[], 400, 29).expect("candidates");
+    assert!(!cluster_names(&list).is_empty());
+    assert!(
+        cluster_names(&list).iter().all(|n| !n.contains(&notes[0])),
+        "a forbidden mod appeared"
+    );
+
+    let mut pair = cluster_locks();
+    pair.forbid_cluster_combos = vec![vec![notes[0].clone(), notes[1].clone()]];
+    let list = pob_optimizer::candidates(&e, &pair, &[], 400, 29).expect("candidates");
+    assert!(
+        cluster_names(&list)
+            .iter()
+            .all(|n| !(n.contains(&notes[0]) && n.contains(&notes[1]))),
+        "a forbidden pair appeared"
+    );
+}
+
+#[test]
+fn a_cluster_goes_in_keeps_to_the_points_and_survives_a_save() {
+    let (e, base) = base_spec();
+    let locks = cluster_locks();
+    let guard = ConfigGuard::new(&e);
+    let list = pob_optimizer::candidates(&e, &locks, &[], 400, 31).expect("candidates");
+    let xml = golden();
+    let (mut ok, mut with_notables, mut last_err) = (0, 0, String::new());
+    for c in list.iter().filter(|c| matches!(c, Change::Cluster { .. })).take(25) {
+        let mut f = Engine::load_xml(&xml).expect("load");
+        let v = match pob_optimizer::try_change(&mut f, &base, c, &locks, &guard) {
+            Ok(v) => v,
+            Err(x) => {
+                last_err = x;
+                continue;
+            }
+        };
+        ok += 1;
+        let spec = f.spec_rc();
+        assert!(spec.alloc_nodes.len() <= base.alloc_nodes.len(), "{c:?}: costs more points");
+        if spec
+            .nodes
+            .iter()
+            .any(|n| n.is_subgraph_node() && n.alloc && n.ty() == pob_tree::NodeType::Notable)
+        {
+            with_notables += 1;
+        }
+        let fresh = Engine::load_xml(&f.save_xml().expect("save")).expect("reload");
+        assert_eq!((evaluate(&fresh).dps, evaluate(&fresh).ehp), (v.dps, v.ehp), "{c:?}");
+    }
+    assert!(ok > 0, "no cluster variant calculated: {last_err}");
+    assert!(with_notables > 0, "no cluster variant took a notable");
+}

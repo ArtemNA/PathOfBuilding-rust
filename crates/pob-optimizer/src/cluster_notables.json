@@ -1,0 +1,827 @@
+{
+"affliction_area_damage": {
+"prefix": [
+"Assert Dominance",
+"Expansive Might",
+"Magnifier",
+"Powerful Assault",
+"Titanic Swings",
+"Towering Threat",
+"Vast Power"
+],
+"suffix": []
+},
+"affliction_armour": {
+"prefix": [
+"Battle-Hardened",
+"Blacksmith",
+"Dragon Hunter",
+"Enduring Composure",
+"Heart of Iron",
+"Militarism",
+"Prismatic Carapace",
+"Second Skin",
+"Stubborn Student",
+"Uncompromising"
+],
+"suffix": []
+},
+"affliction_attack_damage_": {
+"prefix": [
+"Calamitous",
+"Devastator",
+"Drive the Destruction",
+"Feed the Fury",
+"Fuel the Fight",
+"Vicious Skewering"
+],
+"suffix": [
+"Heavy Hitter",
+"Martial Prowess",
+"Smite the Weak"
+]
+},
+"affliction_attack_damage_while_dual_wielding_": {
+"prefix": [
+"Calamitous",
+"Combat Rhythm",
+"Deadly Repartee",
+"Devastator",
+"Drive the Destruction",
+"Feed the Fury",
+"Fuel the Fight",
+"Hit and Run",
+"Insatiable Killer",
+"Mage Bane",
+"Martial Momentum",
+"Quick and Deadly",
+"Vicious Skewering"
+],
+"suffix": [
+"Heavy Hitter",
+"Martial Prowess",
+"Smite the Weak"
+]
+},
+"affliction_attack_damage_while_holding_a_shield": {
+"prefix": [
+"Advance Guard",
+"Calamitous",
+"Devastator",
+"Drive the Destruction",
+"Feed the Fury",
+"Fuel the Fight",
+"Gladiator's Fortitude",
+"Precise Retaliation",
+"Prodigious Defence",
+"Riot Queller",
+"Strike Leader",
+"Veteran Defender",
+"Vicious Skewering"
+],
+"suffix": [
+"Heavy Hitter",
+"Martial Prowess",
+"Smite the Weak"
+]
+},
+"affliction_axe_and_sword_damage": {
+"prefix": [
+"Aggressive Defence",
+"Bloodscent",
+"Calamitous",
+"Devastator",
+"Drive the Destruction",
+"Feed the Fury",
+"Fuel the Fight",
+"Run Through",
+"Vicious Skewering",
+"Wound Aggravation"
+],
+"suffix": [
+"Heavy Hitter",
+"Martial Prowess",
+"Smite the Weak"
+]
+},
+"affliction_bow_damage": {
+"prefix": [
+"Arcing Shot",
+"Broadside",
+"Calamitous",
+"Devastator",
+"Drive the Destruction",
+"Feed the Fury",
+"Fuel the Fight",
+"Tempered Arrowheads",
+"Vicious Skewering"
+],
+"suffix": [
+"Heavy Hitter",
+"Martial Prowess",
+"Smite the Weak"
+]
+},
+"affliction_brand_damage": {
+"prefix": [
+"Brand Loyalty",
+"Chip Away",
+"Grand Design",
+"Holy Conquest",
+"Remarkable",
+"Seeker Runes"
+],
+"suffix": []
+},
+"affliction_chance_to_block": {
+"prefix": [
+"Enduring Ward",
+"Fiery Aegis",
+"Flexible Sentry",
+"Mage Bane",
+"Mage Hunter",
+"Mystical Ward",
+"One with the Shield",
+"Powerful Ward",
+"Prodigious Defence",
+"Riot Queller",
+"Rote Reinforcement",
+"Second Skin",
+"Stoic Focus",
+"Strike Leader",
+"Vicious Guard"
+],
+"suffix": []
+},
+"affliction_chance_to_dodge_attacks": {
+"prefix": [
+"Aerialist",
+"Darting Movements",
+"Elegant Form",
+"Hit and Run",
+"Untouchable"
+],
+"suffix": []
+},
+"affliction_channelling_skill_damage": {
+"prefix": [
+"Enduring Focus",
+"Hex Breaker",
+"Precise Focus",
+"Stoic Focus",
+"Unrestrained Focus",
+"Unwavering Focus",
+"Vital Focus"
+],
+"suffix": []
+},
+"affliction_chaos_damage": {
+"prefix": [
+"Dark Ideation",
+"Overwhelming Malice",
+"Touch of Cruelty",
+"Unwaveringly Evil",
+"Wicked Pall"
+],
+"suffix": [
+"Grim Oath",
+"Unholy Grace",
+"Unspeakable Gifts"
+]
+},
+"affliction_chaos_damage_over_time_multiplier": {
+"prefix": [
+"Brewed for Potency",
+"Brush with Death",
+"Circling Oblivion",
+"Dark Ideation",
+"Eldritch Inspiration",
+"Eternal Suffering",
+"Exposure Therapy",
+"Flow of Life",
+"Haemorrhage",
+"Low Tolerance",
+"Septic Spells",
+"Steady Torment",
+"Student of Decay",
+"Unwaveringly Evil",
+"Vile Reinvigoration",
+"Wasting Affliction",
+"Wicked Pall"
+],
+"suffix": []
+},
+"affliction_chaos_resistance": {
+"prefix": [
+"Antivenom",
+"Blessed",
+"Born of Chaos",
+"Exposure Therapy",
+"Rot-Resistant",
+"Student of Decay"
+],
+"suffix": []
+},
+"affliction_cold_damage": {
+"prefix": [
+"Blanketed Snow",
+"Blast-Freeze",
+"Cold to the Core",
+"Cold-Blooded Killer",
+"Corrosive Elements",
+"Deep Chill",
+"Inspired Oppression",
+"Prismatic Heart",
+"Sadist",
+"Snowstorm",
+"Stormrider"
+],
+"suffix": [
+"Disorienting Display",
+"Doryani's Lesson",
+"Widespread Destruction"
+]
+},
+"affliction_cold_damage_over_time_multiplier": {
+"prefix": [
+"Blast-Freeze",
+"Brewed for Potency",
+"Brush with Death",
+"Chilling Presence",
+"Circling Oblivion",
+"Cold-Blooded Killer",
+"Deep Chill",
+"Exposure Therapy",
+"Flow of Life",
+"Haemorrhage",
+"Vile Reinvigoration",
+"Wasting Affliction"
+],
+"suffix": []
+},
+"affliction_cold_resistance": {
+"prefix": [
+"Alchemist",
+"Antifreeze",
+"Flexible Sentry",
+"Hibernator",
+"Prismatic Carapace",
+"Prismatic Dance",
+"Prismatic Heart",
+"Pure Guile",
+"Winter Prowler"
+],
+"suffix": []
+},
+"affliction_critical_chance": {
+"prefix": [
+"Basics of Pain",
+"Eye of the Storm",
+"Haemorrhage",
+"Magnifier",
+"Overwhelming Malice",
+"Precise Retaliation",
+"Pressure Points",
+"Provocateur",
+"Quick Getaway",
+"Savage Response",
+"Skullbreaker"
+],
+"suffix": []
+},
+"affliction_curse_effect_small": {
+"prefix": [
+"Blizzard Caller",
+"Doedre's Apathy",
+"Doedre's Gluttony",
+"Doedre's Spite",
+"Evil Eye",
+"Exploit Weakness",
+"Hound's Mark",
+"Lord of Drought",
+"Master of the Maelstrom",
+"Misery Everlasting",
+"Tempt the Storm",
+"Victim Maker"
+],
+"suffix": []
+},
+"affliction_dagger_and_claw_damage": {
+"prefix": [
+"Aggressive Defence",
+"Calamitous",
+"Devastator",
+"Disease Vector",
+"Drive the Destruction",
+"Fan of Blades",
+"Feed the Fury",
+"Fuel the Fight",
+"Vicious Skewering",
+"Wind-up"
+],
+"suffix": [
+"Heavy Hitter",
+"Martial Prowess",
+"Smite the Weak"
+]
+},
+"affliction_damage_over_time_multiplier": {
+"prefix": [
+"Brewed for Potency",
+"Brush with Death",
+"Circling Oblivion",
+"Exposure Therapy",
+"Flow of Life",
+"Haemorrhage",
+"Student of Decay",
+"Vile Reinvigoration",
+"Wasting Affliction"
+],
+"suffix": []
+},
+"affliction_damage_while_you_have_a_herald": {
+"prefix": [
+"Agent of Destruction",
+"Dark Messenger",
+"Empowered Envoy",
+"Endbringer",
+"Heraldry",
+"Lasting Impression",
+"Purposeful Harbinger",
+"Self-Fulfilling Prophecy"
+],
+"suffix": []
+},
+"affliction_damage_with_two_handed_melee_weapons": {
+"prefix": [
+"Battlefield Dominator",
+"Brutal Infamy",
+"Calamitous",
+"Devastator",
+"Drive the Destruction",
+"Fearsome Warrior",
+"Feed the Fury",
+"Fuel the Fight",
+"Graceful Execution",
+"Martial Mastery",
+"Surefooted Striker",
+"Titanic Swings",
+"Vicious Skewering"
+],
+"suffix": [
+"Heavy Hitter",
+"Martial Prowess",
+"Smite the Weak"
+]
+},
+"affliction_effect_of_non-damaging_ailments": {
+"prefix": [
+"Astonishing Affliction",
+"Blast-Freeze",
+"Chilling Presence",
+"Cold Conduction",
+"Deep Chill",
+"Eye of the Storm",
+"Inspired Oppression",
+"Overshock",
+"Stormrider"
+],
+"suffix": []
+},
+"affliction_elemental_damage": {
+"prefix": [
+"Corrosive Elements",
+"Inspired Oppression",
+"Prismatic Heart",
+"Sadist"
+],
+"suffix": [
+"Disorienting Display",
+"Doryani's Lesson",
+"Widespread Destruction"
+]
+},
+"affliction_evasion": {
+"prefix": [
+"Battle-Hardened",
+"Natural Vigour",
+"Prismatic Dance",
+"Readiness",
+"Shifting Shadow",
+"Sublime Form",
+"Untouchable"
+],
+"suffix": []
+},
+"affliction_fire_damage": {
+"prefix": [
+"Burning Bright",
+"Corrosive Elements",
+"Cremator",
+"Master of Fire",
+"Prismatic Heart",
+"Sadist",
+"Smoking Remains"
+],
+"suffix": [
+"Disorienting Display",
+"Doryani's Lesson",
+"Widespread Destruction"
+]
+},
+"affliction_fire_damage_over_time_multiplier": {
+"prefix": [
+"Blowback",
+"Brewed for Potency",
+"Brush with Death",
+"Burning Bright",
+"Circling Oblivion",
+"Cooked Alive",
+"Cremator",
+"Exposure Therapy",
+"Eye of the Storm",
+"Fan the Flames",
+"Flow of Life",
+"Haemorrhage",
+"Master of Fire",
+"Smoking Remains",
+"Student of Decay",
+"Vile Reinvigoration",
+"Wasting Affliction",
+"Wrapped in Flame"
+],
+"suffix": []
+},
+"affliction_fire_resistance": {
+"prefix": [
+"Blacksmith",
+"Dragon Hunter",
+"Fire Attunement",
+"Flexible Sentry",
+"Molten One's Mark",
+"Non-Flammable",
+"Prismatic Carapace",
+"Prismatic Dance",
+"Prismatic Heart",
+"Pure Might"
+],
+"suffix": []
+},
+"affliction_flask_duration": {
+"prefix": [
+"Brewed for Potency",
+"Distilled Perfection",
+"Fasting",
+"Liquid Inspiration",
+"Mender's Wellspring",
+"Numbing Elixir",
+"Peak Vigour",
+"Special Reserve",
+"Spiked Concoction"
+],
+"suffix": []
+},
+"affliction_life_and_mana_recovery_from_flasks": {
+"prefix": [
+"Distilled Perfection",
+"Fasting",
+"Mender's Wellspring",
+"Numbing Elixir",
+"Special Reserve",
+"Spiked Concoction"
+],
+"suffix": []
+},
+"affliction_lightning_damage": {
+"prefix": [
+"Corrosive Elements",
+"Inspired Oppression",
+"Overshock",
+"Paralysis",
+"Prismatic Heart",
+"Sadist",
+"Scintillating Idea",
+"Snowstorm",
+"Storm Drinker",
+"Stormrider",
+"Thunderstruck"
+],
+"suffix": [
+"Disorienting Display",
+"Doryani's Lesson",
+"Widespread Destruction"
+]
+},
+"affliction_lightning_resistance": {
+"prefix": [
+"Capacitor",
+"Flexible Sentry",
+"Insulated",
+"Prismatic Carapace",
+"Prismatic Dance",
+"Prismatic Heart",
+"Pure Aptitude",
+"Sage",
+"Wizardry"
+],
+"suffix": []
+},
+"affliction_mace_and_staff_damage": {
+"prefix": [
+"Aggressive Defence",
+"Calamitous",
+"Devastator",
+"Drive the Destruction",
+"Expansive Might",
+"Feed the Fury",
+"Fuel the Fight",
+"Overlord",
+"Vicious Skewering",
+"Weight Advantage"
+],
+"suffix": [
+"Heavy Hitter",
+"Martial Prowess",
+"Smite the Weak"
+]
+},
+"affliction_maximum_energy_shield": {
+"prefix": [
+"Brush with Death",
+"Conservation of Energy",
+"Energy From Naught",
+"Mystical Ward",
+"Savour the Moment",
+"Self-Control",
+"Spring Back",
+"Sublime Sensation",
+"Vile Reinvigoration",
+"Will Shaper"
+],
+"suffix": []
+},
+"affliction_maximum_life": {
+"prefix": [
+"Adrenaline",
+"Blessed",
+"Brush with Death",
+"Careful Handling",
+"Feast of Flesh",
+"Fettle",
+"Flow of Life",
+"Gladiator's Fortitude",
+"Heart of Iron",
+"Holistic Health",
+"Natural Vigour",
+"Peace Amidst Chaos",
+"Peak Vigour",
+"Rote Reinforcement",
+"Sage",
+"Sublime Sensation",
+"Surging Vitality",
+"Towering Threat",
+"Vicious Guard",
+"Wall of Muscle"
+],
+"suffix": []
+},
+"affliction_maximum_mana": {
+"prefix": [
+"Blessed",
+"Careful Handling",
+"Clarity of Purpose",
+"Daring Ideas",
+"Eldritch Inspiration",
+"Genius",
+"Holistic Health",
+"Improvisor",
+"Liquid Inspiration",
+"Mindfulness",
+"Openness",
+"Sage",
+"Scintillating Idea",
+"Stubborn Student",
+"Will Shaper",
+"Wizardry"
+],
+"suffix": []
+},
+"affliction_minion_damage": {
+"prefix": [
+"Feasting Fiends",
+"Raze and Pillage",
+"Renewal",
+"Rotten Claws",
+"Skeletal Atrophy"
+],
+"suffix": [
+"Call to the Slaughter",
+"Primordial Bond",
+"Vicious Bite"
+]
+},
+"affliction_minion_damage_while_you_have_a_herald": {
+"prefix": [
+"Cult-Leader",
+"Disciples",
+"Endbringer",
+"Heraldry",
+"Invigorating Portents",
+"Lasting Impression",
+"Pure Agony",
+"Purposeful Harbinger"
+],
+"suffix": []
+},
+"affliction_minion_life": {
+"prefix": [
+"Blessed Rebirth",
+"Bodyguards",
+"Dread March",
+"Feasting Fiends",
+"Hulking Corpses",
+"Life from Death",
+"Renewal"
+],
+"suffix": []
+},
+"affliction_physical_damage": {
+"prefix": [
+"Battle-Hardened",
+"Iron Breaker",
+"Master the Fundamentals"
+],
+"suffix": [
+"Force Multiplier",
+"Furious Assault",
+"Grim Oath"
+]
+},
+"affliction_physical_damage_over_time_multiplier": {
+"prefix": [
+"Blood Artist",
+"Brewed for Potency",
+"Brush with Death",
+"Circling Oblivion",
+"Compound Injury",
+"Disorienting Wounds",
+"Exposure Therapy",
+"Flow of Life",
+"Haemorrhage",
+"Phlebotomist",
+"Rend",
+"Steady Torment",
+"Student of Decay",
+"Vile Reinvigoration",
+"Vivid Hues",
+"Wasting Affliction",
+"Wound Aggravation"
+],
+"suffix": []
+},
+"affliction_projectile_damage": {
+"prefix": [
+"Aerodynamics",
+"Eye to Eye",
+"Follow-Through",
+"Repeater",
+"Shrieking Bolts",
+"Streamlined"
+],
+"suffix": []
+},
+"affliction_reservation_efficiency_small": {
+"prefix": [
+"Destructive Aspect",
+"Electric Presence",
+"Frantic Aspect",
+"Introspection",
+"Master of Command",
+"Mortifying Aspect",
+"Pure Aptitude",
+"Pure Guile",
+"Pure Might",
+"Purposeful Harbinger",
+"Replenishing Presence",
+"Righteous Path",
+"Self-Control",
+"Spiteful Presence",
+"Sublime Form",
+"Uncompromising",
+"Volatile Presence"
+],
+"suffix": []
+},
+"affliction_spell_damage": {
+"prefix": [
+"Ancestral Inspiration",
+"Arcane Adept",
+"Arcane Heroism",
+"Burden Projection",
+"Conjured Wall",
+"Mage Hunter",
+"Practiced Caster",
+"Seal Mender"
+],
+"suffix": [
+"Essence Rush",
+"Sap Psyche",
+"Thaumophage"
+]
+},
+"affliction_totem_damage": {
+"prefix": [
+"Ancestral Echo",
+"Ancestral Guidance",
+"Ancestral Inspiration",
+"Ancestral Might",
+"Ancestral Preservation",
+"Ancestral Reach",
+"Sleepless Sentries",
+"Snaring Spirits"
+],
+"suffix": []
+},
+"affliction_trap_and_mine_damage": {
+"prefix": [
+"Arcane Pyrotechnics",
+"Careful Handling",
+"Expendability",
+"Expert Sabotage",
+"Guerilla Tactics",
+"Set and Forget",
+"Surprise Sabotage"
+],
+"suffix": []
+},
+"affliction_wand_damage": {
+"prefix": [
+"Calamitous",
+"Devastator",
+"Drive the Destruction",
+"Explosive Force",
+"Feed the Fury",
+"Fuel the Fight",
+"Opportunistic Fusilade",
+"Storm's Hand",
+"Vicious Skewering"
+],
+"suffix": [
+"Heavy Hitter",
+"Martial Prowess",
+"Smite the Weak"
+]
+},
+"affliction_warcry_buff_effect": {
+"prefix": [
+"Cry Wolf",
+"Haunting Shout",
+"Holy Word",
+"Lead By Example",
+"Mob Mentality",
+"Provocateur",
+"Rattling Bellow",
+"Warning Call"
+],
+"suffix": []
+},
+"old_do_not_use_affliction_aura_effect": {
+"prefix": [
+"Destructive Aspect",
+"Electric Presence",
+"Frantic Aspect",
+"Introspection",
+"Master of Command",
+"Mortifying Aspect",
+"Pure Aptitude",
+"Pure Guile",
+"Pure Might",
+"Purposeful Harbinger",
+"Replenishing Presence",
+"Righteous Path",
+"Self-Control",
+"Spiteful Presence",
+"Sublime Form",
+"Uncompromising",
+"Volatile Presence"
+],
+"suffix": []
+},
+"old_do_not_use_affliction_curse_effect": {
+"prefix": [
+"Blizzard Caller",
+"Doedre's Apathy",
+"Doedre's Gluttony",
+"Doedre's Spite",
+"Evil Eye",
+"Exploit Weakness",
+"Hound's Mark",
+"Lord of Drought",
+"Master of the Maelstrom",
+"Misery Everlasting",
+"Tempt the Storm",
+"Victim Maker"
+],
+"suffix": []
+}
+}

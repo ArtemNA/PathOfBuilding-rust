@@ -895,6 +895,47 @@ impl Engine {
         Ok(id)
     }
 
+    /// A new item in the build's list, in no slot yet (a jewel for [`Engine::set_socket_item`]), recalculated. Returns its id.
+    pub fn add_loose_item_text(&mut self, text: &str) -> Result<f64, String> {
+        let raw = pob_build::sanitise_text(text);
+        let mut item = pob_items::Item::parse(
+            &raw,
+            &pob_items::ItemOptions {
+                parse_mode: pob_calc::ParseMode::Full,
+                ..Default::default()
+            },
+        );
+        if item.base.is_none() {
+            return Err("the item text is invalid (check rarity, name, and base type)".into());
+        }
+        item.normalise_quality();
+        let env = &self.res.env;
+        let mut id = 1.0;
+        while env.item(id).is_some() {
+            id += 1.0;
+        }
+        let raw = item.build_raw();
+        let mod_ranges = crate::save::mod_ranges(&item)
+            .into_iter()
+            .map(|(n, range)| pob_build::ModRangeModel { id: n as f64, range })
+            .collect();
+        self.items_table_set(id);
+        self.model.items.push(pob_build::ItemModel {
+            id,
+            variant: item.variant,
+            variant_alt: item.variant_alt[0],
+            variant_alt2: item.variant_alt[1],
+            variant_alt3: item.variant_alt[2],
+            variant_alt4: item.variant_alt[3],
+            variant_alt5: item.variant_alt[4],
+            raw,
+            mod_ranges,
+        });
+        self.model.item_order.push(id);
+        self.recalc()?;
+        Ok(id)
+    }
+
     /// `slot:SetSelItemId(id)` + `PopulateSlots` + recalc (ItemSlotControl.lua:72-84; the desktop's equip, and how a test undoes
     /// [`Engine::add_item_text`]): `slot_name` is a gear slot of the active item set.
     pub fn equip_item(&mut self, slot_name: &str, id: f64) -> Result<(), String> {

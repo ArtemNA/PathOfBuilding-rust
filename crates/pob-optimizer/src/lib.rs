@@ -42,6 +42,12 @@ pub struct Locks {
     pub forbid_items: Vec<String>,
     /// Off: the build's tattoos stay and no new one is tried. On: every round holds variants with new ones.
     pub tattoos: bool,
+    /// Off: no cluster jewel is added. On: every round holds variants with one.
+    pub clusters: bool,
+    /// Cluster notables and small-passive types never used, lower case.
+    pub forbid_cluster_mods: Vec<String>,
+    /// Combinations of those that must not come together on one jewel, each lower case.
+    pub forbid_cluster_combos: Vec<Vec<String>>,
 }
 
 impl Locks {
@@ -76,7 +82,7 @@ impl Locks {
 
     /// Whether the tree `after`, made from `before`, keeps every lock.
     pub fn allow(&self, before: &PassiveSpec, after: &PassiveSpec) -> bool {
-        if !self.tattoos && !keeps_tattoos(before, after) {
+        if !keeps_jewels(before, after) || (!self.tattoos && !keeps_tattoos(before, after)) {
             return false;
         }
         self.require.iter().all(|id| after.alloc_nodes.contains_key(id))
@@ -85,6 +91,16 @@ impl Locks {
                 .keys()
                 .any(|id| self.forbid.contains(id) && !before.alloc_nodes.contains_key(id))
     }
+}
+
+/// Every socket holding a jewel that the tree had allocated is still allocated: a jewel is not lost by moving points.
+fn keeps_jewels(before: &PassiveSpec, after: &PassiveSpec) -> bool {
+    before
+        .jewels
+        .0
+        .iter()
+        .filter(|(_, item)| *item > 0.0)
+        .all(|(id, _)| !before.alloc_nodes.contains_key(&(*id as u32)) || after.alloc_nodes.contains_key(&(*id as u32)))
 }
 
 /// Every tattooed node the tree had allocated is still allocated.
@@ -383,7 +399,7 @@ pub fn moves(base: &PassiveSpec, max: usize, seed: u64, locks: &Locks) -> Vec<Mo
         if freed == 0 || freed > MOST_POINTS_FREED || !locks.require.iter().all(|id| s.alloc_nodes.contains_key(id)) {
             continue;
         }
-        if !locks.tattoos && !keeps_tattoos(base, &s) {
+        if !keeps_jewels(base, &s) || (!locks.tattoos && !keeps_tattoos(base, &s)) {
             continue;
         }
         let reachable = |i: usize| {
@@ -468,6 +484,13 @@ pub enum Change {
         gem: usize,
         gem_id: String,
     },
+    /// A cluster jewel (`raw`) in the empty socket `socket`, paid for by taking back `free`, and its notables taken.
+    Cluster {
+        socket: u32,
+        name: String,
+        raw: String,
+        free: Vec<u32>,
+    },
     /// The tattoo called `dn` on the allocated node `node`.
     Tattoo {
         node: u32,
@@ -494,6 +517,9 @@ impl Change {
                     .map_or(gem_id.as_str(), |g| g.name.as_str());
                 format!("gem: group {group} slot {gem} -> {shown}")
             }
+            Change::Cluster {
+                socket, name: what, free, ..
+            } => format!("cluster: {} in {} for {} nodes", what, name(*socket), free.len()),
             Change::Tattoo { node, dn } => format!("tattoo: {} -> {dn}", name(*node)),
             Change::Item { slot, name, .. } => format!("item: {slot} -> {name}"),
         }
@@ -508,6 +534,7 @@ pub fn try_change(e: &mut Engine, base: &PassiveSpec, c: &Change, locks: &Locks,
             e.set_gem_id(*group, *gem, Some(gem_id))?;
             e.set_gem_quality(*group, *gem, Some(20.0))?;
         }
+        Change::Cluster { socket, raw, free, .. } => put_cluster(e, base, *socket, raw, free, locks)?,
         Change::Tattoo { node, dn } => {
             let mut s = base.clone();
             let tattoo = s.tree.tattoo().map_err(|x| x.0)?.nodes.get(dn).cloned().ok_or("unknown tattoo")?;
@@ -529,6 +556,206 @@ pub fn try_change(e: &mut Engine, base: &PassiveSpec, c: &Change, locks: &Locks,
 fn plain_support(name: &str) -> bool {
     let n = name.to_lowercase();
     !(n.starts_with("awakened ") || n.starts_with("vaal ") || ["empower", "enlighten", "enhance"].iter().any(|x| n.contains(x)))
+}
+
+fn put_cluster(e: &mut Engine, base: &PassiveSpec, socket: u32, raw: &str, free: &[u32], locks: &Locks) -> Result<(), String> {
+    let mut s = base.clone();
+    for id in free {
+        let i = s.node_idx(*id).ok_or("unknown node")?;
+        if s.nodes[i].alloc {
+            s.dealloc_node(i).map_err(|x| x.0)?;
+        }
+    }
+    let budget = base.alloc_nodes.len();
+    e.write_spec_to_model(s);
+    settle(e)?;
+    if !e.spec_rc().alloc_nodes.contains_key(&socket) {
+        e.alloc_node(socket, None)?;
+        settle(e)?;
+    }
+    let item = e.add_loose_item_text(raw)?;
+    e.set_socket_item(socket, item)?;
+    settle(e)?;
+    // the notables of the new graph, the nearest first, as far as the points go
+    loop {
+        let spec = e.spec_rc();
+        if spec.alloc_nodes.len() >= budget {
+            break;
+        }
+        let room = (budget - spec.alloc_nodes.len()) as f64;
+        let mut next: Vec<(f64, u32)> = spec
+            .nodes
+            .iter()
+            .filter(|n| n.is_subgraph_node() && n.ty() == NodeType::Notable && !n.alloc && n.path.is_some() && n.path_dist <= room)
+            .map(|n| (n.path_dist, n.id))
+            .collect();
+        next.sort_by(|a, b| a.0.total_cmp(&b.0).then(a.1.cmp(&b.1)));
+        let Some(&(_, id)) = next.first() else { break };
+        drop(spec);
+        e.alloc_node(id, None)?;
+        settle(e)?;
+    }
+    let after = e.spec_rc();
+    if after.alloc_nodes.len() > budget {
+        return Err("costs more points than were freed".into());
+    }
+    if !locks.allow(base, &after) {
+        return Err("breaks a lock".into());
+    }
+    Ok(())
+}
+
+const CLUSTER_NOTABLES: &str = include_str!("cluster_notables.json");
+
+/// (base name, passives, sockets line, notables, points to free) of the jewels the search makes.
+const CLUSTER_KINDS: [(&str, u32, Option<&str>, usize, usize); 3] = [
+    ("Small Cluster Jewel", 3, None, 1, 4),
+    ("Medium Cluster Jewel", 5, Some("1 Added Passive Skill is a Jewel Socket"), 2, 6),
+    ("Large Cluster Jewel", 8, Some("2 Added Passive Skills are Jewel Sockets"), 3, 9),
+];
+
+/// One jewel of `kind` and small-passive type `tag`, or `None` when the bans leave nothing. Prefixes and suffixes are drawn as the game's two and two allow.
+fn cluster_text(
+    kind: (&str, u32, Option<&str>, usize, usize),
+    skill_name: &str,
+    tag: &str,
+    enchant: &[String],
+    locks: &Locks,
+    table: &serde_json::Value,
+    rng: &mut Rng,
+) -> Option<(String, String)> {
+    let mut allowed = |side: &str| -> Vec<String> {
+        let mut v: Vec<String> = table[tag][side]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|x| x.as_str())
+            .filter(|n| !locks.forbid_cluster_mods.contains(&n.to_lowercase()))
+            .map(str::to_owned)
+            .collect();
+        rng.shuffle(&mut v);
+        v
+    };
+    let (base, passives, sockets, count, _) = kind;
+    if locks.forbid_cluster_mods.contains(&skill_name.to_lowercase()) || locks.forbid_cluster_mods.contains(&tag.to_lowercase()) {
+        return None;
+    }
+    let (pre, suf) = (allowed("prefix"), allowed("suffix"));
+    let mut chosen: Vec<String> = pre.iter().take(2).chain(suf.iter().take(2)).cloned().collect();
+    rng.shuffle(&mut chosen);
+    chosen.truncate(count);
+    if chosen.is_empty() {
+        return None;
+    }
+    let mut names: Vec<String> = chosen.iter().map(|n| n.to_lowercase()).collect();
+    names.push(skill_name.to_lowercase());
+    names.push(tag.to_lowercase());
+    if locks
+        .forbid_cluster_combos
+        .iter()
+        .any(|c| !c.is_empty() && c.iter().all(|m| names.contains(m)))
+    {
+        return None;
+    }
+    let mut lines = vec![format!("{{crafted}}Adds {passives} Passive Skills")];
+    if let Some(s) = sockets {
+        lines.push(format!("{{crafted}}{s}"));
+    }
+    lines.extend(enchant.iter().map(|l| format!("{{crafted}}{l}")));
+    let mods: Vec<String> = chosen.iter().map(|n| format!("1 Added Passive Skill is {n}")).collect();
+    let raw = format!(
+        "Rarity: RARE\nOptimizer Cluster\n{base}\nItem Level: 84\nImplicits: {}\n{}\n{}\n",
+        lines.len(),
+        lines.join("\n"),
+        mods.join("\n")
+    );
+    Some((format!("{base} ({skill_name}: {})", chosen.join(", ")), raw))
+}
+
+fn cluster_changes(base: &PassiveSpec, locks: &Locks, max: usize, rng: &mut Rng) -> Result<Vec<Change>, String> {
+    let table: serde_json::Value = serde_json::from_str(CLUSTER_NOTABLES).map_err(|x| x.to_string())?;
+    let data = pob_data::cluster_jewels::cluster_jewels();
+    let filled = |id: u32| base.jewels.0.iter().any(|(k, v)| *k == f64::from(id) && *v > 0.0);
+    let mut sockets: Vec<(u32, f64)> = base
+        .nodes
+        .iter()
+        .filter(|n| !n.is_subgraph_node() && !filled(n.id) && (n.alloc || n.path.is_some()))
+        .filter_map(|n| n.tree_node().expansion_jewel.as_ref().and_then(|x| x.size).map(|s| (n.id, s)))
+        .collect();
+    sockets.sort_by_key(|s| s.0);
+    let mut removable: Vec<u32> = base
+        .alloc_nodes
+        .iter()
+        .filter(|(id, i)| plain(base, **i) && !locks.require.contains(*id) && !base.hash_overrides.contains_key(*id))
+        .map(|(id, _)| *id)
+        .collect();
+    removable.sort_unstable();
+    let mut out = Vec::new();
+    for _ in 0..max.saturating_mul(3) {
+        if out.len() >= max || sockets.is_empty() {
+            break;
+        }
+        let (socket, size) = sockets[(rng.next() % sockets.len() as u64) as usize];
+        let fits: Vec<_> = CLUSTER_KINDS
+            .iter()
+            .enumerate()
+            .filter(|(i, _)| *i as f64 <= size)
+            .map(|(_, k)| *k)
+            .collect();
+        if fits.is_empty() {
+            continue;
+        }
+        let kind = fits[(rng.next() % fits.len() as u64) as usize];
+        let Some(info) = data.jewel(kind.0) else { continue };
+        let skills: Vec<_> = info.skills.iter().collect();
+        if skills.is_empty() {
+            continue;
+        }
+        let (tag, skill) = skills[(rng.next() % skills.len() as u64) as usize];
+        let Some((name, raw)) = cluster_text(kind, &skill.name, tag, skill.enchant.as_deref().unwrap_or(&[]), locks, &table, rng) else {
+            continue;
+        };
+        let mut pool = removable.clone();
+        rng.shuffle(&mut pool);
+        // Taken back one at a time, keeping only what breaks no lock: a node can carry a jewel or a required node behind it.
+        let socket_cost = base.node(socket).map_or(0.0, |n| if n.alloc { 0.0 } else { n.path_dist }) as usize;
+        let need = kind.4 + socket_cost;
+        let mut sim = base.clone();
+        let mut free = Vec::new();
+        for id in pool {
+            let spent = base.alloc_nodes.len().saturating_sub(sim.alloc_nodes.len());
+            if spent >= need {
+                break;
+            }
+            let Some(i) = sim.node_idx(id).filter(|&i| sim.nodes[i].alloc) else {
+                continue;
+            };
+            let mut next = sim.clone();
+            if next.dealloc_node(i).is_err() || !locks.allow(base, &next) {
+                continue;
+            }
+            // the socket itself must not go, and a removal must not take far more than is needed
+            if base.node(socket).is_some_and(|n| n.alloc) && !next.alloc_nodes.contains_key(&socket) {
+                continue;
+            }
+            if base.alloc_nodes.len() - next.alloc_nodes.len() > need + 3 {
+                continue;
+            }
+            sim = next;
+            free.push(id);
+        }
+        if base.alloc_nodes.len().saturating_sub(sim.alloc_nodes.len()) < need {
+            continue;
+        }
+        let pool = free;
+        out.push(Change::Cluster {
+            socket,
+            name,
+            raw,
+            free: pool,
+        });
+    }
+    Ok(out)
 }
 
 /// The game's limit of tattoos on one character.
@@ -687,6 +914,10 @@ fn candidates_for(
         Vec::new()
     };
     extra.extend(item_changes(db, locks, share, &mut rng));
+    if locks.clusters {
+        // Held back like the tattoos: a round always has them when the build has a free socket.
+        extra.extend(cluster_changes(&base, locks, share, &mut rng)?);
+    }
     if locks.tattoos {
         // Held back from the tree's share, so a round always has them when the build can take any.
         extra.extend(tattoo_changes(&base, share, &mut rng)?);
@@ -727,6 +958,8 @@ pub struct Report {
     pub load_ms: f64,
     /// Variants tried, by kind of change.
     pub tried_by_kind: BTreeMap<&'static str, usize>,
+    /// Why the engine refused variants, with how many times.
+    pub engine_errors: BTreeMap<String, usize>,
     pub calc_ms_median: f64,
 }
 
@@ -796,6 +1029,7 @@ pub fn optimize(xml: &str, goal: &Goal, locks: &Locks, opt: Options) -> Result<R
     let (mut tried, mut accepted) = (0, 0);
     let mut times = Vec::new();
     let mut by_kind: BTreeMap<&'static str, usize> = BTreeMap::new();
+    let mut engine_errors: BTreeMap<String, usize> = BTreeMap::new();
     let mut n = 0u64;
     while Instant::now() < deadline {
         n += 1;
@@ -815,13 +1049,15 @@ pub fn optimize(xml: &str, goal: &Goal, locks: &Locks, opt: Options) -> Result<R
                 Change::Tree(_) => "tree",
                 Change::Support { .. } => "gem",
                 Change::Tattoo { .. } => "tattoo",
+                Change::Cluster { .. } => "cluster",
                 Change::Item { .. } => "item",
             };
             *by_kind.entry(kind).or_insert(0) += 1;
             let v = match r {
                 Ok(v) => v,
-                Err(_) => {
+                Err(x) => {
                     *rejected.entry(Rejected::Engine).or_insert(0) += 1;
+                    *engine_errors.entry(x.chars().take(90).collect()).or_insert(0) += 1;
                     continue;
                 }
             };
@@ -872,6 +1108,7 @@ pub fn optimize(xml: &str, goal: &Goal, locks: &Locks, opt: Options) -> Result<R
         seconds: begin.elapsed().as_secs_f64(),
         load_ms,
         tried_by_kind: by_kind,
+        engine_errors,
         calc_ms_median: times.get(times.len() / 2).copied().unwrap_or(0.0),
     })
 }
