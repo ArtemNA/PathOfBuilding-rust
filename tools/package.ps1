@@ -54,7 +54,8 @@ $bytes = [IO.File]::ReadAllBytes($exe)
 $ascii = [Text.Encoding]::GetEncoding(28591).GetString($bytes)
 $utf16 = [Text.Encoding]::Unicode.GetString($bytes)
 $userProfile = if ($env:USERPROFILE) { Split-Path $env:USERPROFILE -Leaf } else { $null }
-$bad = @('Users\', 'Users/', (Split-Path $repo -Leaf), $userProfile) | Where-Object { $_ }
+# The full path of the checkout, not its folder name: the program's update address holds the repository's name.
+$bad = @('Users\', 'Users/', $repo, ($repo -replace '\\', '/'), $userProfile) | Where-Object { $_ }
 $found = @($bad | Where-Object { $ascii.Contains($_) -or $utf16.Contains($_) })
 if ($found) { throw "the exe contains: $($found -join ', ')" }
 
