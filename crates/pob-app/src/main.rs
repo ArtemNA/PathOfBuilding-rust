@@ -109,6 +109,7 @@ struct Runner {
 impl MainObject for Runner {
     fn on_init(&mut self, gfx: &mut Gfx) {
         self.app.on_init(gfx);
+        pob_ui::launch::launch().check_for_update_at_start();
         if let Some(name) = self.open.take() {
             let main = pob_ui::modules::main::main();
             let path = format!("{}{name}.xml", main.build_path.borrow());

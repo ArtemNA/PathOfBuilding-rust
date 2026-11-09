@@ -68,12 +68,19 @@ Name: "{autodesktop}\{#MyName}"; Filename: "{app}\{#MyExe}"; Tasks: desktopicon
 
 [Run]
 Filename: "{app}\{#MyExe}"; Description: "{cm:LaunchProgram,{#MyName}}"; Flags: nowait postinstall skipifsilent
+; The application's own update: silent, and the new version starts by itself.
+Filename: "{app}\{#MyExe}"; Flags: nowait; Check: WantsRelaunch
 
 [Code]
 const
   CommandKey = 'Software\Classes\pob\shell\open\command';
   IconKey = 'Software\Classes\pob\DefaultIcon';
   BackupKey = 'Software\Path of Building (Rust)';
+
+function WantsRelaunch: Boolean;
+begin
+  Result := ExpandConstant('{param:relaunch|0}') = '1';
+end;
 
 function IsOurs(Command: String): Boolean;
 begin

@@ -456,7 +456,7 @@ impl BuildMode {
         match action.as_deref() {
             Some("LIST") => self.close_build(g),
             Some("EXIT") => g.exit(None),
-            Some("UPDATE") => unimplemented!("Build.lua:2331 launch:ApplyUpdate: no auto-update in the port (UI-ARCH §10 п. 6)"),
+            Some("UPDATE") => crate::launch::launch().apply_update(g),
             _ => {}
         }
         false
@@ -497,7 +497,7 @@ impl BuildMode {
                 match m2.as_str() {
                     "LIST" => w.upgrade().expect("buildMode").close_build(g),
                     "EXIT" => g.exit(None),
-                    _ => unimplemented!("Build.lua:1441 launch:ApplyUpdate: no auto-update in the port"),
+                    _ => crate::launch::launch().apply_update(g),
                 }
             }),
         );

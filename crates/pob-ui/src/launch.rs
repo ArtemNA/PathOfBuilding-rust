@@ -125,6 +125,10 @@ pub struct Launch {
     /// `launch.updateAvailable` / `updateErrMsg` / `updateCheckRunning`: never set (no update check in the port).
     pub update_available: RefCell<Option<String>>,
     pub update_err_msg: RefCell<Option<String>>,
+    /// The port's own update, while it is being looked for or downloaded.
+    pub update_check_running: Cell<bool>,
+    /// The update `update_available` names.
+    pub update_pending: RefCell<Option<crate::update::Pending>>,
 }
 
 thread_local! {
@@ -153,7 +157,7 @@ pub fn page_of(outcome: pob_net::Outcome) -> (PageResponse, Option<String>) {
             (PageResponse { header: r.header, body }, err)
         }
         pob_net::Outcome::Http(Err(e)) | pob_net::Outcome::Crashed(e) => (PageResponse::default(), Some(e)),
-        pob_net::Outcome::Oauth(_) => (PageResponse::default(), Some("not a download".to_string())),
+        pob_net::Outcome::Oauth(_) | pob_net::Outcome::Download(_) => (PageResponse::default(), Some("not a download".to_string())),
     }
 }
 
@@ -197,6 +201,8 @@ impl Launch {
             hold_subs: Cell::new(false),
             update_available: RefCell::new(None),
             update_err_msg: RefCell::new(None),
+            update_check_running: Cell::new(false),
+            update_pending: RefCell::new(None),
         });
         LAUNCH.with(|g| *g.borrow_mut() = Some(Rc::clone(&l)));
         l
@@ -276,13 +282,125 @@ impl Launch {
         Some(id)
     }
 
-    /// `launch:CheckForUpdate()` (Launch.lua:339-356): only a status. `UpdateCheck.lua` asks for the original's manifest and writes `Update/` next to its scripts: the original's update is not the port's to do,
-    /// and how the port updates itself is the user's decision.
+    /// `launch:CheckForUpdate()` (Launch.lua:339-356), asked for by the user. `UpdateCheck.lua` asks for the original's manifest and writes `Update/` next to its scripts: the original's update is not the port's to do,
+    /// so only the application (`app_version`) has one, from the port's releases ([`crate::update`]).
     pub fn check_for_update(&self, g: &mut Gfx) {
-        crate::modules::main::not_ported(
-            g,
-            "Launch.lua:339-356 CheckForUpdate: the port does not update the original and has no update of its own yet",
-        );
+        if self.cfg.app_version.is_none() {
+            crate::modules::main::not_ported(g, "Launch.lua:339-356 CheckForUpdate: the port does not update the original");
+            return;
+        }
+        self.run_update_check(true);
+    }
+
+    /// The check at the start of the program: it says nothing unless there is an update.
+    pub fn check_for_update_at_start(&self) {
+        if self.cfg.app_version.is_some() {
+            self.run_update_check(false);
+        }
+    }
+
+    fn run_update_check(&self, asked: bool) {
+        if self.update_check_running.get() || self.update_pending.borrow().is_some() {
+            return;
+        }
+        self.update_check_running.set(true);
+        let header = Some("Accept: application/vnd.github+json".to_string());
+        let req = self.net_request(crate::update::LATEST_URL, header, None, true);
+        let started = self.launch_sub(pob_net::Job::Http(req), move |_, outcome| {
+            launch().update_check_finished(outcome, asked);
+        });
+        if started.is_none() {
+            self.update_check_running.set(false);
+        }
+    }
+
+    fn update_failed(&self, asked: bool, msg: String) {
+        self.update_check_running.set(false);
+        if asked {
+            *self.update_err_msg.borrow_mut() = Some(msg);
+        } else {
+            eprintln!("Update check: {msg}");
+        }
+    }
+
+    fn update_check_finished(&self, outcome: pob_net::Outcome, asked: bool) {
+        let (page, err) = page_of(outcome);
+        if let Some(e) = err {
+            return self.update_failed(asked, e);
+        }
+        let release = match crate::update::parse_release(&page.body) {
+            Ok(r) => r,
+            Err(e) => return self.update_failed(asked, e),
+        };
+        let current = self.cfg.app_version.clone().unwrap_or_default();
+        if !crate::update::is_newer(&release.version, &current) {
+            self.update_check_running.set(false);
+            if asked {
+                *self.update_available.borrow_mut() = Some("none".to_string());
+            }
+            return;
+        }
+        let exe_dir = std::env::current_exe()
+            .ok()
+            .and_then(|e| e.parent().map(std::path::Path::to_path_buf));
+        let kind = exe_dir.map_or(crate::update::Install::Manual, |d| crate::update::install_kind(&d));
+        let asset = crate::update::asset_name(kind, &release.version).and_then(|n| release.assets.into_iter().find(|a| a.name == n));
+        let Some(asset) = asset else {
+            // Nothing this copy can replace itself with: the user gets the page.
+            self.update_ready(crate::update::Pending {
+                version: release.version,
+                kind: crate::update::Install::Manual,
+                file: None,
+                page: release.page,
+            });
+            return;
+        };
+        let path = crate::update::download_path(&asset.name);
+        let req = self.net_request(&asset.url, None, None, true);
+        let pending = crate::update::Pending {
+            version: release.version,
+            kind,
+            file: Some(path.clone()),
+            page: release.page,
+        };
+        let job = pob_net::Job::Download {
+            req,
+            path,
+            sha256: asset.sha256,
+        };
+        let started = self.launch_sub(job, move |_, outcome| {
+            let l = launch();
+            match outcome {
+                pob_net::Outcome::Download(Ok(())) => l.update_ready(pending),
+                pob_net::Outcome::Download(Err(e)) | pob_net::Outcome::Crashed(e) => l.update_failed(asked, e),
+                _ => l.update_failed(asked, "the download did not run".to_string()),
+            }
+        });
+        if started.is_none() {
+            self.update_failed(asked, "the download could not start".to_string());
+        }
+    }
+
+    fn update_ready(&self, pending: crate::update::Pending) {
+        self.update_check_running.set(false);
+        *self.update_available.borrow_mut() = Some(pending.version.clone());
+        *self.update_pending.borrow_mut() = Some(pending);
+    }
+
+    /// `launch:ApplyUpdate(mode)` (Launch.lua:325-337): the installer takes over and starts the new version; a copy that cannot be replaced gets the release page.
+    pub fn apply_update(&self, g: &mut Gfx) {
+        let Some(pending) = self.update_pending.borrow().clone() else {
+            return;
+        };
+        if pending.kind == crate::update::Install::Manual {
+            g.open_url(&pending.page);
+            return;
+        }
+        let exe = std::env::current_exe().unwrap_or_default();
+        match crate::update::start_install(&pending, &exe) {
+            Ok(()) => g.exit(None),
+            Err(e) => *self.update_err_msg.borrow_mut() = Some(e),
+        }
     }
 
     /// See `hold_subs`.

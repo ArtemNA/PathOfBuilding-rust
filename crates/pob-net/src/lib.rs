@@ -30,6 +30,8 @@ pub const CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
 pub const TOTAL_TIMEOUT: Duration = Duration::from_secs(300);
 /// A reply larger than this is an error, not an allocation of whatever a server sends.
 pub const MAX_REPLY_BYTES: u64 = 256 * 1024 * 1024;
+/// A file downloaded with [`Job::Download`] larger than this is an error.
+pub const MAX_DOWNLOAD_BYTES: u64 = 1024 * 1024 * 1024;
 
 /// One `easy` handle of `lcurl` (Launch.lua:261-314, BuildSiteTools.lua:50-79, PoBArchivesProvider.lua:51-76, TreeTab.lua:768-783).
 #[derive(Clone, Default)]
@@ -93,6 +95,14 @@ pub trait Transport: Send + Sync {
     fn perform(&self, req: &Request) -> HttpResult;
     /// `LaunchServer.lua`: `open` gets the URL to show (`Copy` + `OpenURL`, run on the main thread).
     fn oauth_server(&self, auth_url: &str, open: &dyn Fn(String)) -> OauthServerResult;
+    /// The reply's body into a file. Here through memory; the real network streams it.
+    fn download(&self, req: &Request, path: &std::path::Path) -> Result<(), String> {
+        let r = self.perform(req)?;
+        if r.code != 200 {
+            return Err(format!("the server answered {}", r.code));
+        }
+        std::fs::write(path, &r.body).map_err(|e| e.to_string())
+    }
 }
 
 /// The default: no network. Every attempt is an error and is counted.
@@ -191,17 +201,49 @@ impl Transport for ScriptedTransport {
     }
 }
 
+fn hex(bytes: &[u8]) -> String {
+    bytes.iter().map(|b| format!("{b:02x}")).collect()
+}
+
+fn checksum_matches(path: &std::path::Path, sha256_hex: &str) -> bool {
+    std::fs::read(path).is_ok_and(|b| hex(&hash::sha256(&b)) == sha256_hex)
+}
+
+fn fetch_file(transport: &dyn Transport, req: &Request, path: &std::path::Path, sha256_hex: &str) -> Result<(), String> {
+    if checksum_matches(path, sha256_hex) {
+        return Ok(());
+    }
+    if let Some(dir) = path.parent() {
+        std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+    }
+    transport.download(req, path)?;
+    if checksum_matches(path, sha256_hex) {
+        return Ok(());
+    }
+    let _ = std::fs::remove_file(path);
+    Err("the downloaded file failed its checksum".to_string())
+}
+
 /// `LaunchSubScript`'s text, in the few shapes the original has.
 #[derive(Clone, Debug)]
 pub enum Job {
     Http(Request),
-    OauthServer { auth_url: String },
+    OauthServer {
+        auth_url: String,
+    },
+    /// A file, kept only if its SHA-256 is `sha256` (lower-case hex). A file already there with that checksum is not fetched again.
+    Download {
+        req: Request,
+        path: std::path::PathBuf,
+        sha256: String,
+    },
 }
 
 #[derive(Clone, Debug)]
 pub enum Outcome {
     Http(HttpResult),
     Oauth(OauthServerResult),
+    Download(Result<(), String>),
     /// The thread panicked (`OnSubError`).
     Crashed(String),
 }
@@ -273,6 +315,7 @@ impl Net {
         let spawned = std::thread::Builder::new().name(format!("pob-net-{id}")).spawn(move || {
             let outcome = catch_unwind(AssertUnwindSafe(|| match &job {
                 Job::Http(req) => Outcome::Http(transport.perform(req)),
+                Job::Download { req, path, sha256 } => Outcome::Download(fetch_file(transport.as_ref(), req, path, sha256)),
                 Job::OauthServer { auth_url } => {
                     let tx2 = tx.clone();
                     let open = move |url: String| {
@@ -477,5 +520,49 @@ mod tests {
         let r = t.oauth_server("https://h/a?x=1&state=abc&y=2", &|u| opened.lock().expect("o").push(u));
         assert_eq!(r.state.as_deref(), Some("abc"));
         assert_eq!(opened.lock().expect("o").len(), 1);
+    }
+
+    fn download_of(transport: Arc<dyn Transport>, path: &std::path::Path, sha: &str) -> Result<(), String> {
+        let net = Net::new(transport);
+        net.spawn(Job::Download {
+            req: req("https://x/file"),
+            path: path.to_path_buf(),
+            sha256: sha.to_string(),
+        });
+        net.wait_idle();
+        match net.poll().pop() {
+            Some(Event::Finished(_, Outcome::Download(r))) => r,
+            other => panic!("{other:?}"),
+        }
+    }
+
+    #[test]
+    fn a_download_is_kept_only_with_the_right_checksum() {
+        let dir = std::env::temp_dir().join(format!("pob-net-dl-{}", std::process::id()));
+        let path = dir.join("sub").join("file");
+        let t = Arc::new(ScriptedTransport::default());
+        t.add(
+            "https://x/file",
+            Ok(Reply {
+                code: 200,
+                header: String::new(),
+                body: b"payload".to_vec(),
+            }),
+        );
+        let good = hex(&hash::sha256(b"payload"));
+        download_of(t.clone(), &path, &good).expect("good file");
+        assert_eq!(std::fs::read(&path).expect("kept"), b"payload");
+
+        std::fs::remove_file(&path).expect("clean");
+        let bad = hex(&hash::sha256(b"something else"));
+        assert!(download_of(t.clone(), &path, &bad).is_err(), "a wrong checksum is an error");
+        assert!(!path.exists(), "a file that failed its checksum is not left behind");
+
+        // already there with the right checksum: no request at all
+        std::fs::write(&path, b"payload").expect("seed");
+        let quiet = Arc::new(NoNetwork::default());
+        download_of(quiet.clone(), &path, &good).expect("from disk");
+        assert_eq!(quiet.attempts.load(Ordering::SeqCst), 0);
+        std::fs::remove_dir_all(&dir).expect("clean");
     }
 }

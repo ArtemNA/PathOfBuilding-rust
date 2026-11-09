@@ -150,7 +150,7 @@ pub fn fetch_auth_token(callback: impl FnOnce(&mut Gfx, Option<String>) + 'stati
     launch().launch_sub(pob_net::Job::OauthServer { auth_url }, move |g, outcome| {
         let result = match outcome {
             pob_net::Outcome::Oauth(r) => r,
-            pob_net::Outcome::Http(_) => return,
+            pob_net::Outcome::Http(_) | pob_net::Outcome::Download(_) => return,
             pob_net::Outcome::Crashed(e) => pob_net::OauthServerResult {
                 err: Some(e),
                 ..pob_net::OauthServerResult::default()

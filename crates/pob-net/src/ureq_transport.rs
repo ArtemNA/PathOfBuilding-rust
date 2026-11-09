@@ -9,16 +9,20 @@ use ureq::tls::TlsConfig;
 use ureq::{Agent, Proxy};
 
 use crate::oauth::{OauthServerResult, run_oauth_server};
-use crate::{CONNECT_TIMEOUT, HttpResult, MAX_REPLY_BYTES, Reply, Request, TOTAL_TIMEOUT, Transport};
+use crate::{CONNECT_TIMEOUT, HttpResult, MAX_DOWNLOAD_BYTES, MAX_REPLY_BYTES, Reply, Request, TOTAL_TIMEOUT, Transport};
 
 #[derive(Debug, Default)]
 pub struct UreqTransport;
 
 fn agent_of(req: &Request) -> Result<Agent, String> {
+    agent_with(req, Some(TOTAL_TIMEOUT))
+}
+
+fn agent_with(req: &Request, total: Option<std::time::Duration>) -> Result<Agent, String> {
     let mut b = Config::builder()
         .http_status_as_error(false)
         .timeout_connect(Some(CONNECT_TIMEOUT))
-        .timeout_global(Some(TOTAL_TIMEOUT))
+        .timeout_global(total)
         .user_agent(req.user_agent.as_str())
         .max_redirects(if req.follow_redirects { 10 } else { 0 });
     // `CURL_IPRESOLVE_V4` = 1, `CURL_IPRESOLVE_V6` = 2
@@ -97,6 +101,22 @@ impl Transport for UreqTransport {
 
     fn oauth_server(&self, auth_url: &str, open: &dyn Fn(String)) -> OauthServerResult {
         run_oauth_server(auth_url, open)
+    }
+
+    /// Without the overall time limit: a large file on a slow line takes as long as it takes.
+    fn download(&self, req: &Request, path: &std::path::Path) -> Result<(), String> {
+        let agent = agent_with(req, None)?;
+        let mut r = agent.get(&req.url);
+        for (k, v) in &header_lines(req) {
+            r = r.header(k, v);
+        }
+        let mut response = r.call().map_err(|e| e.to_string())?;
+        if response.status().as_u16() != 200 {
+            return Err(format!("the server answered {}", response.status().as_u16()));
+        }
+        let mut reader = response.body_mut().with_config().limit(MAX_DOWNLOAD_BYTES).reader();
+        let mut file = std::fs::File::create(path).map_err(|e| e.to_string())?;
+        std::io::copy(&mut reader, &mut file).map(drop).map_err(|e| e.to_string())
     }
 }
 

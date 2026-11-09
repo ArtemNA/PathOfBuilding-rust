@@ -33,6 +33,7 @@ pub mod tree_art;
 pub mod tree_tooltip;
 pub mod tree_view;
 pub mod undo;
+pub mod update;
 
 pub use control::{Anchor, Control, ControlBase, ControlRef, Prop, PropCell, Rect, anchor, rect};
 pub use host::{ControlHost, InputEvent, InputEvents};

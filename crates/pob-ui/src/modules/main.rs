@@ -425,21 +425,24 @@ impl Main {
             anchor("BOTTOMLEFT", &am, "BOTTOMLEFT"),
             rect(0.0, -24.0, 140.0, 20.0),
             "^x50E050Update Ready".to_string(),
-            |_| unimplemented!("Main.lua:234-236 OpenUpdatePopup: no auto-update in the port (UI-ARCH §10 п. 6)"),
+            |g| main().open_update_popup(g),
         );
         apply
             .base
             .shown
             .set_fn(|_| launch().update_available.borrow().as_deref().is_some_and(|u| u != "none"));
         m.host.add("applyUpdate", apply);
-        // `checkUpdate` (Main.lua:240-251): no update check in the port — never shown (deliberate deviation, UI-ARCH §10 п. 6).
+        // `checkUpdate` (Main.lua:240-251): only the application has an update of its own, see `Launch::check_for_update`.
         let check = ButtonControl::new(
             anchor("BOTTOMLEFT", &am, "BOTTOMLEFT"),
             rect(0.0, -24.0, 140.0, 20.0),
             "Check for Update".to_string(),
-            |_| {},
+            |g| launch().check_for_update(g),
         );
-        check.base.shown.set(false);
+        check.base.shown.set_fn(|_| {
+            let l = launch();
+            l.cfg.app_version.is_some() && !l.dev_mode.get() && l.update_available.borrow().as_deref().is_none_or(|u| u == "none")
+        });
         m.host.add("checkUpdate", check);
         // With the application's own version (only pob-app sets it, the user's decision): the port's lines, 4 from the About button like the gap between the buttons.
         let label_x = if launch().cfg.app_version.is_some() {
@@ -504,6 +507,47 @@ impl Main {
     }
 
     /// `main:CanExit()` (Main.lua:365-372).
+    /// `main:OpenUpdatePopup()` (Main.lua:1337-1371), without the changelog: the changes of the port are on the release page.
+    pub fn open_update_popup(&self, g: &mut Gfx) {
+        let l = launch();
+        let pending = l.update_pending.borrow().clone();
+        let Some(pending) = pending else { return };
+        let manual = pending.file.is_none();
+        let text = if manual {
+            format!(
+                "^7Version {} is available.\nThis copy has to be updated by hand: open the release page?",
+                pending.version
+            )
+        } else {
+            format!(
+                "^7Version {} is ready.\nThe application will close, update and start again.",
+                pending.version
+            )
+        };
+        let mut controls: IndexMap<String, ControlRef> = IndexMap::new();
+        controls.insert("label".into(), LabelControl::new(None, rect(0.0, 20.0, 0.0, 16.0), text));
+        controls.insert(
+            "update".into(),
+            ButtonControl::new(
+                None,
+                rect(-45.0, 70.0, 80.0, 20.0),
+                if manual { "Open" } else { "Update" }.to_string(),
+                move |g| {
+                    let m = main();
+                    m.close_popup();
+                    if manual || m.call_mode_can_exit(g, "UPDATE").unwrap_or(true) {
+                        launch().apply_update(g);
+                    }
+                },
+            ),
+        );
+        controls.insert(
+            "cancel".into(),
+            ButtonControl::new(None, rect(45.0, 70.0, 80.0, 20.0), "Cancel".to_string(), |_| main().close_popup()),
+        );
+        self.open_popup(g, 480.0, 100.0, "Update Available", controls, None, None, None, None);
+    }
+
     pub fn can_exit(&self, g: &mut Gfx) -> bool {
         self.call_mode_can_exit(g, "EXIT").unwrap_or(true)
     }
@@ -588,8 +632,12 @@ impl Main {
                 self.toasts.add("No update available\nYou are running the latest version.");
                 *l.update_available.borrow_mut() = None;
             } else if !self.update_available_shown.get() {
-                self.toasts
-                    .add("Update Available\nAn update has been downloaded and is ready\nto be applied.");
+                let manual = l.update_pending.borrow().as_ref().is_some_and(|p| p.file.is_none());
+                self.toasts.add(if manual {
+                    "Update Available\nA new version is on the release page."
+                } else {
+                    "Update Available\nAn update has been downloaded and is ready\nto be applied."
+                });
                 self.update_available_shown.set(true);
             }
         }
