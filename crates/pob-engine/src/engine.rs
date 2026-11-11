@@ -43,8 +43,6 @@ pub struct Engine {
     output_revision: u64,
     /// `build.viewMode == "TREE"` (Calcs.lua:102).
     pub view_mode_is_tree: std::cell::Cell<bool>,
-    /// A tree-tab mutator already ran the model (`tree_tab.rs`): the next `refresh` does not run it again.
-    run_fresh: bool,
     /// `build.spec` after a tree mutator: the Lua's object lives on over the recalculations (`ResetNodes` keeps the cluster subgraphs until the next
     /// graph rebuild, TreeTab.lua:137-138), the run's own spec is a fresh load of the model. `None`: the run's is the live one.
     live_spec: Option<Rc<pob_tree::PassiveSpec>>,
@@ -109,7 +107,6 @@ impl Engine {
             items_table: std::cell::RefCell::new(None),
             output_revision: 1,
             view_mode_is_tree: std::cell::Cell::new(true),
-            run_fresh: false,
             live_spec: None,
             conquests_kept: false,
             spec_objects: Vec::new(),
@@ -145,9 +142,6 @@ impl Engine {
     /// `RefreshStatList()`. `UpdateSocketGroups` runs over the CURRENT `socketGroupList` -- with the groups CalcSetup added for item-granted
     /// skills, which a fresh load does not have yet (see [`Engine::set_gem`]): the model is first rebuilt from `SaveDB`.
     pub fn refresh(&mut self) -> Result<(), String> {
-        if std::mem::take(&mut self.run_fresh) {
-            return self.refresh_stat_list();
-        }
         if self.model_has_runtime_groups() {
             self.materialize()?;
         }
@@ -529,16 +523,6 @@ impl Engine {
         self.live_spec = Some(spec.clone());
         self.conquests_kept = false;
         self.res.env.spec = spec;
-    }
-
-    /// The run is of the current model: the next [`Engine::refresh`] (the `buildFlag` frame) keeps it and rebuilds the stat list.
-    pub(crate) fn mark_run_fresh(&mut self) {
-        self.run_fresh = true;
-    }
-
-    /// An edit after [`Engine::mark_run_fresh`] in the same frame.
-    pub(crate) fn mark_run_stale(&mut self) {
-        self.run_fresh = false;
     }
 
     /// `build.spec` is the kept object `spec`: the next run keeps it.

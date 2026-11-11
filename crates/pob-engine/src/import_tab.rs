@@ -1162,8 +1162,6 @@ impl Engine {
         let lookup = move |id: f64| crate::tree_tab::cluster_lookup(&items, id);
         ImportedSubgraphs::of(passives).build_graphs(&mut spec, &lookup)?;
         self.write_spec_to_model(spec);
-        // the level and the config come next: the `buildFlag` frame must run on them
-        self.mark_run_stale();
         // :1213-1214
         let level = tonumber(&char_data["level"]).unwrap_or(100.0);
         // :1217-1226

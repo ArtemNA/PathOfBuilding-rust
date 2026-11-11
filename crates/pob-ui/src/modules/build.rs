@@ -1102,7 +1102,8 @@ impl BuildMode {
                                     )
                                 };
                                 if spec_id != active_spec {
-                                    let tab = s.tree_tab.borrow().clone().expect("treeTab");
+                                    // the tree tab is made on first view, and a build opened on another tab has none yet
+                                    let tab = s.tree_tab_made(g);
                                     tab.set_active_spec(g, spec_id);
                                 }
                                 if item_id != active_item {
@@ -2056,6 +2057,9 @@ impl Mode for BuildMode {
         let vp = main().view_port.get();
         me.host.process_controls_input(f, input_events, &vp);
         self.update_class_dropdowns(f);
+        if !self.build_flag.get() {
+            check_fresh(self.engine.borrow().as_ref());
+        }
         if self.build_flag.get() {
             self.build_flag.set(false);
             let level_moved = {
@@ -2608,4 +2612,52 @@ impl BuildMode {
 
 fn f_con_printf(g: &mut Gfx, s: &str) {
     g.con_printf(s);
+}
+
+thread_local! {
+    static CHECK_FRESH: std::cell::RefCell<Option<(String, Vec<String>)>> = std::cell::RefCell::new(
+        std::env::var_os("POB_CHECK_FRESH").map(|_| (String::new(), Vec::new())),
+    );
+}
+
+/// `POB_CHECK_FRESH` (tests): a settled frame's numbers must be the ones a fresh load of the saved build gives; nothing an edit left may be stale.
+/// Each saved state is checked once; the mismatches are kept for [`take_fresh_mismatches`].
+fn check_fresh(e: Option<&Engine>) {
+    let Some(e) = e else { return };
+    CHECK_FRESH.with(|c| {
+        let mut c = c.borrow_mut();
+        let Some((last, found)) = c.as_mut() else { return };
+        let Ok(xml) = e.save_xml() else { return };
+        if *last == xml {
+            return;
+        }
+        let fresh = match Engine::load_xml(&xml) {
+            Ok(f) => f,
+            Err(err) => {
+                found.push(format!("fresh load failed: {err}"));
+                *last = xml;
+                return;
+            }
+        };
+        let (a, b) = (&e.result().stats, &fresh.result().stats);
+        let mut diff: Vec<String> = a
+            .iter()
+            .filter(|(k, v)| b.get(*k).map(|w| format!("{w:?}")) != Some(format!("{v:?}")))
+            .map(|(k, v)| format!("{k}: live {v:?}, fresh {:?}", b.get(k)))
+            .collect();
+        diff.extend(b.keys().filter(|k| !a.contains_key(*k)).map(|k| format!("{k}: only in the fresh load")));
+        if !diff.is_empty() {
+            let n = diff.len();
+            diff.truncate(6);
+            let msg = format!("{n} stats stale: {}", diff.join("; "));
+            eprintln!("POB_CHECK_FRESH: {msg}");
+            found.push(msg);
+        }
+        *last = xml;
+    });
+}
+
+/// The mismatches `POB_CHECK_FRESH` found so far on this thread.
+pub fn take_fresh_mismatches() -> Vec<String> {
+    CHECK_FRESH.with(|c| c.borrow_mut().as_mut().map(|(_, f)| std::mem::take(f)).unwrap_or_default())
 }

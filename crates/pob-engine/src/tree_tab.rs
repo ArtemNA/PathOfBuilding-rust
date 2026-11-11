@@ -203,8 +203,8 @@ impl Engine {
         self.spec_objects[a - 1] = Some(self.result().env.spec.clone());
     }
 
-    /// `build.spec = specList[specId]`: the kept object, else a load of the model; its run now (the Lua reads `build.spec` in this very frame), the `buildFlag` frame then only
-    /// rebuilds the stat list ([`Engine::refresh`]).
+    /// `build.spec = specList[specId]`: the kept object, else a load of the model; its run now (the Lua reads `build.spec` in this very frame); the `buildFlag` frame runs
+    /// again ([`Engine::refresh`]), since a loadout changes the item, skill and config sets after the spec.
     fn activate_spec(&mut self, spec_id: usize) -> Result<(), String> {
         self.sync_spec_objects();
         self.model_mut().tree.active_spec = spec_id as f64;
@@ -215,7 +215,6 @@ impl Engine {
         let kept = self.spec_objects[a - 1].clone();
         self.set_live_spec(kept);
         self.recalc()?;
-        self.mark_run_fresh();
         Ok(())
     }
 
@@ -426,7 +425,6 @@ impl Engine {
         sm.overrides.clone_from(&st.overrides);
         sm.tree_version.clone_from(&st.tree_version);
         self.recalc()?;
-        self.mark_run_fresh();
         Ok(())
     }
 
