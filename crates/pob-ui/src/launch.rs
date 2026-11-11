@@ -129,6 +129,8 @@ pub struct Launch {
     pub update_check_running: Cell<bool>,
     /// The update `update_available` names.
     pub update_pending: RefCell<Option<crate::update::Pending>>,
+    /// The download of the update, while it runs.
+    update_download: RefCell<Option<Arc<pob_net::DownloadProgress>>>,
 }
 
 thread_local! {
@@ -203,6 +205,7 @@ impl Launch {
             update_err_msg: RefCell::new(None),
             update_check_running: Cell::new(false),
             update_pending: RefCell::new(None),
+            update_download: RefCell::new(None),
         });
         LAUNCH.with(|g| *g.borrow_mut() = Some(Rc::clone(&l)));
         l
@@ -314,8 +317,20 @@ impl Launch {
         }
     }
 
+    /// `launch.updateProgress` (Launch.lua:203, :345): what the `Check for Update` button says while the check runs.
+    pub fn update_progress(&self) -> String {
+        match self.update_download.borrow().as_ref() {
+            None => "Checking...".to_string(),
+            Some(p) => match p.percent() {
+                Some(pc) => format!("Downloading {pc}%"),
+                None => "Downloading...".to_string(),
+            },
+        }
+    }
+
     fn update_failed(&self, asked: bool, msg: String) {
         self.update_check_running.set(false);
+        *self.update_download.borrow_mut() = None;
         if asked {
             *self.update_err_msg.borrow_mut() = Some(msg);
         } else {
@@ -363,10 +378,13 @@ impl Launch {
             file: Some(path.clone()),
             page: release.page,
         };
+        let progress = Arc::new(pob_net::DownloadProgress::default());
+        *self.update_download.borrow_mut() = Some(Arc::clone(&progress));
         let job = pob_net::Job::Download {
             req,
             path,
             sha256: asset.sha256,
+            progress,
         };
         let started = self.launch_sub(job, move |_, outcome| {
             let l = launch();
@@ -383,6 +401,7 @@ impl Launch {
 
     fn update_ready(&self, pending: crate::update::Pending) {
         self.update_check_running.set(false);
+        *self.update_download.borrow_mut() = None;
         *self.update_available.borrow_mut() = Some(pending.version.clone());
         *self.update_pending.borrow_mut() = Some(pending);
     }

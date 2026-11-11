@@ -178,3 +178,15 @@ fn toast_timing() {
     assert!(!main().toasts.exists(&id));
     assert_eq!(main().main_bar_height.get(), 58.0);
 }
+
+/// What `Check for Update` says while the update is looked for and downloaded fits its 140-pixel button (text at 16, Main.lua:240, ButtonControl.lua).
+#[test]
+fn update_progress_fits_its_button() {
+    let (_dir, gfx, _tp, l) = start("update-progress");
+    assert_eq!(l.update_progress(), "Checking...");
+    for text in ["Checking...", "Downloading...", "Downloading 100%"] {
+        let w = pob_ui::sg::draw_string_width(&gfx, 16.0, "VAR", text);
+        println!("{text}: {w} px");
+        assert!(w <= 132.0, "{text}: {w}");
+    }
+}

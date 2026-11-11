@@ -443,6 +443,12 @@ impl Main {
             let l = launch();
             l.cfg.app_version.is_some() && !l.dev_mode.get() && l.update_available.borrow().as_deref().is_none_or(|u| u == "none")
         });
+        // Main.lua:247-252
+        check.label.set_fn(|_| {
+            let l = launch();
+            if l.update_check_running.get() { l.update_progress() } else { "Check for Update".to_string() }
+        });
+        check.base.enabled.set_fn(|_| !launch().update_check_running.get());
         m.host.add("checkUpdate", check);
         // With the application's own version (only pob-app sets it, the user's decision): the port's lines, 4 from the About button like the gap between the buttons.
         let label_x = if launch().cfg.app_version.is_some() {

@@ -90,18 +90,36 @@ impl Reply {
 /// `easy:perform()`: `Err` is `error:msg()`.
 pub type HttpResult = Result<Reply, String>;
 
+/// How far a [`Job::Download`] is: bytes written and the size the server announced (0: not known yet).
+#[derive(Debug, Default)]
+pub struct DownloadProgress {
+    pub done: std::sync::atomic::AtomicU64,
+    pub total: std::sync::atomic::AtomicU64,
+}
+
+impl DownloadProgress {
+    /// Percent done, once the size is known.
+    pub fn percent(&self) -> Option<u64> {
+        let total = self.total.load(Ordering::Relaxed);
+        (total > 0).then(|| (self.done.load(Ordering::Relaxed).min(total) * 100) / total)
+    }
+}
+
 /// The way out of the process.
 pub trait Transport: Send + Sync {
     fn perform(&self, req: &Request) -> HttpResult;
     /// `LaunchServer.lua`: `open` gets the URL to show (`Copy` + `OpenURL`, run on the main thread).
     fn oauth_server(&self, auth_url: &str, open: &dyn Fn(String)) -> OauthServerResult;
     /// The reply's body into a file. Here through memory; the real network streams it.
-    fn download(&self, req: &Request, path: &std::path::Path) -> Result<(), String> {
+    fn download(&self, req: &Request, path: &std::path::Path, progress: &DownloadProgress) -> Result<(), String> {
         let r = self.perform(req)?;
         if r.code != 200 {
             return Err(format!("the server answered {}", r.code));
         }
-        std::fs::write(path, &r.body).map_err(|e| e.to_string())
+        progress.total.store(r.body.len() as u64, Ordering::Relaxed);
+        std::fs::write(path, &r.body).map_err(|e| e.to_string())?;
+        progress.done.store(r.body.len() as u64, Ordering::Relaxed);
+        Ok(())
     }
 }
 
@@ -209,14 +227,14 @@ fn checksum_matches(path: &std::path::Path, sha256_hex: &str) -> bool {
     std::fs::read(path).is_ok_and(|b| hex(&hash::sha256(&b)) == sha256_hex)
 }
 
-fn fetch_file(transport: &dyn Transport, req: &Request, path: &std::path::Path, sha256_hex: &str) -> Result<(), String> {
+fn fetch_file(transport: &dyn Transport, req: &Request, path: &std::path::Path, sha256_hex: &str, progress: &DownloadProgress) -> Result<(), String> {
     if checksum_matches(path, sha256_hex) {
         return Ok(());
     }
     if let Some(dir) = path.parent() {
         std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
     }
-    transport.download(req, path)?;
+    transport.download(req, path, progress)?;
     if checksum_matches(path, sha256_hex) {
         return Ok(());
     }
@@ -236,6 +254,8 @@ pub enum Job {
         req: Request,
         path: std::path::PathBuf,
         sha256: String,
+        /// Read by the main thread while the file comes.
+        progress: Arc<DownloadProgress>,
     },
 }
 
@@ -315,7 +335,7 @@ impl Net {
         let spawned = std::thread::Builder::new().name(format!("pob-net-{id}")).spawn(move || {
             let outcome = catch_unwind(AssertUnwindSafe(|| match &job {
                 Job::Http(req) => Outcome::Http(transport.perform(req)),
-                Job::Download { req, path, sha256 } => Outcome::Download(fetch_file(transport.as_ref(), req, path, sha256)),
+                Job::Download { req, path, sha256, progress } => Outcome::Download(fetch_file(transport.as_ref(), req, path, sha256, progress)),
                 Job::OauthServer { auth_url } => {
                     let tx2 = tx.clone();
                     let open = move |url: String| {
@@ -528,6 +548,7 @@ mod tests {
             req: req("https://x/file"),
             path: path.to_path_buf(),
             sha256: sha.to_string(),
+            progress: Arc::default(),
         });
         net.wait_idle();
         match net.poll().pop() {
