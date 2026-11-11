@@ -78,6 +78,7 @@ fn main() {
         title: "pob-gfx window".into(),
         size: (1280, 800),
         fonts_dir: scene::fonts_dir(),
+        state_file: None,
     };
     let (demo, stats) = pob_gfx::run(demo, cfg).expect("window loop");
     let mut d: Vec<f64> = demo.frames.windows(2).map(|w| w[1] - w[0]).collect();

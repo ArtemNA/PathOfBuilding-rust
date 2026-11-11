@@ -61,6 +61,47 @@ pub struct WindowConfig {
     pub size: (u32, u32),
     /// `runtime/SimpleGraphic/Fonts`.
     pub fonts_dir: PathBuf,
+    /// Where the window's place, size and maximized state live between runs (the original's `vid_last` in `SimpleGraphic.cfg`). `None`: not kept.
+    pub state_file: Option<PathBuf>,
+}
+
+/// The window as it was left: the outer position and the client size of the restored (not maximized) window, in physical pixels, and whether it was maximized.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct WindowPlace {
+    pub x: i32,
+    pub y: i32,
+    pub width: u32,
+    pub height: u32,
+    pub maximized: bool,
+}
+
+impl WindowPlace {
+    /// `x,y,width,height,maximized` (one line).
+    pub fn parse(text: &str) -> Option<Self> {
+        let v: Vec<&str> = text.trim().split(',').map(str::trim).collect();
+        let [x, y, w, h, m] = v.as_slice() else { return None };
+        let p = Self {
+            x: x.parse().ok()?,
+            y: y.parse().ok()?,
+            width: w.parse().ok()?,
+            height: h.parse().ok()?,
+            maximized: *m == "1",
+        };
+        (p.width >= 200 && p.height >= 150 && p.width <= 16384 && p.height <= 16384).then_some(p)
+    }
+
+    pub fn to_line(self) -> String {
+        format!("{},{},{},{},{}
+", self.x, self.y, self.width, self.height, u8::from(self.maximized))
+    }
+
+    /// Some monitor holds the window's title bar area: a window kept on a monitor that is gone opens at the system's place instead.
+    fn on_a_monitor(self, monitors: &[(i32, i32, u32, u32)]) -> bool {
+        let (cx, cy) = (i64::from(self.x) + i64::from(self.width.min(400)) / 2, i64::from(self.y) + 16);
+        monitors.iter().any(|&(mx, my, mw, mh)| {
+            cx >= i64::from(mx) && cx < i64::from(mx) + i64::from(mw) && cy >= i64::from(my) && cy < i64::from(my) + i64::from(mh)
+        })
+    }
 }
 
 /// What the loop measured.
@@ -163,6 +204,9 @@ struct App<M: MainObject> {
     stats: RunStats,
     error: Option<RunError>,
     modifiers: ModifiersState,
+    /// The window's place as the run leaves it ([`WindowConfig::state_file`]).
+    place: Option<WindowPlace>,
+    place_dirty: bool,
 }
 
 /// Physical key -> the original's key (US positions; GLFW maps keys by scancode, so names ignore the layout).
@@ -347,10 +391,27 @@ impl<M: MainObject> App<M> {
         let inner_size = winit::dpi::LogicalSize::new(self.cfg.size.0, self.cfg.size.1);
         #[cfg(not(target_os = "macos"))]
         let inner_size = winit::dpi::PhysicalSize::new(self.cfg.size.0, self.cfg.size.1);
-        let attrs = Window::default_attributes()
+        let monitors: Vec<(i32, i32, u32, u32)> = el
+            .available_monitors()
+            .map(|m| (m.position().x, m.position().y, m.size().width, m.size().height))
+            .collect();
+        let kept = self
+            .cfg
+            .state_file
+            .as_ref()
+            .and_then(|p| std::fs::read_to_string(p).ok())
+            .and_then(|t| WindowPlace::parse(&t));
+        let mut attrs = Window::default_attributes()
             .with_title(self.cfg.title.clone())
             .with_window_icon(self.icon.clone())
             .with_inner_size(inner_size);
+        if let Some(k) = kept {
+            attrs = attrs.with_inner_size(winit::dpi::PhysicalSize::new(k.width, k.height)).with_maximized(k.maximized);
+            if k.on_a_monitor(&monitors) {
+                attrs = attrs.with_position(winit::dpi::PhysicalPosition::new(k.x, k.y));
+            }
+        }
+        self.place = kept;
         #[cfg(windows)]
         let attrs = winit::platform::windows::WindowAttributesExtWindows::with_taskbar_icon(attrs, self.icon.clone());
         // The name that ties the window to `pob-rust.desktop` (tools/linux-install.sh): the desktop's taskbar takes the icon from there.
@@ -360,6 +421,7 @@ impl<M: MainObject> App<M> {
             winit::platform::x11::WindowAttributesExtX11::with_name(attrs, "pob-rust", "pob-rust")
         };
         let window = Arc::new(el.create_window(attrs).map_err(|e| RunError::EventLoop(e.to_string()))?);
+        self.note_place(&window);
         self.stats.window_ready = self.start.elapsed();
         crate::trace::mark("window");
         let instance = Renderer::new_instance();
@@ -456,6 +518,42 @@ impl<M: MainObject> App<M> {
         self.next_frame = Instant::now();
     }
 
+    /// The window's place now; a maximized or minimized window keeps the restored rectangle it had.
+    fn note_place(&mut self, window: &Window) {
+        let maximized = window.is_maximized();
+        if window.is_minimized() == Some(true) {
+            return;
+        }
+        let mut p = self.place.unwrap_or(WindowPlace {
+            x: 0,
+            y: 0,
+            width: self.cfg.size.0,
+            height: self.cfg.size.1,
+            maximized,
+        });
+        p.maximized = maximized;
+        if !maximized {
+            let size = window.inner_size();
+            if size.width > 0 && size.height > 0 {
+                (p.width, p.height) = (size.width, size.height);
+            }
+            if let Ok(pos) = window.outer_position() {
+                (p.x, p.y) = (pos.x, pos.y);
+            }
+        }
+        self.place = Some(p);
+    }
+
+    /// Writes [`WindowConfig::state_file`] (a failure only loses the place).
+    fn save_place(&self) {
+        if let (Some(path), Some(p)) = (&self.cfg.state_file, self.place) {
+            if let Some(dir) = path.parent() {
+                let _ = std::fs::create_dir_all(dir);
+            }
+            let _ = std::fs::write(path, p.to_line());
+        }
+    }
+
     /// Applies `SetWindowTitle` / `Exit` made by the last callback.
     fn apply_requests(&mut self, el: &ActiveEventLoop) {
         let Some(live) = self.live.as_mut() else { return };
@@ -501,6 +599,10 @@ impl<M: MainObject> ApplicationHandler for App<M> {
             self.apply_requests(el);
             return;
         }
+        // read once the events are through ([`ApplicationHandler::about_to_wait`]): maximizing on Windows moves the window to the monitor's corner before it says it is maximized
+        if matches!(event, WindowEvent::Moved(_) | WindowEvent::Resized(_)) {
+            self.place_dirty = true;
+        }
         match &event {
             WindowEvent::Resized(size) => {
                 if let Some(gpu) = live.gpu.as_mut() {
@@ -541,6 +643,11 @@ impl<M: MainObject> ApplicationHandler for App<M> {
     }
 
     fn about_to_wait(&mut self, el: &ActiveEventLoop) {
+        if std::mem::take(&mut self.place_dirty)
+            && let Some(w) = self.live.as_ref().map(|l| Arc::clone(&l.window))
+        {
+            self.note_place(&w);
+        }
         let now = Instant::now();
         let earliest = self.last_frame + MIN_FRAME_PERIOD;
         if now >= self.next_frame && now >= earliest {
@@ -589,8 +696,11 @@ pub fn run_with_icon<M: MainObject>(main: M, cfg: WindowConfig, icon_png: Option
         stats: RunStats::default(),
         error: None,
         modifiers: ModifiersState::empty(),
+        place: None,
+        place_dirty: false,
     };
     el.run_app(&mut app).map_err(|e| RunError::EventLoop(e.to_string()))?;
+    app.save_place();
     if let Some(e) = app.error {
         return Err(e);
     }
@@ -600,6 +710,18 @@ pub fn run_with_icon<M: MainObject>(main: M, cfg: WindowConfig, icon_png: Option
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_window_place_round_trips_and_needs_a_monitor() {
+        let p = WindowPlace { x: -1500, y: 40, width: 1400, height: 900, maximized: true };
+        assert_eq!(WindowPlace::parse(&p.to_line()), Some(p));
+        assert_eq!(WindowPlace::parse("1,2,3"), None);
+        assert_eq!(WindowPlace::parse("0,0,10,10,0"), None);
+        let one = [(0, 0, 1920, 1080)];
+        assert!(!p.on_a_monitor(&one));
+        assert!(p.on_a_monitor(&[(0, 0, 1920, 1080), (-1920, 0, 1920, 1080)]));
+        assert!(WindowPlace { x: 100, ..p }.on_a_monitor(&one));
+    }
 
     #[test]
     fn ctrl_types_nothing_but_altgr_does() {

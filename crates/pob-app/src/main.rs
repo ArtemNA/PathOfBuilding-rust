@@ -192,6 +192,8 @@ fn main() {
     let user_path = arg(&args, "--user-path")
         .map(|p| p.replace('\\', "/"))
         .or_else(pob_gfx::fs::get_user_path);
+    // the original keeps `vid_last` in SimpleGraphic.cfg; here the window's place lives in the user folder
+    let state_file = user_path.as_ref().map(|u| std::path::PathBuf::from(format!("{u}/{USER_FOLDER}/window.cfg")));
     let secs = arg(&args, "--secs").map(|s| s.parse::<f64>().unwrap_or_else(|_| fatal("--secs needs a number")));
     let mut cfg = LaunchConfig {
         user_path,
@@ -229,6 +231,7 @@ fn main() {
         title: pob_ui::launch::APP_NAME.into(),
         size: (1280, 800),
         fonts_dir: format!("{pob}/{FONTS}").into(),
+        state_file,
     };
     match pob_gfx::window::run_with_icon(runner, wcfg, Some(WINDOW_ICON)) {
         Ok((_, stats)) => {

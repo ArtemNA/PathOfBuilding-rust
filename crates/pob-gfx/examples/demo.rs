@@ -146,6 +146,7 @@ fn main() {
         title: "pob-gfx demo".into(),
         size: (1280, 800),
         fonts_dir: scene::fonts_dir(),
+        state_file: None,
     };
     let (demo, stats) = pob_gfx::run(demo, cfg).expect("window loop");
     let ms = |d: std::time::Duration| d.as_secs_f64() * 1e3;
