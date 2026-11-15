@@ -142,6 +142,8 @@ pub struct PassiveTreeView {
     pub zoom: f64,
     pub zoom_x: f64,
     pub zoom_y: f64,
+    /// The view port of the last `draw` (the test harness places the cursor with it).
+    pub last_view_port: Rect,
     pub search_str: String,
     search_str_cached: String,
     search_params: Vec<String>,
@@ -217,6 +219,7 @@ impl PassiveTreeView {
             zoom: 1.2_f64.powf(3.0),
             zoom_x: 0.0,
             zoom_y: 0.0,
+            last_view_port: Rect::default(),
             cursor_offset: (0.0, 0.0),
             owner: None,
             compare_owner: None,
@@ -471,6 +474,7 @@ impl PassiveTreeView {
         let cur_class_id = spec.cur_class_id;
         let (cursor_x, cursor_y) = f.get_cursor_pos();
         let (cursor_x, cursor_y) = (cursor_x - self.cursor_offset.0, cursor_y - self.cursor_offset.1);
+        self.last_view_port = *view_port;
         let m_over = cursor_x >= view_port.x
             && cursor_x < view_port.x + view_port.width
             && cursor_y >= view_port.y

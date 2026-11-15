@@ -190,3 +190,18 @@ fn update_progress_fits_its_button() {
         assert!(w <= 132.0, "{text}: {w}");
     }
 }
+
+/// A build saved on another tab opens without its tree tab (it is made when first shown); the Items tab's "Manage..." of the passive
+/// trees opens the spec list then too (ItemsTab.lua:215-217).
+#[test]
+fn manage_trees_works_before_the_tree_tab_is_shown() {
+    let (_tmp, mut gfx, _tp, l) = start("manage-trees");
+    frame(&mut gfx, &l);
+    let b = main().build_mode.clone();
+    *b.view_mode.borrow_mut() = "ITEMS".into();
+    *b.tree_tab.borrow_mut() = None;
+    frame(&mut gfx, &l);
+    pob_ui::tabs::tree::open_spec_manage_popup(&mut gfx);
+    assert_eq!(main().popups.borrow().len(), 1);
+    assert!(b.tree_tab.borrow().is_some());
+}

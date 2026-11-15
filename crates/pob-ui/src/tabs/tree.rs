@@ -1470,6 +1470,8 @@ fn rename_spec_popup(g: &mut Gfx, target: RenameTarget, title: &str) {
 
 /// `OpenSpecManagePopup` (:634-652) + `PassiveSpecListControl` (:13-48).
 pub fn open_spec_manage_popup(g: &mut Gfx) {
+    // the Items tab's "Manage..." opens it before the tree tab was ever shown: the tab is made on demand
+    main().build_mode.tree_tab_made(g);
     refresh_summaries();
     let list = ListControl::new(
         None,
