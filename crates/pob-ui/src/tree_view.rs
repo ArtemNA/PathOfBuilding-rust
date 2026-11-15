@@ -144,6 +144,8 @@ pub struct PassiveTreeView {
     pub zoom_y: f64,
     /// The view port of the last `draw` (the test harness places the cursor with it).
     pub last_view_port: Rect,
+    /// `GetTime()` of the last `draw` (Ctrl+Shift+F12, [`crate::diag`]).
+    pub last_draw_time: u64,
     pub search_str: String,
     search_str_cached: String,
     search_params: Vec<String>,
@@ -220,6 +222,7 @@ impl PassiveTreeView {
             zoom_x: 0.0,
             zoom_y: 0.0,
             last_view_port: Rect::default(),
+            last_draw_time: 0,
             cursor_offset: (0.0, 0.0),
             owner: None,
             compare_owner: None,
@@ -475,6 +478,7 @@ impl PassiveTreeView {
         let (cursor_x, cursor_y) = f.get_cursor_pos();
         let (cursor_x, cursor_y) = (cursor_x - self.cursor_offset.0, cursor_y - self.cursor_offset.1);
         self.last_view_port = *view_port;
+        self.last_draw_time = f.get_time();
         let m_over = cursor_x >= view_port.x
             && cursor_x < view_port.x + view_port.width
             && cursor_y >= view_port.y

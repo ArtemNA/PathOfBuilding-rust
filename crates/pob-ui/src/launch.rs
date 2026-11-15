@@ -131,6 +131,8 @@ pub struct Launch {
     pub update_pending: RefCell<Option<crate::update::Pending>>,
     /// The download of the update, while it runs.
     update_download: RefCell<Option<Arc<pob_net::DownloadProgress>>>,
+    /// The last frames and key events, for Ctrl+Shift+F12 ([`crate::diag`]).
+    pub diag: RefCell<crate::diag::DiagLog>,
 }
 
 thread_local! {
@@ -206,6 +208,7 @@ impl Launch {
             update_check_running: Cell::new(false),
             update_pending: RefCell::new(None),
             update_download: RefCell::new(None),
+            diag: RefCell::new(crate::diag::DiagLog::default()),
         });
         LAUNCH.with(|g| *g.borrow_mut() = Some(Rc::clone(&l)));
         l
@@ -462,6 +465,7 @@ impl Launch {
 
     /// `launch:OnFrame()` (Launch.lua:109-141).
     pub fn on_frame(&self, f: &mut Frame<'_>) {
+        let frame_start = std::time::Instant::now();
         if !self.hold_subs.get() {
             self.poll_sub_scripts(f);
         }
@@ -470,6 +474,7 @@ impl Launch {
         {
             self.show_err_msg(&format!("In 'OnFrame': {e}"));
         }
+        self.diag.borrow_mut().frame(frame_start, frame_start.elapsed().as_secs_f64() * 1e3);
         self.dev_mode_alt.set(self.dev_mode.get() && sg::is_key_down(f, "ALT"));
         sg::set_draw_layer(f, Some(1000), 0);
         f.set_viewport(None);
@@ -491,7 +496,11 @@ impl Launch {
 
     /// `launch:OnKeyDown(key, doubleClick)` (Launch.lua:143-175).
     pub fn on_key_down(&self, g: &mut Gfx, key: &str, double_click: bool) {
-        if key == "F5" && self.dev_mode.get() {
+        self.diag.borrow_mut().event(format!("down {key}{}", if double_click { " (double)" } else { "" }));
+        if key == "F12" && sg::is_key_down(g, "CTRL") && sg::is_key_down(g, "SHIFT") {
+            // the port's own: what the input and the tree are now (crate::diag)
+            crate::diag::dump(g);
+        } else if key == "F5" && self.dev_mode.get() {
             *self.do_restart.borrow_mut() = Some("Restarting...".into());
         } else if key == "u" && sg::is_key_down(g, "CTRL") {
             // `if not self.devMode then self:CheckForUpdate() end`
@@ -511,6 +520,7 @@ impl Launch {
 
     /// `launch:OnKeyUp(key)` (Launch.lua:177-186).
     pub fn on_key_up(&self, _g: &mut Gfx, key: &str) {
+        self.diag.borrow_mut().event(format!("up {key}"));
         if self.prompt_msg.borrow().is_none()
             && let Some(main) = self.main()
             && let Err(e) = pcall(|| main.on_key_up(key))

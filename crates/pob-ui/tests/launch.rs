@@ -205,3 +205,25 @@ fn manage_trees_works_before_the_tree_tab_is_shown() {
     assert_eq!(main().popups.borrow().len(), 1);
     assert!(b.tree_tab.borrow().is_some());
 }
+
+/// Ctrl+Shift+F12 writes the state of the input and of the tree under the user folder (the port's own diagnostics); F12 alone does not.
+#[test]
+fn ctrl_shift_f12_writes_the_diagnostics() {
+    let (tmp, mut gfx, _tp, l) = start("diag");
+    for _ in 0..3 {
+        frame(&mut gfx, &l);
+    }
+    let dir = tmp.0.join("PoB test/Diagnostics");
+    l.on_key_down(&mut gfx, "F12", false);
+    assert!(!dir.exists(), "F12 alone wrote");
+    gfx.input(RawEvent::Key { key: PhysKey::Ctrl, pressed: true });
+    gfx.input(RawEvent::Key { key: PhysKey::Shift, pressed: true });
+    l.on_key_down(&mut gfx, "F12", false);
+    let files: Vec<_> = std::fs::read_dir(&dir).expect("Diagnostics").collect();
+    assert_eq!(files.len(), 1);
+    let text = std::fs::read_to_string(files[0].as_ref().expect("entry").path()).expect("read");
+    println!("{text}");
+    for want in ["held: [\"CTRL\", \"SHIFT\"]", "view TREE", "tree view: port", "last frames", "down F12"] {
+        assert!(text.contains(want), "no {want:?} in\n{text}");
+    }
+}

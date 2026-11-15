@@ -12,6 +12,7 @@ pub mod colors;
 pub mod common;
 pub mod control;
 pub mod controls;
+pub mod diag;
 pub mod gem_tooltip;
 pub mod host;
 pub mod item_tooltip;
