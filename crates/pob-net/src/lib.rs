@@ -227,7 +227,13 @@ fn checksum_matches(path: &std::path::Path, sha256_hex: &str) -> bool {
     std::fs::read(path).is_ok_and(|b| hex(&hash::sha256(&b)) == sha256_hex)
 }
 
-fn fetch_file(transport: &dyn Transport, req: &Request, path: &std::path::Path, sha256_hex: &str, progress: &DownloadProgress) -> Result<(), String> {
+fn fetch_file(
+    transport: &dyn Transport,
+    req: &Request,
+    path: &std::path::Path,
+    sha256_hex: &str,
+    progress: &DownloadProgress,
+) -> Result<(), String> {
     if checksum_matches(path, sha256_hex) {
         return Ok(());
     }
@@ -335,7 +341,12 @@ impl Net {
         let spawned = std::thread::Builder::new().name(format!("pob-net-{id}")).spawn(move || {
             let outcome = catch_unwind(AssertUnwindSafe(|| match &job {
                 Job::Http(req) => Outcome::Http(transport.perform(req)),
-                Job::Download { req, path, sha256, progress } => Outcome::Download(fetch_file(transport.as_ref(), req, path, sha256, progress)),
+                Job::Download {
+                    req,
+                    path,
+                    sha256,
+                    progress,
+                } => Outcome::Download(fetch_file(transport.as_ref(), req, path, sha256, progress)),
                 Job::OauthServer { auth_url } => {
                     let tx2 = tx.clone();
                     let open = move |url: String| {

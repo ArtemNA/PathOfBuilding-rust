@@ -66,13 +66,28 @@ pub fn report(g: &Gfx) -> String {
     let titles: Vec<String> = m.popups.borrow().iter().map(|p| p.title.get(g)).collect();
     let _ = writeln!(s, "popups: {titles:?}");
     let _ = writeln!(s, "mode {:?}", m.mode.borrow());
-    let _ = writeln!(s, "main focus {}, under the cursor {}", name_of(&m.host, m.host.sel()), name_of(&m.host, m.host.get_mouse_over_control(g)));
+    let _ = writeln!(
+        s,
+        "main focus {}, under the cursor {}",
+        name_of(&m.host, m.host.sel()),
+        name_of(&m.host, m.host.get_mouse_over_control(g))
+    );
     let b = m.build_mode.clone();
     let _ = writeln!(s, "view {}", b.view_mode.borrow());
-    let _ = writeln!(s, "build focus {}, under the cursor {}", name_of(&b.host, b.host.sel()), name_of(&b.host, b.host.get_mouse_over_control(g)));
+    let _ = writeln!(
+        s,
+        "build focus {}, under the cursor {}",
+        name_of(&b.host, b.host.sel()),
+        name_of(&b.host, b.host.get_mouse_over_control(g))
+    );
     let _ = writeln!(s, "build flag {}", b.build_flag.get());
     if let Some(t) = b.tree_tab.borrow().as_ref() {
-        let _ = writeln!(s, "tree tab focus {}, under the cursor {}", name_of(&t.host, t.host.sel()), name_of(&t.host, t.host.get_mouse_over_control(g)));
+        let _ = writeln!(
+            s,
+            "tree tab focus {}, under the cursor {}",
+            name_of(&t.host, t.host.sel()),
+            name_of(&t.host, t.host.get_mouse_over_control(g))
+        );
         let _ = writeln!(
             s,
             "power: job running {}, result {}, build flag {}, report shown {}, jump pending {:?}",
@@ -118,7 +133,12 @@ pub fn report(g: &Gfx) -> String {
         let span = now.duration_since(*first).as_secs_f64();
         let mut ms: Vec<f64> = log.frames.iter().map(|f| f.1).collect();
         ms.sort_by(f64::total_cmp);
-        let _ = writeln!(s, "{n} frames in {span:.1} s; OnFrame median {:.1} ms, max {:.1} ms", ms[n / 2], ms[n - 1]);
+        let _ = writeln!(
+            s,
+            "{n} frames in {span:.1} s; OnFrame median {:.1} ms, max {:.1} ms",
+            ms[n / 2],
+            ms[n - 1]
+        );
     }
     let _ = writeln!(s, "\nlast key events (ms before now):");
     for (t, e) in log.events.iter().rev() {
@@ -132,7 +152,9 @@ pub fn dump(g: &Gfx) -> Option<std::path::PathBuf> {
     let text = report(g);
     let l = launch();
     let dir = std::path::PathBuf::from(format!("{}/{}/Diagnostics", l.cfg.user_path.as_deref()?, l.cfg.user_folder));
-    let secs = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs());
+    let secs = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_secs());
     let path = dir.join(format!("diag-{secs}.txt"));
     let written = std::fs::create_dir_all(&dir).and_then(|()| std::fs::write(&path, text));
     match written {

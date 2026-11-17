@@ -496,7 +496,9 @@ impl Launch {
 
     /// `launch:OnKeyDown(key, doubleClick)` (Launch.lua:143-175).
     pub fn on_key_down(&self, g: &mut Gfx, key: &str, double_click: bool) {
-        self.diag.borrow_mut().event(format!("down {key}{}", if double_click { " (double)" } else { "" }));
+        self.diag
+            .borrow_mut()
+            .event(format!("down {key}{}", if double_click { " (double)" } else { "" }));
         if key == "F12" && sg::is_key_down(g, "CTRL") && sg::is_key_down(g, "SHIFT") {
             // the port's own: what the input and the tree are now (crate::diag)
             crate::diag::dump(g);

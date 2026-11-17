@@ -74,7 +74,12 @@ fn loadouts_in_any_order_give_a_fresh_load_s_numbers() {
     for (step, name) in order.iter().enumerate() {
         let b = main().build_mode.clone();
         let drop = b.c().build_loadouts.clone();
-        let idx = drop.list.borrow().iter().position(|v| v.label.as_deref() == Some(name.as_str())).unwrap_or_else(|| panic!("no loadout {name}"));
+        let idx = drop
+            .list
+            .borrow()
+            .iter()
+            .position(|v| v.label.as_deref() == Some(name.as_str()))
+            .unwrap_or_else(|| panic!("no loadout {name}"));
         let item = drop.list.borrow()[idx].clone();
         let f = drop.sel_func.borrow().clone().expect("selFunc");
         f(&mut gfx, idx + 1, &item);
@@ -109,7 +114,9 @@ fn loadouts_in_any_order_give_a_fresh_load_s_numbers() {
         if let Some(first) = seen.get(name)
             && *first != now
         {
-            failures.push(format!("step {step} {name}: differs from its first visit\n    first {first:?}\n    now   {now:?}"));
+            failures.push(format!(
+                "step {step} {name}: differs from its first visit\n    first {first:?}\n    now   {now:?}"
+            ));
         }
         seen.entry(name.clone()).or_insert(now);
     }
@@ -139,7 +146,12 @@ fn loadouts_in_any_order_give_a_fresh_load_s_numbers() {
             "tree" => b.tree_tab_made(&mut gfx).set_active_spec(&mut gfx, id as usize),
             "items" => b.items_tab.borrow().clone().expect("itemsTab").set_active_item_set(&mut gfx, id),
             "skills" => b.skills_tab.borrow().clone().expect("skillsTab").set_active_skill_set(&mut gfx, id),
-            _ => b.config_tab.borrow().clone().expect("configTab").set_active_config_set(&mut gfx, id),
+            _ => b
+                .config_tab
+                .borrow()
+                .clone()
+                .expect("configTab")
+                .set_active_config_set(&mut gfx, id),
         }
         for _ in 0..3 {
             frame(&mut gfx, &l);
@@ -150,8 +162,10 @@ fn loadouts_in_any_order_give_a_fresh_load_s_numbers() {
         let (now, fresh) = (stats(e), stats(&fresh));
         eprintln!("   {kind:<6} {id:>3} {}", now.join("  "));
         if now != fresh {
-            failures.push(format!("{kind} set {id}: switched {now:?}
-    fresh load {fresh:?}"));
+            failures.push(format!(
+                "{kind} set {id}: switched {now:?}
+    fresh load {fresh:?}"
+            ));
         }
     }
     failures.extend(pob_ui::modules::build::take_fresh_mismatches());

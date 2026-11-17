@@ -216,14 +216,26 @@ fn ctrl_shift_f12_writes_the_diagnostics() {
     let dir = tmp.0.join("PoB test/Diagnostics");
     l.on_key_down(&mut gfx, "F12", false);
     assert!(!dir.exists(), "F12 alone wrote");
-    gfx.input(RawEvent::Key { key: PhysKey::Ctrl, pressed: true });
-    gfx.input(RawEvent::Key { key: PhysKey::Shift, pressed: true });
+    gfx.input(RawEvent::Key {
+        key: PhysKey::Ctrl,
+        pressed: true,
+    });
+    gfx.input(RawEvent::Key {
+        key: PhysKey::Shift,
+        pressed: true,
+    });
     l.on_key_down(&mut gfx, "F12", false);
     let files: Vec<_> = std::fs::read_dir(&dir).expect("Diagnostics").collect();
     assert_eq!(files.len(), 1);
     let text = std::fs::read_to_string(files[0].as_ref().expect("entry").path()).expect("read");
     println!("{text}");
-    for want in ["held: [\"CTRL\", \"SHIFT\"]", "view TREE", "tree view: port", "last frames", "down F12"] {
+    for want in [
+        "held: [\"CTRL\", \"SHIFT\"]",
+        "view TREE",
+        "tree view: port",
+        "last frames",
+        "down F12",
+    ] {
         assert!(text.contains(want), "no {want:?} in\n{text}");
     }
 }

@@ -91,8 +91,15 @@ impl WindowPlace {
     }
 
     pub fn to_line(self) -> String {
-        format!("{},{},{},{},{}
-", self.x, self.y, self.width, self.height, u8::from(self.maximized))
+        format!(
+            "{},{},{},{},{}
+",
+            self.x,
+            self.y,
+            self.width,
+            self.height,
+            u8::from(self.maximized)
+        )
     }
 
     /// Some monitor holds the window's title bar area: a window kept on a monitor that is gone opens at the system's place instead.
@@ -406,7 +413,9 @@ impl<M: MainObject> App<M> {
             .with_window_icon(self.icon.clone())
             .with_inner_size(inner_size);
         if let Some(k) = kept {
-            attrs = attrs.with_inner_size(winit::dpi::PhysicalSize::new(k.width, k.height)).with_maximized(k.maximized);
+            attrs = attrs
+                .with_inner_size(winit::dpi::PhysicalSize::new(k.width, k.height))
+                .with_maximized(k.maximized);
             if k.on_a_monitor(&monitors) {
                 attrs = attrs.with_position(winit::dpi::PhysicalPosition::new(k.x, k.y));
             }
@@ -713,7 +722,13 @@ mod tests {
 
     #[test]
     fn the_window_place_round_trips_and_needs_a_monitor() {
-        let p = WindowPlace { x: -1500, y: 40, width: 1400, height: 900, maximized: true };
+        let p = WindowPlace {
+            x: -1500,
+            y: 40,
+            width: 1400,
+            height: 900,
+            maximized: true,
+        };
         assert_eq!(WindowPlace::parse(&p.to_line()), Some(p));
         assert_eq!(WindowPlace::parse("1,2,3"), None);
         assert_eq!(WindowPlace::parse("0,0,10,10,0"), None);

@@ -446,7 +446,11 @@ impl Main {
         // Main.lua:247-252
         check.label.set_fn(|_| {
             let l = launch();
-            if l.update_check_running.get() { l.update_progress() } else { "Check for Update".to_string() }
+            if l.update_check_running.get() {
+                l.update_progress()
+            } else {
+                "Check for Update".to_string()
+            }
         });
         check.base.enabled.set_fn(|_| !launch().update_check_running.get());
         m.host.add("checkUpdate", check);

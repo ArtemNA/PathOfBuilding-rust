@@ -7,9 +7,9 @@
 mod scene;
 
 use pob_gfx::{Gfx, RawEvent, TestPlatform};
+use pob_ui::Control;
 use pob_ui::launch::{Launch, LaunchConfig};
 use pob_ui::modules::main::main;
-use pob_ui::Control;
 use std::rc::Rc;
 
 fn frame(gfx: &mut Gfx, l: &Rc<Launch>) {
@@ -68,7 +68,11 @@ fn click_with(gfx: &mut Gfx, l: &Rc<Launch>, x: f64, y: f64, button: pob_gfx::in
     gfx.input(RawEvent::Cursor { x, y });
     frame(gfx, l);
     for pressed in [true, false] {
-        for cb in gfx.input(RawEvent::Button { button, pressed, pos: None }) {
+        for cb in gfx.input(RawEvent::Button {
+            button,
+            pressed,
+            pos: None,
+        }) {
             match cb {
                 pob_gfx::input::Callback::KeyDown(k, d) => l.on_key_down(gfx, k, d),
                 pob_gfx::input::Callback::KeyUp(k) => l.on_key_up(gfx, k),
@@ -89,7 +93,10 @@ fn a_power_report_row_leads_to_a_node_that_answers() {
     *b.view_mode.borrow_mut() = "TREE".into();
     frame(&mut gfx, &l);
     let tab = b.tree_tab_made(&mut gfx);
-    let stat = pob_calc::power::power_stat_list().into_iter().find(|s| s.stat.as_deref() == Some("Life")).expect("Life");
+    let stat = pob_calc::power::power_stat_list()
+        .into_iter()
+        .find(|s| s.stat.as_deref() == Some("Life"))
+        .expect("Life");
     tab.set_power_calc(&gfx, Some(stat));
     tab.power_report_list.base.shown.set(true);
     let wait = |gfx: &mut Gfx| {
@@ -116,7 +123,10 @@ fn a_power_report_row_leads_to_a_node_that_answers() {
         let rh = tab.power_report_list.row_height;
         let off = tab.power_report_list.scroll_bar_v.offset.get();
         click(&mut gfx, &l, lx + r.x + 40.0, ly + r.y + (row as f64 - 0.5) * rh - off);
-        gfx.input(RawEvent::Cursor { x: x0 + w / 2.0, y: y0 + h / 2.0 });
+        gfx.input(RawEvent::Cursor {
+            x: x0 + w / 2.0,
+            y: y0 + h / 2.0,
+        });
         frame(&mut gfx, &l);
         frame(&mut gfx, &l);
         let (hover, alloc_before) = {
@@ -129,18 +139,36 @@ fn a_power_report_row_leads_to_a_node_that_answers() {
         if hover != Some(id) {
             let tv = b.tree_view.borrow();
             let v = tv.as_ref().expect("view");
-            eprintln!("  list at {lx},{ly} region {:?} rh {rh} off {off}; sel {:?}; zoom {} {} {}", (r.x, r.y, r.width, r.height), tab.power_report_list.sel_index.get(), v.zoom_level, v.zoom_x, v.zoom_y);
+            eprintln!(
+                "  list at {lx},{ly} region {:?} rh {rh} off {off}; sel {:?}; zoom {} {} {}",
+                (r.x, r.y, r.width, r.height),
+                tab.power_report_list.sel_index.get(),
+                v.zoom_level,
+                v.zoom_x,
+                v.zoom_y
+            );
             drop(tv);
             bad.push(format!("round {round} row {row}: node {id}, hovered {hover:?}"));
             continue;
         }
-        let alloc_of = || b.engine.borrow().as_ref().expect("engine").spec_rc().node(id).is_some_and(|n| n.alloc);
+        let alloc_of = || {
+            b.engine
+                .borrow()
+                .as_ref()
+                .expect("engine")
+                .spec_rc()
+                .node(id)
+                .is_some_and(|n| n.alloc)
+        };
         let mut clicks = 0;
         while alloc_of() == alloc_before && clicks < 3 {
             click(&mut gfx, &l, x0 + w / 2.0, y0 + h / 2.0);
             clicks += 1;
         }
-        eprintln!("round {round} row {row}: node {id} alloc {alloc_before} -> {} after {clicks} clicks", alloc_of());
+        eprintln!(
+            "round {round} row {row}: node {id} alloc {alloc_before} -> {} after {clicks} clicks",
+            alloc_of()
+        );
         if alloc_of() == alloc_before {
             bad.push(format!("round {round} row {row}: node {id} did not change after {clicks} clicks"));
         }
@@ -177,7 +205,14 @@ fn every_node_is_hovered_where_it_is_drawn() {
                         && pob_ui::tree_art::overlay_size(n.ty()).is_some()
                         && t.x.is_some()
                 })
-                .map(|n| (n.id, n.tree_node().dn.clone(), n.tree_node().x.expect("x"), n.tree_node().y.expect("y")))
+                .map(|n| {
+                    (
+                        n.id,
+                        n.tree_node().dn.clone(),
+                        n.tree_node().x.expect("x"),
+                        n.tree_node().y.expect("y"),
+                    )
+                })
                 .collect()
         };
         // the tree's view: under the top bar, right of the side panel, above the tab's controls and the drawer (TreeTab.lua:432-446)
@@ -198,7 +233,10 @@ fn every_node_is_hovered_where_it_is_drawn() {
             if !(sx >= x0 + 2.0 && sx < x0 + w - 2.0 && sy >= y0 + 2.0 && sy < y0 + h - 2.0) {
                 continue;
             }
-            gfx.input(RawEvent::Cursor { x: sx.round(), y: sy.round() });
+            gfx.input(RawEvent::Cursor {
+                x: sx.round(),
+                y: sy.round(),
+            });
             frame(&mut gfx, &l);
             let got = {
                 let tv = b.tree_view.borrow();
@@ -213,7 +251,14 @@ fn every_node_is_hovered_where_it_is_drawn() {
                     let size = b.tree_art().size;
                     let tv = b.tree_view.borrow();
                     let v = tv.as_ref().expect("view");
-                    eprintln!("    debug {id}: at ({x},{y}) screen ({sx:.1},{sy:.1}) zoom {} {} ({},{}) art size {size} tree {}", v.zoom_level, v.zoom, v.zoom_x, v.zoom_y, b.engine.borrow().as_ref().expect("e").spec_rc().tree.tree_version);
+                    eprintln!(
+                        "    debug {id}: at ({x},{y}) screen ({sx:.1},{sy:.1}) zoom {} {} ({},{}) art size {size} tree {}",
+                        v.zoom_level,
+                        v.zoom,
+                        v.zoom_x,
+                        v.zoom_y,
+                        b.engine.borrow().as_ref().expect("e").spec_rc().tree.tree_version
+                    );
                 }
                 bad.push(format!("drawer {drawer}: {id} {dn} -> {got:?}"));
             }
@@ -315,9 +360,25 @@ fn the_tree_answers_after_random_use() {
                 log.push(format!("click {b:?} {x},{y}"));
                 send(&mut gfx, &l, RawEvent::Cursor { x, y });
                 frame(&mut gfx, &l);
-                send(&mut gfx, &l, RawEvent::Button { button: b, pressed: true, pos: None });
+                send(
+                    &mut gfx,
+                    &l,
+                    RawEvent::Button {
+                        button: b,
+                        pressed: true,
+                        pos: None,
+                    },
+                );
                 frame(&mut gfx, &l);
-                send(&mut gfx, &l, RawEvent::Button { button: b, pressed: false, pos: None });
+                send(
+                    &mut gfx,
+                    &l,
+                    RawEvent::Button {
+                        button: b,
+                        pressed: false,
+                        pos: None,
+                    },
+                );
             } else if a < 50 {
                 log.push(format!("wheel {x},{y}"));
                 send(&mut gfx, &l, RawEvent::Cursor { x, y });
@@ -360,11 +421,27 @@ fn the_tree_answers_after_random_use() {
                 log.push(format!("drag {x},{y} -> {x2},{y2}"));
                 send(&mut gfx, &l, RawEvent::Cursor { x, y });
                 frame(&mut gfx, &l);
-                send(&mut gfx, &l, RawEvent::Button { button: Button::Left, pressed: true, pos: None });
+                send(
+                    &mut gfx,
+                    &l,
+                    RawEvent::Button {
+                        button: Button::Left,
+                        pressed: true,
+                        pos: None,
+                    },
+                );
                 frame(&mut gfx, &l);
                 send(&mut gfx, &l, RawEvent::Cursor { x: x2, y: y2 });
                 frame(&mut gfx, &l);
-                send(&mut gfx, &l, RawEvent::Button { button: Button::Left, pressed: false, pos: None });
+                send(
+                    &mut gfx,
+                    &l,
+                    RawEvent::Button {
+                        button: Button::Left,
+                        pressed: false,
+                        pos: None,
+                    },
+                );
             } else if a < 82 {
                 let t = tabs[rng.below(tabs.len() as u64) as usize];
                 log.push(format!("tab {t}"));
@@ -390,8 +467,22 @@ fn the_tree_answers_after_random_use() {
             if main().popups.borrow().is_empty() {
                 break;
             }
-            send(&mut gfx, &l, RawEvent::Key { key: PhysKey::Escape, pressed: true });
-            send(&mut gfx, &l, RawEvent::Key { key: PhysKey::Escape, pressed: false });
+            send(
+                &mut gfx,
+                &l,
+                RawEvent::Key {
+                    key: PhysKey::Escape,
+                    pressed: true,
+                },
+            );
+            send(
+                &mut gfx,
+                &l,
+                RawEvent::Key {
+                    key: PhysKey::Escape,
+                    pressed: false,
+                },
+            );
             frame(&mut gfx, &l);
         }
         while !main().popups.borrow().is_empty() {
@@ -444,7 +535,10 @@ fn the_tree_answers_after_random_use() {
             let tv = b.tree_view.borrow();
             let v = tv.as_ref().expect("view");
             let scale = f64::min(w, h) / size * v.zoom;
-            ((x * scale + v.zoom_x + x0 + w / 2.0).round(), (y * scale + v.zoom_y + y0 + h / 2.0).round())
+            (
+                (x * scale + v.zoom_x + x0 + w / 2.0).round(),
+                (y * scale + v.zoom_y + y0 + h / 2.0).round(),
+            )
         };
         if !(sx > x0 + 2.0 && sx < x0 + w - 2.0 && sy > y0 + 2.0 && sy < y0 + h - 2.0) {
             continue;
@@ -459,7 +553,15 @@ fn the_tree_answers_after_random_use() {
             let spec = eng.as_ref().expect("engine").spec_rc();
             tv.as_ref().expect("view").hover_node.map(|i| spec.nodes[i].id)
         };
-        let alloc_of = || b.engine.borrow().as_ref().expect("engine").spec_rc().node(id).is_some_and(|n| n.alloc);
+        let alloc_of = || {
+            b.engine
+                .borrow()
+                .as_ref()
+                .expect("engine")
+                .spec_rc()
+                .node(id)
+                .is_some_and(|n| n.alloc)
+        };
         let before = alloc_of();
         let mut clicks = 0;
         while alloc_of() == before && clicks < 3 {
@@ -477,7 +579,14 @@ fn the_tree_answers_after_random_use() {
             let mut found = None;
             'scan: for r in (0..=120).step_by(4) {
                 for (dx, dy) in [(r, 0), (-r, 0), (0, r), (0, -r), (r, r), (-r, -r), (r, -r), (-r, r)] {
-                    send(&mut gfx, &l, RawEvent::Cursor { x: sx + f64::from(dx), y: sy + f64::from(dy) });
+                    send(
+                        &mut gfx,
+                        &l,
+                        RawEvent::Cursor {
+                            x: sx + f64::from(dx),
+                            y: sy + f64::from(dy),
+                        },
+                    );
                     frame(&mut gfx, &l);
                     let hv = {
                         let tv = b.tree_view.borrow();
@@ -531,7 +640,10 @@ fn frame_time_while_the_power_report_runs() {
     *b.view_mode.borrow_mut() = "TREE".into();
     frame(&mut gfx, &l);
     let tab = b.tree_tab_made(&mut gfx);
-    let stat = pob_calc::power::power_stat_list().into_iter().find(|s| s.stat.as_deref() == Some("Life")).expect("Life");
+    let stat = pob_calc::power::power_stat_list()
+        .into_iter()
+        .find(|s| s.stat.as_deref() == Some("Life"))
+        .expect("Life");
     tab.set_power_calc(&gfx, Some(stat));
     gfx.input(RawEvent::Cursor { x: 800.0, y: 400.0 });
     let mut during = Vec::new();
@@ -557,7 +669,11 @@ fn frame_time_while_the_power_report_runs() {
         v.sort_by(f64::total_cmp);
         (v.len(), v[v.len() / 2], v[v.len() * 9 / 10], v[v.len() - 1])
     };
-    eprintln!("walk {walk:.1} s; frames during (n, median, p90, max ms) {:?}; after {:?}", stats(&mut during), stats(&mut after));
+    eprintln!(
+        "walk {walk:.1} s; frames during (n, median, p90, max ms) {:?}; after {:?}",
+        stats(&mut during),
+        stats(&mut after)
+    );
     pob_ui::modules::main::clear_main();
     let _ = std::fs::remove_dir_all(&root);
 }

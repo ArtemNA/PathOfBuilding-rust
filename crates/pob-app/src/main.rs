@@ -193,7 +193,9 @@ fn main() {
         .map(|p| p.replace('\\', "/"))
         .or_else(pob_gfx::fs::get_user_path);
     // the original keeps `vid_last` in SimpleGraphic.cfg; here the window's place lives in the user folder
-    let state_file = user_path.as_ref().map(|u| std::path::PathBuf::from(format!("{u}/{USER_FOLDER}/window.cfg")));
+    let state_file = user_path
+        .as_ref()
+        .map(|u| std::path::PathBuf::from(format!("{u}/{USER_FOLDER}/window.cfg")));
     let secs = arg(&args, "--secs").map(|s| s.parse::<f64>().unwrap_or_else(|_| fatal("--secs needs a number")));
     let mut cfg = LaunchConfig {
         user_path,

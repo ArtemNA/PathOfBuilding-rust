@@ -2645,7 +2645,11 @@ fn check_fresh(e: Option<&Engine>) {
             .filter(|(k, v)| b.get(*k).map(|w| format!("{w:?}")) != Some(format!("{v:?}")))
             .map(|(k, v)| format!("{k}: live {v:?}, fresh {:?}", b.get(k)))
             .collect();
-        diff.extend(b.keys().filter(|k| !a.contains_key(*k)).map(|k| format!("{k}: only in the fresh load")));
+        diff.extend(
+            b.keys()
+                .filter(|k| !a.contains_key(*k))
+                .map(|k| format!("{k}: only in the fresh load")),
+        );
         if !diff.is_empty() {
             let n = diff.len();
             diff.truncate(6);
