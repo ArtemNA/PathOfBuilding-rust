@@ -361,7 +361,10 @@ impl Main {
         let ignore_build = start_uri.is_some();
         if let Some(uri) = start_uri {
             let _ = crate::build_sites::parse_import_link_from_uri(&uri);
+            // the port's own: an error while this build opens offers the update with this link (launch.rs `update_from_err_prompt`)
+            *l.opening_link.borrow_mut() = Some(uri.clone());
             crate::build_sites::download_build_from_uri(&uri, g, |_, ok, data, import_link| {
+                launch().opening_link_loaded.set(true);
                 let m = main();
                 if !ok {
                     m.set_mode("BUILD", vec![ModeArg::Bool(false), ModeArg::Str(data)]);

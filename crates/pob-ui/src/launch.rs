@@ -93,6 +93,14 @@ type SubCallback = Box<dyn FnOnce(&mut Gfx, pob_net::Outcome)>;
 /// The prompt's key handler (`promptFunc`): `true` dismisses the prompt.
 pub type PromptFunc = Rc<dyn Fn(&mut Gfx, &str) -> bool>;
 
+/// What starts the installer ([`crate::update::start_install`]); a test puts its own here and no process is spawned.
+pub type InstallFn = Box<dyn Fn(&crate::update::Pending, &std::path::Path) -> Result<(), String>>;
+
+/// The port's own: the link a build was being opened from, kept over the update's restart (one line, in the user folder).
+pub const PENDING_OPEN_FILE: &str = "pending-open.txt";
+/// An older [`PENDING_OPEN_FILE`] is not opened: the user no longer waits for it.
+pub const PENDING_OPEN_MAX_AGE: std::time::Duration = std::time::Duration::from_secs(24 * 60 * 60);
+
 /// The `launch` object.
 pub struct Launch {
     pub cfg: LaunchConfig,
@@ -129,8 +137,16 @@ pub struct Launch {
     pub update_check_running: Cell<bool>,
     /// The update `update_available` names.
     pub update_pending: RefCell<Option<crate::update::Pending>>,
-    /// The download of the update, while it runs.
-    update_download: RefCell<Option<Arc<pob_net::DownloadProgress>>>,
+    /// The download of the update, while it runs: its version and how far it is.
+    update_download: RefCell<Option<(String, Arc<pob_net::DownloadProgress>)>>,
+    /// The port's own: `None` = [`crate::update::start_install`].
+    pub install_hook: RefCell<Option<InstallFn>>,
+    /// The port's own: the link (`start_uri`) a build is being opened from, until it has loaded and shown one frame.
+    pub opening_link: RefCell<Option<String>>,
+    /// The download of [`Self::opening_link`] has finished: the next frame without an error is its success.
+    pub(crate) opening_link_loaded: Cell<bool>,
+    /// The port's own: the error prompt that interrupted the opening of a link, and that link (the prompt's text, the link).
+    err_prompt_link: RefCell<Option<(String, String)>>,
     /// The last frames and key events, for Ctrl+Shift+F12 ([`crate::diag`]).
     pub diag: RefCell<crate::diag::DiagLog>,
 }
@@ -208,6 +224,10 @@ impl Launch {
             update_check_running: Cell::new(false),
             update_pending: RefCell::new(None),
             update_download: RefCell::new(None),
+            install_hook: RefCell::new(None),
+            opening_link: RefCell::new(None),
+            opening_link_loaded: Cell::new(false),
+            err_prompt_link: RefCell::new(None),
             diag: RefCell::new(crate::diag::DiagLog::default()),
         });
         LAUNCH.with(|g| *g.borrow_mut() = Some(Rc::clone(&l)));
@@ -228,6 +248,12 @@ impl Launch {
         *self.version_branch.borrow_mut() = self.cfg.version_branch.clone();
         *self.version_platform.borrow_mut() = self.cfg.version_platform.clone();
         g.render_init(&["DPI_AWARE"]);
+        // the port's own: a build whose link waited for the update opens as if the program was started with it
+        if self.start_uri.borrow().is_none()
+            && let Some(link) = self.take_pending_open()
+        {
+            *self.start_uri.borrow_mut() = Some(link);
+        }
         g.con_printf("Loading main script...");
         match pcall(|| Main::init(g)) {
             Ok(m) => *self.main.borrow_mut() = Some(m),
@@ -324,7 +350,7 @@ impl Launch {
     pub fn update_progress(&self) -> String {
         match self.update_download.borrow().as_ref() {
             None => "Checking...".to_string(),
-            Some(p) => match p.percent() {
+            Some((_, p)) => match p.percent() {
                 Some(pc) => format!("Downloading {pc}%"),
                 None => "Downloading...".to_string(),
             },
@@ -382,7 +408,7 @@ impl Launch {
             page: release.page,
         };
         let progress = Arc::new(pob_net::DownloadProgress::default());
-        *self.update_download.borrow_mut() = Some(Arc::clone(&progress));
+        self.set_update_downloading(&pending.version, Arc::clone(&progress));
         let job = pob_net::Job::Download {
             req,
             path,
@@ -409,6 +435,11 @@ impl Launch {
         *self.update_pending.borrow_mut() = Some(pending);
     }
 
+    /// The update `version` is being downloaded; `progress` says how far.
+    pub fn set_update_downloading(&self, version: &str, progress: Arc<pob_net::DownloadProgress>) {
+        *self.update_download.borrow_mut() = Some((version.to_string(), progress));
+    }
+
     /// `launch:ApplyUpdate(mode)` (Launch.lua:325-337): the installer takes over and starts the new version; a copy that cannot be replaced gets the release page.
     pub fn apply_update(&self, g: &mut Gfx) {
         let Some(pending) = self.update_pending.borrow().clone() else {
@@ -419,7 +450,11 @@ impl Launch {
             return;
         }
         let exe = std::env::current_exe().unwrap_or_default();
-        match crate::update::start_install(&pending, &exe) {
+        let started = match self.install_hook.borrow().as_ref() {
+            Some(hook) => hook(&pending, &exe),
+            None => crate::update::start_install(&pending, &exe),
+        };
+        match started {
             Ok(()) => g.exit(None),
             Err(e) => *self.update_err_msg.borrow_mut() = Some(e),
         }
@@ -469,17 +504,22 @@ impl Launch {
         if !self.hold_subs.get() {
             self.poll_sub_scripts(f);
         }
-        if let Some(main) = self.main()
-            && let Err(e) = pcall(|| main.on_frame(f))
-        {
-            self.show_err_msg(&format!("In 'OnFrame': {e}"));
+        if let Some(main) = self.main() {
+            match pcall(|| main.on_frame(f)) {
+                Err(e) => self.show_err_msg(&format!("In 'OnFrame': {e}")),
+                // the port's own: the build of the link has loaded and drawn a frame
+                Ok(()) if self.opening_link_loaded.get() => {
+                    self.opening_link_loaded.set(false);
+                    *self.opening_link.borrow_mut() = None;
+                }
+                Ok(()) => {}
+            }
         }
         self.diag.borrow_mut().frame(frame_start, frame_start.elapsed().as_secs_f64() * 1e3);
         self.dev_mode_alt.set(self.dev_mode.get() && sg::is_key_down(f, "ALT"));
         sg::set_draw_layer(f, Some(1000), 0);
         f.set_viewport(None);
-        let msg = self.prompt_msg.borrow().clone();
-        if let Some(msg) = msg {
+        if let Some(msg) = self.prompt_text() {
             let (r, g, b) = self.prompt_col.get();
             self.draw_popup(f, r, g, b, &format!("^0{msg}"));
         }
@@ -512,7 +552,10 @@ impl Launch {
         } else if key == "PRINTSCREEN" && sg::is_key_down(g, "CTRL") {
             g.take_screenshot();
         } else if self.prompt_msg.borrow().is_some() {
-            self.run_prompt_func(g, key);
+            // the port's own: U of the error prompt of a link while an update is there
+            if !(key == "u" && self.update_from_err_prompt(g)) {
+                self.run_prompt_func(g, key);
+            }
         } else if let Some(main) = self.main()
             && let Err(e) = pcall(|| main.on_key_down(key, double_click))
         {
@@ -578,16 +621,102 @@ impl Launch {
                 self.version_number.borrow(),
                 self.version_branch.borrow().as_ref().map(|b| format!(" {b}")).unwrap_or_default()
             );
-            self.show_prompt(
-                1.0,
-                0.0,
-                0.0,
-                &format!(
-                    "^1Error:\n\n^0{msg}\n{version}\n^0Press Enter/Escape to dismiss, F4 to return to build selection, or F5 to restart the application.\nPress CTRL + C to copy error text."
-                ),
-                None,
+            let text = format!(
+                "^1Error:\n\n^0{msg}\n{version}\n^0Press Enter/Escape to dismiss, F4 to return to build selection, or F5 to restart the application.\nPress CTRL + C to copy error text."
             );
+            self.show_prompt(1.0, 0.0, 0.0, &text, None);
+            // the port's own: the link this error stopped can be opened again by the update
+            self.opening_link_loaded.set(false);
+            let link = self.opening_link.borrow_mut().take();
+            *self.err_prompt_link.borrow_mut() = link.map(|l| (text, l));
         }
+    }
+
+    /// The port's own: the link of the error prompt shown now, if that prompt stopped the opening of one.
+    fn err_prompt_link(&self) -> Option<String> {
+        let cur = self.prompt_msg.borrow().clone()?;
+        let guard = self.err_prompt_link.borrow();
+        let (text, link) = guard.as_ref()?;
+        (*text == cur).then(|| link.clone())
+    }
+
+    /// The port's own: what the error prompt of a link says of the update (`None`: no update, the prompt is upstream's).
+    pub fn update_line(&self) -> Option<String> {
+        if let Some(p) = self.update_pending.borrow().as_ref() {
+            return Some(if p.kind == crate::update::Install::Manual {
+                format!("Version {} is out: press U to open its release page.", p.version)
+            } else {
+                format!("Version {} is ready: press U to install it and open this build again.", p.version)
+            });
+        }
+        let download = self.update_download.borrow();
+        let (version, progress) = download.as_ref()?;
+        Some(match progress.percent() {
+            Some(pc) => format!("Version {version} is downloading ({pc}%): it will offer to install when it is done."),
+            None => format!("Version {version} is downloading: it will offer to install when it is done."),
+        })
+    }
+
+    /// The prompt as it is drawn now: `prompt_msg`, and for the error prompt of a link the update's line, made each frame (the download goes on).
+    pub fn prompt_text(&self) -> Option<String> {
+        let msg = self.prompt_msg.borrow().clone()?;
+        if self.err_prompt_link().is_none() {
+            return Some(msg);
+        }
+        Some(match self.update_line() {
+            Some(line) => format!("{msg}\n^2{line}"),
+            None => msg,
+        })
+    }
+
+    /// `<user_path>/<user_folder>/pending-open.txt`.
+    pub fn pending_open_path(&self) -> Option<std::path::PathBuf> {
+        let up = self.cfg.user_path.as_ref()?;
+        Some(std::path::Path::new(up).join(&self.cfg.user_folder).join(PENDING_OPEN_FILE))
+    }
+
+    /// The link left by [`Self::update_from_err_prompt`], once: the file is removed whatever it holds; an old one is not opened.
+    fn take_pending_open(&self) -> Option<String> {
+        let path = self.pending_open_path()?;
+        let text = std::fs::read_to_string(&path).ok();
+        let fresh = std::fs::metadata(&path)
+            .and_then(|m| m.modified())
+            .ok()
+            .and_then(|t| t.elapsed().ok())
+            .is_some_and(|age| age <= PENDING_OPEN_MAX_AGE);
+        if text.is_some() {
+            let _ = std::fs::remove_file(&path);
+        }
+        let link = text?.lines().next()?.trim().to_string();
+        (fresh && !link.is_empty()).then_some(link)
+    }
+
+    /// The port's own: U in the error prompt of a link while an update is there. The link waits in the user folder for the new version,
+    /// then [`Self::apply_update`]; a copy updated by hand gets the release page, and nothing waits. `false`: not this prompt or no update
+    /// ready, U goes to the prompt as in the original.
+    fn update_from_err_prompt(&self, g: &mut Gfx) -> bool {
+        let Some(link) = self.err_prompt_link() else {
+            return false;
+        };
+        let Some(kind) = self.update_pending.borrow().as_ref().map(|p| p.kind) else {
+            return false;
+        };
+        let path = self.pending_open_path();
+        if kind != crate::update::Install::Manual
+            && let Some(path) = &path
+            && let Err(e) = std::fs::write(path, format!("{link}\n"))
+        {
+            eprintln!("{}: {e}", path.display());
+        }
+        self.apply_update(g);
+        if kind != crate::update::Install::Manual && self.update_err_msg.borrow().is_some() {
+            // the installer did not start: nothing to open later, and the prompt gives way to the toast of the error
+            if let Some(path) = &path {
+                let _ = std::fs::remove_file(path);
+            }
+            *self.prompt_msg.borrow_mut() = None;
+        }
+        true
     }
 
     /// `launch:RunPromptFunc(key)` (Launch.lua:390-398).

@@ -20,6 +20,11 @@ impl Drop for Tmp {
 }
 
 fn start(tag: &str) -> (Tmp, Gfx, TestPlatform, Rc<Launch>) {
+    start_with(tag, |_, _| {})
+}
+
+/// `before` sees the temporary user path and the launch before `OnInit`.
+fn start_with(tag: &str, before: impl FnOnce(&std::path::Path, &Rc<Launch>)) -> (Tmp, Gfx, TestPlatform, Rc<Launch>) {
     let dir = std::env::temp_dir().join(format!("pob-ui-u2b-launch-{}-{tag}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).expect("tmp");
@@ -37,6 +42,7 @@ fn start(tag: &str) -> (Tmp, Gfx, TestPlatform, Rc<Launch>) {
         version_platform: None,
         app_version: None,
     });
+    before(&dir, &l);
     l.on_init(&mut gfx);
     (Tmp(dir), gfx, tp, l)
 }
@@ -238,4 +244,199 @@ fn ctrl_shift_f12_writes_the_diagnostics() {
     ] {
         assert!(text.contains(want), "no {want:?} in\n{text}");
     }
+}
+
+// ----- the port's own: an error while a build opens from a link offers the update (launch.rs `update_from_err_prompt`) -----
+
+const LINK: &str = "pob://pobbin/abc";
+const LINK_URL: &str = "https://pobb.in/pob/abc";
+
+fn pending(kind: pob_ui::update::Install) -> pob_ui::update::Pending {
+    pob_ui::update::Pending {
+        version: "9.9.9".into(),
+        kind,
+        file: (kind != pob_ui::update::Install::Manual).then(|| std::path::PathBuf::from("setup.exe")),
+        page: "https://example.invalid/releases/v9.9.9".into(),
+    }
+}
+
+/// The error prompt of a link says what the update is doing, redrawn from the download's progress; without an update, or for an error
+/// that is not of a link, it is upstream's prompt unchanged.
+#[test]
+fn link_error_prompt_tells_of_the_update() {
+    use std::sync::atomic::Ordering;
+    let (_tmp, mut gfx, _tp, l) = start("link-prompt");
+    frame(&mut gfx, &l);
+    // an error that is not of a link: upstream's text even with an update ready
+    *l.update_pending.borrow_mut() = Some(pending(pob_ui::update::Install::WindowsSetup));
+    l.show_err_msg("plain");
+    assert_eq!(l.prompt_text(), *l.prompt_msg.borrow());
+    l.on_key_down(&mut gfx, "RETURN", false);
+    *l.update_pending.borrow_mut() = None;
+
+    *l.opening_link.borrow_mut() = Some(LINK.into());
+    l.show_err_msg("In 'OnFrame': broke");
+    let msg = l.prompt_msg.borrow().clone().expect("prompt");
+    assert!(
+        msg.starts_with("^1Error:\n\n^0In 'OnFrame': broke\n^8v1.2.3\n^0Press Enter/Escape"),
+        "{msg}"
+    );
+    assert!(l.opening_link.borrow().is_none(), "the link moved to the prompt");
+    // no update: exactly the original's prompt, and U is only a key of it
+    assert_eq!(l.prompt_text().as_deref(), Some(msg.as_str()));
+    l.on_key_down(&mut gfx, "u", false);
+    assert_eq!(l.prompt_msg.borrow().as_deref(), Some(msg.as_str()));
+    assert!(!gfx.exit_requested());
+
+    // downloading: the percentage follows the download while the prompt is shown
+    let progress = std::sync::Arc::new(pob_net::DownloadProgress::default());
+    progress.total.store(200, Ordering::Relaxed);
+    progress.done.store(50, Ordering::Relaxed);
+    l.set_update_downloading("9.9.9", progress.clone());
+    assert_eq!(
+        l.prompt_text().expect("text"),
+        format!("{msg}\n^2Version 9.9.9 is downloading (25%): it will offer to install when it is done.")
+    );
+    progress.done.store(100, Ordering::Relaxed);
+    frame(&mut gfx, &l);
+    assert!(
+        l.prompt_text()
+            .expect("text")
+            .ends_with("downloading (50%): it will offer to install when it is done.")
+    );
+    l.on_key_down(&mut gfx, "u", false);
+    assert!(!gfx.exit_requested(), "nothing to install yet");
+    assert!(!l.pending_open_path().expect("path").exists());
+
+    // ready
+    *l.update_pending.borrow_mut() = Some(pending(pob_ui::update::Install::WindowsSetup));
+    assert_eq!(
+        l.prompt_text().expect("text"),
+        format!("{msg}\n^2Version 9.9.9 is ready: press U to install it and open this build again.")
+    );
+    *l.update_pending.borrow_mut() = Some(pending(pob_ui::update::Install::Manual));
+    assert!(
+        l.prompt_text()
+            .expect("text")
+            .ends_with("\n^2Version 9.9.9 is out: press U to open its release page.")
+    );
+}
+
+/// U in the error prompt of a link: the link waits in the user folder and the installer starts (here a recorder, no process), and the
+/// program exits; a copy updated by hand gets the release page and nothing waits; an installer that does not start leaves nothing behind.
+#[test]
+fn u_in_the_link_error_prompt_installs_and_keeps_the_link() {
+    use std::cell::RefCell;
+    let (_tmp, mut gfx, tp, l) = start("link-install");
+    frame(&mut gfx, &l);
+    let calls: Rc<RefCell<Vec<String>>> = Rc::default();
+    let result: Rc<RefCell<Result<(), String>>> = Rc::new(RefCell::new(Ok(())));
+    {
+        let (calls, result) = (calls.clone(), result.clone());
+        *l.install_hook.borrow_mut() = Some(Box::new(move |p, _exe| {
+            calls.borrow_mut().push(p.version.clone());
+            result.borrow().clone()
+        }));
+    }
+    let file = l.pending_open_path().expect("path");
+    *l.opening_link.borrow_mut() = Some(LINK.into());
+    l.show_err_msg("In 'OnFrame': broke");
+    *l.update_pending.borrow_mut() = Some(pending(pob_ui::update::Install::WindowsSetup));
+    l.on_key_down(&mut gfx, "u", false);
+    assert_eq!(std::fs::read_to_string(&file).expect("pending-open.txt"), format!("{LINK}\n"));
+    assert_eq!(*calls.borrow(), ["9.9.9"]);
+    assert!(gfx.exit_requested());
+    let _ = gfx.take_requests();
+    std::fs::remove_file(&file).expect("clean");
+
+    // the installer does not start: the file goes, the prompt gives way to the error's toast
+    *result.borrow_mut() = Err("no".into());
+    l.on_key_down(&mut gfx, "u", false);
+    assert_eq!(calls.borrow().len(), 2);
+    assert!(!file.exists());
+    assert!(!gfx.exit_requested());
+    assert!(l.prompt_msg.borrow().is_none());
+    assert_eq!(l.update_err_msg.borrow().as_deref(), Some("no"));
+    *l.update_err_msg.borrow_mut() = None;
+
+    // by hand: the page, no installer, nothing waits
+    *l.opening_link.borrow_mut() = Some(LINK.into());
+    l.show_err_msg("In 'OnFrame': broke");
+    *l.update_pending.borrow_mut() = Some(pending(pob_ui::update::Install::Manual));
+    l.on_key_down(&mut gfx, "u", false);
+    assert_eq!(tp.state().opened, ["https://example.invalid/releases/v9.9.9"]);
+    assert_eq!(calls.borrow().len(), 2);
+    assert!(!file.exists());
+    assert!(l.prompt_msg.borrow().is_some());
+}
+
+fn write_pending_open(user: &std::path::Path, age: std::time::Duration) -> std::path::PathBuf {
+    let dir = user.join("PoB test");
+    std::fs::create_dir_all(&dir).expect("user folder");
+    let file = dir.join(pob_ui::launch::PENDING_OPEN_FILE);
+    std::fs::write(&file, format!("{LINK}\n")).expect("pending-open.txt");
+    let f = std::fs::File::options().write(true).open(&file).expect("open");
+    f.set_modified(std::time::SystemTime::now() - age).expect("mtime");
+    file
+}
+
+fn scripted() -> std::sync::Arc<pob_net::ScriptedTransport> {
+    let t = std::sync::Arc::new(pob_net::ScriptedTransport::default());
+    t.add(
+        LINK_URL,
+        Ok(pob_net::Reply {
+            code: 200,
+            body: b"not a build code".to_vec(),
+            ..pob_net::Reply::default()
+        }),
+    );
+    t
+}
+
+/// The new version starts without a link and finds the one that waited: it opens it as `arg[1]` (the download of the link, a build
+/// of it), and the file is gone; the link is forgotten once that build has shown a frame.
+#[test]
+fn the_link_that_waited_opens_at_start() {
+    let net = scripted();
+    let mut file = None;
+    let (_tmp, mut gfx, _tp, l) = start_with("link-reopen", |dir, l| {
+        file = Some(write_pending_open(dir, std::time::Duration::from_secs(60)));
+        l.set_transport(net.clone());
+    });
+    let file = file.expect("file");
+    assert!(!file.exists(), "read once");
+    assert_eq!(l.opening_link.borrow().as_deref(), Some(LINK));
+    for _ in 0..500 {
+        frame(&mut gfx, &l);
+        if l.opening_link.borrow().is_none() {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+    assert_eq!(net.urls(), [LINK_URL]);
+    assert!(l.opening_link.borrow().is_none(), "the build of the link opened");
+    assert_eq!(main().mode.borrow().as_deref(), Some("BUILD"));
+    assert!(l.prompt_msg.borrow().is_none());
+}
+
+/// A link older than a day is removed and not opened; a start with its own link leaves the file alone.
+#[test]
+fn an_old_link_or_a_start_with_a_link_does_not_open_the_waiting_one() {
+    let net = scripted();
+    let mut file = None;
+    let (_tmp, _gfx, _tp, l) = start_with("link-old", |dir, l| {
+        file = Some(write_pending_open(dir, std::time::Duration::from_secs(2 * 24 * 60 * 60)));
+        l.set_transport(net.clone());
+    });
+    assert!(!file.expect("file").exists(), "removed even when not opened");
+    assert!(l.opening_link.borrow().is_none());
+    assert!(net.urls().is_empty());
+
+    let mut file = None;
+    let (_tmp, _gfx, _tp, l) = start_with("link-arg", |dir, l| {
+        file = Some(write_pending_open(dir, std::time::Duration::from_secs(60)));
+        *l.start_uri.borrow_mut() = Some("pob://pobbin/other".into());
+    });
+    assert!(file.expect("file").exists());
+    assert_eq!(l.opening_link.borrow().as_deref(), Some("pob://pobbin/other"));
 }
