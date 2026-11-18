@@ -14,13 +14,16 @@ mod fields;
 mod gems;
 mod globals;
 mod item_bases;
+mod item_mods;
 mod js;
 mod mod_cache;
 mod mod_parser;
+mod mod_tables;
 mod mods;
 mod rules;
 mod shape;
 mod skills;
+mod uniques;
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -49,6 +52,34 @@ const CONVERTERS: &[(&str, Converter)] = &[
     ("foulborn-map", actors::foulborn_map),
     ("abyss-notable-names", actors::abyss_notable_names),
     ("node-id-list", actors::node_id_list),
+    ("item-mods/Explicit", item_mods::explicit),
+    ("item-mods/ItemExclusive", item_mods::item_exclusive),
+    ("item-mods/Corrupted", item_mods::corrupted),
+    ("item-mods/Delve", item_mods::delve),
+    ("item-mods/Synthesis", item_mods::synthesis),
+    ("item-mods/Scourge", item_mods::scourge),
+    ("item-mods/Eldritch", item_mods::eldritch),
+    ("item-mods/Mercenary", item_mods::mercenary),
+    ("item-mods/Flask", item_mods::flask),
+    ("item-mods/Tincture", item_mods::tincture),
+    ("item-mods/Graft", item_mods::graft),
+    ("item-mods/Jewel", item_mods::jewel),
+    ("item-mods/JewelAbyss", item_mods::jewel_abyss),
+    ("item-mods/JewelCluster", item_mods::jewel_cluster),
+    ("item-mods/JewelCharm", item_mods::jewel_charm),
+    ("item-mods/Foulborn", item_mods::foulborn),
+    ("item-mods/WatchersEye", item_mods::watchers_eye),
+    ("item-mods/_index", item_mods::index),
+    ("master-mods", mod_tables::master_mods),
+    ("veiled-mods", mod_tables::veiled_mods),
+    ("essences", mod_tables::essences),
+    ("necropolis-mods", mod_tables::necropolis_mods),
+    ("enchantments", mod_tables::enchantments),
+    ("mod-scalability", mod_tables::mod_scalability),
+    ("uniques", uniques::uniques),
+    ("rares", uniques::rares),
+    ("viscera", uniques::viscera),
+    ("rare-like-uniques", uniques::rare_like_uniques),
 ];
 
 fn arg(name: &str) -> Option<String> {
@@ -102,9 +133,15 @@ fn run_convert(pob: &Path, dump_file: &Path, out: &Path, only: Option<&str>) -> 
         }
         let t = Instant::now();
         let v = f(&mut c).map_err(|e| format!("[{id}] {e}"))?;
+        if matches!(v, js::J::Null) {
+            eprintln!("{id}: not in this upstream, no file");
+            continue;
+        }
         let text = js::stringify(&v);
         check_reader(id, &text)?;
-        std::fs::write(out.join(format!("{id}.json")), &text).map_err(|e| e.to_string())?;
+        let file = out.join(format!("{id}.json"));
+        std::fs::create_dir_all(file.parent().unwrap()).map_err(|e| e.to_string())?;
+        std::fs::write(file, &text).map_err(|e| e.to_string())?;
         eprintln!("{id}: {} bytes in {:.2} s", text.len(), t.elapsed().as_secs_f64());
     }
     print!("{}", c.report());
@@ -125,7 +162,8 @@ fn check_reader(id: &str, text: &str) -> Result<(), String> {
 
 fn main() {
     let cmd = std::env::args().nth(1).unwrap_or_default();
-    let pob = PathBuf::from(arg("--pob").expect("--pob <pobRoot>"));
+    // absolute: the dump runs with `src/` as its working directory and finds `runtime/lua51.dll` through PATH
+    let pob = std::path::absolute(PathBuf::from(arg("--pob").expect("--pob <pobRoot>"))).expect("--pob: absolute path");
     let dump_file = PathBuf::from(arg("--dump").expect("--dump <file>"));
     let r = match cmd.as_str() {
         "dump" => run_dump(&pob, &dump_file),

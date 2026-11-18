@@ -22,6 +22,7 @@
 --   data      `data` right after Modules/Data.lua returned (before anything else touches it, D2)
 --   after     a table of globals after the full boot (modLib, ModFlag, ...) -- shares ids with `data`
 --   modCache  Data/ModCache.lua loaded standalone (what is on disk, not what the boot parsed)
+--   dataAfter `data` after the full boot, in its own id space (no `@id` into the roots above; ids keep counting up)
 
 local OUT = assert(os.getenv("POB_DUMP_OUT"), "POB_DUMP_OUT not set")
 package.path = "./?.lua;../runtime/lua/?.lua;../runtime/lua/?/init.lua"
@@ -299,5 +300,9 @@ root("after", {
 	launch = { versionNumber = launch and launch.versionNumber },
 })
 root("modCache", assert(orig_loadfile("Data/ModCache.lua"))())
+-- `data` again, as the full boot left it (loading the latest tree adds tree-dependent uniques, MINEFIELD D7). A fresh id
+-- space: every table is written with its post-boot content instead of an `@id` to the pre-boot one written above.
+ids, emitted = {}, {}
+root("dataAfter", data)
 file:close()
 return s_format("ok %d tables, %d functions, %d refs", stats.tables, stats.functions, stats.refs)
