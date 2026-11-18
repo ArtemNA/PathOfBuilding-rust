@@ -113,6 +113,8 @@ fn run_script(pob: &Path, out: &Path, script: &str) -> Result<(), String> {
         .arg(&script)
         .current_dir(pob.join("src"))
         .env("PATH", path)
+        // the upstream's own LuaJIT and no other: luajit-win stops if the DLL it loaded is another file
+        .env("POB_LUA51_EXPECT", runtime.join("lua51.dll"))
         .env("POB_DUMP_OUT", out)
         .env_remove("CI")
         .env_remove("REGENERATE_MOD_CACHE")

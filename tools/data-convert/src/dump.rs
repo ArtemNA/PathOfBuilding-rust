@@ -91,7 +91,7 @@ impl Dump {
         &self.funcs[id as usize]
     }
     pub fn root(&self, name: &str) -> &V {
-        &self.roots.iter().find(|(n, _)| n == name).unwrap_or_else(|| panic!("dump: no root '{name}'")).1
+        &self.roots.iter().find(|(n, _)| n == name).unwrap_or_else(|| panic!("dump: no root '{name}' -- the dump file is older than lua/dump*.lua: run `data-convert dump` (or `all`) again")).1
     }
     /// `root.a.b.c` through string keys.
     pub fn path(&self, root: &str, keys: &[&str]) -> Option<&V> {
