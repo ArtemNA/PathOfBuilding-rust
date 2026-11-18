@@ -1,7 +1,8 @@
 //! Which `stats` keys the oracle candidate may claim (R4-ARCH gate (b), CALC-ARCH §9; pob-ts `src/api/allowlist.ts`).
 //!
 //! The lists are MEASURED, not chosen: a key is in [`ALLOWLIST`] iff its value is `ok` (round4, O3) against
-//! `pob-ts/tools/oracle/goldens/*.json` on EVERY one of the six golden builds that produces it, and is never `extra`.
+//! the goldens (`builds/corpus/goldens/*.json`, LuaJIT since R-INDEPENDENT-UPDATE A3; pob-ts' wasm goldens before) on EVERY one
+//! of the six golden builds that produces it, and is never `extra`.
 //! `tests/allowlist.rs` re-derives exactly that through `pob_golden::compare_stats`, so a key that starts or stops matching
 //! fails there. [`EXCLUDED`] is the other half: every key the engine writes that failed the measurement, with the gap
 //! that explains it (root causes: `item-miss`, `cluster`, `tree-jewel`, `gems`, `skills`, `reservation`, `guards`,

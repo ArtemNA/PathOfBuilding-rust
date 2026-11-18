@@ -1,6 +1,6 @@
 {
   "format": 1,
-  "producer": {"image":"ghcr.io/pathofbuildingcommunity/pathofbuilding-tests:latest","luajit":"LuaJIT 2.1.1784580905","pobSha":"07fa089bf08f6a089004c5c39192d12d210a13ac","generator":"pob-ts test/lua/corpus.ts @ 70911c1"},
+  "producer": {"image":"ghcr.io/pathofbuildingcommunity/pathofbuilding-tests:latest","luajit":"LuaJIT 2.1.1784580905","pobSha":"a41fec6c20f822a658ae5df1273e8c69d5969bac","generator":"tools/lua-corpus/export-numeric.ts (corpora: tools/oracle/numeric-corpus.ts)"},
   "tostring": [
     ["0","0"],
     ["-0.0","-0"],

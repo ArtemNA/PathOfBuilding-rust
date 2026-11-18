@@ -15,13 +15,13 @@ import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-const P = 'file:///C:/pob-work/pob-ts'
-const { luajitEval } = await import(`${P}/tools/oracle/luajit-eval.ts`)
-const { dockerAvailable } = await import(`${P}/tools/oracle/luajit.ts`)
-const { resolveRoots } = await import(`${P}/tools/oracle/paths.ts`)
+// the LuaJIT harness of this repo (tools/oracle; until R-INDEPENDENT-UPDATE A4 pob-ts' copy of it)
+const { luajitEval } = await import('../../../../tools/oracle/luajit-eval.ts')
+const { dockerAvailable } = await import('../../../../tools/oracle/luajit.ts')
+const { resolveRoots } = await import('../../../../tools/oracle/paths.ts')
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../../../..')
-const OUT = resolve(ROOT, 'crates/pob-lua/tests/fixtures/luajit-format-edges.json')
+const OUT = process.argv.includes('--out') ? resolve(process.argv[process.argv.indexOf('--out') + 1] ?? '') : resolve(ROOT, 'crates/pob-lua/tests/fixtures/luajit-format-edges.json')
 // The junction-free main checkout holds the sandbox; a worktree has neither the runtime nor the built tool.
 const MAIN = process.env.POB_RUST_MAIN ?? 'C:/pob-work/pob-rust'
 const RUNTIME = resolve(MAIN, 'tools/sg-oracle/runtime')

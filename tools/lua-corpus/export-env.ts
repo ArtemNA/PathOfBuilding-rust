@@ -1,45 +1,37 @@
-// R3.1: fixtures for the R3 gate -- the four pob-ts probes (tree / items+applyRange / config / fresh initEnv) dumped for the 6 golden
-// builds from (a) REAL LuaJIT (docker, PoB boot + loadBuildFromXML in the chunk) and (b) pob-ts, plus a self-check that replays the
-// classification of the pob-ts oracle tests on LuaJIT <-> pob-ts, plus the perf "XML -> env". Truth = LuaJIT.
+// R3.1: fixtures for the R3 gate -- the four probes (tree / items+applyRange / config / fresh initEnv) of pob-ts' oracle tests dumped
+// for the 6 golden builds from REAL LuaJIT (docker, PoB boot + loadBuildFromXML in the chunk), plus the perf "XML -> env" of LuaJIT.
+// Truth = LuaJIT. Until R-INDEPENDENT-UPDATE A4 this probe also ran pob-ts' TS halves (`<build>.pobts.json` + a self-check); pob-ts
+// is no longer a comparison subject, and nothing here imports it: the Lua probes were copied verbatim from pob-ts tests (file:line
+// next to each, pob-ts commit 70911c1b629cfe6887795cb40356c6d298c1922e), the applyRange inputs are the `{range:}` lines of the
+// golden XMLs (read as pob-ts `loadBuildXml` + test/items/oracle.test.ts:49-61 did) + the 23 synthetic cases of pob-ts
+// test/items/cases.ts (copied below).
 // Run from the pob-rust root (Node 24):
-//   node tools/lua-corpus/export-env.ts          -> crates/pob-calc/tests/fixtures/<build>.{luajit,pobts}.json (+ self-check report on stdout)
+//   node tools/lua-corpus/export-env.ts          -> crates/pob-calc/tests/fixtures/<build>.luajit.json
 //   node tools/lua-corpus/export-env.ts perf     -> tools/.scratch/perf-env.json
-// Lua probes are the pob-ts test strings VERBATIM (file:line next to each), wrapped in a function; TS halves are the tests' TS code.
-// Only normalisation: `function: 0x<heap address>` (a JewelFunc mod) -> `function: <addr>` on BOTH sides (initEnv-oracle.test.ts:178).
+//   `--out <dir>`: write the fixtures there instead (a re-take to compare)
+// Only normalisation: `function: 0x<heap address>` (a JewelFunc mod) -> `function: <addr>` (initEnv-oracle.test.ts:178).
 import { POB as UPSTREAM_POB } from '../upstream.ts'
 import { execFileSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, resolve } from 'node:path'
-import { fileURLToPath, pathToFileURL } from 'node:url'
-import { POBTS } from '../upstream.ts'
-const P = `file:///${POBTS}` // pob-ts code under test (not the harness)
-const T0 = performance.now()
-const { activeSpec, loadBuildXml } = await import(`${P}/src/build/index.ts`)
-const { applyRange } = await import(`${P}/src/items/applyRange.ts`)
-const { Item } = await import(`${P}/src/items/item.ts`)
-const { buildConfigModLists, configStateFromBuild } = await import(`${P}/src/config/index.ts`)
-const { initEnv } = await import(`${P}/src/calc/initEnv.ts`)
-const { formatG } = await import(`${P}/src/lua/index.ts`)
-const { formatSourceMod } = await import(`${P}/src/mods/format.ts`)
-const { parseModStats, resetParseModStats } = await import(`${P}/src/mods/parseMod.ts`)
-const { PassiveSpec, loadSpec } = await import(`${P}/src/tree/spec.ts`)
-const { loadPassiveTree } = await import(`${P}/src/tree/tree.ts`)
-const { modCacheEntry } = await import(`${P}/src/data/modCache.ts`)
-const { APPLY_RANGE_CASES } = await import(`${P}/test/items/cases.ts`)
+import { fileURLToPath } from 'node:url'
 const { GOLDEN_BUILDS, REPO_ROOT, resolveRoots } = await import('../oracle/paths.ts')
-const IMPORT_MS = performance.now() - T0
 type Rec = Record<string, any> // eslint-disable-line
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
-const FIX = resolve(ROOT, 'crates/pob-calc/tests/fixtures')
+const FIX = (() => {
+  const i = process.argv.indexOf('--out')
+  if (i < 0) return resolve(ROOT, 'crates/pob-calc/tests/fixtures')
+  const d = resolve(process.argv[i + 1] ?? '')
+  process.argv.splice(i, 2)
+  return d
+})()
 const SCRATCH = resolve(ROOT, 'tools/.scratch')
-const POB_TS = POBTS
 const MAX_BYTES = 1_450_000
 const git = (dir: string): string => execFileSync('git', ['-C', dir, 'rev-parse', '--short', 'HEAD'], { encoding: 'utf8' }).trim()
 const roots = resolveRoots()
-const tree = loadPassiveTree('3_13')
 const { LUAJIT_IMAGE } = await import('../oracle/luajit.ts')
 // Timeless-jewel LUTs: HeadlessWrapper's Inflate is a stub, so (like luajit-dump17.lua:35-59, pob-ts luajit.ts) the .bin comes from a mounted
 // dir via an io.open/NewFileSearch shim. pob-ts' luajitEval has no such mount, hence this local docker twin of it. LUT dir stays in tools/.scratch.
@@ -332,179 +324,6 @@ function luajitChunk(xml: Buffer, name: string, cases: RangeCase[]): string {
     'return { jit = jit.version, tree = tree, items = items, applyRange = applyRange, config = config, env = pEnv() }\n'
 }
 
-// --- the pob-ts halves (the TS code of the same tests) -----------------------------------------------------------
-const rawf = (n: number): string => formatG(n, 17)
-const N = (v: unknown): unknown => (v === undefined || v === null ? undefined : typeof v === 'number' ? rawf(v) : typeof v === 'boolean' ? v : String(v))
-const fmtTs = (list: readonly Rec[] | undefined): string[] | undefined =>
-  list === undefined ? undefined : list.map((m) => formatSourceMod(m) + '|' + (m.sourceSlot ?? 'nil'))
-function tblTs(t: Rec | undefined): Rec | undefined {
-  if (t === undefined) return undefined
-  const out: Rec = {}
-  for (const [k, v] of Object.entries(t)) {
-    if (v === undefined) continue
-    if (Array.isArray(v)) {
-      const inner: Rec = {}
-      v.forEach((x, i) => { if (x !== undefined) inner[String(i + 1)] = N(x) })
-      out[k] = inner
-    } else if (v !== null && typeof v === 'object') {
-      const inner: Rec = {}
-      for (const [k2, v2] of Object.entries(v as Rec)) if (v2 !== undefined) inner[k2] = N(v2)
-      out[k] = inner
-    } else out[k] = N(v)
-  }
-  return out
-}
-function linesTs(list: Rec[] | undefined): unknown[] | undefined {
-  if (list === undefined) return undefined
-  return list.map((ml) => {
-    const variants = ml.variantList === undefined ? [] : Object.keys(ml.variantList).map(Number).sort((a, b) => a - b)
-    return {
-      line: ml.line, mods: fmtTs(ml.modList), extra: ml.extra, range: N(ml.range), valueScalar: N(ml.valueScalar), corruptedRange: N(ml.corruptedRange),
-      modTags: ml.modTags.join(','), modGroup: ml.modGroup, showSlider: ml.showSlider,
-      flags: LINE_FLAGS.filter((f) => ml[f] === true).join(','), variantList: variants.length > 0 ? variants.join(',') : undefined,
-    }
-  })
-}
-const itemOpts = (im: Rec): Rec => ({
-  id: im.id, variant: im.variant, variantAlt: im.variantAlt, variantAlt2: im.variantAlt2, variantAlt3: im.variantAlt3,
-  variantAlt4: im.variantAlt4, variantAlt5: im.variantAlt5, modRanges: im.modRanges,
-})
-/** test/items/oracle.test.ts:303-362; `missesByItem` records each item's ModCache misses. */
-function tsItems(model: Rec, missesByItem: Record<string, string[]>): Rec {
-  const out: Rec = {}
-  for (const im of model.items) {
-    resetParseModStats()
-    const item = Item.parse(im.raw, itemOpts(im))
-    missesByItem[String(im.id)] = parseModStats().missLines
-    if (item.base === undefined) continue
-    let slot: Rec | undefined
-    if (item.slotModList !== undefined) {
-      slot = {}
-      item.slotModList.forEach((l: Rec[] | undefined, i: number) => { if (l !== undefined) slot![String(i)] = fmtTs(l) })
-    }
-    out[String(im.id)] = {
-      name: item.name, title: item.title, baseName: item.baseName, type: item.type, rarity: item.rarity,
-      namePrefix: item.namePrefix, nameSuffix: item.nameSuffix,
-      quality: N(item.quality), itemLevel: N(item.itemLevel), corrupted: item.corrupted === true,
-      split: item.split === true, mirrored: item.mirrored === true, fractured: item.fractured === true, synthesised: item.synthesised === true,
-      crafted: item.crafted === true, advancedCopy: item.advancedCopy, isUnique: item.isUnique, vestigial: item.vestigial,
-      foulborn: item.foulborn, hasModTags: item.hasModTags === true, veiled: item.veiled === true,
-      influences: INFLUENCES.filter((k) => item.influence[k] === true).join(','),
-      uniqueID: item.uniqueID, league: item.league, classRestriction: item.classRestriction,
-      limit: N(item.limit), jewelRadiusIndex: N(item.jewelRadiusIndex), jewelRadiusLabel: item.jewelRadiusLabel,
-      catalyst: N(item.catalyst), catalystQuality: N(item.catalystQuality), talismanTier: N(item.talismanTier),
-      abyssalSocketCount: N(item.abyssalSocketCount), selectableSocketCount: N(item.selectableSocketCount),
-      defaultSocketColor: item.defaultSocketColor, socketedJewelEffectModifier: N(item.socketedJewelEffectModifier),
-      craftedQuality: N(item.craftedQuality), corruptImplicitCount: N(item.corruptImplicitCount),
-      modSource: item.modSource, clusterJewelSkill: item.clusterJewelSkill, clusterJewelNodeCount: N(item.clusterJewelNodeCount),
-      variant: N(item.variant), variantAlt: N(item.variantAlt), selectedVersion: N(item.selectedVersion), usesVariantGroups: item.usesVariantGroups,
-      requirements: tblTs(item.requirements), sockets: item.sockets.map((s: Rec) => s.color + String(s.group)).join(' '),
-      armourData: tblTs(item.armourData), weaponData: tblTs(item.weaponData), flaskData: tblTs(item.flaskData),
-      tinctureData: tblTs(item.tinctureData), jewelData: tblTs(item.jewelData),
-      grantedSkills: item.grantedSkills
-        .map((s: Rec) => [s.skillId, s.level, s.triggered, s.source, s.noSupports, s.triggerChance].map((x) => (x === undefined ? 'nil' : String(x))).join('|'))
-        .join('; '),
-      modList: fmtTs(item.modList), slotModList: slot, baseModList: fmtTs(item.baseModList?.mods), buffModList: fmtTs(item.buffModList),
-      ...Object.fromEntries(LINE_LISTS.map((l) => [l, linesTs(item[l])])),
-      rangeLineCount: N(item.rangeLineList.length),
-      findModifierSubstring: FIND_SUBSTRING_PROBES.map(([s, sl]) => (item.FindModifierSubstring(s, sl) ? '1' : '0')).join(''),
-    }
-  }
-  return out
-}
-/** test/items/oracle.test.ts:49-61 -- every `{range:X}` mod line of a build. */
-function rangeLinesOf(model: Rec): RangeCase[] {
-  const out: RangeCase[] = []
-  for (const item of model.items) {
-    for (const raw of item.raw.split('\n')) {
-      const line = raw.trim()
-      const r = /\{range:([^}]+)\}/.exec(line)
-      if (r !== null) out.push({ line: line.replace(/\{[A-Za-z]*:?[^}]*\}/g, '').replace(/ \([a-z]+\)/g, ''), range: Number(r[1]) })
-    }
-  }
-  return out
-}
-function specFor(build: Rec): Rec {
-  const model = activeSpec(build)
-  const spec = new PassiveSpec(tree)
-  spec.allocOrder = 'idAsc'
-  spec.importFromNodeList(model.classId, model.ascendClassId, model.secondaryAscendClassId, model.nodes, model.masteryEffects)
-  return spec
-}
-function tsTree(model: Rec): { dump: Rec; spec: Rec } {
-  const spec = specFor(model)
-  const alloc: Rec = {}
-  for (const [id, n] of spec.allocNodes) {
-    alloc[String(id)] = { type: n.type, dn: n.dn, mods: n.modList.mods.map(formatSourceMod), ks: n.keystoneMod === undefined ? undefined : formatSourceMod(n.keystoneMod) }
-  }
-  const keystones: Rec = {}
-  for (const [dn, n] of tree.keystoneMap) keystones[dn] = n.modList.mods.map(formatSourceMod)
-  const notables: Rec = {}
-  for (const [dn, n] of tree.notableMap) notables[dn] = n.id
-  const nodeTypes: Rec = {}
-  const coords: Rec = {}
-  for (const n of tree.nodes.values()) {
-    nodeTypes[n.type] = (nodeTypes[n.type] ?? 0) + 1
-    if (n.x !== undefined) coords[String(n.id)] = rawf(n.x) + '|' + rawf(n.y)
-  }
-  const dump = {
-    alloc, keystones, notables, nodeTypes, coords, nTree: tree.nodes.size, nSpec: spec.nodes.size, radius: undefined, // P5: no nodesInRadius
-    counts: [spec.allocatedNotableCount, spec.allocatedKeystoneCount, spec.allocatedMasteryCount, spec.allocatedMasteryTypeCount],
-    className: spec.curClassName, ascendName: spec.curAscendClassName,
-  }
-  return { dump, spec }
-}
-function tsConfig(model: Rec): Rec {
-  const state = configStateFromBuild(model)
-  const result = buildConfigModLists(state, { characterLevel: model.level })
-  return {
-    dump: {
-      mods: result.modList.mods.map(formatSourceMod), enemyMods: result.enemyModList.mods.map(formatSourceMod), enemyLevel: state.enemyLevel,
-      input: state.input, placeholder: state.placeholder, characterLevel: model.level, buildPantheonMajorGod: model.pantheonMajorGod,
-      inputPantheonMajorGod: state.input['pantheonMajorGod'], inputPantheonMinorGod: state.input['pantheonMinorGod'], inputBandit: state.input['bandit'],
-    },
-    result,
-  }
-}
-/** The TS side of the initEnv probe: parse items (recording misses), loadSpec, a fresh initEnv, dumped in the probe's shape. */
-function tsEnvRun(model: Rec): { env: Rec; spec: Rec; items: Map<number, Rec>; missItems: Set<number> } {
-  const items = new Map<number, Rec>()
-  const missItems = new Set<number>()
-  for (const im of model.items) {
-    resetParseModStats()
-    const item = Item.parse(im.raw, itemOpts(im))
-    if (parseModStats().missLines.length > 0) missItems.add(im.id)
-    if (item.base !== undefined) items.set(im.id, item)
-  }
-  const spec = loadSpec(activeSpec(model))
-  return { env: initEnv(model, { spec, items }), spec, items, missItems }
-}
-function tsEnvDump(env: Rec, model: Rec): Rec {
-  const db = (d: Rec): Rec => {
-    const mods: Rec = {}
-    const srcs: Rec = {}
-    for (const [name, bucket] of d.mods as Map<string, Rec[]>) { mods[name] = bucket.map(formatSourceMod); srcs[name] = bucket.map((m) => m.source ?? '') }
-    const multipliers: Rec = {}
-    for (const [k, v] of Object.entries(d.multipliers)) multipliers[k] = typeof v === 'number' ? rawf(v) : v
-    return { mods, srcs, conditions: { ...d.conditions }, multipliers }
-  }
-  const wd = (w: Rec | undefined): Rec | undefined => {
-    if (w === undefined) return undefined
-    const t: Rec = {}
-    for (const [k, v] of Object.entries(w)) if (v !== undefined) t[k] = typeof v === 'number' ? rawf(v) : v
-    return t
-  }
-  const itemSlots: Rec = {}
-  for (const [k, it] of Object.entries(env.player.itemList as Rec)) itemSlots[k] = (it as Rec).name
-  return {
-    modDB: db(env.modDB), enemyDB: db(env.enemyDB), enemyLevel: env.enemyLevel, itemSlots, alloc: [...env.allocNodes.keys()].sort((a: number, b: number) => a - b),
-    weapon1: wd(env.player.weaponData1), weapon2: wd(env.player.weaponData2), mainSocketGroup: env.mainSocketGroup,
-    orderedSlots: env.orderedSlots.map((s: Rec) => s.slotName), keystonesAdded: Object.keys(env.keystonesAdded).sort(),
-    grantedPassives: [...env.grantedPassives].sort((a: number, b: number) => a - b), grantedSkills: env.grantedSkills.length,
-    reqItems: env.requirementsTableItems.length, reqGems: env.requirementsTableGems.length, initialNodeMods: env.initialNodeModDB.mods.length,
-    classId: env.classId, level: model.level, notableCount: env.spec.allocatedNotableCount, keystoneCount: env.spec.allocatedKeystoneCount,
-  }
-}
 
 // --- deterministic JSON ------------------------------------------------------------------------------------------
 const byteOrder = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0)
@@ -541,301 +360,73 @@ function writeFixture(slug: string, kind: string, head: Rec, probes: Rec): { fil
   })
 }
 
-// --- self-check: the classification of the four pob-ts oracle tests, replayed on LuaJIT <-> pob-ts -------------------
-const uncachedLines = (id: number): string[] => (tree.nodes.get(id)?.sd ?? []).filter((l: string) => modCacheEntry(l) === undefined)
-const numAsc = (a: number, b: number): number => a - b
 
-/** test/tree/spec.test.ts:218-264 -- the build-independent half (once). */
-function selfTreeGlobal(lj: Rec): Rec {
-  const v: string[] = []
-  const tsTypes: Rec = {}
-  for (const n of tree.nodes.values()) tsTypes[n.type] = (tsTypes[n.type] ?? 0) + 1
-  if (lj.nTree !== tree.nodes.size) v.push(`nTree ${tree.nodes.size} != ${lj.nTree}`)
-  if (ser(tsTypes) !== ser(lj.nodeTypes)) v.push('nodeTypes differ')
-  const notableDiff = Object.entries(lj.notables).filter(([dn, id]) => tree.notableMap.get(dn)?.id !== id).length
-  let same = 0
-  let ulp = 0
-  let maxDelta = 0
-  for (const [idStr, xy] of Object.entries(lj.coords as Rec)) {
-    const node = tree.nodes.get(Number(idStr))
-    const [ox, oy] = (xy as string).split('|').map(Number)
-    const d = Math.max(Math.abs(node.x - ox!), Math.abs(node.y - oy!))
-    if (d === 0) same++
-    else { ulp++; maxDelta = Math.max(maxDelta, d) }
-  }
-  const names = Object.keys(lj.keystones)
-  const missing = names.filter((dn) => !tree.keystoneMap.has(dn))
-  let ksSame = 0
-  let ksMiss = 0
-  let ksOther = 0
-  for (const dn of names) {
-    const node = tree.keystoneMap.get(dn)
-    if (node === undefined) continue
-    if (ser(node.modList.mods.map(formatSourceMod)) === ser(lj.keystones[dn])) ksSame++
-    else if (uncachedLines(node.id).length > 0) ksMiss++
-    else ksOther++
-  }
-  if (notableDiff + ksOther > 0) v.push(`notableDiff ${notableDiff}, keystones unexplained ${ksOther}`)
-  return { violations: v, coords: { bitIdentical: same, total: same + ulp, maxAbsDelta: maxDelta }, keystoneMap: { tsKeys: tree.keystoneMap.size, luajitKeys: names.length, luajitOnly: missing.length, same: ksSame, cacheMiss: ksMiss, unexplained: ksOther }, notableDiff }
+// --- applyRange inputs -----------------------------------------------------------------------------------------
+// pob-ts test/items/cases.ts APPLY_RANGE_CASES (P4.3a), without `expected` (that was the wasm oracle's answer; LuaJIT answers here).
+const APPLY_RANGE_CASES: RangeCase[] = [
+  { line: '(40-50)% increased Physical Damage', range: 0.5 },
+  { line: '(40-50)% increased Physical Damage', range: 1 },
+  { line: 'Adds (16-22) to (40-45) Physical Damage', range: 0.5 },
+  { line: '(8-12)% increased Attack Speed', range: 0.5 },
+  { line: '(8-12)% increased Critical Strike Chance', range: 0.5 },
+  { line: '(200-250)% increased Physical Damage', range: 0.5 },
+  { line: 'Critical Strike Chance is (20-30)% for Hits with this Weapon', range: 0.5 },
+  { line: '(10-15)% increased Energy Shield Recharge Rate', range: 0.37 },
+  { line: '-(10-15)% increased Energy Shield Recharge Rate', range: 1 },
+  { line: '(-10--5)% increased Energy Shield Recharge Rate', range: 0 },
+  { line: '-15% more Attack Speed', range: 1 },
+  { line: '+(-10-15)% to Fire Resistance', range: 0 },
+  { line: '+(-10-15)% to Fire Resistance', range: 1 },
+  { line: 'Regenerate (60-120) Life per minute', range: 0.5 },
+  { line: '(0.4-0.6)% of Physical Attack Damage Leeched as Life', range: 0.5 },
+  { line: '(1.5-2.5)% of Physical Attack Damage Leeched as Mana', range: 0.37 },
+  { line: '+(0.2-0.4)% to Critical Strike Chance', range: 0.5 },
+  { line: 'You have no Intelligence', range: 0.5 },
+  { line: '(8-12)% increased Attack Speed', range: 0.5, valueScalar: 1.2 },
+  { line: '(8-12)% increased Attack Speed', range: 0.5, baseValueScalar: 1.2 },
+  { line: '+(20-30) to maximum Life', range: 0.5, valueScalar: 1.2, baseValueScalar: 1.1 },
+  { line: '(15-25)% increased Cooldown Recovery Rate', range: 0.5, valueScalar: 1.2 },
+  { line: 'Adds (1-2) to (3-4) Fire Damage to Attacks', range: 0.25 },
+]
+/** runtime/lua/xml.lua:9-15 `decodeContent`: the five entities, any other `&...;` -> "" (pob-ts src/build/xml.ts, MINEFIELD D22). */
+const ENT: Record<string, string> = { quot: '"', apos: "'", lt: '<', gt: '>', amp: '&' }
+const decodeContent = (s: string): string => s.replace(/&(.*?);/g, (_, e: string) => ENT[e] ?? '')
+/** The text of every `<Item>` of `<Items>`, in XML order (child elements such as `<ModRange/>` and comments dropped). */
+function itemTexts(xml: string): string[] {
+  const items = /<Items\b[^>]*>([\s\S]*?)<\/Items>/.exec(xml.replace(/<!--[\s\S]*?-->/g, ''))?.[1] ?? ''
+  return [...items.matchAll(/<Item\b[^>]*?(?:\/>|>([\s\S]*?)<\/Item>)/g)].map((m) => decodeContent((m[1] ?? '').replace(/<[^>]*>/g, '')))
 }
-/** test/tree/spec.test.ts:267-331. */
-function selfTree(lj: Rec, ts: Rec, spec: Rec, name: string): Rec {
-  const v: string[] = []
-  const ljIds = Object.keys(lj.alloc).map(Number).sort(numAsc)
-  const tsIds = [...spec.allocNodes.keys()].sort(numAsc) as number[]
-  const tsSet = new Set(tsIds)
-  const onlyTs = tsIds.filter((id) => !(id in lj.alloc))
-  const onlyLj = ljIds.filter((id) => !tsSet.has(id))
-  const cluster = onlyLj.filter((id) => id >= 65536)
-  const expansion = onlyLj.filter((id) => id < 65536 && tree.nodes.has(id) && !spec.nodes.has(id))
-  const unexplainedIds = onlyLj.filter((id) => !cluster.includes(id) && !expansion.includes(id))
-  if (onlyTs.length + unexplainedIds.length > 0) v.push(`allocNodes: ts-only ${onlyTs.length}, luajit-only unexplained ${unexplainedIds.length}`)
-  const radiusAll = new Set<number>(name.includes('Lethal Pride') ? ((lj.radius ?? []) as number[][]).flat() : [])
-  let same = 0
-  let cacheMiss = 0
-  let timeless = 0
-  const timelessIds: number[] = []
-  for (const id of tsIds) {
-    const o = lj.alloc[String(id)]
-    const node = spec.allocNodes.get(id)
-    if (o === undefined) continue
-    if (node.type !== o.type || node.dn !== o.dn) v.push(`node ${id}: type/dn`)
-    if ((node.keystoneMod === undefined ? undefined : formatSourceMod(node.keystoneMod)) !== (o.ks ?? undefined)) v.push(`node ${id}: keystoneMod`)
-    const mods = node.modList.mods.map(formatSourceMod)
-    if (ser(mods) === ser(o.mods)) same++
-    else if (uncachedLines(id).length > 0) cacheMiss++
-    else if (radiusAll.has(id)) { timeless++; timelessIds.push(id) }
-    else v.push(`node ${id} ${node.dn}: mods differ, unexplained`)
-  }
-  if (spec.curClassName !== lj.className || spec.curAscendClassName !== lj.ascendName) v.push('class/ascendancy name')
-  const counts = [spec.allocatedNotableCount, spec.allocatedKeystoneCount, spec.allocatedMasteryCount, spec.allocatedMasteryTypeCount]
-  if (cluster.length === 0 && expansion.length === 0) {
-    if (ser(counts) !== ser(lj.counts)) v.push(`counters ${counts} != ${lj.counts}`)
-    if (spec.nodes.size !== lj.nSpec) v.push('spec.nodes size')
-  } else {
-    counts.forEach((c, i) => { if (c > lj.counts[i]) v.push(`counter ${i} ts ${c} > luajit ${lj.counts[i]}`) })
-    if (spec.nodes.size >= lj.nSpec) v.push('spec.nodes not smaller')
-  }
-  let outside = 0
-  if (name.includes('Lethal Pride')) { const r3 = new Set<number>(lj.radius?.[2] ?? []); outside = timelessIds.filter((id) => !r3.has(id)).length; if (outside > 0) v.push('timeless outside radius') }
-  return { violations: v, alloc: [tsIds.length, ljIds.length], clusterIds: cluster.length, expansionSockets: expansion.length, modsIdentical: same, 'node-miss': cacheMiss, 'tree-jewel': timeless, timelessOutsideRadius: outside, counters: [counts, lj.counts], specNodes: [spec.nodes.size, lj.nSpec] }
-}
-
-// test/items/oracle.test.ts:94-104 + 366-400 (norm / diff) + 449-510
-const MISS_IMMUNE = ['name', 'title', 'baseName', 'type', 'rarity', 'namePrefix', 'nameSuffix', 'itemLevel', 'corrupted', 'split', 'mirrored', 'fractured', 'synthesised', 'crafted', 'advancedCopy', 'isUnique', 'vestigial', 'foulborn', 'veiled', 'influences', 'uniqueID', 'league', 'classRestriction', 'limit', 'jewelRadiusIndex', 'jewelRadiusLabel', 'catalyst', 'catalystQuality', 'talismanTier', 'defaultSocketColor', 'variant', 'variantAlt', 'selectedVersion', 'usesVariantGroups', 'modSource', 'findModifierSubstring']
-const MISS_IMMUNE_LINE = ['modTags', 'modGroup', 'flags', 'variantList', 'corruptedRange']
-function norm(v: any): any { // eslint-disable-line
-  if (v === undefined || v === null) return undefined
-  if (Array.isArray(v)) return v.length === 0 ? '[]' : v.map(norm)
-  if (typeof v === 'object') {
-    const out: Rec = {}
-    for (const k of Object.keys(v).sort()) { const n = norm(v[k]); if (n !== undefined) out[k] = n }
-    return Object.keys(out).length === 0 ? '[]' : out
-  }
-  return v === '' ? undefined : v
-}
-function diff(path: string, a: unknown, b: unknown, out: string[]): void {
-  const na = norm(a)
-  const nb = norm(b)
-  if (typeof na !== 'object' || typeof nb !== 'object' || na === null || nb === null) { if (JSON.stringify(na) !== JSON.stringify(nb)) out.push(path); return }
-  for (const k of [...new Set([...Object.keys(na), ...Object.keys(nb)])].sort()) diff(`${path}.${k}`, (na as Rec)[k], (nb as Rec)[k], out)
-}
-function selfItems(lj: Rec, ts: Rec, misses: Record<string, string[]>): Rec {
-  const r = { items: 0, lines: 0, clean: 0, withMiss: 0, missLines: new Set<string>(), violations: [] as string[] }
-  if (ser(Object.keys(ts).sort()) !== ser(Object.keys(lj).sort())) r.violations.push('item ids differ')
-  for (const id of Object.keys(lj).sort((a, b) => Number(a) - Number(b))) {
-    const l = lj[id]
-    const t = ts[id] ?? {}
-    r.items++
-    for (const list of LINE_LISTS) r.lines += (l[list] ?? []).length
-    const differences: string[] = []
-    diff(id, l, t, differences)
-    for (const list of LINE_LISTS) {
-      const a: Rec[] = l[list] ?? []
-      const b: Rec[] = t[list] ?? []
-      if (a.map((x) => x.line).join('\n') !== b.map((x) => x.line).join('\n')) r.violations.push(`${id}.${list} text`)
-      if (a.length === b.length) for (let i = 0; i < a.length; i++) for (const k of MISS_IMMUNE_LINE) diff(`${id}.${list}.${i}.${k}`, a[i]![k], b[i]![k], r.violations)
-    }
-    for (const k of MISS_IMMUNE) diff(`${id}.${k}`, l[k], t[k], r.violations)
-    for (const k of ['level', 'str', 'dex', 'int']) if ((t.requirements ?? {})[k] !== (l.requirements ?? {})[k]) r.violations.push(`${id}.requirements.${k}`)
-    const m = misses[id] ?? []
-    if (m.length === 0) { r.clean++; if (differences.length > 0) r.violations.push(`${id} ${l.name}: no ModCache miss yet ${differences.length} diffs, first ${differences[0]}`) }
-    else { r.withMiss++; for (const x of m) r.missLines.add(x) }
-  }
-  return { ...r, missLines: r.missLines.size }
-}
-
-// test/config/oracle.test.ts:52-89
-const EXPECTED_COUNTS: Rec = { 'Dual Savior': [36, 17], 'Dual Wield Cospris CoC': [44, 21], 'Dual Wield Cospris CoC - Lethal Pride': [44, 21], 'Generals Perforate Zerker': [62, 21], 'Mirage Archer Toxic Rain': [47, 20], OccVortex: [39, 22] }
-function selfConfig(lj: Rec, ts: Rec, result: Rec, name: string): Rec {
-  const v: string[] = []
-  const seq = (label: string, a: string[], b: string[]): void => { if (ser(a) !== ser(b)) v.push(`${label}: ${a.length} vs ${b.length} entries or different order`) }
-  seq('modList', ts.mods, lj.mods)
-  seq('enemyModList', ts.enemyMods, lj.enemyMods)
-  if (ts.enemyLevel !== lj.enemyLevel) v.push(`enemyLevel ${ts.enemyLevel} != ${lj.enemyLevel}`)
-  for (const tb of ['input', 'placeholder']) {
-    for (const k of new Set([...Object.keys(ts[tb]), ...Object.keys(lj[tb] ?? {})])) if (JSON.stringify(ts[tb][k]) !== JSON.stringify((lj[tb] ?? {})[k])) v.push(`${tb}.${k}: ts ${JSON.stringify(ts[tb][k])} vs luajit ${JSON.stringify((lj[tb] ?? {})[k])}`)
-  }
-  if (ts.characterLevel !== lj.characterLevel) v.push('characterLevel')
-  if (result.unimplemented.length + result.warnings.length > 0) v.push(`pob-ts unimplemented ${result.unimplemented.length}, warnings ${result.warnings.length}`)
-  const counts = [lj.mods.length, lj.enemyMods.length]
-  if (ser(counts) !== ser(EXPECTED_COUNTS[name])) v.push(`mod counts ${counts} != pinned ${EXPECTED_COUNTS[name]}`)
-  return { violations: v, modCounts: counts, ignoredLegacy: result.ignoredLegacy, nonIntegerNumbersInInput: Object.values(lj.input).filter((x) => typeof x === 'number' && !Number.isInteger(x)).length }
-}
-
-// test/calc/initEnv-oracle.test.ts:120-236 (classification) + 238-280 (pins)
-const GENERIC_ITEM_SOURCES = new Set(['Quality', 'Item Sockets', 'Unlinked Item Sockets'])
-const CLASSES = ['item-miss', 'node-miss', 'cluster', 'granted-passive', 'alloc-count', 'tree-jewel']
-const isGem = (k: string): boolean => /^SocketedGemsIn/.test(k) || /^Socketed(?:Red|Green|Blue)GemsIn/.test(k) || /^EmptySocketIn/.test(k) || /^Empty(?:Red|Green|Blue|White)SocketsInAnySlot$/.test(k)
-const EXPECTED_ENV: Rec = {
-  'Dual Savior': { classified: [0, 1, 0, 0, 0, 0], alloc: [8, 8], itemSlots: [2, 2], oracle: [176, 216, 109, 116] },
-  'Dual Wield Cospris CoC': { classified: [72, 12, 34, 1, 2, 12], alloc: [98, 121], itemSlots: [16, 22], oracle: [243, 552, 113, 120] },
-  'Dual Wield Cospris CoC - Lethal Pride': { classified: [72, 15, 34, 1, 2, 26], alloc: [98, 121], itemSlots: [16, 22], oracle: [243, 565, 113, 120] },
-  'Generals Perforate Zerker': { classified: [80, 28, 49, 4, 4, 0], alloc: [97, 127], itemSlots: [14, 22], oracle: [267, 619, 113, 120] },
-  'Mirage Archer Toxic Rain': { classified: [35, 13, 17, 3, 2, 0], alloc: [103, 118], itemSlots: [13, 17], oracle: [240, 534, 112, 119] },
-  OccVortex: { classified: [36, 12, 0, 3, 0, 0], alloc: [132, 133], itemSlots: [13, 13], oracle: [252, 564, 114, 121] },
-}
-function selfEnv(lj: Rec, run: Rec, name: string): Rec {
-  const { env, spec, items, missItems } = run
-  const sourceRef = (s: string): Rec | undefined => {
-    const i = /^Item:(\d+):/.exec(s)
-    if (i !== null) return { kind: 'item', id: Number(i[1]) }
-    const t = /^Tree:?(\d+)$/.exec(s)
-    return t !== null ? { kind: 'tree', id: Number(t[1]) } : undefined
-  }
-  const oracleOnlyAlloc = new Set<number>(lj.alloc.filter((id: number) => !env.allocNodes.has(id)))
-  const unequipped = new Set<number>()
-  const v: string[] = []
-  for (const slotName of Object.keys(lj.itemSlots)) {
-    if (env.player.itemList[slotName] !== undefined) continue
-    const m = /^Jewel (\d+)$/.exec(slotName)
-    const itemId = m === null ? undefined : spec.jewels.get(Number(m[1]))
-    if (itemId === undefined) v.push(`luajit equipped ${slotName}, pob-ts has no item for it`)
-    else unequipped.add(itemId)
-  }
-  const grantedSet = new Set<number>(lj.grantedPassives)
-  const hasTreeJewel = env.unimplemented.some((u: string) => u.includes('radius jewel')) || [...items.values()].some((i: Rec) => i.base?.subType === 'Timeless')
-  const missNode = (id: number): boolean => { const n = spec.nodes.get(id) ?? spec.tree.nodes.get(id); return n !== undefined && (n.unknown === true || n.mods.some((m: Rec) => m !== undefined && m.extra !== undefined)) }
-  const classify = (n: string, source: string, oracleOnly: boolean): string => {
-    const ref = sourceRef(source)
-    if (ref?.kind === 'item') { if (missItems.has(ref.id)) return 'item-miss'; if (oracleOnly && unequipped.has(ref.id)) return 'cluster' }
-    if (ref?.kind === 'tree') {
-      if (oracleOnly && oracleOnlyAlloc.has(ref.id)) return grantedSet.has(ref.id) ? 'granted-passive' : 'cluster'
-      if (missNode(ref.id)) return 'node-miss'
-      if (hasTreeJewel) return 'tree-jewel'
-    }
-    if (n.startsWith('Multiplier:Allocated') && oracleOnlyAlloc.size > 0) return 'alloc-count'
-    if (oracleOnly && GENERIC_ITEM_SOURCES.has(source) && unequipped.size > 0) return 'cluster'
-    return 'unexplained'
-  }
-  const cls: Record<string, string[]> = Object.fromEntries([...CLASSES, 'unexplained'].map((c) => [c, []]))
-  const key = (n: string, f: string): string => JSON.stringify([n, f])
-  const compareDb = (label: string, tsDB: Rec, oDB: Rec): void => {
-    const tsMods: Rec = {}
-    const tsSrc = new Map<string, string>()
-    for (const [n, bucket] of tsDB.mods as Map<string, Rec[]>) {
-      tsMods[n] = bucket.map((m) => normAddr(formatSourceMod(m)))
-      for (const m of bucket) tsSrc.set(key(n, normAddr(formatSourceMod(m))), m.source ?? '')
-    }
-    const oSrc = new Map<string, string>()
-    for (const n of Object.keys(oDB.mods)) (oDB.mods[n] as string[]).forEach((s, i) => oSrc.set(key(n, s), oDB.srcs[n]?.[i] ?? ''))
-    const count = (l: string[]): Map<string, number> => { const m = new Map<string, number>(); for (const s of l) m.set(s, (m.get(s) ?? 0) + 1); return m }
-    for (const n of [...new Set([...Object.keys(tsMods), ...Object.keys(oDB.mods)])].sort()) {
-      const a = count(tsMods[n] ?? [])
-      const b = count(oDB.mods[n] ?? [])
-      for (const s of [...new Set([...a.keys(), ...b.keys()])].sort()) {
-        const x = a.get(s) ?? 0
-        const y = b.get(s) ?? 0
-        if (x === y) continue
-        const source = oSrc.get(key(n, s)) ?? tsSrc.get(key(n, s)) ?? ''
-        cls[classify(n, source, y > x)]!.push(`${label}.mods[${n}] TSx${x} LJx${y} src=${source} :: ${s}`)
-      }
-    }
-    for (const k of [...new Set([...Object.keys(tsDB.multipliers), ...Object.keys(oDB.multipliers)])].sort()) {
-      if (isGem(k)) continue
-      const raw = tsDB.multipliers[k]
-      const a = raw === undefined ? undefined : formatG(raw, 17)
-      const b = oDB.multipliers[k]
-      if (a !== b) cls[classify('Multiplier:' + k, '', b !== undefined)]!.push(`${label}.multipliers[${k}]: TS ${a} != LJ ${b}`)
-    }
-    for (const k of new Set([...Object.keys(tsDB.conditions), ...Object.keys(oDB.conditions)])) {
-      if (JSON.stringify(tsDB.conditions[k]) !== JSON.stringify(oDB.conditions[k])) cls['unexplained']!.push(`${label}.conditions[${k}]`)
+/** test/items/oracle.test.ts:49-61 -- every `{range:X}` mod line of a build. */
+function rangeLinesOf(xml: string): RangeCase[] {
+  const out: RangeCase[] = []
+  for (const raw of itemTexts(xml)) {
+    for (const l of raw.split('\n')) {
+      const line = l.trim()
+      const r = /\{range:([^}]+)\}/.exec(line)
+      if (r !== null) out.push({ line: line.replace(/\{[A-Za-z]*:?[^}]*\}/g, '').replace(/ \([a-z]+\)/g, ''), range: Number(r[1]) })
     }
   }
-  compareDb('modDB', env.modDB, lj.modDB)
-  compareDb('enemyDB', env.enemyDB, lj.enemyDB)
-  const chk = (ok: boolean, m: string): void => { if (!ok) v.push(m) }
-  chk(env.enemyLevel === lj.enemyLevel, 'enemyLevel')
-  chk(env.mainSocketGroup === lj.mainSocketGroup, 'mainSocketGroup')
-  chk(ser(env.orderedSlots.map((s: Rec) => s.slotName)) === ser(lj.orderedSlots), 'orderedSlots')
-  chk(env.classId === lj.classId, 'classId')
-  chk(env.grantedSkills.length <= lj.grantedSkills && env.initialNodeModDB.mods.length <= lj.initialNodeMods, 'grantedSkills/initialNodeModDB over-count')
-  for (const id of env.allocNodes.keys()) chk(lj.alloc.includes(id), `allocNodes: ts has ${id}, luajit not`)
-  for (const id of oracleOnlyAlloc) chk(!spec.nodes.has(id) || spec.tree.nodes.get(id)?.expansionJewel?.parent !== undefined || grantedSet.has(id), `luajit-only node ${id} unexplained`)
-  for (const s of Object.keys(env.player.itemList)) chk(lj.itemSlots[s] === env.player.itemList[s]?.name, `itemList[${s}]`)
-  chk(oracleOnlyAlloc.size > 0 || ser(Object.keys(env.keystonesAdded).sort()) === ser(lj.keystonesAdded), 'keystonesAdded')
-  for (const [slot, ours, theirs] of [['Weapon 1', env.player.weaponData1, lj.weapon1], ['Weapon 2', env.player.weaponData2, lj.weapon2]] as const) {
-    const item = env.player.itemList[slot]
-    if (item?.id !== undefined && missItems.has(item.id)) continue
-    for (const k of new Set([...Object.keys(ours), ...Object.keys(theirs ?? {})])) {
-      const a = ours[k]
-      chk((typeof a === 'number' ? formatG(a, 17) : a === undefined ? undefined : String(a)) === theirs?.[k], `${slot} weaponData[${k}]`)
-    }
-  }
-  const counts = CLASSES.map((c) => cls[c]!.length)
-  const pin = EXPECTED_ENV[name]
-  const modCount = (d: Rec): number => [...d.mods.values()].reduce((n: number, b: Rec[]) => n + b.length, 0)
-  const ljCount = (d: Rec): number => Object.values(d.mods as Rec).reduce((n: number, b) => n + (b as unknown[]).length, 0)
-  const oracle = [Object.keys(lj.modDB.mods).length, ljCount(lj.modDB), Object.keys(lj.enemyDB.mods).length, ljCount(lj.enemyDB)]
-  return {
-    violations: [...v, ...cls['unexplained']!.map((x) => 'UNEXPLAINED ' + x)],
-    classes: Object.fromEntries(CLASSES.map((c, i) => [c, counts[i]])),
-    matchesPob_tsWasmPins: ser(counts) === ser(pin.classified) && ser(oracle) === ser(pin.oracle) && ser([env.allocNodes.size, lj.alloc.length]) === ser(pin.alloc) &&
-      ser([Object.keys(env.player.itemList).length, Object.keys(lj.itemSlots).length]) === ser(pin.itemSlots),
-    pinned: { classes: pin.classified, luajitNamesModsEnemyNamesMods: pin.oracle }, luajitNamesModsEnemyNamesMods: oracle,
-    pobtsNamesMods: [env.modDB.mods.size, modCount(env.modDB), env.enemyDB.mods.size, modCount(env.enemyDB)],
-    alloc: [env.allocNodes.size, lj.alloc.length], itemSlots: [Object.keys(env.player.itemList).length, Object.keys(lj.itemSlots).length],
-  }
+  return out
 }
 
 // --- perf --------------------------------------------------------------------------------------------------------
 const RUNS = 5
 const WARM = 5
+const numAsc = (a: number, b: number): number => a - b
 const median = (a: number[]): number => [...a].sort(numAsc)[Math.floor(a.length / 2)]!
 const stat = (a: number[]): Rec => ({ median: median(a), min: Math.min(...a), max: Math.max(...a), n: a.length })
-const XML_OF = (name: string): Buffer => readFileSync(GOLDEN_BUILDS.find((b: Rec) => b.name === name).xmlPath(roots))
+const XML_OF = (name: string): Buffer => readFileSync(GOLDEN_BUILDS.find((b: Rec) => b.name === name)!.xmlPath(roots))
 
-/** One pob-ts "XML -> env": loadBuildXml + parse items + loadSpec + fresh initEnv (the same path as the oracle test). */
-function perfChild(name: string): void {
-  const xml = XML_OF(name).toString('utf8')
-  const prep = (): Rec => { const model = loadBuildXml(xml); return { model, ...tsEnvRun(model) } }
-  const t1 = performance.now()
-  prep()
-  const cold = performance.now() - t1
-  const warm: number[] = []
-  const initOnly: number[] = []
-  for (let i = 0; i < WARM; i++) { const t = performance.now(); prep(); warm.push(performance.now() - t) }
-  for (let i = 0; i < WARM; i++) {
-    const model = loadBuildXml(xml)
-    const items = new Map<number, Rec>()
-    for (const im of model.items) { const it = Item.parse(im.raw, itemOpts(im)); if (it.base !== undefined) items.set(im.id, it) }
-    const spec = loadSpec(activeSpec(model))
-    const t = performance.now()
-    initEnv(model, { spec, items })
-    initOnly.push(performance.now() - t)
-  }
-  console.log(JSON.stringify({ importMs: IMPORT_MS, cold, warm, initOnly }))
-}
+/** LuaJIT "XML -> env": loadBuildFromXML + fresh initEnv, per golden (pob-ts' half of this perf is gone with A4). */
 async function perfAll(): Promise<void> {
   const luts = await prepareLuts()
-  const out: Rec = { node: process.version, runs: RUNS, warmPerRun: WARM, builds: {} }
+  const out: Rec = { runs: RUNS, warmPerRun: WARM, builds: {} }
   for (const b of GOLDEN_BUILDS) {
     const xml = XML_OF(b.name)
     const code = `local t0 = os.clock()\nloadBuildFromXML(${luaBytes(xml)}, ${luaStr(b.name)})\nlocal load = os.clock() - t0\n` +
       'if __mainObject__.promptMsg then error("FATAL " .. tostring(__mainObject__.promptMsg)) end\ncollectgarbage()\nlocal calcs, init = build.calcsTab.calcs, {}\n' +
       `for i = 1, ${WARM + 1} do local t = os.clock(); local env = calcs.initEnv(build, "MAIN"); init[i] = os.clock() - t end\nreturn { jit = jit.version, load = load, init = init }\n`
     const lj = Array.from({ length: RUNS }, () => ljEval(code, luts))
-    const ts = Array.from({ length: RUNS }, () => JSON.parse(execFileSync(process.execPath, [fileURLToPath(import.meta.url), 'perf-child', b.name], { encoding: 'utf8' }).trim().split('\n').pop()!) as Rec)
     const ms = (s: number): number => s * 1000
     out.builds[b.name] = {
       luajit: {
@@ -843,7 +434,6 @@ async function perfAll(): Promise<void> {
         initEnvWarm_ms: stat(lj.flatMap((r) => (r.init as number[]).slice(1).map(ms))),
         xmlToEnv_ms: stat(lj.map((r) => ms(r.load + r.init[0]))),
       },
-      pobts: { cold_ms: stat(ts.map((r) => r.cold)), warm_ms: stat(ts.flatMap((r) => r.warm)), initEnvOnly_ms: stat(ts.flatMap((r) => r.initOnly)), importModules_ms: stat(ts.map((r) => r.importMs)) },
     }
     console.error(`perf ${b.name}: done`)
   }
@@ -857,50 +447,25 @@ async function fixtures(): Promise<void> {
   const luts = await prepareLuts()
   let digest = ''
   try { digest = execFileSync('docker', ['image', 'inspect', '--format', '{{index .RepoDigests 0}}', LUAJIT_IMAGE], { encoding: 'utf8' }).trim() } catch { /* tag only */ }
-  const generator = `pob-ts ${git(POB_TS)}`
+  const generator = 'tools/lua-corpus/export-env.ts'
   const report: Rec = {}
   let first = true
-  let global: Rec | undefined
   for (const b of GOLDEN_BUILDS) {
     const xmlBuf = XML_OF(b.name)
-    const model = loadBuildXml(xmlBuf.toString('utf8'))
-    const cases: RangeCase[] = [...rangeLinesOf(model), ...(first ? APPLY_RANGE_CASES.map((c: Rec) => ({ line: c.line, range: c.range, valueScalar: c.valueScalar, baseValueScalar: c.baseValueScalar })) : [])]
-    // pob-ts half
-    const { dump: treeTs, spec: treeSpec } = tsTree(model)
-    const misses: Record<string, string[]> = {}
-    const itemsTs = tsItems(model, misses)
-    const rangeTs = cases.map((c) => applyRange(c.line, c.range, c.valueScalar, c.baseValueScalar))
-    const { dump: configTs, result } = tsConfig(model)
-    const run = tsEnvRun(model)
-    const envTs = tsEnvDump(run.env, model)
-    // LuaJIT half (one docker run: XML + 4 probes, fresh initEnv last)
+    const cases: RangeCase[] = [...rangeLinesOf(xmlBuf.toString('utf8')), ...(first ? APPLY_RANGE_CASES : [])]
+    // one docker run: XML + 4 probes, fresh initEnv last
     const raw = ljEval(luajitChunk(xmlBuf, b.name, cases), luts)
     const lj = normDeep(raw) as Rec
-    const rangeLj = { cases, results: lj.applyRange }
-    // self-check
-    if (first) global = selfTreeGlobal(lj.tree)
-    const rangeBad = cases.filter((_, i) => rangeTs[i] !== lj.applyRange[i]).length
-    const synthWasm = first ? APPLY_RANGE_CASES.filter((c: Rec, i: number) => lj.applyRange[cases.length - APPLY_RANGE_CASES.length + i] !== c.expected).length : undefined
-    const sc = {
-      applyRange: { cases: cases.length, luajitVsPobts: rangeBad, syntheticVsWasmExpected: synthWasm },
-      tree: selfTree(lj.tree, treeTs, treeSpec, b.name), items: selfItems(lj.items, normDeep(itemsTs), misses),
-      config: selfConfig(lj.config, configTs, result, b.name), env: selfEnv(lj.env, run, b.name),
-    }
     const head = { build: b.name, format: 1, xmlSha256: createHash('sha256').update(xmlBuf).digest('hex') }
     const slug = b.name.replace(/ /g, '-')
-    const files = [
-      ...writeFixture(slug, 'luajit', { ...head, producer: { generator, image: digest || LUAJIT_IMAGE, luajit: raw.jit, pobSha: git(UPSTREAM_POB), probes: 'pob-ts test/{tree/spec,items/oracle,config/oracle,calc/initEnv-oracle}.test.ts, Lua verbatim' } },
-        { tree: lj.tree, items: lj.items, applyRange: rangeLj, config: lj.config, env: lj.env }),
-      ...writeFixture(slug, 'pobts', { ...head, producer: { generator, probes: 'TS halves of the same tests' } },
-        normDeep({ tree: treeTs, items: itemsTs, applyRange: { cases, results: rangeTs }, config: configTs, env: envTs })),
-    ]
-    report[b.name] = { files, selfCheck: sc }
+    const files = writeFixture(slug, 'luajit', { ...head, producer: { generator, image: digest || LUAJIT_IMAGE, luajit: raw.jit, pobSha: git(UPSTREAM_POB), probes: 'pob-ts test/{tree/spec,items/oracle,config/oracle,calc/initEnv-oracle}.test.ts, Lua verbatim' } },
+      { tree: lj.tree, items: lj.items, applyRange: { cases, results: lj.applyRange }, config: lj.config, env: lj.env })
+    report[b.name] = { files, applyRangeCases: cases.length }
     first = false
     console.error(`${b.name}: done`)
   }
-  console.log(JSON.stringify({ treeGlobal: global, builds: report }, null, 1))
+  console.log(JSON.stringify({ builds: report }, null, 1))
 }
 
-if (process.argv[2] === 'perf-child') perfChild(process.argv[3]!)
-else if (process.argv[2] === 'perf') await perfAll()
+if (process.argv[2] === 'perf') await perfAll()
 else await fixtures()

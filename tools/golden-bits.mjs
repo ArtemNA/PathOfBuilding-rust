@@ -1,8 +1,10 @@
-// Prints `<build>\t<key>\t<f64 bits hex>` for every numeric stat of the six pob-ts goldens, as JS JSON.parse reads them
-// (negZero restored). Pair: `cargo run -p pob-golden --example dump_bits` -- the two outputs must be byte-identical.
+// Prints `<build>\t<key>\t<f64 bits hex>` for every numeric stat of the six goldens (builds/corpus/goldens; POB_GOLDENS_DIR
+// overrides), as JS JSON.parse reads them (negZero restored). Pair: `cargo run -p pob-golden --example dump_bits` -- the two
+// outputs must be byte-identical.
 import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
 
-const root = (process.env.POB_TS_ROOT ?? 'C:/pob-work/pob-ts') + '/tools/oracle/goldens/'
+const root = (process.env.POB_GOLDENS_DIR ?? fileURLToPath(new URL('../builds/corpus/goldens', import.meta.url))) + '/'
 const builds = ['Dual Savior', 'Dual Wield Cospris CoC', 'Dual Wield Cospris CoC - Lethal Pride', 'Generals Perforate Zerker',
   'Mirage Archer Toxic Rain', 'OccVortex']
 const view = new DataView(new ArrayBuffer(8))

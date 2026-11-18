@@ -1,7 +1,9 @@
-//! R3.5 gate on the 6 goldens (R3-ARCH §3), fixtures from R3.1 (`crates/pob-calc/tests/fixtures/<build>.{pobts,luajit}.json`,
-//! key `config` = the pob-ts probe `test/config/oracle.test.ts` `DUMP` :31-50): the Rust dump in the same shape must equal
-//! the pob-ts dump AND the LuaJIT dump exactly -- mod lists as sequences (order = varList order, L10), `input`/`placeholder`
-//! key for key, numbers bit for bit. Normalisation (dkjson, R3.1): an absent key, `null` and an empty table are the same.
+//! R3.5 gate on the 6 goldens (R3-ARCH §3), fixtures from R3.1 (`crates/pob-calc/tests/fixtures/<build>.luajit.json`, key
+//! `config` = the probe of pob-ts `test/config/oracle.test.ts` `DUMP` :31-50, Lua verbatim; producer `tools/lua-corpus/export-env.ts`):
+//! the Rust dump in the same shape must equal the LuaJIT dump exactly -- mod lists as sequences (order = varList order, L10),
+//! `input`/`placeholder` key for key, numbers bit for bit. Normalisation (dkjson, R3.1): an absent key, `null` and an empty table
+//! are the same. Until R-INDEPENDENT-UPDATE A4 it had to equal pob-ts' dump (`<build>.pobts.json`) too; pob-ts is no longer a
+//! comparison subject, LuaJIT is the truth.
 
 use std::time::Instant;
 
@@ -121,10 +123,10 @@ const EXPECTED: [(&str, [usize; 2], &[&str]); 6] = [
 ];
 
 #[test]
-fn config_dump_equals_pobts_and_luajit_on_six_goldens() {
+fn config_dump_equals_luajit_on_six_goldens() {
     assert_eq!(GOLDEN_BUILDS.len(), 6);
     let mut problems = Vec::new();
-    // R5.4: CacheOnly (pob-ts) and Full (the desktop's parser) both give the dump both oracles have
+    // R5.4: CacheOnly and Full (the desktop's parser) both give LuaJIT's dump
     for (mode, g) in [pob_parser::ParseMode::CacheOnly, pob_parser::ParseMode::Full]
         .into_iter()
         .flat_map(|mode| GOLDEN_BUILDS.iter().map(move |g| (mode, g)))
@@ -134,11 +136,9 @@ fn config_dump_equals_pobts_and_luajit_on_six_goldens() {
         state.parse_mode = mode;
         let lists = state.build_mod_list(m.level).unwrap();
         let got = dump(&m, &state, &lists);
-        for kind in ["pobts", "luajit"] {
-            let mut d = Vec::new();
-            diff(&format!("{} {kind}", g.name), &fixture(g.name, kind), &got, &mut d);
-            problems.extend(d);
-        }
+        let mut d = Vec::new();
+        diff(&format!("{} luajit", g.name), &fixture(g.name, "luajit"), &got, &mut d);
+        problems.extend(d);
         let (_, counts, ignored) = EXPECTED.iter().find(|(n, ..)| *n == g.name).unwrap();
         let n = [lists.mod_list.mods.len(), lists.enemy_mod_list.mods.len()];
         println!("{}: [mods, enemyMods] = {n:?}, enemyLevel {}", g.name, state.enemy_level);

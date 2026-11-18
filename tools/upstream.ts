@@ -1,8 +1,9 @@
 // The ONE place TS tools (probes in tools/lua-corpus, make-goldens, oracle adapter) learn which upstream PoB they
-// target: tools/upstream.json (R-UP). Env vars override: POB_ROOT, POB_WASM_ROOT, POB_ORACLE, POB_TS_ROOT, POB_GOLDENS_DIR.
-// The LuaJIT harness is ours (tools/oracle, R-INDEPENDENT-UPDATE A1) and needs only POB; ORACLE / POBTS / POB_WASM are plain
-// paths for the tools that still run pob-engine-wasm or pob-ts code -- nothing here requires them to exist.
-// Importing this module also sets process.env.POB_ROOT / POB_ORACLE when unset (child processes and pob-ts code see the same config).
+// target: tools/upstream.json (R-UP). Env vars override: POB_ROOT, POB_GOLDENS_DIR.
+// The LuaJIT harness is ours (tools/oracle, R-INDEPENDENT-UPDATE A1) and needs only POB; since A3/A4 no TS tool runs pob-ts or
+// pob-engine-wasm code, so this module exports no root of theirs (`pobTsRoot` / `wasmMirror` stay in upstream.json only for the
+// data converter, tools/sync-data.ps1 and tools/upstream-mirror.ps1, until it is ours too).
+// Importing this module also sets process.env.POB_ROOT when unset (child processes see the same config).
 import { readFileSync } from 'node:fs'
 import { isAbsolute, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -12,19 +13,11 @@ export const CFG = JSON.parse(readFileSync(`${REPO}/tools/upstream.json`, 'utf8'
   pobRoot: string
   pobSha: string
   pobVersion: string
-  wasmMirror: string
-  oracleRoot: string
-  pobTsRoot: string
   goldensDir: string
 }
 const abs = (p: string) => (isAbsolute(p) ? p : resolve(REPO, p)).replace(/\\/g, '/')
 
 /** Real upstream checkout: LuaJIT (docker / desktop lua51.dll) and Lua sources read from here. */
 export const POB = abs(process.env.POB_ROOT ?? CFG.pobRoot)
-/** Lua-5.4-loadable mirror (tools/upstream-mirror.ps1) for WASM consumers (pob-ts converter, pob-engine-wasm). */
-export const POB_WASM = abs(process.env.POB_WASM_ROOT ?? CFG.wasmMirror)
-export const ORACLE = abs(process.env.POB_ORACLE ?? CFG.oracleRoot)
-export const POBTS = abs(process.env.POB_TS_ROOT ?? CFG.pobTsRoot)
 export const GOLDENS = abs(process.env.POB_GOLDENS_DIR ?? CFG.goldensDir)
 process.env.POB_ROOT ??= POB
-process.env.POB_ORACLE ??= ORACLE // pob-ts code that make-goldens.ts still runs reads it at call time

@@ -1,9 +1,9 @@
 {
-  "_comment": "builds/corpus -- the builds every upstream update runs Rust = LuaJIT on (builds/README.md, UPDATE-PROMPT.md). Not copies: each set names where its XMLs already live. `$POB` = pobRoot of tools/upstream.json; other paths are repo-relative globs. LuaJIT truth: `node tools/lua-corpus/export-real.ts --set corpus` -> builds/corpus-fixtures/ (gitignored, re-taken on every update); gate: crates/pob-calc/tests/real_builds.rs. Oracle goldens of the 6 golden builds: builds/corpus/goldens/*.json (tools/make-goldens.ts).",
+  "_comment": "builds/corpus -- the builds every upstream update runs Rust = LuaJIT on (builds/README.md, UPDATE-PROMPT.md). Not copies: each set names where its XMLs already live. `$POB` = pobRoot of tools/upstream.json; other paths are repo-relative globs. LuaJIT truth: `node tools/lua-corpus/export-real.ts --set corpus` -> builds/corpus-fixtures/ (gitignored, re-taken on every update); gate: crates/pob-calc/tests/real_builds.rs. LuaJIT goldens of the 6 golden builds (mainOutput after loadBuildFromXML, exact doubles): builds/corpus/goldens/*.json (tools/make-goldens.ts; gates crates/pob-golden, crates/pob-calc/tests/full_fixture.rs).",
   "sets": [
     {
       "id": "golden",
-      "what": "the 6 golden builds (upstream spec/TestBuilds/3.13 + the Lethal Pride build, a copy of the pob-engine-wasm test fixture kept in builds/corpus/); oracle snapshots in goldens/",
+      "what": "the 6 golden builds (upstream spec/TestBuilds/3.13 + the Lethal Pride build, a copy of the pob-engine-wasm test fixture kept in builds/corpus/); LuaJIT snapshots in goldens/",
       "paths": [
         "$POB/spec/TestBuilds/3.13/Dual Savior.xml",
         "$POB/spec/TestBuilds/3.13/Dual Wield Cospris CoC.xml",

@@ -1,28 +1,26 @@
-// R1.1: snapshot the numeric corpora of pob-ts (test/lua/corpus.ts) answered by REAL LuaJIT (docker) into a
-// committed JSON fixture for the Rust crate pob-lua. Truth = LuaJIT (LESSONS 18, MINEFIELD O9), never the TS answers.
-// Run from the pob-rust root:  node tools/lua-corpus/export-numeric.ts
-// Corpus generators/encoders are imported from pob-ts; the Lua bodies below are copied VERBATIM from
-// pob-ts test/lua/corpus.ts (line refs in comments) because they are not exported there.
+// R1.1: snapshot the numeric corpora (tools/oracle/numeric-corpus.ts: pob-ts test/lua/corpus.ts, copied once) answered by REAL LuaJIT
+// (docker) into a committed JSON fixture for the Rust crate pob-lua. Truth = LuaJIT (LESSONS 18, MINEFIELD O9).
+// Run from the pob-rust root:  node tools/lua-corpus/export-numeric.ts [--out <file>]
+// The Lua bodies below are copied VERBATIM from pob-ts test/lua/corpus.ts (line refs in comments). Until R-INDEPENDENT-UPDATE A4 the
+// probe also replayed every row on pob-ts' TS functions (a self-check); pob-ts is no longer a comparison subject, nothing here
+// imports it.
 import '../upstream.ts'
 import { execFileSync } from 'node:child_process'
 import { mkdirSync, statSync, writeFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import {
-  encodeNum, formatCorpus, knownLuajitQuirk, mathCorpus, tonumberCorpus, tostringCorpus,
-  type CorpusMismatch, type FmtCase,
-} from 'file:///C:/pob-work/pob-ts/test/lua/corpus.ts'
+import { encodeNum, formatCorpus, mathCorpus, tonumberCorpus, tostringCorpus, type FmtCase } from '../oracle/numeric-corpus.ts'
 import { mulberry32 } from '../oracle/fuzz.ts'
 import { luajitEval } from '../oracle/luajit-eval.ts'
 import { dockerAvailable, LUAJIT_IMAGE } from '../oracle/luajit.ts'
 import { resolveRoots } from '../oracle/paths.ts'
-import { luaFormat, luaTonumber, luaTostring } from 'file:///C:/pob-work/pob-ts/src/lua/string.ts'
-import { luaFloor, luaMax, luaMin, luaMod, luaModf, luaRound } from 'file:///C:/pob-work/pob-ts/src/lua/number.ts'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const ROOT = resolve(HERE, '../..')
-const OUT_FILE = resolve(ROOT, 'crates/pob-lua/tests/fixtures/luajit-numeric.json')
-import { POBTS as POB_TS } from '../upstream.ts'
+const OUT_FILE = (() => {
+  const i = process.argv.indexOf('--out')
+  return i < 0 ? resolve(ROOT, 'crates/pob-lua/tests/fixtures/luajit-numeric.json') : resolve(process.argv[i + 1] ?? '')
+})()
 
 // --- Lua pieces ----------------------------------------------------------------
 
@@ -306,10 +304,9 @@ const [, jitVersion, jitStatus, traceCount] = metaLine.split('\t') as [string, s
 const git = (dir: string, ...args: string[]): string =>
   execFileSync('git', ['-C', dir, ...args], { encoding: 'utf8' }).trim()
 const pobSha = git(roots.pobRoot, 'rev-parse', 'HEAD')
-const tsSha = git(POB_TS, 'rev-parse', '--short', 'HEAD')
 
 const fx = {
-  producer: { image: LUAJIT_IMAGE, luajit: jitVersion, pobSha, generator: `pob-ts test/lua/corpus.ts @ ${tsSha}` },
+  producer: { image: LUAJIT_IMAGE, luajit: jitVersion, pobSha, generator: 'tools/lua-corpus/export-numeric.ts (corpora: tools/oracle/numeric-corpus.ts)' },
   tostring: tsVals.map((v, i) => [encodeNum(v), tsOut[i]!]),
   format: fmtCases.map((c, i) => [c.fmt, encodeArg(c.arg), fmtOut[i]!]),
   tonumber: tnStrs.map((s, i) => [toHex(s), tnOut[i]!]),
@@ -354,52 +351,11 @@ if (badPrefix !== 0) throw new Error(`${badPrefix} output tokens without the f p
 const bytes = Buffer.byteLength(text, 'utf8')
 if (bytes > 1.5 * 1024 * 1024) throw new Error(`STOP: fixture is ${bytes} bytes > 1.5 MB`)
 
-// --- self-check: pob-ts TS functions vs the LuaJIT answers (repeats P3.6) --------------
+// --- libm info ---------------------------------------------------------------------
 
 const decodeIn = (t: string): number => (t === 'nan' ? NaN : t === '-nan' ? -NaN : t === 'inf' ? Infinity : t === '-inf' ? -Infinity : Number(t))
 const decodeOut = (t: string): number => decodeIn(t.slice(1))
 const sameNum = (want: number, ours: number): boolean => (Number.isNaN(want) ? Number.isNaN(ours) : Object.is(want, ours))
-
-const mism: CorpusMismatch[] = []
-for (const [tok, want] of fx.tostring) {
-  const ours = luaTostring(decodeIn(tok!))
-  if (ours !== want) mism.push({ corpus: 'tostring', input: tok!, expected: want!, actual: ours })
-}
-for (const [fmt, argTok, want] of fx.format) {
-  const k = argTok!.charAt(0)
-  const rest = argTok!.slice(1)
-  const arg = k === 'n' ? decodeIn(rest) : k === 's' ? rest : k === 'b' ? rest === '1' : undefined
-  const ours = luaFormat(fmt!, arg)
-  if (ours !== want) mism.push({ corpus: 'format', input: `${fmt} <- ${argTok}`, expected: want!, actual: ours })
-}
-for (const [hex, want] of fx.tonumber) {
-  const s = hex!.replace(/../g, (h) => String.fromCharCode(parseInt(h, 16)))
-  const ours = luaTonumber(s)
-  const ok = want === 'nil' ? ours === undefined : ours !== undefined && sameNum(decodeOut(want!), ours)
-  if (!ok) mism.push({ corpus: 'tonumber', input: JSON.stringify(s), expected: want!, actual: String(ours) })
-}
-let mathChecks = 0
-for (const r of fx.math) {
-  const a = decodeIn(r[0]!)
-  const b = decodeIn(r[1]!)
-  const d = r[2] === 'nil' ? undefined : Number(r[2])
-  const [ip, fp] = luaModf(a)
-  const ours: [string, number][] = [
-    ['min', luaMin(a, b)], ['max', luaMax(a, b)], ['mod', luaMod(a, b)], ['modf.ip', ip], ['modf.fp', fp],
-    ['round', luaRound(a, d)], ['floor', luaFloor(a, d)],
-  ]
-  ours.forEach(([name, v], k) => {
-    mathChecks += 1
-    if (!sameNum(decodeOut(r[3 + k]!), v)) {
-      mism.push({ corpus: `math.${name}`, input: `a=${r[0]} b=${r[1]} dec=${r[2]}`, expected: r[3 + k]!, actual: encodeNum(v) })
-    }
-  })
-}
-let quirks = 0
-const real: CorpusMismatch[] = []
-for (const m of mism) (knownLuajitQuirk(m) ? (quirks += 1) : real.push(m))
-
-// --- libm info ----------------------------------------------------------------------
 
 const JS: Record<string, (a: number, b: number) => number> = {
   '^': (a, b) => a ** b, pow: (a, b) => Math.pow(a, b), sqrt: Math.sqrt, log: Math.log, sin: Math.sin, cos: Math.cos,
@@ -430,10 +386,5 @@ writeFileSync(OUT_FILE, text, { encoding: 'utf8' })
 
 console.log(JSON.stringify({
   out: OUT_FILE, bytes: statSync(OUT_FILE).size, dockerRuns, luajit: jitVersion, jitStatus, traceEvents: traceCount, counts,
-  self: { mathChecks, mismatches: mism.length, luajitQuirk: quirks, real: real.length, realExamples: real.slice(0, 10) },
   libm: { interpNeJit, interpNeJitEx, jsNeLuajit: jsNeTotal, byFn: jsNe, jsNeEx },
 }, null, 1))
-if (real.length > 0) {
-  console.error(`STOP: ${real.length} non-quirk disagreements between pob-ts and the LuaJIT fixture`)
-  process.exit(3)
-}

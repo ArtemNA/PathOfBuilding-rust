@@ -389,7 +389,7 @@ pub fn diff_exact(path: &str, want: &Json, got: &Json, out: &mut Vec<String>) {
             for k in keys {
                 match (a.get(k), b.get(k)) {
                     (Some(x), Some(y)) => diff_exact(&format!("{path}.{k}"), x, y, out),
-                    (x, y) => out.push(format!("{path}.{k}: pob-ts {x:?}, rust {y:?}")),
+                    (x, y) => out.push(format!("{path}.{k}: want {x:?}, rust {y:?}")),
                 }
             }
         }
@@ -400,12 +400,12 @@ pub fn diff_exact(path: &str, want: &Json, got: &Json, out: &mut Vec<String>) {
         }
         (Json::Number(a), Json::Number(b)) => {
             if a.as_f64().map(f64::to_bits) != b.as_f64().map(f64::to_bits) {
-                out.push(format!("{path}: pob-ts {a}, rust {b}"));
+                out.push(format!("{path}: want {a}, rust {b}"));
             }
         }
         _ => {
             if want != got {
-                out.push(format!("{path}: pob-ts {want}, rust {got}"));
+                out.push(format!("{path}: want {want}, rust {got}"));
             }
         }
     }

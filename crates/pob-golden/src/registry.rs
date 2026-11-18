@@ -1,7 +1,8 @@
-//! Where the golden builds and their snapshots live (pob-ts `tools/oracle/paths.ts`). All roots are read-only.
+//! Where the golden builds and their snapshots live (`tools/oracle/paths.ts` `GOLDEN_BUILDS`). All roots are read-only.
 //!
-//! The upstream roots come from the ONE config `tools/upstream.json` (R-UP); env vars `POB_ROOT` / `POB_ORACLE` /
-//! `POB_TS_ROOT` / `POB_GOLDENS_DIR` override it.
+//! The upstream root comes from the ONE config `tools/upstream.json` (R-UP); env vars `POB_ROOT` / `POB_GOLDENS_DIR`
+//! override it. Since R-INDEPENDENT-UPDATE A3 nothing here reads pob-ts or pob-engine-wasm: the snapshots are LuaJIT's
+//! (`tools/make-goldens.ts`) and the Lethal Pride XML is the copy in `builds/corpus/`.
 
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
@@ -39,18 +40,7 @@ pub fn pob_root() -> PathBuf {
     root("POB_ROOT", "pobRoot")
 }
 
-/// project_15 wasm oracle (`POB_ORACLE`, same variable as pob-ts; else `oracleRoot`).
-pub fn oracle_root() -> PathBuf {
-    root("POB_ORACLE", "oracleRoot")
-}
-
-/// pob-ts checkout (`POB_TS_ROOT`, else `pobTsRoot`).
-pub fn pob_ts_root() -> PathBuf {
-    root("POB_TS_ROOT", "pobTsRoot")
-}
-
-/// Oracle golden snapshots of the target upstream (`POB_GOLDENS_DIR`, else `goldensDir`; R-UP moved them out of
-/// pob-ts, whose `tools/oracle/goldens` stay at the sha pob-ts was built for).
+/// LuaJIT golden snapshots of the target upstream (`POB_GOLDENS_DIR`, else `goldensDir`; `tools/make-goldens.ts`).
 pub fn goldens_dir() -> PathBuf {
     root("POB_GOLDENS_DIR", "goldensDir")
 }
@@ -59,8 +49,8 @@ pub fn goldens_dir() -> PathBuf {
 pub enum GoldenSource {
     /// PathOfBuilding/spec/TestBuilds/3.13
     Upstream,
-    /// pob-engine-wasm/test/fixtures
-    OracleFixture,
+    /// builds/corpus of this repo (the Lethal Pride build; a byte copy of the former pob-engine-wasm test fixture)
+    Corpus,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -81,7 +71,7 @@ pub const GOLDEN_BUILDS: [GoldenBuild; 6] = [
     },
     GoldenBuild {
         name: "Dual Wield Cospris CoC - Lethal Pride",
-        source: GoldenSource::OracleFixture,
+        source: GoldenSource::Corpus,
     },
     GoldenBuild {
         name: "Generals Perforate Zerker",
@@ -105,7 +95,7 @@ impl GoldenBuild {
     pub fn xml_path(&self) -> PathBuf {
         match self.source {
             GoldenSource::Upstream => pob_root().join("spec/TestBuilds/3.13").join(format!("{}.xml", self.name)),
-            GoldenSource::OracleFixture => oracle_root().join("test/fixtures").join(format!("{}.xml", self.name)),
+            GoldenSource::Corpus => repo_root().join("builds/corpus").join(format!("{}.xml", self.name)),
         }
     }
 

@@ -1,17 +1,18 @@
-//! pob-golden against the six committed goldens of pob-ts, plus the red-first (LESSONS 2) negative tests:
-//! a corrupted reference must FAIL the gate.
+//! pob-golden against the six committed LuaJIT goldens (builds/corpus/goldens, tools/make-goldens.ts), plus the red-first
+//! (LESSONS 2) negative tests: a corrupted reference must FAIL the gate.
 
 use pob_golden::compare::{StatClass, compare_meta, compare_stats, is_parity, render_report, round4};
 use pob_golden::{CandidateOutput, GOLDEN_BUILDS, PartialMeta, StatValue, Stats};
 
-/// Key counts of the goldens (PLAN.md progress bar, POB-TS-MAP §1).
+/// Key counts of the goldens (PLAN.md progress bar, POB-TS-MAP §1). 2.68.0 (07fa089bf) added two keys to every golden
+/// (`MaximumLifeManaDifference`, `MissingUnreservedLifePercent`); the LuaJIT goldens of R-INDEPENDENT-UPDATE A3 have the same keys.
 const TOTALS: [(&str, usize); 6] = [
-    ("Dual Savior", 632),
-    ("Dual Wield Cospris CoC", 749),
-    ("Dual Wield Cospris CoC - Lethal Pride", 749),
-    ("Generals Perforate Zerker", 649),
-    ("Mirage Archer Toxic Rain", 658),
-    ("OccVortex", 773),
+    ("Dual Savior", 634),
+    ("Dual Wield Cospris CoC", 751),
+    ("Dual Wield Cospris CoC - Lethal Pride", 751),
+    ("Generals Perforate Zerker", 651),
+    ("Mirage Archer Toxic Rain", 660),
+    ("OccVortex", 775),
 ];
 
 fn stats(pairs: &[(&str, StatValue)]) -> Stats {

@@ -2,12 +2,12 @@
 //! later defence/estimations (R4.3/R4.4).
 //!
 //! `init_env` = `calcs.initEnv(build, "MAIN")` (Modules/CalcSetup.lua:475-1975) without the skill half; the R3 gate
-//! (R3-ARCH §3) is `tests/env_fixture.rs` against the R3.1 fixtures in `tests/fixtures/` (LuaJIT + pob-ts dumps).
-//! `perform` = CalcPerform.lua:1286-3792 (CALC-ARCH §8 subset); its gate is `tests/perform_fixture.rs` against the pob-ts
-//! perform-only fixtures (`tools/lua-corpus/export-perform-only.ts`). `defence` = CalcDefence.lua:511-1671 (R4.3), gated by
-//! `tests/defence_fixture.rs` against `tools/lua-corpus/export-defence-only.ts`. `estimations` = CalcDefence.lua:1674-3786
-//! (`buildDefenceEstimations`, R4.4b) on top of `pools`; the full output (perform + defence + estimations) is gated by
-//! `tests/full_fixture.rs` against the pob-ts full-output fixtures (`<build>.r4-pobts.json`, R4-ARCH gate (a)).
+//! (R3-ARCH §3) is `tests/env_fixture.rs` against the LuaJIT R3.1 fixtures in `tests/fixtures/`.
+//! `perform` = CalcPerform.lua:1286-3792 (CALC-ARCH §8 subset), gated by `tests/perform_cp.rs` (CP1-CP4 against LuaJIT).
+//! `defence` = CalcDefence.lua:511-1671 (R4.3), `estimations` = CalcDefence.lua:1674-3786 (`buildDefenceEstimations`, R4.4b) on
+//! top of `pools`; the full output (perform + defence + estimations) is gated by `tests/full_fixture.rs` against the LuaJIT goldens
+//! (`builds/corpus/goldens`, R4-ARCH gate (a)), the synthetic scenarios by `tests/defence_synth*.rs`. Until R-INDEPENDENT-UPDATE A4
+//! the perform-only / defence-only / full slices were gated against pob-ts fixtures in `ParseMode::CacheOnly` without skills.
 
 #![forbid(unsafe_code)]
 

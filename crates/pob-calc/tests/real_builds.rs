@@ -271,7 +271,9 @@ fn compare(name: &str, prefix: &str, lua: &BTreeMap<String, Gv>, rust: &BTreeMap
 }
 
 /// The build file a fixture was made from: the build of its set, or (variant `p5stripped`) the probe's copy without the P5 inputs.
-/// Corpus paths are those of builds/corpus/manifest.json (`$POB/...`, `$ORACLE/...`, else repo-relative).
+/// Corpus paths are those of builds/corpus/manifest.json (`$POB/...`, else repo-relative). A fixture taken before
+/// R-INDEPENDENT-UPDATE A1 names the Lethal Pride golden `$ORACLE/test/fixtures/<file>` (pob-engine-wasm): read as its byte copy
+/// `builds/corpus/<file>`, so the gate needs no oracle checkout.
 fn build_path(fx: &Json) -> PathBuf {
     let set = fx["set"].as_str().unwrap_or("pc");
     let rel = fx["build"].as_str().expect("build");
@@ -280,8 +282,8 @@ fn build_path(fx: &Json) -> PathBuf {
         None if set == "corpus" => {
             if let Some(r) = rel.strip_prefix("$POB/") {
                 pob_golden::registry::pob_root().join(r)
-            } else if let Some(r) = rel.strip_prefix("$ORACLE/") {
-                pob_golden::registry::oracle_root().join(r)
+            } else if let Some(file) = rel.strip_prefix("$ORACLE/test/fixtures/") {
+                root().join("corpus").join(file)
             } else {
                 root().join("..").join(rel)
             }

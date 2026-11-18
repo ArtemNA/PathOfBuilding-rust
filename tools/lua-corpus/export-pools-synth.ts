@@ -3,24 +3,26 @@
 // here ONE Dual Savior instance is loaded once and each scenario runs the R4.1 pools PROBE on a synthetic actor
 // {output = copy of mainEnv.player.output + overrides, modDB = fresh ModDB with "Synth" mods, damageShiftTable = copy (+ row overrides)}.
 // Output: crates/pob-calc/tests/fixtures/pools-synth.luajit.json  { scenarios: [ { name, covers, inputs, results, actorReads } ] }
-// Run from the pob-rust root (Node 24):  node tools/lua-corpus/export-pools-synth.ts
+// Run from the pob-rust root (Node 24):  node tools/lua-corpus/export-pools-synth.ts [--out <file>]
+// Until R-INDEPENDENT-UPDATE A4 the probe also replayed every call on pob-ts' pools (an informational self-check); pob-ts is no
+// longer a comparison subject, nothing here imports it (the gate is crates/pob-calc/tests/pools_synth.rs, Rust = LuaJIT).
 import { POB as UPSTREAM_POB } from '../upstream.ts'
 import { execFileSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, resolve } from 'node:path'
-import { fileURLToPath, pathToFileURL } from 'node:url'
-import { POBTS } from '../upstream.ts'
-const P = `file:///${POBTS}` // pob-ts code under test (not the harness)
-const { reducePoolsByDamage, takenHitFromDamage } = await import(`${P}/src/calc/pools.ts`)
-const { formatG } = await import(`${P}/src/lua/index.ts`)
+import { fileURLToPath } from 'node:url'
+import { formatG } from '../oracle/format-g.ts'
 const { GOLDEN_BUILDS, REPO_ROOT, resolveRoots } = await import('../oracle/paths.ts')
 const { LUAJIT_IMAGE } = await import('../oracle/luajit.ts')
 type Rec = Record<string, any> // eslint-disable-line
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
-const OUT = resolve(ROOT, 'crates/pob-calc/tests/fixtures/pools-synth.luajit.json')
+const OUT = (() => {
+  const i = process.argv.indexOf('--out')
+  return i < 0 ? resolve(ROOT, 'crates/pob-calc/tests/fixtures/pools-synth.luajit.json') : resolve(process.argv[i + 1] ?? '')
+})()
 const SCRATCH = resolve(ROOT, 'tools/.scratch')
 const MAX_BYTES = 1_500_000
 const git = (dir: string): string => execFileSync('git', ['-C', dir, 'rev-parse', '--short', 'HEAD'], { encoding: 'utf8' }).trim()
@@ -223,32 +225,7 @@ const poolsChunk = (): string =>
   `local TAKEN = ${lua(TAKEN.map((c) => [c.raw, c.type]))}\nlocal FIELDS, TYPES, AEGIS, GUARD, ALLYK = ${lua(FIELDS)}, ${lua(DMG)}, ${lua(AEGIS_KEYS)}, ${lua(GUARD_KEYS)}, ${lua(ALLY_KEYS)}\n` +
   `local READS, FLAGS, SUMS = ${lua(READS)}, ${lua(FLAGS)}, ${lua(SUMS)}\n${PROBE}`
 
-// --- pob-ts replay on the same reads (informational self-check) ---
-const fmt = (v: unknown): string => (v === undefined ? 'nil' : typeof v === 'number' ? formatG(v, 17) : String(v))
-const canon = (s: string): string => (s === '-nan' ? 'nan' : s)
 const parseNum = (s: string): number | undefined => (s === 'nil' ? undefined : s === 'inf' ? Infinity : s === '-inf' ? -Infinity : s === 'nan' || s === '-nan' ? NaN : Number(s))
-function tsActor(raw: Rec): Rec {
-  const output: Rec = {}
-  READS.forEach((k, i) => { const v = parseNum(raw.reads[i]); if (v !== undefined) output[k] = v })
-  const flags = new Map(FLAGS.map((k, i) => [k, raw.flags[i] === 'true']))
-  const sums = new Map(SUMS.map(([kind, n], i) => [`${kind}:${n}`, parseNum(raw.sums[i])!]))
-  const damageShiftTable: Rec = {}
-  DMG.forEach((from, i) => DMG.forEach((to, j) => { const v = parseNum(raw.shift[i * 5 + j]); if (v !== undefined) (damageShiftTable[from] ??= {})[to] = v }))
-  return { output, damageShiftTable, modDB: { Flag: (_c: unknown, n: string) => flags.get(n) ?? false, Sum: (kind: string, _c: unknown, n: string) => sums.get(`${kind}:${n}`) ?? 0 } }
-}
-function tsPoolRow(actor: Rec, c: Rec): string[] {
-  const damage = { ...c.damage }
-  const p = c.pool as Rec | false
-  const pt = p === false ? undefined : { Life: p.Life, Mana: p.Mana, EnergyShield: p.EnergyShield, Ward: p.Ward, WardActiveChance: p.WardActiveChance, Aegis: p.Aegis && { ...p.Aegis }, Guard: p.Guard && { ...p.Guard },
-    AlliesTakenBeforeYou: p.Allies && Object.fromEntries(Object.entries(p.Allies).map(([k, v]) => [k, { ...(v as Rec) }])) }
-  const r = reducePoolsByDamage(pt, damage, actor)
-  return [...FIELDS.map((f) => fmt(r[f])), ...DMG.map((t) => fmt(r.damageTakenThatCanBeRecouped[t])), ...DMG.map((t) => fmt(damage[t])), ...AEGIS_KEYS.map((k) => fmt(r.Aegis[k])), ...GUARD_KEYS.map((k) => fmt(r.Guard[k])),
-    ...ALLY_KEYS.map((k) => fmt(r.AlliesTakenBeforeYou[k]?.remaining))]
-}
-function tsTakenRow(actor: Rec, c: Rec): string[] {
-  const [sum, damages] = takenHitFromDamage(c.raw, c.type, actor)
-  return [fmt(sum), ...DMG.map((t) => fmt(damages[t]))]
-}
 
 function ser(v: unknown): string {
   if (typeof v === 'number') return Object.is(v, -0) ? '-0.0' : JSON.stringify(v)
@@ -273,33 +250,15 @@ async function main(): Promise<void> {
     const r = raw[si]!
     const reads: Rec = {}
     READS.forEach((k, i) => { reads[k] = r.reads[i] })
-    const actor = tsActor(r)
-    let total = 0
-    let exact = 0
-    let errs = 0
-    const bad: string[] = []
-    const chk = (label: string, cols: readonly string[], theirs: string[], ours: (() => string[]) | undefined): void => {
-      if (theirs[0] === 'ERROR') {
-        errs++
-        let msg = 'no throw'
-        try { ours!() } catch (e) { msg = (e as Error).message }
-        total++; if (msg !== 'no throw') exact++; else bad.push(`${s.name} ${label}: luajit ERROR ${theirs[1]} / pob-ts no throw`)
-        return
-      }
-      let o: string[]
-      try { o = ours!() } catch (e) { total += cols.length; bad.push(`${s.name} ${label}: pob-ts threw ${(e as Error).message}`); return }
-      cols.forEach((c, k) => { total++; if (canon(o[k]!) === canon(theirs[k]!)) exact++; else bad.push(`${s.name} ${label}.${c}: pob-ts ${o[k]} != luajit ${theirs[k]}`) })
-    }
-    cases.forEach((c, i) => chk(c.name, POOL_COLUMNS, r.pools[i], () => tsPoolRow(actor, c)))
-    TAKEN.forEach((c, i) => chk(c.name, TAKEN_COLUMNS, r.taken[i], () => tsTakenRow(actor, c)))
+    const errs = [...r.pools, ...r.taken].filter((row: string[]) => row[0] === 'ERROR').length
     scenarios.push({ name: s.name, covers: s.covers, inputs: { synth: { output: s.output ?? {}, unset: s.unset ?? [], mods: (s.mods ?? []).map(([n, k, v]) => `${k}:${n}=${String(v)}`), shiftRows: s.shiftRows ?? {} },
       cases, taken: TAKEN.map((c) => ({ name: c.name, raw: String(c.raw), type: c.type })) }, results: { pools: r.pools, taken: r.taken }, actorReads: { reads, flags: r.flags, sums: r.sums, shift: r.shift } })
-    report.push({ scenario: s.name, covers: s.covers, calls: cases.length + TAKEN.length, luajitErrors: errs, fields: total, pobtsEqualLuajit: exact, mismatches: bad.slice(0, 4), mismatchCount: bad.length,
+    report.push({ scenario: s.name, covers: s.covers, calls: cases.length + TAKEN.length, luajitErrors: errs,
       flagsTrue: FLAGS.filter((_, i) => r.flags[i] === 'true').length, sumsNonZero: SUMS.filter((_, i) => parseNum(r.sums[i]) !== 0).map(([k, n]) => `${k}:${n}`) })
-    console.error(`${s.name}: ${exact}/${total}`)
+    console.error(`${s.name}: ${cases.length + TAKEN.length} calls, ${errs} LuaJIT errors`)
   })
   const obj: Rec = { build: BUILD, format: 1, xmlSha256: createHash('sha256').update(xmlBuf).digest('hex'),
-    producer: { generator: `pob-ts ${git(POBTS)}`, image: digest || LUAJIT_IMAGE, luajit: 'desktop LuaJIT docker', pobSha: git(UPSTREAM_POB),
+    producer: { generator: 'tools/lua-corpus/export-pools-synth.ts', image: digest || LUAJIT_IMAGE, luajit: 'desktop LuaJIT docker', pobSha: git(UPSTREAM_POB),
       probe: 'R4.1 pools PROBE (export-r4.ts) on a synthetic actor { output = copy(mainEnv.player.output)+overrides, modDB = new("ModDB")+Synth mods, damageShiftTable = copy+rows }; one docker run, build loaded once' },
     columns: { pool: POOL_COLUMNS, taken: TAKEN_COLUMNS, reads: READS, flags: FLAGS, sums: SUMS.map(([kind, n]) => `${kind}:${n}`), types: DMG, allyKeys: ALLY_KEYS }, scenarios }
   const text = `{\n${Object.keys(obj).sort(byteOrder).map((k) => `${JSON.stringify(k)}:${ser(obj[k])}`).join(',\n')}\n}\n`

@@ -1,27 +1,30 @@
-// R4.1: fixtures for the R4 gate.
-//   (a)+(b) <build>.r4-pobts.json  -- full pob-ts `calculate(xml)` output (no allowlist), %.17g strings, env state after perform.
+// R4.1: fixtures for the R4 gate. Until R-INDEPENDENT-UPDATE A4 also (a)+(b) <build>.r4-pobts.json (pob-ts `calculate(xml)`) and a
+// pob-ts replay of the pools probe; pob-ts is no longer a comparison subject (the full output of the goldens is LuaJIT's:
+// builds/corpus/goldens, tools/make-goldens.ts, gate crates/pob-calc/tests/full_fixture.rs). Nothing here imports pob-ts.
 //   (g)     <build>.pools.luajit.json -- the Lua half of pob-ts test/calc/estimations-ehp-oracle.test.ts (PROBE verbatim, :88-118) run in
 //           desktop LuaJIT (docker) on build.calcsTab.mainEnv.player after loadBuildFromXML; inputs + actor reads stored for a Rust replay.
-//   (perf)  `perf` mode -> tools/.scratch/perf-r4.json: LuaJIT calcs.buildOutput(build,"MAIN") x N in docker (pob-ts/wasm: `npm run bench`).
-// Run from the pob-rust root (Node 24):  node tools/lua-corpus/export-r4.ts [perf]
+//   (perf)  `perf` mode -> tools/.scratch/perf-r4.json: LuaJIT calcs.buildOutput(build,"MAIN") x N in docker.
+// Run from the pob-rust root (Node 24):  node tools/lua-corpus/export-r4.ts [perf] [--out <dir>]
 import { POB as UPSTREAM_POB } from '../upstream.ts'
 import { execFileSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, resolve } from 'node:path'
-import { fileURLToPath, pathToFileURL } from 'node:url'
-import { POBTS } from '../upstream.ts'
-const P = `file:///${POBTS}` // pob-ts code under test (not the harness)
-const { calculate } = await import(`${P}/src/api/engine.ts`)
-const { reducePoolsByDamage, takenHitFromDamage } = await import(`${P}/src/calc/pools.ts`)
-const { formatG } = await import(`${P}/src/lua/index.ts`)
+import { fileURLToPath } from 'node:url'
+import { formatG } from '../oracle/format-g.ts'
 const { GOLDEN_BUILDS, REPO_ROOT, resolveRoots } = await import('../oracle/paths.ts')
 const { LUAJIT_IMAGE } = await import('../oracle/luajit.ts')
 type Rec = Record<string, any> // eslint-disable-line
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
-const FIX = resolve(ROOT, 'crates/pob-calc/tests/fixtures')
+const FIX = (() => {
+  const i = process.argv.indexOf('--out')
+  if (i < 0) return resolve(ROOT, 'crates/pob-calc/tests/fixtures')
+  const d = resolve(process.argv[i + 1] ?? '')
+  process.argv.splice(i, 2)
+  return d
+})()
 const SCRATCH = resolve(ROOT, 'tools/.scratch')
 const MAX_BYTES = 1_500_000
 const git = (dir: string): string => execFileSync('git', ['-C', dir, 'rev-parse', '--short', 'HEAD'], { encoding: 'utf8' }).trim()
@@ -160,19 +163,6 @@ const poolsChunk = (): string =>
   `local FIELDS, TYPES, AEGIS, GUARD = ${lua(FIELDS)}, ${lua(DMG)}, ${lua(AEGIS_KEYS)}, ${lua(GUARD_KEYS)}\n` +
   `local READS, FLAGS, SUMS = ${lua(READS)}, ${lua(FLAGS)}, ${lua(SUMS)}\n${PROBE}`
 
-const fmt = (v: unknown): string => (v === undefined ? 'nil' : typeof v === 'number' ? formatG(v, 17) : String(v))
-const canon = (s: string): string => (s === '-nan' ? 'nan' : s)
-const parseNum = (s: string): number | undefined => (s === 'nil' ? undefined : s === 'inf' ? Infinity : s === '-inf' ? -Infinity : s === 'nan' || s === '-nan' ? NaN : Number(s))
-function poolRow(actor: Rec, c: (typeof CASES)[number]): string[] {
-  const damage = { ...c.damage }
-  const r = reducePoolsByDamage({ Life: c.pool.Life, Mana: c.pool.Mana, EnergyShield: c.pool.EnergyShield, Ward: c.pool.Ward, Aegis: { ...c.pool.Aegis }, Guard: { ...c.pool.Guard }, AlliesTakenBeforeYou: {} }, damage, actor)
-  return [...FIELDS.map((f) => fmt(r[f])), ...DMG.map((t) => fmt(r.damageTakenThatCanBeRecouped[t])), ...DMG.map((t) => fmt(damage[t])), ...AEGIS_KEYS.map((k) => fmt(r.Aegis[k])), ...GUARD_KEYS.map((k) => fmt(r.Guard[k]))]
-}
-function takenRow(actor: Rec, c: (typeof TAKEN)[number]): string[] {
-  const [sum, damages] = takenHitFromDamage(c.raw, c.type, actor)
-  return [fmt(sum), ...DMG.map((t) => fmt(damages[t]))]
-}
-
 // --- deterministic JSON ---
 function ser(v: unknown): string {
   if (typeof v === 'number') return Object.is(v, -0) ? '-0.0' : JSON.stringify(v)
@@ -190,59 +180,28 @@ function writeFix(slug: string, kind: string, obj: Rec): { file: string; bytes: 
   return { file, bytes: statSync(file).size }
 }
 const XML_OF = (name: string): Buffer => readFileSync(GOLDEN_BUILDS.find((b: Rec) => b.name === name).xmlPath(roots))
-const sortedRecord = (r: Rec, f: (v: any) => unknown): Rec => Object.fromEntries(Object.keys(r).sort(byteOrder).map((k) => [k, f(r[k])])) // eslint-disable-line
 
 async function fixtures(): Promise<void> {
   const luts = await prepareLuts()
   let digest = ''
   try { digest = execFileSync('docker', ['image', 'inspect', '--format', '{{index .RepoDigests 0}}', LUAJIT_IMAGE], { encoding: 'utf8' }).trim() } catch { /* tag only */ }
-  const generator = `pob-ts ${git(POBTS)}`
+  const generator = 'tools/lua-corpus/export-r4.ts'
   const report: Rec = {}
   for (const b of GOLDEN_BUILDS) {
     const xmlBuf = XML_OF(b.name)
     const slug = b.name.replace(/ /g, '-')
     const head = { build: b.name, format: 1, xmlSha256: createHash('sha256').update(xmlBuf).digest('hex') }
-    // (a)+(b) pob-ts
-    const res = calculate(xmlBuf.toString('utf8'))
-    const env = res.env
-    const stats: Rec = {}
-    const negZero: string[] = []
-    for (const k of Object.keys(res.stats).sort(byteOrder)) {
-      const v = (res.stats as Rec)[k]
-      if (typeof v === 'number') { if (Object.is(v, -0)) negZero.push(k); stats[k] = formatG(v, 17) } else stats[k] = v
-    }
-    const conds = (a: Rec): Rec => sortedRecord(a.modDB.conditions, (x) => x)
-    const mults = (a: Rec): Rec => sortedRecord(a.modDB.multipliers, (x) => (typeof x === 'number' ? formatG(x, 17) : x))
-    const f1 = writeFix(slug, 'r4-pobts', { ...head, producer: { generator }, stats, negZero, meta: res.meta, unimplemented: res.unimplemented,
-      playerConditions: conds(env.player), playerMultipliers: mults(env.player), enemyConditions: conds(env.enemy), enemyMultipliers: mults(env.enemy) })
     // (g) LuaJIT pools
     const raw = ljEval(loadChunk(xmlBuf, b.name) + poolsChunk(), luts)
-    const actor: Rec = { ...env.player, output: { ...env.player.output } }
     const reads: Rec = {}
-    READS.forEach((k, i) => {
-      reads[k] = raw.reads[i]
-      const v = parseNum(raw.reads[i])
-      if (v === undefined) delete actor.output[k]; else actor.output[k] = v
-    })
-    let exact = 0
-    let total = 0
-    const bad: string[] = []
-    const chk = (label: string, cols: readonly string[], theirs: readonly string[], ours: readonly string[]): void =>
-      cols.forEach((c, k) => { total++; if (canon(ours[k]!) === canon(theirs[k]!)) exact++; else bad.push(`${label}.${c}: pob-ts ${ours[k]} != luajit ${theirs[k]}`) })
-    CASES.forEach((c, i) => chk(`reducePools[${c.name}]`, POOL_COLUMNS, raw.pools[i], poolRow(actor, c)))
-    TAKEN.forEach((c, i) => chk(`takenHit[${c.name}]`, TAKEN_COLUMNS, raw.taken[i], takenRow(actor, c)))
-    const readDiffs = READS.filter((k, i) => fmt(env.player.output[k]) !== canon(raw.reads[i]))
+    READS.forEach((k, i) => { reads[k] = raw.reads[i] })
     const f2 = writeFix(slug, 'pools.luajit', { ...head,
       producer: { generator, image: digest || LUAJIT_IMAGE, luajit: 'desktop LuaJIT docker', pobSha: git(UPSTREAM_POB),
         probe: 'pob-ts test/calc/estimations-ehp-oracle.test.ts:27-118 (Lua PROBE verbatim; actor = build.calcsTab.mainEnv.player)' },
       inputs: { cases: CASES.map((c) => ({ name: c.name, pool: c.pool, damage: c.damage })), taken: TAKEN.map((c) => ({ name: c.name, raw: String(c.raw), type: c.type })),
         poolColumns: POOL_COLUMNS, takenColumns: TAKEN_COLUMNS, reads: READS, flags: FLAGS, sums: SUMS.map(([kind, n]) => `${kind}:${n}`), types: DMG },
       results: { pools: raw.pools, taken: raw.taken }, actorReads: { reads, flags: raw.flags, sums: raw.sums, shift: raw.shift } })
-    report[b.name] = { statsKeys: Object.keys(stats).length, negZero: negZero.length, unimplemented: res.unimplemented.length,
-      playerConds: Object.keys(conds(env.player)).length, playerMults: Object.keys(mults(env.player)).length,
-      enemyConds: Object.keys(conds(env.enemy)).length, enemyMults: Object.keys(mults(env.enemy)).length,
-      pools: { calls: CASES.length + TAKEN.length, fields: total, pobtsBitExactWithLuajitReads: exact, mismatches: bad.slice(0, 5) }, readsDifferingPobtsVsLuajit: readDiffs.length,
-      files: [f1, f2].map((f) => `${f.file.replace(`${ROOT}\\`, '')} ${f.bytes}`) }
+    report[b.name] = { pools: { calls: CASES.length + TAKEN.length }, file: `${f2.file.replace(`${ROOT}\\`, '')} ${f2.bytes}` }
     console.error(`${b.name}: done`)
   }
   console.log(JSON.stringify(report, null, 1))

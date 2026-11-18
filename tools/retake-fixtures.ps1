@@ -1,5 +1,5 @@
 #requires -Version 7
-# Re-take every LuaJIT / pob-ts fixture of crates/*/tests/fixtures and data-patches/ against the upstream of tools/upstream.json
+# Re-take every LuaJIT fixture of crates/*/tests/fixtures and data-patches/ against the upstream of tools/upstream.json
 # (R-UP; UPDATE-PROMPT.md step 6). Probes run strictly one after another (one docker container at a time, W12), each logged to
 # tools/.scratch/retake/<probe>.log; a failing probe does not stop the rest -- the summary lists it.
 #
@@ -9,6 +9,7 @@
 # list missed export-tattoo in 0.2.1). Run it after every tools/sync-data.ps1, even when the data did not change: the patches
 # are keyed by data.lock's manifestSha256, which holds pobSha. Then: cargo test -p pob-data --test patches_lock.
 #
+# No probe needs pob-ts or pob-engine-wasm (R-INDEPENDENT-UPDATE A3/A4); the goldens are tools/make-goldens.ts (LuaJIT, separate).
 # Needs: Docker Desktop running (image ghcr.io/pathofbuildingcommunity/pathofbuilding-tests:latest), Node 24 on PATH, the Rust
 # workspace built (export-engine / export-real call the release pob-cli). Order matters only for data-patches (first: pob-data
 # refuses data whose manifest sha differs from the patches') and for `export-power run` -> `pack`.
@@ -31,7 +32,6 @@ $probes = @(
     @('export-patterns', @(), 'crates/pob-lua/tests/fixtures/luajit-{patterns-modparser,patterns-fuzz,bit}.json'),
     @('export-modstore', @(), 'crates/pob-mods/tests/fixtures/modstore-*.json'),
     @('export-modparser', @(), 'crates/pob-parser/tests/fixtures/modparser-NN.json'),
-    @('export-build-model', @(), 'crates/pob-build/tests/fixtures/<build>.model.json (pob-ts)'),
     @('export-xml-config', @(), 'crates/pob-build/tests/fixtures/{xml-lua,config-load}.json'),
     @('export-config-apply', @(), 'crates/pob-build/tests/fixtures/config-apply.json'),
     @('export-config-apply', @('--strings'), 'crates/pob-build/tests/fixtures/config-apply-strings.json'),
@@ -42,11 +42,9 @@ $probes = @(
     @('export-radius', @(), 'crates/pob-tree/tests/fixtures/radius-*.json'),
     @('export-timeless', @(), 'crates/pob-tree/tests/fixtures/timeless-*.json'),
     @('export-buildraw', @(), 'crates/pob-items/tests/fixtures/buildraw.json'),
-    @('export-env', @(), 'crates/pob-calc/tests/fixtures/<build>.{luajit,pobts}.json'),
+    @('export-env', @(), 'crates/pob-calc/tests/fixtures/<build>.luajit.json'),
     @('export-skills', @(), 'crates/pob-calc/tests/fixtures/<build>.skills*.json'),
-    @('export-r4', @(), 'crates/pob-calc/tests/fixtures/<build>.{r4-pobts,pools.luajit}.json'),
-    @('export-defence-only', @(), 'crates/pob-calc/tests/fixtures/<build>.defence-pobts.json (pob-ts)'),
-    @('export-perform-only', @(), 'crates/pob-calc/tests/fixtures/<build>.perform-pobts.json (pob-ts)'),
+    @('export-r4', @(), 'crates/pob-calc/tests/fixtures/<build>.pools.luajit.json'),
     @('export-pools-synth', @(), 'crates/pob-calc/tests/fixtures/pools-synth.luajit.json'),
     @('export-defence-synth', @('coverage'), 'tools/.scratch/defence-synth-coverage*.json (line hook cache keyed by upstream line numbers: first!)'),
     @('export-defence-synth', @(), 'crates/pob-calc/tests/fixtures/defence-synth/*'),

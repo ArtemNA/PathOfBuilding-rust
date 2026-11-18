@@ -1,6 +1,6 @@
 //! The passive tree (`Classes/PassiveTree.lua`) and a build's allocation of it (`Classes/PassiveSpec.lua`) -- the subset
 //! `initEnv` needs (CALC-ARCH §3, R3-ARCH §1). Executable spec: pob-ts `src/tree/*`; truth: LuaJIT (fixtures
-//! `crates/pob-calc/tests/fixtures/<build>.{luajit,pobts}.json`, key `tree`).
+//! `crates/pob-calc/tests/fixtures/<build>.luajit.json`, key `tree`).
 //!
 //! Cluster jewels (`BuildClusterJewelGraphs`/`BuildSubgraph`, R5.5a) are in [`cluster`]; the caller runs
 //! [`PassiveSpec::post_load`] with the items once they are parsed (pob-calc `init_env`).

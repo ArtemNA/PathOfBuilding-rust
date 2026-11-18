@@ -1,16 +1,15 @@
-// R1.1: speed of the same numeric operations on the same inputs in LuaJIT (docker, jit.on, os.clock inside the
-// chunk -- docker boot excluded) and in pob-ts (node, performance.now). Output: tools/.scratch/perf-numeric.json.
+// R1.1: speed of the numeric operations on the corpus inputs in LuaJIT (docker, jit.on, os.clock inside the chunk -- docker boot
+// excluded). Output: tools/.scratch/perf-numeric.json; the Rust side is `cargo run -p pob-lua --release --example bench_numeric`.
+// Until R-INDEPENDENT-UPDATE A4 it timed pob-ts (node) as well; pob-ts is no longer a comparison subject.
 // Run from the pob-rust root:  node tools/lua-corpus/perf-numeric.ts
 import '../upstream.ts'
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { encodeNum, tonumberCorpus, tostringCorpus } from 'file:///C:/pob-work/pob-ts/test/lua/corpus.ts'
+import { encodeNum, tonumberCorpus, tostringCorpus } from '../oracle/numeric-corpus.ts'
 import { luajitEval } from '../oracle/luajit-eval.ts'
 import { dockerAvailable } from '../oracle/luajit.ts'
 import { resolveRoots } from '../oracle/paths.ts'
-import { luaFormat, luaTonumber, luaTostring } from 'file:///C:/pob-work/pob-ts/src/lua/string.ts'
-import { luaRound } from 'file:///C:/pob-work/pob-ts/src/lua/number.ts'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const OUT_FILE = resolve(HERE, '../.scratch/perf-numeric.json')
@@ -121,51 +120,20 @@ for (const ln of raw) {
   luajit[name] = stat(secs.map((s) => (s * 1e9) / (n * reps)), n, reps, secs.map((s) => s * 1000))
 }
 
-// --- TS side -----------------------------------------------------------------------
-
-let sink = 0
-const absFin = fin.map(Math.abs)
-const ops: [string, (reps: number) => void, number][] = [
-  ['tostring', (reps) => { let a = 0; for (let r = 0; r < reps; r += 1) for (const v of tsAll) a += luaTostring(v).length; sink += a }, tsAll.length],
-  ['format', (reps) => { let a = 0; for (let r = 0; r < reps; r += 1) for (const v of fin) a += luaFormat('%.2f', v).length; sink += a }, fin.length],
-  ['tonumber', (reps) => { let a = 0; for (let r = 0; r < reps; r += 1) for (const s of tnStrs) if (luaTonumber(s) !== undefined) a += 1; sink += a }, tnStrs.length],
-  ['round', (reps) => { let a = 0; for (let r = 0; r < reps; r += 1) for (const v of fin) a += luaRound(v, 2); sink += a }, fin.length],
-  ['pow', (reps) => { let a = 0; for (let r = 0; r < reps; r += 1) for (const v of absFin) a += v ** 0.9; sink += a }, absFin.length],
-  ['sin', (reps) => { let a = 0; for (let r = 0; r < reps; r += 1) for (const v of fin) a += Math.sin(v); sink += a }, fin.length],
-]
-const ts: Record<string, Stat> = {}
-for (const [name, fn, n] of ops) {
-  let reps = 1
-  for (;;) {
-    const t = performance.now()
-    fn(reps)
-    if (performance.now() - t >= CAL_MS) break
-    reps *= 2
-  }
-  const ms: number[] = []
-  for (let k = 0; k < RUNS; k += 1) {
-    const t = performance.now()
-    fn(reps)
-    ms.push(performance.now() - t)
-  }
-  ts[name] = stat(ms.map((m) => (m * 1e6) / (n * reps)), n, reps, ms)
-}
-
 // --- report --------------------------------------------------------------------------
 
-const minRun = Math.min(...[...Object.values(luajit), ...Object.values(ts)].flatMap((s) => s.runs_ms))
+const minRun = Math.min(...Object.values(luajit).flatMap((s) => s.runs_ms))
 const meta = metaLine.split('\t')
 mkdirSync(dirname(OUT_FILE), { recursive: true })
-writeFileSync(OUT_FILE, JSON.stringify({ luajit, ts, meta: { luajit: meta[1], jitStatus: meta[2], node: process.version, runs: RUNS, minRunMs: minRun, sink } }, null, 1) + '\n')
+writeFileSync(OUT_FILE, JSON.stringify({ luajit, meta: { luajit: meta[1], jitStatus: meta[2], runs: RUNS, minRunMs: minRun } }, null, 1) + '\n')
 
 const f = (s: Stat): string => `${s.median_ns.toFixed(1)} [${s.min_ns.toFixed(1)}-${s.max_ns.toFixed(1)}]`
-console.log('op        n      LuaJIT ns/op median [min-max]      TS ns/op median [min-max]     TS/LuaJIT')
+console.log('op        n      LuaJIT ns/op median [min-max]')
 for (const name of Object.keys(luajit)) {
   const a = luajit[name]!
-  const b = ts[name]!
-  console.log(`${name.padEnd(9)} ${String(a.n).padEnd(6)} ${f(a).padEnd(32)} ${f(b).padEnd(30)} ${(b.median_ns / a.median_ns).toFixed(2)}x`)
+  console.log(`${name.padEnd(9)} ${String(a.n).padEnd(6)} ${f(a)}`)
 }
-console.log(`LuaJIT: ${meta[1]} jit.status=${meta[2]}; node ${process.version}; shortest timed run ${minRun.toFixed(1)} ms (need >= ${MIN_MS}); sink=${sink}`)
+console.log(`LuaJIT: ${meta[1]} jit.status=${meta[2]}; shortest timed run ${minRun.toFixed(1)} ms (need >= ${MIN_MS})`)
 if (minRun < MIN_MS) {
   console.error(`STOP: a timed run was shorter than ${MIN_MS} ms`)
   process.exit(3)

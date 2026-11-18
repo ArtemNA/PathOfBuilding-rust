@@ -1,4 +1,5 @@
-//! Oracle goldens for pob-rust: reads pob-ts snapshots, compares a candidate with the round4 rule, renders the report.
+//! Oracle goldens for pob-rust: reads the LuaJIT golden snapshots (format of pob-ts `tools/oracle/format.ts`), compares a
+//! candidate with the round4 rule, renders the report.
 //! Semantics: `reference/pob-ts/ORACLE.md`, `KNOWLEDGE/RUST-ARCH.md` §6.
 
 pub mod candidate;

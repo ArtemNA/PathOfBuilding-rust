@@ -5,7 +5,9 @@
 //      -> docker PoB boot + loadBuildFromXML + dump of build.configTab / bandit / pantheon (one docker run per case, O5/W12).
 // Strings are BYTE strings: bytes >= 0x7f or < 0x20 (besides \n \r \t) are written as \u00XX (one escape per byte), UTF-8 is NOT decoded.
 // Numbers in config answers are {"num":"<%.17g>"}. Attribs are [key,value] pairs sorted by key (Lua order is undefined).
-// Usage (PowerShell, Node 24, from pob-rust root): node tools/lua-corpus/export-xml-config.ts [--no-selfcheck]
+// Usage (PowerShell, Node 24, from pob-rust root): node tools/lua-corpus/export-xml-config.ts
+// Until R-INDEPENDENT-UPDATE A4 an informational self-check replayed both corpora on pob-ts (parseXml, loadBuildXml + config);
+// pob-ts is no longer a comparison subject, nothing here imports it.
 import { POB as UPSTREAM_POB } from '../upstream.ts'
 import { execFile, execFileSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
@@ -18,7 +20,6 @@ const run = promisify(execFile)
 type Rec = Record<string, any> // eslint-disable-line
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
 const POB = UPSTREAM_POB
-import { POBTS } from '../upstream.ts' // pob-ts code under test (informational self-check), not the harness
 import { LUA_DIR } from '../oracle/luajit-eval.ts' // tools/oracle/lua, mounted as /bench
 const FIX = join(ROOT, 'crates/pob-build/tests/fixtures')
 const IMAGE = 'ghcr.io/pathofbuildingcommunity/pathofbuilding-tests:latest'
@@ -356,60 +357,3 @@ const prodCfg = { generator: 'tools/lua-corpus/export-xml-config.ts', strings: p
   luajit: dk.luajit, image: imageId, pobSha, reloadChainDiffers: chainDiff.length }
 const sha1 = [write('xml-lua.json', { producer: prodXml }, xmlCases), write('config-load.json', { producer: prodCfg, reference: REF }, cfgCases)]
 console.log(`written; sha256 xml ${sha1[0]!.slice(0, 16)} config ${sha1[1]!.slice(0, 16)}; ${((Date.now() - T0) / 1000).toFixed(0)}s`)
-
-// ---------------------------------------------------------------- self-check vs pob-ts (informational)
-if (!process.argv.includes('--no-selfcheck')) {
-  const { parseXml } = await import(`file:///${POBTS}/src/build/xml.ts`)
-  const { loadBuildXml } = await import(`file:///${POBTS}/src/build/index.ts`)
-  const { buildConfigModLists, configStateFromBuild } = await import(`file:///${POBTS}/src/config/index.ts`)
-  const { formatSourceMod } = await import(`file:///${POBTS}/src/mods/format.ts`)
-  const { formatG } = await import(`file:///${POBTS}/src/lua/index.ts`)
-  const dec = (s: string): string => Buffer.from(s, 'latin1').toString('utf8')
-  const enc = (e: Rec | string, trim: boolean): any => { // eslint-disable-line
-    if (typeof e === 'string') return u8(e)
-    const kids: any[] = [] // eslint-disable-line
-    for (const ch of e.children) { const x = enc(ch, trim); if (typeof x === 'string' && trim) { const t = x.replace(/^\s+|\s+$/g, ''); if (/\S/.test(t)) kids.push(t) } else kids.push(x) }
-    return { attrib: Object.entries(e.attrib as Rec).map(([k, v]) => [u8(k), u8(v as string)]).sort((a, b) => (a[0] < b[0] ? -1 : 1)), children: kids, elem: e.name, ...(kids.length === 0 ? { empty: true } : {}) }
-  }
-  const cls: Rec = {}
-  const bump = (k: string, who: string): void => { (cls[k] ??= []).push(who) }
-  xmlIn.forEach((input, i) => {
-    const lua = dk.rows[i]
-    let ts: Rec | undefined
-    try { ts = parseXml(dec(input)) } catch { ts = undefined }
-    const luaErr = Array.isArray(lua)
-    if (luaErr && !ts) return bump('same: both error', '')
-    if (luaErr) return bump(`lua ${lua[0]} / ts parses`, JSON.stringify(input.slice(0, 40)))
-    if (!ts) return bump('lua parses / ts throws', JSON.stringify(input.slice(0, 40)))
-    const l = ser(lua.children)
-    if (lua.children.length === 1 && ser([enc(ts, false)]) === l) return bump('same: tree identical', '')
-    if (lua.children.length === 1 && ser([enc(ts, true)]) === l) return bump('R6.1 whitespace/text trim only', '')
-    bump('tree differs (other: attrib/top-level/CDATA/entities)', JSON.stringify(input.slice(0, 40)))
-  })
-  console.log('--- self-check xml (pob-ts parseXml vs LuaJIT):')
-  for (const [k, v] of Object.entries(cls)) console.log(`${String(v.length).padStart(4)}  ${k}${k.startsWith('same') ? '' : '  e.g. ' + v.slice(0, 3).join(' ; ')}`)
-  const N = (v: unknown): unknown => (typeof v === 'number' ? { num: formatG(v, 17) } : v)
-  const fields: Rec = {}
-  const tsDump = (xml: string): Rec => {
-    const model = loadBuildXml(dec(xml))
-    const state = configStateFromBuild(model)
-    const r = buildConfigModLists(state, { characterLevel: model.level })
-    return { bandit: model.bandit, pantheonMajorGod: model.pantheonMajorGod, pantheonMinorGod: model.pantheonMinorGod, enemyLevel: N(state.enemyLevel), input: Object.fromEntries(Object.entries(state.input).map(([k, v]) => [k, N(v)])),
-      placeholder: Object.fromEntries(Object.entries(state.placeholder).map(([k, v]) => [k, N(v)])), mods: r.modList.mods.map(formatSourceMod), enemyMods: r.enemyModList.mods.map(formatSourceMod),
-      activeConfigSetId: N(model.config.activeConfigSet), configSetIds: model.config.sets.map((s: Rec) => N(s.id)) }
-  }
-  let luaFail = 0; let tsFail = 0; let both = 0
-  for (const [ci, c] of cfgCases.entries()) {
-    const r = cfgOut[ci]
-    let t: Rec | undefined
-    try { t = tsDump(c.input) } catch (e) { t = undefined; if (!r.error && !r.prompt && !r.dumpError) tsFail++ }
-    if (r.error || r.prompt || r.dumpError) { if (t) luaFail++; else both++; continue }
-    if (!t) continue
-    const ids = r.configSets.map((s: Rec[]) => s[0])
-    const luaView: Rec = { ...r, configSetIds: ids }
-    for (const f of ['bandit', 'pantheonMajorGod', 'pantheonMinorGod', 'enemyLevel', 'input', 'placeholder', 'mods', 'enemyMods', 'activeConfigSetId', 'configSetIds'])
-      if (ser(luaView[f]) !== ser(t[f])) (fields[f] ??= []).push(c.name)
-  }
-  console.log(`--- self-check config (pob-ts vs LuaJIT), ${cfgCases.length} cases: lua errors but ts loads: ${luaFail}; both fail: ${both}; ts throws on lua-ok: ${tsFail}`)
-  for (const [f, v] of Object.entries(fields)) console.log(`${String(v.length).padStart(4)}  field ${f}: ${v.slice(0, 6).join(', ')}${v.length > 6 ? ', ...' : ''}`)
-}

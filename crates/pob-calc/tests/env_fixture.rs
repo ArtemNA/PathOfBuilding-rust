@@ -1,14 +1,13 @@
-//! R3.6 gate (R3-ARCH §3) on the R3.1 fixtures (`tests/fixtures/<build>.{luajit,pobts}.json`, key `env`; producer
-//! `tools/lua-corpus/export-env.ts`, probe = pob-ts `test/calc/initEnv-oracle.test.ts:88-116`):
-//!   (a) the Rust dump in the shape of the probe's TS half (`tsEnvDump`) = the pob-ts dump: every modDB/enemyDB bucket as
-//!       a MULTISET of `formatSourceMod|source` (L10/D13 -- `pairs(allocNodes)` order), conditions/multipliers key for key
-//!       (multipliers through `%.17g`), every other field exactly;
-//!   (b) Rust <-> LuaJIT classified exactly as pob-ts classifies it (`selfEnv` in export-env.ts = `initEnv-oracle.test.ts`):
-//!       item-miss / node-miss / cluster / granted-passive / alloc-count / tree-jewel by the SOURCE of the mod, the gem
-//!       multipliers (`Socketed*`/`Empty*Socket*`) excluded by name; per-build counts = R3.1, unclassified 0.
-//! (a) and (b) run in `ParseMode::CacheOnly` (pob-ts). R5.4 adds (c): (b) in `ParseMode::Full` (the desktop: ModCache, else
-//! the real ModParser) -- `item-miss`/`node-miss`/`granted-passive` 0, and since R5.5a (cluster graphs, `Full` only)
-//! `cluster`/`alloc-count` 0; `tree-jewel` (R5.5b/c) pinned as measured.
+//! R3.6 gate (R3-ARCH §3) on the R3.1 fixtures (`tests/fixtures/<build>.luajit.json`, key `env`; producer
+//! `tools/lua-corpus/export-env.ts`, probe = pob-ts `test/calc/initEnv-oracle.test.ts:88-116`, Lua verbatim): a fresh `init_env` in
+//! `ParseMode::Full` (the desktop: ModCache, else the real ModParser) against LuaJIT, classified by the SOURCE of every differing mod
+//! (item-miss / node-miss / cluster / granted-passive / alloc-count / tree-jewel; the gem multipliers `Socketed*`/`Empty*Socket*`
+//! excluded by name) -- since R5.5c every class is 0.
+//!
+//! R-INDEPENDENT-UPDATE A4 removed what compared with pob-ts (ignored since U-R6, pob-ts was the 2.67.2 reference): (a) the dump
+//! equal to pob-ts' (`<build>.pobts.json`, its comparator self-test with it) and (b) the same classification in
+//! `ParseMode::CacheOnly` with pob-ts' R3.1 counters. Their LuaJIT side is `env_full_vs_luajit_classified` (stronger: every class
+//! 0); the env after perform is gated by `perform_cp.rs` (CP1-CP4, modDB multisets, conditions, multipliers, exactly).
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::rc::Rc;
@@ -24,15 +23,6 @@ use pob_tree::PassiveSpec;
 use pob_tree::modtools::format_source_mod;
 use serde_json::{Map, Value as Json, json};
 
-/// R3.1 report / pob-ts pins: [item-miss, node-miss, cluster, granted-passive, alloc-count, tree-jewel].
-const EXPECTED_CLASSES: [(&str, [usize; 6]); 6] = [
-    ("Dual Savior", [0, 1, 0, 0, 0, 0]),
-    ("Dual Wield Cospris CoC", [72, 12, 34, 1, 2, 12]),
-    ("Dual Wield Cospris CoC - Lethal Pride", [72, 15, 34, 1, 2, 26]),
-    ("Generals Perforate Zerker", [80, 28, 49, 4, 4, 0]),
-    ("Mirage Archer Toxic Rain", [35, 13, 17, 3, 2, 0]),
-    ("OccVortex", [36, 12, 0, 3, 0, 0]),
-];
 const CLASSES: [&str; 6] = ["item-miss", "node-miss", "cluster", "granted-passive", "alloc-count", "tree-jewel"];
 
 fn fixture(name: &str, kind: &str) -> Json {
@@ -50,11 +40,7 @@ struct Run {
     miss_items: BTreeSet<u64>,
 }
 
-fn run(name: &str) -> Run {
-    run_mode(name, ParseMode::CacheOnly)
-}
-
-/// `run` with every mod line read in `mode`; in `Full` a "miss" item is one with a line the parser could not answer.
+/// A fresh `init_env` of a golden with every mod line read in `mode`; in `Full` a "miss" item is one with a line the parser could not answer.
 fn run_mode(name: &str, mode: ParseMode) -> Run {
     let g = GOLDEN_BUILDS.iter().find(|g| g.name == name).expect("golden");
     let model = Rc::new(load_build_xml(&std::fs::read_to_string(g.xml_path()).expect("xml")).expect("xml parses"));
@@ -187,7 +173,7 @@ fn env_dump(r: &Run) -> Json {
     })
 }
 
-/// JSON numbers compared as f64 (pob-ts writes `84`, Rust `84.0`).
+/// JSON numbers compared as f64 (the probe writes `84`, Rust `84.0`).
 fn same(a: &Json, b: &Json) -> bool {
     match (a, b) {
         (Json::Number(x), Json::Number(y)) => x.as_f64() == y.as_f64(),
@@ -197,97 +183,7 @@ fn same(a: &Json, b: &Json) -> bool {
     }
 }
 
-fn bucket_pairs(db: &Json, name: &str) -> BTreeMap<(String, String), usize> {
-    let mods = db["mods"][name].as_array().map(Vec::as_slice).unwrap_or_default();
-    let srcs = db["srcs"][name].as_array().map(Vec::as_slice).unwrap_or_default();
-    let mut m = BTreeMap::new();
-    for (i, f) in mods.iter().enumerate() {
-        let src = srcs.get(i).and_then(Json::as_str).unwrap_or("").to_owned();
-        *m.entry((f.as_str().expect("str").to_owned(), src)).or_insert(0) += 1;
-    }
-    m
-}
-
-/// (a) bucket multisets + conditions/multipliers key for key. Returns (differences, buckets whose ORDER differs).
-fn diff_db_exact(label: &str, ours: &Json, theirs: &Json, out: &mut Vec<String>) -> usize {
-    let names = |d: &Json| -> BTreeSet<String> { d["mods"].as_object().expect("mods").keys().cloned().collect() };
-    let (a, b) = (names(ours), names(theirs));
-    let mut order_diffs = 0;
-    for n in a.union(&b) {
-        let (x, y) = (bucket_pairs(ours, n), bucket_pairs(theirs, n));
-        if x != y {
-            out.push(format!("{label}.mods[{n}]: rust {x:?} != pob-ts {y:?}"));
-        } else if ours["mods"][n] != theirs["mods"][n] {
-            order_diffs += 1;
-        }
-    }
-    for k in ["conditions", "multipliers"] {
-        if ours[k] != theirs[k] {
-            let (x, y) = (ours[k].as_object().unwrap(), theirs[k].as_object().unwrap());
-            for key in x.keys().chain(y.keys()).collect::<BTreeSet<_>>() {
-                if x.get(key) != y.get(key) {
-                    out.push(format!("{label}.{k}[{key}]: rust {:?} != pob-ts {:?}", x.get(key), y.get(key)));
-                }
-            }
-        }
-    }
-    order_diffs
-}
-
-#[test]
-#[ignore = "U-R6 (2.68.0, 07fa089bf): pob-ts is the 2.67.2 reference (no MaximumLifeManaDifference / MissingUnreservedLifePercent / SocketedSkillGemsIn*, the old ModCache in CacheOnly); the truth is LuaJIT (UPDATE-PROMPT.md 7.5)"]
-fn env_equals_pob_ts_for_six_goldens() {
-    let mut report = Vec::new();
-    for g in GOLDEN_BUILDS {
-        let r = run(g.name);
-        let ours = env_dump(&r);
-        let theirs = fixture(g.name, "pobts");
-        let mut diffs = Vec::new();
-        let mut order = 0;
-        for db in ["modDB", "enemyDB"] {
-            order += diff_db_exact(db, &ours[db], &theirs[db], &mut diffs);
-        }
-        let ours_o = ours.as_object().unwrap();
-        let theirs_o = theirs.as_object().unwrap();
-        assert_eq!(
-            ours_o.keys().collect::<BTreeSet<_>>(),
-            theirs_o.keys().collect::<BTreeSet<_>>(),
-            "{}: dump fields",
-            g.name
-        );
-        for (k, v) in ours_o {
-            if k == "modDB" || k == "enemyDB" {
-                continue;
-            }
-            if !same(v, &theirs_o[k]) {
-                diffs.push(format!("{k}: rust {v} != pob-ts {}", theirs_o[k]));
-            }
-        }
-        let count = |d: &Json| -> (usize, usize) {
-            let m = d["mods"].as_object().unwrap();
-            (m.len(), m.values().map(|b| b.as_array().unwrap().len()).sum())
-        };
-        report.push(format!(
-            "{}: modDB {:?} enemyDB {:?} (pob-ts {:?}/{:?}), diffs {}, buckets in a different order {order}",
-            g.name,
-            count(&ours["modDB"]),
-            count(&ours["enemyDB"]),
-            count(&theirs["modDB"]),
-            count(&theirs["enemyDB"]),
-            diffs.len()
-        ));
-        assert!(
-            diffs.is_empty(),
-            "{}: {} differences from pob-ts:\n{}",
-            g.name,
-            diffs.len(),
-            diffs.join("\n")
-        );
-    }
-    println!("{}", report.join("\n"));
-}
-
-// --- (b) LuaJIT, classified ---------------------------------------------------------------------------------------
+// --- LuaJIT, classified ------------------------------------------------------------------------------------------
 
 /// `Item:<id>:` / `Tree:<id>` / `Tree<id>` (the keystoneMod source has no colon).
 fn source_ref(s: &str) -> Option<(&'static str, u64)> {
@@ -429,12 +325,6 @@ fn classify_db(label: &str, ours: &Json, lj: &Json, gaps: &Gaps, cls: &mut BTree
             cls.entry("unexplained").or_default().push(format!("{label}.conditions[{k}]"));
         }
     }
-}
-
-#[test]
-#[ignore = "U-R6 (2.68.0, 07fa089bf): pob-ts is the 2.67.2 reference (no MaximumLifeManaDifference / MissingUnreservedLifePercent / SocketedSkillGemsIn*, the old ModCache in CacheOnly); the truth is LuaJIT (UPDATE-PROMPT.md 7.5)"]
-fn env_vs_luajit_classified_as_pob_ts() {
-    env_vs_luajit(ParseMode::CacheOnly, &EXPECTED_CLASSES);
 }
 
 /// `ParseMode::Full`: [item-miss, node-miss, cluster, granted-passive, alloc-count, tree-jewel]. R5.4 measured cluster
@@ -610,20 +500,4 @@ fn obj(j: &Json) -> Map<String, Json> {
         Json::Array(a) if a.is_empty() => Map::new(),
         other => panic!("expected an object, got {other}"),
     }
-}
-
-/// The comparator of (a) sees a changed multiplier, a dropped mod and a changed source.
-#[test]
-fn comparator_is_not_vacuous() {
-    let r = run("Dual Savior");
-    let ours = env_dump(&r);
-    let mut bad = ours.clone();
-    bad["modDB"]["multipliers"]["Level"] = json!("2");
-    bad["modDB"]["mods"]["Str"].as_array_mut().unwrap().pop();
-    bad["modDB"]["srcs"]["Str"].as_array_mut().unwrap().pop();
-    bad["enemyDB"]["srcs"]["Accuracy"][0] = json!("Elsewhere");
-    let mut diffs = Vec::new();
-    diff_db_exact("modDB", &ours["modDB"], &bad["modDB"], &mut diffs);
-    diff_db_exact("enemyDB", &ours["enemyDB"], &bad["enemyDB"], &mut diffs);
-    assert_eq!(diffs.len(), 3, "{diffs:?}");
 }

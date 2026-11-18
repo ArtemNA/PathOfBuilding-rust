@@ -159,7 +159,8 @@ fn real_like(r: &mut Rng, stats: &[f64]) -> f64 {
 
 /// Numeric stats of the goldens (read at run time, nothing from them is stored here).
 fn golden_stats() -> Vec<f64> {
-    let goldens = std::env::var("POB_TS_ROOT").unwrap_or_else(|_| "C:/pob-work/pob-ts".into()) + "/tools/oracle/goldens";
+    let goldens =
+        std::env::var("POB_GOLDENS_DIR").unwrap_or_else(|_| concat!(env!("CARGO_MANIFEST_DIR"), "/../../builds/corpus/goldens").into());
     std::fs::read_dir(&goldens)
         .map(|d| {
             d.flatten()

@@ -1,11 +1,12 @@
-//! R3.3 gate on the 6 goldens (R3-ARCH §3), fixtures from R3.1 (`crates/pob-calc/tests/fixtures/<build>.{pobts,luajit}.json`,
-//! key `tree`; producer `tools/lua-corpus/export-env.ts`):
-//!   (a) the Rust dump in the shape of the TS half of pob-ts `test/tree/spec.test.ts` (`tsTree`) = the pob-ts dump, exactly;
-//!   (b) Rust <-> LuaJIT dump classified exactly as pob-ts classifies it (export-env.ts `selfTreeGlobal`/`selfTree`):
+//! R3.3 gate on the 6 goldens (R3-ARCH §3), fixtures from R3.1 (`crates/pob-calc/tests/fixtures/<build>.luajit.json`, key
+//! `tree`; producer `tools/lua-corpus/export-env.ts`, probe = pob-ts `test/tree/spec.test.ts`, Lua verbatim):
+//!   (a) until R-INDEPENDENT-UPDATE A4: the Rust dump = pob-ts' TS half (`<build>.pobts.json`); removed, pob-ts is no longer a
+//!       comparison subject -- (b) and (c) compare the same dump with LuaJIT, the truth;
+//!   (b) Rust <-> LuaJIT dump classified exactly as pob-ts classified it (export-env.ts `selfTreeGlobal`/`selfTree`):
 //!       cluster ids (>= 65536) / expansion sockets, node-miss (a ModCache miss on the node), tree-jewel (Lethal Pride, inside
 //!       socket 61834's radius), keystoneMap legion keys (LuaJIT-only; R5.5c: each one is in `tree.legion().keystone_map`
 //!       with LuaJIT's mods) -- per-build counts pinned, unclassified 0.
-//! (a)/(b) run in `ParseMode::CacheOnly` (pob-ts). R5.4 (c): (b) in `ParseMode::Full` -- `node-miss` 0 (every node line
+//! (b) runs in `ParseMode::CacheOnly`. R5.4 (c): (b) in `ParseMode::Full` -- `node-miss` 0 (every node line
 //! answered by the real parser equals LuaJIT), keystoneMap ModCache-miss 0, the rest pinned as in (b).
 //! These specs never see the build's items, so `PostLoad` (cluster graphs) does not run and the cluster classes stay as
 //! pinned; with the items they are 0 -- `pob-calc/tests/cluster_tree.rs` (R5.5a).
@@ -97,35 +98,6 @@ fn dump(tree: &PassiveTree, spec: &PassiveSpec) -> Json {
         "counts": [spec.allocated_notable_count, spec.allocated_keystone_count, spec.allocated_mastery_count, spec.allocated_mastery_type_count],
         "className": spec.cur_class_name, "ascendName": spec.cur_ascend_class_name,
     })
-}
-
-/// Exact JSON equality (numbers bit for bit); the first difference as a path.
-fn diff(path: &str, want: &Json, got: &Json) -> Option<String> {
-    match (want, got) {
-        (Json::Number(a), Json::Number(b)) => {
-            let (a, b) = (a.as_f64().unwrap(), b.as_f64().unwrap());
-            (a.to_bits() != b.to_bits()).then(|| format!("{path}: want {a:?}, got {b:?}"))
-        }
-        (Json::Array(a), Json::Array(b)) => {
-            if a.len() != b.len() {
-                return Some(format!("{path}: want {} elements, got {} ({want} vs {got})", a.len(), b.len()));
-            }
-            a.iter()
-                .zip(b)
-                .enumerate()
-                .find_map(|(i, (x, y))| diff(&format!("{path}[{i}]"), x, y))
-        }
-        (Json::Object(a), Json::Object(b)) => {
-            if let Some(k) = a.keys().find(|k| !b.contains_key(*k)) {
-                return Some(format!("{path}.{k}: missing"));
-            }
-            if let Some(k) = b.keys().find(|k| !a.contains_key(*k)) {
-                return Some(format!("{path}.{k}: extra = {}", b[k.as_str()]));
-            }
-            a.iter().find_map(|(k, x)| diff(&format!("{path}.{k}"), x, &b[k]))
-        }
-        _ => (want != got).then(|| format!("{path}: want {want}, got {got}")),
-    }
 }
 
 fn uncached(tree: &PassiveTree, id: u32) -> bool {
@@ -252,7 +224,7 @@ fn classify_global(tree: &PassiveTree, rust: &Json, lj: &Json) -> (usize, usize,
 }
 
 #[test]
-fn tree_dump_equals_pob_ts_and_classifies_against_luajit() {
+fn tree_cache_only_classifies_against_luajit() {
     // (cluster ids, expansion sockets, node-miss, tree-jewel) per build -- R3.1 report.
     let pinned: [(&str, [usize; 4]); 6] = [
         ("Dual Savior", [0, 0, 1, 0]),
@@ -266,9 +238,6 @@ fn tree_dump_equals_pob_ts_and_classifies_against_luajit() {
     for (i, g) in GOLDEN_BUILDS.iter().enumerate() {
         let spec = spec_for(g.name, AllocOrder::IdAsc);
         let rust = dump(&tree, &spec);
-        if let Some(d) = diff("$", &fixture(g.name, "pobts"), &rust) {
-            panic!("{}: Rust dump != pob-ts dump: {d}", g.name);
-        }
         let lj = fixture(g.name, "luajit");
         if i == 0 {
             let (legion, miss, same) = classify_global(&tree, &rust, &lj);

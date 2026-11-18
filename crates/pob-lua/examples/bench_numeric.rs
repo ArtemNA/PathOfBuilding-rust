@@ -1,4 +1,4 @@
-//! Micro-bench of the R1.1 operations on the same inputs as tools/lua-corpus/perf-numeric.ts (LuaJIT / pob-ts side):
+//! Micro-bench of the R1.1 operations on the same inputs as tools/lua-corpus/perf-numeric.ts (LuaJIT side):
 //! tostring (%.14g), format("%.2f"), tonumber, round(a, 2), a ^ 0.9, math.sin. ns/op, median [min-max] of 7 runs >= 200 ms each.
 //! `cargo run --release -p pob-lua --example bench_numeric`
 
@@ -71,7 +71,8 @@ fn main() {
         }
     });
     // Realistic inputs: every numeric stat of the six goldens (the corpus above is mostly random 17-digit doubles, the worst case).
-    let goldens = std::env::var("POB_TS_ROOT").unwrap_or_else(|_| "C:/pob-work/pob-ts".into()) + "/tools/oracle/goldens";
+    let goldens =
+        std::env::var("POB_GOLDENS_DIR").unwrap_or_else(|_| concat!(env!("CARGO_MANIFEST_DIR"), "/../../builds/corpus/goldens").into());
     let stats: Vec<f64> = std::fs::read_dir(&goldens)
         .map(|d| {
             d.flatten()

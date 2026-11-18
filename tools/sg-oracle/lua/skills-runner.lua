@@ -41,10 +41,10 @@ end
 for _, b in ipairs({ "Generals Perforate Zerker", "Dual Savior", "Dual Wield Cospris CoC", "Mirage Archer Toxic Rain", "OccVortex" }) do
 	writeAll(USER .. "/Path of Building/Builds/" .. b .. ".xml", readAll(POB_ROOT .. "spec/TestBuilds/3.13/" .. b .. ".xml"))
 end
--- a golden of the oracle's fixtures, for `u5probe`
+-- the Lethal Pride golden (builds/corpus: a copy of the former pob-engine-wasm test fixture), for `u5probe`
 do
 	local b = "Dual Wield Cospris CoC - Lethal Pride"
-	writeAll(USER .. "/Path of Building/Builds/" .. b .. ".xml", readAll(UPSTREAM.oracle .. "test/fixtures/" .. b .. ".xml"))
+	writeAll(USER .. "/Path of Building/Builds/" .. b .. ".xml", readAll(UPSTREAM.corpus .. b .. ".xml"))
 end
 -- A public golden has no minions, mines or stages: OccVortex + three groups (the same edit as crates/pob-ui/tests/calcs.rs).
 do

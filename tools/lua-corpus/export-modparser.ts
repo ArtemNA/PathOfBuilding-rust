@@ -1,9 +1,11 @@
 // R5.1: LuaJIT answers for ModParser.lua's INTERNAL parseMod (upvalue of modLib.parseMod, P5-ARCH 2.6) on three line corpora:
 //   cache = the 23 207 lines of data/mod-cache.json, tree = stats lines of the goldens' passive trees (3_13, 3_30=latest) incl. the
 //   "line .. ' ' .. next" combinations PassiveTree:ProcessStats tries (found by running ProcessStats' loop in LuaJIT itself, both with the
-//   bare parser and with ModCache preloaded), item = ModCache misses of the 6 golden builds' items (pob-ts Item.parse, as oracle.test.ts).
+//   bare parser and with ModCache preloaded), item = ModCache misses of the 6 golden builds' items: every line `modLib.parseMod` gets during
+//   ItemsTab:Load in LuaJIT that is not a key of Data/ModCache.lua (until R-INDEPENDENT-UPDATE A4: pob-ts Item.parse misses, as
+//   oracle.test.ts; nothing here imports pob-ts any more).
 // Per line: inner(line,1) and the wrapper logic ModParser.lua:7000-7018 over inner (no cache) + "wrapper == real Data/ModCache.lua entry".
-// Run from the pob-rust root (Node 24):  node tools/lua-corpus/export-modparser.ts [perf]
+// Run from the pob-rust root (Node 24):  node tools/lua-corpus/export-modparser.ts [perf] [--out <dir>]
 //   -> crates/pob-parser/tests/fixtures/modparser-NN.json  /  tools/.scratch/perf-modparser.json
 // Strings are BYTE strings (JS chars < 256 = UTF-8 bytes), escaped \u00XX when non-ASCII. Numbers are {"n":"%.17g"} (flags: plain ints).
 import { POB as UPSTREAM_POB } from '../upstream.ts'
@@ -12,19 +14,20 @@ import { createHash } from 'node:crypto'
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { POBTS } from '../upstream.ts'
-const P = `file:///${POBTS}` // pob-ts code under test (not the harness)
 const { luajitEval } = await import('../oracle/luajit-eval.ts')
 const { LUAJIT_IMAGE, dockerAvailable } = await import('../oracle/luajit.ts')
 const { GOLDEN_BUILDS, resolveRoots } = await import('../oracle/paths.ts')
-const { loadBuildXml } = await import(`${P}/src/build/index.ts`)
-const { Item } = await import(`${P}/src/items/item.ts`)
-const { parseModStats, resetParseModStats } = await import(`${P}/src/mods/parseMod.ts`)
 type J = null | boolean | number | string | J[] | { [k: string]: J }
 type Rec = Record<string, any> // eslint-disable-line
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
-const FIX = resolve(ROOT, 'crates/pob-parser/tests/fixtures')
+const FIX = (() => {
+  const i = process.argv.indexOf('--out')
+  if (i < 0) return resolve(ROOT, 'crates/pob-parser/tests/fixtures')
+  const d = resolve(process.argv[i + 1] ?? '')
+  process.argv.splice(i, 2)
+  return d
+})()
 const SCRATCH = resolve(ROOT, 'tools/.scratch')
 const MAX_BYTES = 1_450_000
 const roots = resolveRoots()
@@ -301,17 +304,27 @@ function treeSds(): { sds: string[][]; singles: Map<string, Set<string>> } {
   return { sds, singles }
 }
 
+/** ModCache misses of the golden items in LuaJIT: the lines `modLib.parseMod` (ModTools.lua:70) receives while ItemsTab:Load
+ *  (ItemsTab.lua:1262) parses the items of each golden, minus the keys the cache held after boot (Main.lua:136, Data/ModCache.lua). */
 function itemMisses(): Set<string> {
-  const out = new Set<string>()
-  for (const b of GOLDEN_BUILDS) {
-    const model = loadBuildXml(readFileSync(b.xmlPath(roots), 'utf8'))
-    for (const im of model.items) {
-      resetParseModStats()
-      Item.parse(im.raw, { id: im.id, variant: im.variant, variantAlt: im.variantAlt, variantAlt2: im.variantAlt2, variantAlt3: im.variantAlt3, variantAlt4: im.variantAlt4, variantAlt5: im.variantAlt5, modRanges: im.modRanges })
-      for (const l of parseModStats().missLines) out.add(l)
-    }
-  }
-  return out
+  const builds = GOLDEN_BUILDS.map((b) => [b.name, readFileSync(b.xmlPath(roots), 'utf8')])
+  const r = run(lua(asciiJson(builds), String.raw`
+local BUILDS = dkjson.decode(LINES_JSON)
+local boot = {} for k in pairs(modLib.parseModCache) do boot[k] = true end
+local rec, miss = false, {}
+local orig = modLib.parseMod
+modLib.parseMod = function(line, ...) if rec and not boot[line] then miss[line] = true end return orig(line, ...) end
+local IT = common.classes.ItemsTab
+local load = IT.Load
+IT.Load = function(...) rec = true local res = { load(...) } rec = false return unpack(res) end
+for _, b in ipairs(BUILDS) do
+  loadBuildFromXML(b[2], b[1])
+  if __mainObject__.promptMsg then error("FATAL build load failed: " .. tostring(__mainObject__.promptMsg)) end
+end
+modLib.parseMod, IT.Load = orig, load
+local out = {} for l in pairs(miss) do out[#out + 1] = l end table.sort(out)
+return out`))
+  return new Set<string>(r as unknown as string[])
 }
 
 // --- main ----------------------------------------------------------------------------------------------------------

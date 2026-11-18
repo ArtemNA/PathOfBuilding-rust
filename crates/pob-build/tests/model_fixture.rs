@@ -1,97 +1,14 @@
-//! `BuildModel` = pob-ts `loadBuildXml` on the 6 goldens (fixtures from `tools/lua-corpus/export-build-model.ts`): the
-//! serialized forms must be equal -- same keys, same strings/booleans, numbers bit for bit. Plus the hand-verified counts of
-//! pob-ts `test/build/load.test.ts`.
+//! `BuildModel` on the 6 goldens: the hand-verified counts of pob-ts `test/build/load.test.ts`, the W12 no-shared-state check and
+//! the Lua-nuance unit cases.
+//!
+//! Until R-INDEPENDENT-UPDATE A4 the serialized `BuildModel` also had to equal pob-ts `loadBuildXml` (`<name>.model.json`, producer
+//! `export-build-model.ts`, pob-ts code). pob-ts is no longer a comparison subject; what the model feeds is gated against LuaJIT
+//! after `loadBuildFromXML`: the XML parser (`xml_lua.rs`, runtime/lua/xml.lua), the config (`config_fixture.rs`), the passive spec
+//! (pob-tree `tree_fixture.rs`), the items (pob-items `items_fixture.rs`), the env and the whole `mainOutput` (pob-calc
+//! `env_fixture.rs`, `full_fixture.rs`, `real_builds.rs`).
 
 use pob_build::*;
 use pob_golden::registry::GOLDEN_BUILDS;
-use serde_json::Value as Json;
-
-fn fixture_path(name: &str) -> std::path::PathBuf {
-    std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("tests/fixtures")
-        .join(format!("{name}.model.json"))
-}
-
-/// Exact equality of two JSON trees; the first difference as a path.
-fn diff(path: &str, want: &Json, got: &Json) -> Option<String> {
-    match (want, got) {
-        (Json::Number(a), Json::Number(b)) => {
-            let (a, b) = (a.as_f64().unwrap(), b.as_f64().unwrap());
-            (a.to_bits() != b.to_bits()).then(|| format!("{path}: want {a:?}, got {b:?}"))
-        }
-        (Json::Array(a), Json::Array(b)) => {
-            if a.len() != b.len() {
-                return Some(format!("{path}: want {} elements, got {}", a.len(), b.len()));
-            }
-            a.iter()
-                .zip(b)
-                .enumerate()
-                .find_map(|(i, (x, y))| diff(&format!("{path}[{i}]"), x, y))
-        }
-        (Json::Object(a), Json::Object(b)) => {
-            if let Some(k) = a.keys().find(|k| !b.contains_key(*k)) {
-                return Some(format!("{path}.{k}: missing"));
-            }
-            if let Some(k) = b.keys().find(|k| !a.contains_key(*k)) {
-                return Some(format!("{path}.{k}: extra = {}", b[k.as_str()]));
-            }
-            a.iter().find_map(|(k, x)| diff(&format!("{path}.{k}"), x, &b[k]))
-        }
-        _ => (want != got).then(|| format!("{path}: want {want}, got {got}")),
-    }
-}
-
-/// What `runtime/lua/xml.lua` does to a text run (`^%s*([^<]-)%s*<`, :54): strip LuaJIT `%s` (space, `\t`..`\r`) at
-/// both ends. pob-ts kept text runs verbatim, so its `items[].raw` / `tree.specs[].url` are mapped through this before
-/// the exact comparison. Input: the same bytes the parser gets here (`read_build_file`, CRLF -> LF as desktop PoB; pob-ts
-/// normalised CRLF too). Exact for these fields: xml.lua trims before `decodeContent`, and decoding can change the
-/// edges only when an entity sits at the very start/end of the run -- none does in the goldens' item texts and URLs.
-fn lua_trim_text(s: &str) -> String {
-    let lua_space = |c: char| c == ' ' || ('\t'..='\r').contains(&c);
-    s.trim_matches(lua_space).to_owned()
-}
-
-/// Maps `items[].raw` and `tree.specs[].url` of the pob-ts form through [`lua_trim_text`]; returns how many changed.
-fn to_lua_text_form(want: &mut Json) -> usize {
-    let mut changed = 0;
-    let mut fix = |v: &mut Json| {
-        if let Json::String(s) = v {
-            let t = lua_trim_text(s);
-            if t != *s {
-                *s = t;
-                changed += 1;
-            }
-        }
-    };
-    for item in want["items"].as_array_mut().unwrap() {
-        fix(&mut item["raw"]);
-    }
-    for spec in want["tree"]["specs"].as_array_mut().unwrap() {
-        if let Some(url) = spec.get_mut("url") {
-            fix(url);
-        }
-    }
-    changed
-}
-
-/// The goldens as desktop PoB loads them (CRLF -> LF, Build.lua:2267) = pob-ts, except the R6.1 text trim of
-/// `items[].raw` / `tree.specs[].url`, pinned: 136 values (128 raw + 8 url) differ between pob-ts and Lua.
-#[test]
-fn model_equals_pob_ts_for_6_goldens() {
-    let mut trimmed = 0;
-    for g in GOLDEN_BUILDS {
-        let xml = read_build_file(g.xml_path()).unwrap_or_else(|e| panic!("{}: {e}", g.name));
-        let model = load_build_xml(&xml).unwrap_or_else(|e| panic!("{}: {e}", g.name));
-        let got = serde_json::to_value(&model).unwrap();
-        let mut want: Json = serde_json::from_str(&std::fs::read_to_string(fixture_path(g.name)).unwrap()).unwrap();
-        trimmed += to_lua_text_form(&mut want);
-        if let Some(d) = diff("$", &want, &got) {
-            panic!("{}: {d}", g.name);
-        }
-    }
-    println!("pob-ts -> Lua text form: {trimmed} values trimmed");
-    assert_eq!(trimmed, 136, "128 items[].raw + 8 tree.specs[].url");
-}
 
 /// W12: a load leaves nothing behind -- A then B equals B alone.
 #[test]
@@ -243,20 +160,4 @@ fn lua_nuances() {
     assert_eq!(empty.config.sets.len(), 1);
     assert_eq!(empty.tree.specs.len(), 1);
     assert_eq!(empty.item_sets.len(), 1);
-}
-
-/// The comparator itself is strict: a 1-ulp number, a missing key, an extra key and a type change are all caught.
-#[test]
-fn comparator_is_strict() {
-    let want: Json = serde_json::from_str(r#"{"a":[1,0.1,"x"],"b":{"c":true}}"#).unwrap();
-    assert!(diff("$", &want, &want.clone()).is_none());
-    for got in [
-        r#"{"a":[1,0.10000000000000002,"x"],"b":{"c":true}}"#,
-        r#"{"a":[1,0.1,"x"],"b":{}}"#,
-        r#"{"a":[1,0.1,"x"],"b":{"c":true,"d":1}}"#,
-        r#"{"a":[1,0.1,"x"],"b":{"c":"true"}}"#,
-        r#"{"a":[1,0.1],"b":{"c":true}}"#,
-    ] {
-        assert!(diff("$", &want, &serde_json::from_str(got).unwrap()).is_some(), "{got}");
-    }
 }
