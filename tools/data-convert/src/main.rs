@@ -3,19 +3,23 @@
 //!   data-convert dump    --pob <pobRoot> --dump <file>
 //!   data-convert convert --pob <pobRoot> --dump <file> --out <dir> [--only gems,item-bases,...]
 //!   data-convert all     --pob <pobRoot> --dump <file> --out <dir> [--only ...]
+//! `dump` also writes `<file>.extra` (lua/dump-extra.lua, see extra.rs): --only ids config-options, trees, manifest.
 
 mod actors;
 mod closures;
 mod constants;
+mod config_options;
 mod costs;
 mod ctx;
 mod dump;
+mod extra;
 mod fields;
 mod gems;
 mod globals;
 mod item_bases;
 mod item_mods;
 mod js;
+mod manifest;
 mod mod_cache;
 mod mod_parser;
 mod mod_tables;
@@ -24,6 +28,7 @@ mod rules;
 mod shape;
 mod skills;
 mod uniques;
+mod trees;
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -92,11 +97,15 @@ fn tool_root() -> PathBuf {
 }
 
 fn run_dump(pob: &Path, out: &Path) -> Result<(), String> {
+    extra::run_both(pob, out)
+}
+
+fn run_script(pob: &Path, out: &Path, script: &str) -> Result<(), String> {
     let exe = tool_root().join("../luajit-win/target/release/luajit-win.exe");
     if !exe.exists() {
         return Err(format!("{} missing: cargo build --release --manifest-path tools/luajit-win/Cargo.toml", exe.display()));
     }
-    let script = tool_root().join("lua/dump.lua");
+    let script = tool_root().join("lua").join(script);
     let runtime = pob.join("runtime");
     let path = format!("{};{}", runtime.display(), std::env::var("PATH").unwrap_or_default());
     let t = Instant::now();
@@ -144,6 +153,7 @@ fn run_convert(pob: &Path, dump_file: &Path, out: &Path, only: Option<&str>) -> 
         std::fs::write(file, &text).map_err(|e| e.to_string())?;
         eprintln!("{id}: {} bytes in {:.2} s", text.len(), t.elapsed().as_secs_f64());
     }
+    extra::convert(&mut c, pob, dump_file, out, only)?;
     print!("{}", c.report());
     let untouched = d.untouched("data");
     println!("coverage  data.* keys no converter read: {} -- {}", untouched.len(), untouched.join(", "));
