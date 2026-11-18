@@ -1,6 +1,6 @@
 //! R-stat-describer: the lines `setupFallbackWeights` asks of `data.describeStats` (TreeTab.lua:2006) are computed by the port of
 //! `Modules/StatDescriber.lua`. The fixture is what the original answered (`tools/sg-oracle/lua/tree-runner.lua`, step `legionLines`) at the
-//! commit it names: it is compared only at that commit, and nothing at run time depends on it.
+//! commit it names: the test fails on any other commit (re-take it), and nothing at run time depends on it.
 
 #[path = "../../pob-gfx/tests/scene/mod.rs"]
 mod scene;
@@ -22,13 +22,14 @@ fn legion_lines_equal_the_original() {
     let fx: Json = serde_json::from_str(&std::fs::read_to_string(&path).expect("fixture")).expect("fixture json");
     let dir = data_dir();
     let lock = verify_lock(&dir, &lock_path(&dir)).expect("data.lock");
-    if fx["pobSha"].as_str() != Some(lock.pob_sha.as_str()) {
-        println!(
-            "the fixture is of PoB {}, data.lock says {}: re-take it to compare",
-            fx["pobSha"], lock.pob_sha
-        );
-        return;
-    }
+    // A fixture of another upstream is a red gate, not a skip: it only printed before, and an update could leave it unchecked
+    assert_eq!(
+        fx["pobSha"].as_str(),
+        Some(lock.pob_sha.as_str()),
+        "the fixture is of PoB {}, data.lock says {}: re-take it (tools/sg-oracle/lua/tree-runner.lua, step legionLines; UPDATE-PROMPT.md 13)",
+        fx["pobSha"],
+        lock.pob_sha
+    );
     let tmp = std::env::temp_dir().join(format!("pob-legion-lines-{}", std::process::id()));
     std::fs::create_dir_all(&tmp).expect("tmp");
     let root = scene::pob_root();

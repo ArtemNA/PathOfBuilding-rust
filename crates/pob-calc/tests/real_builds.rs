@@ -439,7 +439,16 @@ const BUILD_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60);
 #[test]
 fn real_builds_match_luajit() {
     let Some(corpus) = corpus() else {
-        println!("real_builds: no fixture of the target upstream in builds/{{pc,user,corpus}}-fixtures -- skipped (local only)");
+        // Skipped only where there are no fixtures at all (another machine). Fixtures of other upstreams alone mean the gate was not
+        // re-taken after an update: green here would check nothing (seen after 2.68.1, 337 fixtures, none of the target).
+        let stale = stale_fixtures();
+        assert!(
+            stale.is_empty(),
+            "real_builds: {} fixtures, none of the target upstream {} -- re-take a sample (UPDATE-PROMPT.md 9): node tools/lua-corpus/export-real.ts --set corpus; --set pc '<regex>'",
+            stale.len(),
+            upstream_sha9()
+        );
+        println!("real_builds: no fixtures in builds/{{pc,user,corpus}}-fixtures -- skipped (local only)");
         return;
     };
     // sampling (UPDATE-PROMPT.md): fixtures of an older upstream are not truth any more -- listed, not gated
