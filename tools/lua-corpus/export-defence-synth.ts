@@ -6,7 +6,8 @@
 //   node tools/lua-corpus/export-defence-synth.ts             -> crates/pob-calc/tests/fixtures/defence-synth/<scenario>.{xml,luajit.json}; 2 runs, must be identical
 //   node tools/lua-corpus/export-defence-synth.ts coverage    -> tools/.scratch/defence-synth-coverage.json + table (debug.sethook line counter)
 //   node tools/lua-corpus/export-defence-synth.ts parse <f>   -> which lines of file <f> modLib.parseMod accepts (authoring aid)
-import { POB as UPSTREAM_POB, ORACLE as UPSTREAM_ORACLE } from '../upstream.ts'
+import { POB as UPSTREAM_POB, REPO } from '../upstream.ts'
+import { LUA_DIR } from '../oracle/luajit-eval.ts' // tools/oracle/lua, mounted as /bench
 import { execFile } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
@@ -24,7 +25,6 @@ const IMAGE = 'ghcr.io/pathofbuildingcommunity/pathofbuilding-tests:latest'
 const MAX_BYTES = 1_500_000
 const BASE_XML = `${POB}/spec/TestBuilds/3.13/Dual Savior.xml`
 const DEFENCE_LUA = `${POB}/src/Modules/CalcDefence.lua`
-const ORACLE = UPSTREAM_ORACLE
 const BASE = 'Dual Savior'
 const CONCURRENCY = 4
 const byteOrder = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0)
@@ -150,14 +150,13 @@ async function ljEval(code: string): Promise<Rec> {
     writeFileSync(resolve(tmp, 'code.lua'), JEWEL_SHIM + code)
     const luts = resolve(SCRATCH, 'luts')
     mkdirSync(luts, { recursive: true })
-    const args = ['run', '--rm', '-v', `${POB}:/workdir:ro`, '-v', `${POBTS}/tools/oracle/lua:/bench:ro`, '-v', `${tmp}:/code:ro`, '-v', `${luts}:/jewel-data:ro`,
+    const args = ['run', '--rm', '-v', `${POB}:/workdir:ro`, '-v', `${LUA_DIR}:/bench:ro`, '-v', `${tmp}:/code:ro`, '-v', `${luts}:/jewel-data:ro`,
       '-w', '/workdir/src', '-e', 'LUA_PATH=./?.lua;../runtime/lua/?.lua;../runtime/lua/?/init.lua;;', '-e', 'POB_JEWEL_DATA_DIR=/jewel-data', IMAGE, 'luajit', '/bench/luajit-eval.lua', '/code/code.lua']
     let out: string
     try { out = (await run('docker', args, { encoding: 'utf8', maxBuffer: 256 * 1024 * 1024 })).stdout } catch (e) { throw new Error(`docker/luajit failed (infrastructure): ${(e as Rec).stderr ?? (e as Error).message}`) }
     return JSON.parse(out.trim().split('\n').pop()!).result
   } finally { rmSync(tmp, { recursive: true, force: true }) }
 }
-const POBTS = 'C:/pob-work/pob-ts'
 
 function luaBytes(buf: Buffer): string {
   let s = '"'
@@ -333,7 +332,7 @@ async function coverage(): Promise<void> {
   mkdirSync(SCRATCH, { recursive: true })
   type Job = { label: string; kind: 'golden' | 'synth'; xml: Buffer; name: string }
   const jobs: Job[] = [
-    ...goldens.map((g) => ({ label: g, kind: 'golden' as const, xml: readFileSync(g === 'Dual Wield Cospris CoC - Lethal Pride' ? `${ORACLE}/test/fixtures/${g}.xml` : `${POB}/spec/TestBuilds/3.13/${g}.xml`), name: g })),
+    ...goldens.map((g) => ({ label: g, kind: 'golden' as const, xml: readFileSync(g === 'Dual Wield Cospris CoC - Lethal Pride' ? `${REPO}/builds/corpus/${g}.xml` : `${POB}/spec/TestBuilds/3.13/${g}.xml`), name: g })),
     ...SCENARIOS.map((s) => ({ label: s.name, kind: 'synth' as const, xml: scenarioXml(s), name: BASE })),
   ]
   const cachePath = resolve(SCRATCH, 'defence-synth-coverage-main2.json')

@@ -18,7 +18,8 @@ const run = promisify(execFile)
 type Rec = Record<string, any> // eslint-disable-line
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
 const POB = UPSTREAM_POB
-const POBTS = 'C:/pob-work/pob-ts'
+import { POBTS } from '../upstream.ts' // pob-ts code under test (informational self-check), not the harness
+import { LUA_DIR } from '../oracle/luajit-eval.ts' // tools/oracle/lua, mounted as /bench
 const FIX = join(ROOT, 'crates/pob-build/tests/fixtures')
 const IMAGE = 'ghcr.io/pathofbuildingcommunity/pathofbuilding-tests:latest'
 const MAX = 1_500_000
@@ -136,7 +137,7 @@ async function docker(code: string): Promise<string> { // luajit-eval.lua: PoB H
   const tmp = mkdtempSync(join(tmpdir(), 'pob-r38a-'))
   try {
     writeFileSync(join(tmp, 'code.lua'), code)
-    const args = ['run', '--rm', '-v', `${POB}:/workdir:ro`, '-v', `${POBTS}/tools/oracle/lua:/bench:ro`, '-v', `${tmp}:/code:ro`, '-w', '/workdir/src',
+    const args = ['run', '--rm', '-v', `${POB}:/workdir:ro`, '-v', `${LUA_DIR}:/bench:ro`, '-v', `${tmp}:/code:ro`, '-w', '/workdir/src',
       '-e', 'LUA_PATH=./?.lua;../runtime/lua/?.lua;../runtime/lua/?/init.lua;;', IMAGE, 'luajit', '/bench/luajit-eval.lua', '/code/code.lua']
     let out: string
     try { out = (await run('docker', args, { encoding: 'utf8', maxBuffer: 512 << 20 })).stdout } catch (e) { throw new Error(`docker/luajit failed (infrastructure): ${(e as Rec).stderr ?? (e as Error).message}`) }

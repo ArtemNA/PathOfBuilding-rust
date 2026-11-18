@@ -19,7 +19,7 @@
 // Sets (R-UP, builds/README.md): pc = builds/pc/**/*.xml -> builds/pc-fixtures; user = builds/user/*.{xml,txt} (txt = a build code) ->
 // builds/user-fixtures; corpus = builds/corpus/manifest.json -> builds/corpus-fixtures. All three fixture dirs are gitignored.
 // Sampling rule for an update (UPDATE-PROMPT.md): pc -- every build of the newest league + 2-3 per older league/folder.
-import { POB as UPSTREAM_POB, ORACLE as UPSTREAM_ORACLE } from '../upstream.ts'
+import { POB as UPSTREAM_POB } from '../upstream.ts'
 import { execFile } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
@@ -49,8 +49,7 @@ const OUT = (() => {
   return d
 })()
 const POB = UPSTREAM_POB
-const POBTS = 'C:/pob-work/pob-ts'
-const ORACLE = UPSTREAM_ORACLE
+import { LUA_DIR } from '../oracle/luajit-eval.ts' // tools/oracle/lua, mounted as /bench
 const IMAGE = 'ghcr.io/pathofbuildingcommunity/pathofbuilding-tests:latest'
 const JOBS = Number(process.env.REAL_JOBS ?? 5)
 const TIMEOUT_MS = Number(process.env.REAL_TIMEOUT_S ?? 60) * 1000 // per docker run: a broken build that loads for minutes is reported as 	imeout, not waited for
@@ -64,7 +63,7 @@ function walk(dir: string): string[] {
   return readdirSync(dir).sort(byteOrder).flatMap((n) => { const p = resolve(dir, n); return statSync(p).isDirectory() ? walk(p) : n.endsWith('.xml') ? [p] : [] })
 }
 const relOf = (p: string): string => CORPUS_REL.get(p) ?? relative(PC, p).replace(/\\/g, '/')
-/** corpus: absolute path -> its manifest path (`$POB/...`, `$ORACLE/...` or repo-relative) and set id */
+/** corpus: absolute path -> its manifest path (`$POB/...` or repo-relative) and set id */
 const CORPUS_REL = new Map<string, string>()
 const CORPUS_SET = new Map<string, string>()
 const globRe = (glob: string): RegExp => new RegExp('^' + glob.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*') + '$')
@@ -76,7 +75,7 @@ function listBuilds(): string[] {
   const out: string[] = []
   for (const s of m.sets) {
     for (const pat of s.paths) {
-      const exp = pat.replace(/^\$POB\//, `${POB}/`).replace(/^\$ORACLE\//, `${ORACLE}/`)
+      const exp = pat.replace(/^\$POB\//, `${POB}/`)
       const abs = resolve(ROOT, exp)
       const dir = dirname(abs)
       const base = abs.slice(dir.length + 1)
@@ -158,7 +157,7 @@ async function ljEval(code: string): Promise<Rec> {
   const tmp = mkdtempSync(resolve(tmpdir(), 'pob-real-'))
   try {
     writeFileSync(resolve(tmp, 'code.lua'), JEWEL_SHIM + code)
-    const args = ['run', '--rm', '-v', `${POB}:/workdir:ro`, '-v', `${POBTS}/tools/oracle/lua:/bench:ro`, '-v', `${tmp}:/code:ro`, '-v', `${LUTS}:/jewel-data:ro`,
+    const args = ['run', '--rm', '-v', `${POB}:/workdir:ro`, '-v', `${LUA_DIR}:/bench:ro`, '-v', `${tmp}:/code:ro`, '-v', `${LUTS}:/jewel-data:ro`,
       '-w', '/workdir/src', '-e', 'LUA_PATH=./?.lua;../runtime/lua/?.lua;../runtime/lua/?/init.lua;;', '-e', 'POB_JEWEL_DATA_DIR=/jewel-data', IMAGE, 'luajit', '/bench/luajit-eval.lua', '/code/code.lua']
     let out: string
     const name = `pob-real-${process.pid}-${Math.random().toString(36).slice(2)}`
@@ -176,8 +175,8 @@ function luaBytes(buf: Buffer): string {
 }
 async function prepareLuts(files: string[]): Promise<void> {
   mkdirSync(LUTS, { recursive: true })
-  const { findRequiredJewelLuts } = await import(pathToFileURL(resolve(ORACLE, 'src/timelessJewelLuts.mjs')).href)
-  const { unpackJewelData } = await import(pathToFileURL(resolve(ORACLE, 'src/nodeJewelData.mjs')).href)
+  const { findRequiredJewelLuts } = await import('../oracle/jewel-luts.ts')
+  const { unpackJewelData } = await import('../oracle/jewel-luts.ts')
   const stems = new Set<string>(files.flatMap((f) => findRequiredJewelLuts(desktopBytes(f).toString('utf8')).map((x: Rec) => x.fileStem as string)))
   for (const s of stems) if (!existsSync(resolve(LUTS, `${s}.bin`))) writeFileSync(resolve(LUTS, `${s}.bin`), unpackJewelData(POB, s).bytes)
   console.error(`LUTs (${LUTS}): ${[...stems].sort(byteOrder).join(', ') || 'none'}`)

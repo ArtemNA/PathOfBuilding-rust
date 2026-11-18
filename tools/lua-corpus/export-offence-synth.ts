@@ -5,7 +5,8 @@
 //   node tools/lua-corpus/export-offence-synth.ts coverage   -> tools/.scratch/offence-synth-coverage.json (line hook, jit.off; goldens + scenarios) + table
 //   node tools/lua-corpus/export-offence-synth.ts            -> crates/pob-calc/tests/fixtures/offence-synth/<scenario>.{xml,luajit.json}; 2 runs, must be identical
 //   node tools/lua-corpus/export-offence-synth.ts parse [f]  -> which mod lines modLib.parseMod accepts (authoring aid)
-import { POB as UPSTREAM_POB, ORACLE as UPSTREAM_ORACLE } from '../upstream.ts'
+import { POB as UPSTREAM_POB, REPO } from '../upstream.ts'
+import { LUA_DIR } from '../oracle/luajit-eval.ts' // tools/oracle/lua, mounted as /bench
 import { execFile } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
@@ -19,8 +20,6 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
 const FIX = resolve(ROOT, 'crates/pob-calc/tests/fixtures/offence-synth')
 const SCRATCH = resolve(ROOT, 'tools/.scratch')
 const POB = UPSTREAM_POB
-const POBTS = 'C:/pob-work/pob-ts'
-const ORACLE = UPSTREAM_ORACLE
 const IMAGE = 'ghcr.io/pathofbuildingcommunity/pathofbuilding-tests:latest'
 const MAX_BYTES = 1_500_000
 const CONCURRENCY = Number(process.env.SYNTH_JOBS ?? 5)
@@ -28,7 +27,7 @@ const byteOrder = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0)
 const sha = (b: Buffer | string): string => createHash('sha256').update(b).digest('hex')
 const BASES: Record<string, string> = { gen: 'Generals Perforate Zerker', mir: 'Mirage Archer Toxic Rain', occ: 'OccVortex', cos: 'Dual Wield Cospris CoC', ds: 'Dual Savior' }
 const GOLDENS = ['Dual Savior', 'Dual Wield Cospris CoC', 'Dual Wield Cospris CoC - Lethal Pride', 'Generals Perforate Zerker', 'Mirage Archer Toxic Rain', 'OccVortex']
-const goldenPath = (g: string): string => (g === 'Dual Wield Cospris CoC - Lethal Pride' ? `${ORACLE}/test/fixtures/${g}.xml` : `${POB}/spec/TestBuilds/3.13/${g}.xml`)
+const goldenPath = (g: string): string => (g === 'Dual Wield Cospris CoC - Lethal Pride' ? `${REPO}/builds/corpus/${g}.xml` : `${POB}/spec/TestBuilds/3.13/${g}.xml`)
 // source files whose executed lines are recorded; `covers` needles are prefixed with the letter
 const FILES: Record<string, string> = { O: 'Modules/CalcOffence.lua', T: 'Modules/CalcTriggers.lua', M: 'Modules/CalcMirages.lua', C: 'Modules/Calcs.lua' }
 
@@ -142,7 +141,7 @@ async function ljEval(code: string): Promise<Rec> {
     writeFileSync(resolve(tmp, 'code.lua'), JEWEL_SHIM + code)
     const luts = resolve(SCRATCH, 'luts')
     mkdirSync(luts, { recursive: true })
-    const args = ['run', '--rm', '-v', `${POB}:/workdir:ro`, '-v', `${POBTS}/tools/oracle/lua:/bench:ro`, '-v', `${tmp}:/code:ro`, '-v', `${luts}:/jewel-data:ro`,
+    const args = ['run', '--rm', '-v', `${POB}:/workdir:ro`, '-v', `${LUA_DIR}:/bench:ro`, '-v', `${tmp}:/code:ro`, '-v', `${luts}:/jewel-data:ro`,
       '-w', '/workdir/src', '-e', 'LUA_PATH=./?.lua;../runtime/lua/?.lua;../runtime/lua/?/init.lua;;', '-e', 'POB_JEWEL_DATA_DIR=/jewel-data', IMAGE, 'luajit', '/bench/luajit-eval.lua', '/code/code.lua']
     let out: string
     try { out = (await run('docker', args, { encoding: 'utf8', maxBuffer: 512 * 1024 * 1024 })).stdout } catch (e) { throw new Error(`docker/luajit failed (infrastructure): ${(e as Rec).stderr ?? (e as Error).message}`) }

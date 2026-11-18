@@ -4,3 +4,5 @@
 *.tga binary
 *.bin binary
 crates/pob-engine/upstream/** -text
+# golden build XMLs: bytes as the oracle/LuaJIT read them (mixed CRLF/LF), never normalised
+builds/corpus/*.xml -text

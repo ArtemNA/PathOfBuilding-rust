@@ -12,10 +12,11 @@ import { createHash } from 'node:crypto'
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-const P = 'file:///C:/pob-work/pob-ts'
-const { luajitEval } = await import(`${P}/tools/oracle/luajit-eval.ts`)
-const { LUAJIT_IMAGE, dockerAvailable } = await import(`${P}/tools/oracle/luajit.ts`)
-const { GOLDEN_BUILDS, resolveRoots } = await import(`${P}/tools/oracle/paths.ts`)
+import { POBTS } from '../upstream.ts'
+const P = `file:///${POBTS}` // pob-ts code under test (not the harness)
+const { luajitEval } = await import('../oracle/luajit-eval.ts')
+const { LUAJIT_IMAGE, dockerAvailable } = await import('../oracle/luajit.ts')
+const { GOLDEN_BUILDS, resolveRoots } = await import('../oracle/paths.ts')
 const { loadBuildXml } = await import(`${P}/src/build/index.ts`)
 const { Item } = await import(`${P}/src/items/item.ts`)
 const { parseModStats, resetParseModStats } = await import(`${P}/src/mods/parseMod.ts`)

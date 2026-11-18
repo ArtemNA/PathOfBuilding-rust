@@ -10,10 +10,10 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync }
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { mulberry32 } from 'file:///C:/pob-work/pob-ts/tools/oracle/fuzz.ts'
-import { luajitEval } from 'file:///C:/pob-work/pob-ts/tools/oracle/luajit-eval.ts'
-import { dockerAvailable } from 'file:///C:/pob-work/pob-ts/tools/oracle/luajit.ts'
-import { resolveRoots } from 'file:///C:/pob-work/pob-ts/tools/oracle/paths.ts'
+import { mulberry32 } from '../oracle/fuzz.ts'
+import { luajitEval } from '../oracle/luajit-eval.ts'
+import { dockerAvailable } from '../oracle/luajit.ts'
+import { resolveRoots } from '../oracle/paths.ts'
 import { BIT_OPS, BIT_UNARY, genBitInputs, genFuzzCases } from './patterns-fuzz.ts'
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..')

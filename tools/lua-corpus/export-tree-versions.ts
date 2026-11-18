@@ -8,10 +8,9 @@ import { createHash } from 'node:crypto'
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-const P = 'file:///C:/pob-work/pob-ts'
-const { luajitEval } = await import(`${P}/tools/oracle/luajit-eval.ts`)
-const { dockerAvailable } = await import(`${P}/tools/oracle/luajit.ts`)
-const { resolveRoots } = await import(`${P}/tools/oracle/paths.ts`)
+const { luajitEval } = await import('../oracle/luajit-eval.ts')
+const { dockerAvailable } = await import('../oracle/luajit.ts')
+const { resolveRoots } = await import('../oracle/paths.ts')
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
 const OUT = resolve(ROOT, 'data-patches/tree-versions.json')

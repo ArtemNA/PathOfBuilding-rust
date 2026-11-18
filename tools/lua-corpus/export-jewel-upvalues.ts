@@ -14,10 +14,9 @@ import { createHash } from 'node:crypto'
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-const P = 'file:///C:/pob-work/pob-ts'
-const { luajitEval } = await import(`${P}/tools/oracle/luajit-eval.ts`)
-const { dockerAvailable } = await import(`${P}/tools/oracle/luajit.ts`)
-const { resolveRoots } = await import(`${P}/tools/oracle/paths.ts`)
+const { luajitEval } = await import('../oracle/luajit-eval.ts')
+const { dockerAvailable } = await import('../oracle/luajit.ts')
+const { resolveRoots } = await import('../oracle/paths.ts')
 
 type PathEl = string | number
 interface Rec { p: (PathEl | { x: string })[]; id: string; line: number; level: number; names: string[]; ser?: Json }

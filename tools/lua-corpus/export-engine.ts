@@ -20,9 +20,8 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 import { promisify } from 'node:util'
 import { inflateSync } from 'node:zlib'
 const run = promisify(execFile)
-const P = 'file:///C:/pob-work/pob-ts'
-const { GOLDEN_BUILDS, REPO_ROOT, resolveRoots } = await import(`${P}/tools/oracle/paths.ts`)
-const { LUAJIT_IMAGE, dockerAvailable } = await import(`${P}/tools/oracle/luajit.ts`)
+const { GOLDEN_BUILDS, REPO_ROOT, resolveRoots } = await import('../oracle/paths.ts')
+const { LUAJIT_IMAGE, dockerAvailable } = await import('../oracle/luajit.ts')
 type Rec = Record<string, any> // eslint-disable-line
 if (!dockerAvailable()) throw new Error('docker is not available (infrastructure) -- STOP')
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
@@ -40,8 +39,8 @@ const SYNTH_SET = ['fd-gen-melee', 'fd-occ-spells', 'fd-occ-dot', 'fd-occ-trap-m
 async function prepareLuts(): Promise<string> {
   const dir = resolve(SCRATCH, 'luts')
   mkdirSync(dir, { recursive: true })
-  const { findRequiredJewelLuts } = await import(pathToFileURL(resolve(roots.oracleRoot, 'src/timelessJewelLuts.mjs')).href)
-  const { unpackJewelData } = await import(pathToFileURL(resolve(roots.oracleRoot, 'src/nodeJewelData.mjs')).href)
+  const { findRequiredJewelLuts } = await import('../oracle/jewel-luts.ts')
+  const { unpackJewelData } = await import('../oracle/jewel-luts.ts')
   for (const b of GOLDEN_BUILDS) for (const { fileStem } of findRequiredJewelLuts(readFileSync(b.xmlPath(roots), 'utf8'))) writeFileSync(resolve(dir, `${fileStem}.bin`), unpackJewelData(roots.pobRoot, fileStem).bytes)
   return dir
 }

@@ -12,17 +12,17 @@ import {
   encodeNum, formatCorpus, knownLuajitQuirk, mathCorpus, tonumberCorpus, tostringCorpus,
   type CorpusMismatch, type FmtCase,
 } from 'file:///C:/pob-work/pob-ts/test/lua/corpus.ts'
-import { mulberry32 } from 'file:///C:/pob-work/pob-ts/tools/oracle/fuzz.ts'
-import { luajitEval } from 'file:///C:/pob-work/pob-ts/tools/oracle/luajit-eval.ts'
-import { dockerAvailable, LUAJIT_IMAGE } from 'file:///C:/pob-work/pob-ts/tools/oracle/luajit.ts'
-import { resolveRoots } from 'file:///C:/pob-work/pob-ts/tools/oracle/paths.ts'
+import { mulberry32 } from '../oracle/fuzz.ts'
+import { luajitEval } from '../oracle/luajit-eval.ts'
+import { dockerAvailable, LUAJIT_IMAGE } from '../oracle/luajit.ts'
+import { resolveRoots } from '../oracle/paths.ts'
 import { luaFormat, luaTonumber, luaTostring } from 'file:///C:/pob-work/pob-ts/src/lua/string.ts'
 import { luaFloor, luaMax, luaMin, luaMod, luaModf, luaRound } from 'file:///C:/pob-work/pob-ts/src/lua/number.ts'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const ROOT = resolve(HERE, '../..')
 const OUT_FILE = resolve(ROOT, 'crates/pob-lua/tests/fixtures/luajit-numeric.json')
-const POB_TS = 'C:/pob-work/pob-ts'
+import { POBTS as POB_TS } from '../upstream.ts'
 
 // --- Lua pieces ----------------------------------------------------------------
 

@@ -9,13 +9,14 @@ import '../upstream.ts'
 import { readFileSync, writeFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-const P = 'file:///C:/pob-work/pob-ts'
+import { POBTS } from '../upstream.ts'
+const P = `file:///${POBTS}` // pob-ts code under test (not the harness)
 const { loadBuildXml } = await import(`${P}/src/build/load.ts`)
 const { initEnv } = await import(`${P}/src/calc/initEnv.ts`)
 const { finishOutput, perform } = await import(`${P}/src/calc/perform.ts`)
 const { outputToStats } = await import(`${P}/src/calc/output.ts`)
 const { formatG } = await import(`${P}/src/lua/index.ts`)
-const { GOLDEN_BUILDS, resolveRoots } = await import(`${P}/tools/oracle/paths.ts`)
+const { GOLDEN_BUILDS, resolveRoots } = await import('../oracle/paths.ts')
 type Rec = Record<string, any> // eslint-disable-line
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..')

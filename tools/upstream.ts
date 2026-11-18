@@ -1,7 +1,8 @@
 // The ONE place TS tools (probes in tools/lua-corpus, make-goldens, oracle adapter) learn which upstream PoB they
 // target: tools/upstream.json (R-UP). Env vars override: POB_ROOT, POB_WASM_ROOT, POB_ORACLE, POB_TS_ROOT, POB_GOLDENS_DIR.
-// Importing this module also sets process.env.POB_ROOT / POB_ORACLE when unset, so pob-ts' own `resolveRoots()`
-// (tools/oracle/paths.ts, read at call time) follows the same config.
+// The LuaJIT harness is ours (tools/oracle, R-INDEPENDENT-UPDATE A1) and needs only POB; ORACLE / POBTS / POB_WASM are plain
+// paths for the tools that still run pob-engine-wasm or pob-ts code -- nothing here requires them to exist.
+// Importing this module also sets process.env.POB_ROOT / POB_ORACLE when unset (child processes and pob-ts code see the same config).
 import { readFileSync } from 'node:fs'
 import { isAbsolute, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -26,4 +27,4 @@ export const ORACLE = abs(process.env.POB_ORACLE ?? CFG.oracleRoot)
 export const POBTS = abs(process.env.POB_TS_ROOT ?? CFG.pobTsRoot)
 export const GOLDENS = abs(process.env.POB_GOLDENS_DIR ?? CFG.goldensDir)
 process.env.POB_ROOT ??= POB
-process.env.POB_ORACLE ??= ORACLE
+process.env.POB_ORACLE ??= ORACLE // pob-ts code that make-goldens.ts still runs reads it at call time

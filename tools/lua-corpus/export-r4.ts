@@ -11,12 +11,13 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync }
 import { tmpdir } from 'node:os'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
-const P = 'file:///C:/pob-work/pob-ts'
+import { POBTS } from '../upstream.ts'
+const P = `file:///${POBTS}` // pob-ts code under test (not the harness)
 const { calculate } = await import(`${P}/src/api/engine.ts`)
 const { reducePoolsByDamage, takenHitFromDamage } = await import(`${P}/src/calc/pools.ts`)
 const { formatG } = await import(`${P}/src/lua/index.ts`)
-const { GOLDEN_BUILDS, REPO_ROOT, resolveRoots } = await import(`${P}/tools/oracle/paths.ts`)
-const { LUAJIT_IMAGE } = await import(`${P}/tools/oracle/luajit.ts`)
+const { GOLDEN_BUILDS, REPO_ROOT, resolveRoots } = await import('../oracle/paths.ts')
+const { LUAJIT_IMAGE } = await import('../oracle/luajit.ts')
 type Rec = Record<string, any> // eslint-disable-line
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
@@ -55,8 +56,8 @@ end
 async function prepareLuts(): Promise<string> {
   const dir = resolve(SCRATCH, 'luts')
   mkdirSync(dir, { recursive: true })
-  const { findRequiredJewelLuts } = await import(pathToFileURL(resolve(roots.oracleRoot, 'src/timelessJewelLuts.mjs')).href)
-  const { unpackJewelData } = await import(pathToFileURL(resolve(roots.oracleRoot, 'src/nodeJewelData.mjs')).href)
+  const { findRequiredJewelLuts } = await import('../oracle/jewel-luts.ts')
+  const { unpackJewelData } = await import('../oracle/jewel-luts.ts')
   for (const b of GOLDEN_BUILDS) {
     for (const { fileStem } of findRequiredJewelLuts(readFileSync(b.xmlPath(roots), 'utf8'))) writeFileSync(resolve(dir, `${fileStem}.bin`), unpackJewelData(roots.pobRoot, fileStem).bytes)
   }
@@ -195,7 +196,7 @@ async function fixtures(): Promise<void> {
   const luts = await prepareLuts()
   let digest = ''
   try { digest = execFileSync('docker', ['image', 'inspect', '--format', '{{index .RepoDigests 0}}', LUAJIT_IMAGE], { encoding: 'utf8' }).trim() } catch { /* tag only */ }
-  const generator = `pob-ts ${git('C:/pob-work/pob-ts')}`
+  const generator = `pob-ts ${git(POBTS)}`
   const report: Rec = {}
   for (const b of GOLDEN_BUILDS) {
     const xmlBuf = XML_OF(b.name)

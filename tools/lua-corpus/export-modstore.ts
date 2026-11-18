@@ -10,22 +10,23 @@ import { execFileSync } from 'node:child_process'
 import { mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-const P = 'file:///C:/pob-work/pob-ts'
+import { POBTS } from '../upstream.ts'
+const P = `file:///${POBTS}` // pob-ts code under test (not the harness)
 const { CASES: PLAIN } = await import(`${P}/test/mods/cases.ts`)
 const { CASES: TAGGED } = await import(`${P}/test/mods/cases-tags.ts`)
 const { runCaseOnTs } = await import(`${P}/test/mods/harness.ts`)
 const { generateModStoreCase } = await import(`${P}/tools/oracle/modstore-fuzz.ts`)
 const { buildLuaCode, compareRuns, oracleRunSchema } = await import(`${P}/tools/oracle/modstore-oracle.ts`)
-const { luajitEval } = await import(`${P}/tools/oracle/luajit-eval.ts`)
-const { LUAJIT_IMAGE, dockerAvailable } = await import(`${P}/tools/oracle/luajit.ts`)
-const { resolveRoots } = await import(`${P}/tools/oracle/paths.ts`)
+const { luajitEval } = await import('../oracle/luajit-eval.ts')
+const { LUAJIT_IMAGE, dockerAvailable } = await import('../oracle/luajit.ts')
+const { resolveRoots } = await import('../oracle/paths.ts')
 type Json = null | boolean | number | string | Json[] | { [k: string]: Json }
 type Case = { id: string; queries: { method: string }[] } & Record<string, Json>
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
 const FIX = resolve(ROOT, 'crates/pob-mods/tests/fixtures')
 const SCRATCH = resolve(ROOT, 'tools/.scratch')
-const POB_TS = 'C:/pob-work/pob-ts'
+const POB_TS = POBTS
 const MAX_BYTES = 1_450_000 // < 1.5 MB per fixture part
 const FUZZ_SEEDS = 800
 const PER_BATCH = 134 // fuzz cases per docker run -> 6 runs + 1 for the two small corpora

@@ -16,9 +16,8 @@ import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { promisify } from 'node:util'
 const run = promisify(execFile)
-const P = 'file:///C:/pob-work/pob-ts'
-const { GOLDEN_BUILDS, REPO_ROOT, resolveRoots } = await import(`${P}/tools/oracle/paths.ts`)
-const { LUAJIT_IMAGE, dockerAvailable } = await import(`${P}/tools/oracle/luajit.ts`)
+const { GOLDEN_BUILDS, REPO_ROOT, resolveRoots } = await import('../oracle/paths.ts')
+const { LUAJIT_IMAGE, dockerAvailable } = await import('../oracle/luajit.ts')
 type Rec = Record<string, any> // eslint-disable-line
 if (!dockerAvailable()) throw new Error('docker is not available (infrastructure) -- STOP')
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..')

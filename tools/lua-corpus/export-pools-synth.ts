@@ -11,11 +11,12 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync }
 import { tmpdir } from 'node:os'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
-const P = 'file:///C:/pob-work/pob-ts'
+import { POBTS } from '../upstream.ts'
+const P = `file:///${POBTS}` // pob-ts code under test (not the harness)
 const { reducePoolsByDamage, takenHitFromDamage } = await import(`${P}/src/calc/pools.ts`)
 const { formatG } = await import(`${P}/src/lua/index.ts`)
-const { GOLDEN_BUILDS, REPO_ROOT, resolveRoots } = await import(`${P}/tools/oracle/paths.ts`)
-const { LUAJIT_IMAGE } = await import(`${P}/tools/oracle/luajit.ts`)
+const { GOLDEN_BUILDS, REPO_ROOT, resolveRoots } = await import('../oracle/paths.ts')
+const { LUAJIT_IMAGE } = await import('../oracle/luajit.ts')
 type Rec = Record<string, any> // eslint-disable-line
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
@@ -50,8 +51,8 @@ end
 async function prepareLuts(): Promise<string> {
   const dir = resolve(SCRATCH, 'luts')
   mkdirSync(dir, { recursive: true })
-  const { findRequiredJewelLuts } = await import(pathToFileURL(resolve(roots.oracleRoot, 'src/timelessJewelLuts.mjs')).href)
-  const { unpackJewelData } = await import(pathToFileURL(resolve(roots.oracleRoot, 'src/nodeJewelData.mjs')).href)
+  const { findRequiredJewelLuts } = await import('../oracle/jewel-luts.ts')
+  const { unpackJewelData } = await import('../oracle/jewel-luts.ts')
   const b = GOLDEN_BUILDS.find((x: Rec) => x.name === BUILD)
   for (const { fileStem } of findRequiredJewelLuts(readFileSync(b.xmlPath(roots), 'utf8'))) writeFileSync(resolve(dir, `${fileStem}.bin`), unpackJewelData(roots.pobRoot, fileStem).bytes)
   return dir
@@ -298,7 +299,7 @@ async function main(): Promise<void> {
     console.error(`${s.name}: ${exact}/${total}`)
   })
   const obj: Rec = { build: BUILD, format: 1, xmlSha256: createHash('sha256').update(xmlBuf).digest('hex'),
-    producer: { generator: `pob-ts ${git('C:/pob-work/pob-ts')}`, image: digest || LUAJIT_IMAGE, luajit: 'desktop LuaJIT docker', pobSha: git(UPSTREAM_POB),
+    producer: { generator: `pob-ts ${git(POBTS)}`, image: digest || LUAJIT_IMAGE, luajit: 'desktop LuaJIT docker', pobSha: git(UPSTREAM_POB),
       probe: 'R4.1 pools PROBE (export-r4.ts) on a synthetic actor { output = copy(mainEnv.player.output)+overrides, modDB = new("ModDB")+Synth mods, damageShiftTable = copy+rows }; one docker run, build loaded once' },
     columns: { pool: POOL_COLUMNS, taken: TAKEN_COLUMNS, reads: READS, flags: FLAGS, sums: SUMS.map(([kind, n]) => `${kind}:${n}`), types: DMG, allyKeys: ALLY_KEYS }, scenarios }
   const text = `{\n${Object.keys(obj).sort(byteOrder).map((k) => `${JSON.stringify(k)}:${ser(obj[k])}`).join(',\n')}\n}\n`

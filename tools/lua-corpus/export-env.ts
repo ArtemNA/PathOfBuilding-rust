@@ -13,7 +13,8 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync }
 import { tmpdir } from 'node:os'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
-const P = 'file:///C:/pob-work/pob-ts'
+import { POBTS } from '../upstream.ts'
+const P = `file:///${POBTS}` // pob-ts code under test (not the harness)
 const T0 = performance.now()
 const { activeSpec, loadBuildXml } = await import(`${P}/src/build/index.ts`)
 const { applyRange } = await import(`${P}/src/items/applyRange.ts`)
@@ -27,19 +28,19 @@ const { PassiveSpec, loadSpec } = await import(`${P}/src/tree/spec.ts`)
 const { loadPassiveTree } = await import(`${P}/src/tree/tree.ts`)
 const { modCacheEntry } = await import(`${P}/src/data/modCache.ts`)
 const { APPLY_RANGE_CASES } = await import(`${P}/test/items/cases.ts`)
-const { GOLDEN_BUILDS, REPO_ROOT, resolveRoots } = await import(`${P}/tools/oracle/paths.ts`)
+const { GOLDEN_BUILDS, REPO_ROOT, resolveRoots } = await import('../oracle/paths.ts')
 const IMPORT_MS = performance.now() - T0
 type Rec = Record<string, any> // eslint-disable-line
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
 const FIX = resolve(ROOT, 'crates/pob-calc/tests/fixtures')
 const SCRATCH = resolve(ROOT, 'tools/.scratch')
-const POB_TS = 'C:/pob-work/pob-ts'
+const POB_TS = POBTS
 const MAX_BYTES = 1_450_000
 const git = (dir: string): string => execFileSync('git', ['-C', dir, 'rev-parse', '--short', 'HEAD'], { encoding: 'utf8' }).trim()
 const roots = resolveRoots()
 const tree = loadPassiveTree('3_13')
-const { LUAJIT_IMAGE } = await import(`${P}/tools/oracle/luajit.ts`)
+const { LUAJIT_IMAGE } = await import('../oracle/luajit.ts')
 // Timeless-jewel LUTs: HeadlessWrapper's Inflate is a stub, so (like luajit-dump17.lua:35-59, pob-ts luajit.ts) the .bin comes from a mounted
 // dir via an io.open/NewFileSearch shim. pob-ts' luajitEval has no such mount, hence this local docker twin of it. LUT dir stays in tools/.scratch.
 const JEWEL_SHIM = String.raw`
@@ -69,8 +70,8 @@ end
 async function prepareLuts(): Promise<string> {
   const dir = resolve(SCRATCH, 'luts')
   mkdirSync(dir, { recursive: true })
-  const { findRequiredJewelLuts } = await import(pathToFileURL(resolve(roots.oracleRoot, 'src/timelessJewelLuts.mjs')).href)
-  const { unpackJewelData } = await import(pathToFileURL(resolve(roots.oracleRoot, 'src/nodeJewelData.mjs')).href)
+  const { findRequiredJewelLuts } = await import('../oracle/jewel-luts.ts')
+  const { unpackJewelData } = await import('../oracle/jewel-luts.ts')
   for (const b of GOLDEN_BUILDS) {
     for (const { fileStem } of findRequiredJewelLuts(readFileSync(b.xmlPath(roots), 'utf8'))) writeFileSync(resolve(dir, `${fileStem}.bin`), unpackJewelData(roots.pobRoot, fileStem).bytes)
   }

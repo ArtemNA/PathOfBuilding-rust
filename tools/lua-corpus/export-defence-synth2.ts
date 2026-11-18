@@ -8,7 +8,8 @@
 //   node tools/lua-corpus/export-defence-synth2.ts coverage   -> tools/.scratch/defence-synth2-coverage.json + table (debug.sethook line counter, CalcPerform.lua)
 //   node tools/lua-corpus/export-defence-synth2.ts gaps       -> CalcPerform.lua :1286-3790 executable lines no golden executes (authoring aid)
 //   node tools/lua-corpus/export-defence-synth2.ts parse [f]  -> which mod lines modLib.parseMod accepts (authoring aid)
-import { POB as UPSTREAM_POB, ORACLE as UPSTREAM_ORACLE } from '../upstream.ts'
+import { POB as UPSTREAM_POB, REPO } from '../upstream.ts'
+import { LUA_DIR } from '../oracle/luajit-eval.ts' // tools/oracle/lua, mounted as /bench
 import { execFile } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
@@ -22,8 +23,6 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
 const FIX = resolve(ROOT, 'crates/pob-calc/tests/fixtures/defence-synth2')
 const SCRATCH = resolve(ROOT, 'tools/.scratch')
 const POB = UPSTREAM_POB
-const POBTS = 'C:/pob-work/pob-ts'
-const ORACLE = UPSTREAM_ORACLE
 const IMAGE = 'ghcr.io/pathofbuildingcommunity/pathofbuilding-tests:latest'
 const MAX_BYTES = 1_500_000
 const BASE_XML = `${POB}/spec/TestBuilds/3.13/Dual Savior.xml`
@@ -124,7 +123,7 @@ async function ljEval(code: string): Promise<Rec> { // twin of pob-ts luajitEval
   try {
     writeFileSync(resolve(tmp, 'code.lua'), JEWEL_SHIM + code)
     const luts = resolve(SCRATCH, 'luts'); mkdirSync(luts, { recursive: true })
-    const args = ['run', '--rm', '-v', `${POB}:/workdir:ro`, '-v', `${POBTS}/tools/oracle/lua:/bench:ro`, '-v', `${tmp}:/code:ro`, '-v', `${luts}:/jewel-data:ro`,
+    const args = ['run', '--rm', '-v', `${POB}:/workdir:ro`, '-v', `${LUA_DIR}:/bench:ro`, '-v', `${tmp}:/code:ro`, '-v', `${luts}:/jewel-data:ro`,
       '-w', '/workdir/src', '-e', 'LUA_PATH=./?.lua;../runtime/lua/?.lua;../runtime/lua/?/init.lua;;', '-e', 'POB_JEWEL_DATA_DIR=/jewel-data', IMAGE, 'luajit', '/bench/luajit-eval.lua', '/code/code.lua']
     let out: string
     try { out = (await run('docker', args, { encoding: 'utf8', maxBuffer: 512 * 1024 * 1024 })).stdout } catch (e) { throw new Error(`docker/luajit failed (infrastructure): ${(e as Rec).stderr ?? (e as Error).message}`) }
@@ -304,7 +303,7 @@ function norm(v: any): any { // eslint-disable-line
 const performLines = readFileSync(PERFORM_LUA, 'latin1').split('\n')
 const COVER_CACHE = resolve(SCRATCH, 'defence-synth2-coverage.json')
 const GOLDENS = ['Dual Savior', 'Dual Wield Cospris CoC', 'Dual Wield Cospris CoC - Lethal Pride', 'Generals Perforate Zerker', 'Mirage Archer Toxic Rain', 'OccVortex']
-const goldenXml = (g: string): Buffer => readFileSync(g === 'Dual Wield Cospris CoC - Lethal Pride' ? `${ORACLE}/test/fixtures/${g}.xml` : `${POB}/spec/TestBuilds/3.13/${g}.xml`)
+const goldenXml = (g: string): Buffer => readFileSync(g === 'Dual Wield Cospris CoC - Lethal Pride' ? `${REPO}/builds/corpus/${g}.xml` : `${POB}/spec/TestBuilds/3.13/${g}.xml`)
 const inRange = (l: number): boolean => l >= RANGE[0] && l <= RANGE[1]
 const loadCache = (): Rec => { if (!existsSync(COVER_CACHE)) throw new Error('no coverage cache: run `coverage` first'); return JSON.parse(readFileSync(COVER_CACHE, 'utf8')) }
 function coverInfo(sc: Scenario, xml: Buffer, cache: Rec): { covers: string[]; newLines: string; newLineCount: number } {

@@ -19,9 +19,8 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync }
 import { tmpdir } from 'node:os'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
-const P = 'file:///C:/pob-work/pob-ts'
-const { GOLDEN_BUILDS, REPO_ROOT, resolveRoots } = await import(`${P}/tools/oracle/paths.ts`)
-const { LUAJIT_IMAGE, dockerAvailable } = await import(`${P}/tools/oracle/luajit.ts`)
+const { GOLDEN_BUILDS, REPO_ROOT, resolveRoots } = await import('../oracle/paths.ts')
+const { LUAJIT_IMAGE, dockerAvailable } = await import('../oracle/luajit.ts')
 type Rec = Record<string, any> // eslint-disable-line
 
 if (!dockerAvailable()) throw new Error('docker is not available (infrastructure) -- STOP')
@@ -61,7 +60,7 @@ const STEMS = ['GloriousVanity', 'LethalPride', 'BrutalRestraint', 'MilitantFait
 async function prepareLuts(): Promise<{ dir: string; bins: Rec }> {
   const dir = resolve(SCRATCH, 'luts-all')
   mkdirSync(dir, { recursive: true })
-  const { unpackJewelData } = await import(pathToFileURL(resolve(roots.oracleRoot, 'src/nodeJewelData.mjs')).href)
+  const { unpackJewelData } = await import('../oracle/jewel-luts.ts')
   const bins: Rec = {}
   for (const stem of STEMS) {
     const u = unpackJewelData(roots.pobRoot, stem)

@@ -8,7 +8,7 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { loadBuildXml } from 'file:///C:/pob-work/pob-ts/src/build/load.ts'
-import { GOLDEN_BUILDS, resolveRoots } from 'file:///C:/pob-work/pob-ts/tools/oracle/paths.ts'
+import { GOLDEN_BUILDS, resolveRoots } from '../oracle/paths.ts'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const ROOT = resolve(HERE, '../..')
