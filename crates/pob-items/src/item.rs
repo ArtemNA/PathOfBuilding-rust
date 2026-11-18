@@ -641,7 +641,7 @@ impl Item {
                 if id <= saved_line_count {
                     // `list[id]` -- a non-positive or fractional id indexes nil (L18).
                     if id < 1.0 || id.fract() != 0.0 {
-                        panic!("Classes/ItemsTab.lua:1330: attempt to index a nil value (field '?')");
+                        panic!("Classes/ItemsTab.lua:1321: attempt to index a nil value (field '?')");
                     }
                     // :1306-1309 versions that could not parse "value(min-max)" lines saved them as is with a default ModRange
                     let ml = &mut list[id as usize - 1];

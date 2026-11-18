@@ -847,7 +847,7 @@ impl Engine {
             && env.item(s.sel_item_id).is_some()
         {
             return Err(format!(
-                "unimplemented: Classes/ItemsTab.lua:1985-2024 CopyAnointsAndEldritchImplicits from the equipped '{item_type}' item"
+                "unimplemented: Classes/ItemsTab.lua:1976-2015 CopyAnointsAndEldritchImplicits from the equipped '{item_type}' item"
             ));
         }
         item.normalise_quality();

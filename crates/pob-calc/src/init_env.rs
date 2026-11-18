@@ -232,7 +232,7 @@ fn build_ordered_slots(spec: &PassiveSpec, set: &pob_build::ItemSetModel) -> Vec
 /// set's `selItemId` of another slot (`itemSet["Weapon 1"].selItemId`). A `nil` result is `false`.
 pub fn is_item_valid_for_slot(item: &Item, slot_name: &str, spec: &PassiveSpec, items: &ParsedItems, sel: impl Fn(&str) -> f64) -> bool {
     let item_ty = item.ty.as_deref();
-    let base = item.base.expect("itemsTab.items hold resolved bases (ItemsTab.lua:1287)");
+    let base = item.base.expect("itemsTab.items hold resolved bases (ItemsTab.lua:1278)");
     // :2562 `slotName:match("^([%a ]+) (%d+)$")`
     let (slot_type, slot_id) = match slot_name.rsplit_once(' ') {
         Some((head, digits))
@@ -277,7 +277,7 @@ pub fn is_item_valid_for_slot(item: &Item, slot_name: &str, spec: &PassiveSpec, 
             Some(cj) => {
                 let size = exp
                     .size
-                    .unwrap_or_else(|| panic!("Classes/ItemsTab.lua:2612: attempt to compare number with nil (expansionJewel.size)"));
+                    .unwrap_or_else(|| panic!("Classes/ItemsTab.lua:2603: attempt to compare number with nil (expansionJewel.size)"));
                 cj.size_index <= size
             }
         };
@@ -316,7 +316,7 @@ pub fn is_item_valid_for_slot(item: &Item, slot_name: &str, spec: &PassiveSpec, 
             } else if wti
                 .get(weapon1_type)
                 .unwrap_or_else(|| {
-                    panic!("Classes/ItemsTab.lua:2624: attempt to index a nil value (data.weaponTypeInfo[{weapon1_type:?}])")
+                    panic!("Classes/ItemsTab.lua:2615: attempt to index a nil value (data.weaponTypeInfo[{weapon1_type:?}])")
                 })
                 .one_hand
                 == Some(true)

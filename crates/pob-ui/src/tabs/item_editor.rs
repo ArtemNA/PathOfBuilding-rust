@@ -2025,7 +2025,7 @@ impl ItemsTab {
         let Some(mods) = item.affix_mods() else { return range };
         let min_max = |m: &AffixMod| -> Option<(f64, f64)> {
             for l in &m.lines {
-                if let Some(c) = pob_items::lua::match_(l, "%((%d[%d%.]*)%-(%d[%d%.]*)%)", "ItemsTab.lua:790") {
+                if let Some(c) = pob_items::lua::match_(l, "%((%d[%d%.]*)%-(%d[%d%.]*)%)", "ItemsTab.lua:781") {
                     return Some((c[0].parse().ok()?, c[1].parse().ok()?));
                 }
             }

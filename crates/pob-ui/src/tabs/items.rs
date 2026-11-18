@@ -3447,8 +3447,7 @@ impl ItemsTab {
             rect(0.0, 14.0, 0.0, 16.0),
             "^7Import from:".to_string(),
         );
-        let t1 = t.clone();
-        label.base.shown.set_fn(move |g| t1().anchor.base.height.get(g) < 980.0);
+        // ItemsTab.lua:298 (a41fec6c2, 2.68.1): the label is always shown (the `self.height < 980` rule is gone)
         let lr: ControlRef = label.clone();
         let select_db = DropDownControl::new(
             g,
@@ -3479,32 +3478,16 @@ impl ItemsTab {
                 f64::min(limit, t1().max_y.get() - c.get_pos(g).1)
             });
         }
-        let (l1, d1) = (Rc::downgrade(&label), Rc::downgrade(&select_db));
-        unique_db.list.base.y.set_fn({
-            let l1 = l1.clone();
-            move |g| if l1.upgrade().expect("label").is_shown(g) { 118.0 } else { 96.0 }
-        });
-        unique_db.list.base.shown.set_fn({
-            let (l1, d1) = (l1.clone(), d1.clone());
-            move |g| !l1.upgrade().expect("label").is_shown(g) || d1.upgrade().expect("db").sel_index.get() == 1
-        });
-        rare_db.list.base.y.set_fn({
-            let l1 = l1.clone();
-            move |g| if l1.upgrade().expect("label").is_shown(g) { 78.0 } else { 396.0 }
-        });
-        rare_db.list.base.shown.set_fn({
-            let (l1, d1) = (l1.clone(), d1.clone());
-            move |g| !l1.upgrade().expect("label").is_shown(g) || d1.upgrade().expect("db").sel_index.get() == 2
-        });
-        viscera_db.list.base.y.set_fn({
-            let l1 = l1.clone();
-            move |g| if l1.upgrade().expect("label").is_shown(g) { 78.0 } else { 396.0 }
-        });
-        viscera_db
-            .list
-            .base
-            .shown
-            .set_fn(move |g| !l1.upgrade().expect("label").is_shown(g) || d1.upgrade().expect("db").sel_index.get() == 3);
+        // ItemsTab.lua:302-319 (a41fec6c2, 2.68.1): fixed y, one list at a time by the selector
+        let d1 = Rc::downgrade(&select_db);
+        for (db, y, index) in [(&unique_db, 118.0, 1), (&rare_db, 78.0, 2), (&viscera_db, 78.0, 3)] {
+            db.list.base.y.set(y);
+            let d1 = d1.clone();
+            db.list
+                .base
+                .shown
+                .set_fn(move |_| d1.upgrade().expect("db").sel_index.get() == index);
+        }
         self.host.add("uniqueDB", unique_db.list.clone());
         self.host.add("rareDB", rare_db.list.clone());
         self.host.add("visceraDB", viscera_db.list.clone());

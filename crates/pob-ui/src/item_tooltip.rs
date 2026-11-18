@@ -120,7 +120,7 @@ pub fn socket_description_line(item: &Item) -> String {
             "B" => cc("INTELLIGENCE"),
             "W" => cc("SCION"),
             "A" => "^xB0B0B0".to_string(),
-            _ => panic!("Classes/ItemsTab.lua:4325: attempt to concatenate local 'code' (a nil value)"),
+            _ => panic!("Classes/ItemsTab.lua:4316: attempt to concatenate local 'code' (a nil value)"),
         };
         line.push_str(&code);
         line.push_str(&s.color);

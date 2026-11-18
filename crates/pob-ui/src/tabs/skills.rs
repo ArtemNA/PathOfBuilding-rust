@@ -2464,7 +2464,7 @@ fn socket_description_line(item: &pob_items::Item) -> String {
             "B" => cc("INTELLIGENCE"),
             "W" => cc("SCION"),
             "A" => "^xB0B0B0".to_string(),
-            o => panic!("Classes/ItemsTab.lua:4325: attempt to concatenate local 'code' (a nil value): socket {o}"),
+            o => panic!("Classes/ItemsTab.lua:4316: attempt to concatenate local 'code' (a nil value): socket {o}"),
         };
         line.push_str(&code);
         line.push_str(&s.color);
