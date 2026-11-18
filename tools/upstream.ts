@@ -1,8 +1,7 @@
 // The ONE place TS tools (probes in tools/lua-corpus, make-goldens, oracle adapter) learn which upstream PoB they
 // target: tools/upstream.json (R-UP). Env vars override: POB_ROOT, POB_GOLDENS_DIR.
-// The LuaJIT harness is ours (tools/oracle, R-INDEPENDENT-UPDATE A1) and needs only POB; since A3/A4 no TS tool runs pob-ts or
-// pob-engine-wasm code, so this module exports no root of theirs (`pobTsRoot` / `wasmMirror` stay in upstream.json only for the
-// data converter, tools/sync-data.ps1 and tools/upstream-mirror.ps1, until it is ours too).
+// Everything an update runs is ours or upstream's (R-INDEPENDENT-UPDATE): the LuaJIT harness (tools/oracle), the data converter
+// (tools/data-convert), the goldens (tools/make-goldens.ts on LuaJIT). No pob-ts, no pob-engine-wasm, no WASM mirror.
 // Importing this module also sets process.env.POB_ROOT when unset (child processes see the same config).
 import { readFileSync } from 'node:fs'
 import { isAbsolute, resolve } from 'node:path'
