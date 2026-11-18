@@ -3,12 +3,16 @@
 # (R-UP; UPDATE-PROMPT.md step 6). Probes run strictly one after another (one docker container at a time, W12), each logged to
 # tools/.scratch/retake/<probe>.log; a failing probe does not stop the rest -- the summary lists it.
 #
-#   tools/retake-fixtures.ps1 [-Only <regex>] [-Skip <regex>]
+#   tools/retake-fixtures.ps1 [-Only <regex>] [-Skip <regex>] [-DataPatches]
+#
+# -DataPatches: only the probes that write data-patches/ (chosen by what they write, not by a list of names: a hand-written
+# list missed export-tattoo in 0.2.1). Run it after every tools/sync-data.ps1, even when the data did not change: the patches
+# are keyed by data.lock's manifestSha256, which holds pobSha. Then: cargo test -p pob-data --test patches_lock.
 #
 # Needs: Docker Desktop running (image ghcr.io/pathofbuildingcommunity/pathofbuilding-tests:latest), Node 24 on PATH, the Rust
 # workspace built (export-engine / export-real call the release pob-cli). Order matters only for data-patches (first: pob-data
 # refuses data whose manifest sha differs from the patches') and for `export-power run` -> `pack`.
-param([string]$Only = '.', [string]$Skip = '^$')
+param([string]$Only = '.', [string]$Skip = '^$', [switch]$DataPatches)
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 $log = Join-Path $root 'tools\.scratch\retake'
@@ -69,6 +73,7 @@ try {
         $script = if ($name -match '/') { "$name.ts" } else { "tools/lua-corpus/$name.ts" }
         $id = ((Split-Path -Leaf $name) + ' ' + ($args_ -join ' ')).Trim()
         if ($id -notmatch $Only -or $id -match $Skip) { continue }
+        if ($DataPatches -and $what -notmatch 'data-patches/') { continue }
         $file = Join-Path $log (($id -replace ' ', '-') + '.log')
         # the coverage caches are keyed by the XML sha256 only, but hold line numbers of the upstream they were taken on: drop them
         if ($args_ -contains 'coverage') {

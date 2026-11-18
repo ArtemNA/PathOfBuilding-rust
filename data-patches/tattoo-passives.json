@@ -1,4 +1,4 @@
-{"format":1,"producer":{"luajit":"LuaJIT 2.1.1784580905","pobSha":"07fa089bf08f6a089004c5c39192d12d210a13ac","source":"Data/TattooPassives.lua","tool":"tools/lua-corpus/export-tattoo.ts"},"manifestSha256":"dff139b79d9b600a5b9d4ac1a90c5da324a66e3082be8740c9cf95e62f3835ef","pobSha":"07fa089bf08f6a089004c5c39192d12d210a13ac",
+{"format":1,"producer":{"luajit":"LuaJIT 2.1.1784580905","pobSha":"a41fec6c20f822a658ae5df1273e8c69d5969bac","source":"Data/TattooPassives.lua","tool":"tools/lua-corpus/export-tattoo.ts"},"manifestSha256":"58aa494499204f5257ddc916eceaab734123d84dbb446badf9c7187a819b9a70","pobSha":"a41fec6c20f822a658ae5df1273e8c69d5969bac",
 "groups":{"1000000000":{"n":[],"oo":[],"x":-6500,"y":-6500}},
 "nodes":{
 "":{"MaximumConnected":100,"MinimumConnected":0,"activeEffectImage":"Art/2DArt/UIImages/InGame/AncestralTrial/PassiveTreeTattoos/KeystoneHinekoraPassiveBG.png","dn":"","icon":"","id":"AscendancyAssassin19","isTattoo":true,"ks":false,"m":false,"not":false,"overrideType":"AscendancyTattooShadow","sd":["Limited to 1 Ascendancy Tattoo"],"stats":[],"targetType":"Keystone","targetValue":""},
