@@ -4,6 +4,7 @@
 //!   data-convert convert --pob <pobRoot> --dump <file> --out <dir> [--only gems,item-bases,...]
 //!   data-convert all     --pob <pobRoot> --dump <file> --out <dir> [--only ...]
 
+mod actors;
 mod closures;
 mod constants;
 mod costs;
@@ -18,6 +19,8 @@ mod mod_cache;
 mod mod_parser;
 mod mods;
 mod rules;
+mod shape;
+mod skills;
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -35,6 +38,17 @@ const CONVERTERS: &[(&str, Converter)] = &[
     ("mod-parser", mod_parser::convert),
     ("mod-cache", mod_cache::convert),
     ("closures", closures::convert),
+    ("skills", skills::convert),
+    ("skill-stat-map", skills::convert_stat_map),
+    ("minions", actors::minions),
+    ("bosses", actors::bosses),
+    ("boss-skills", actors::boss_skills),
+    ("pantheons", actors::pantheons),
+    ("map-mods", actors::map_mods),
+    ("cluster-jewels", actors::cluster_jewels),
+    ("foulborn-map", actors::foulborn_map),
+    ("abyss-notable-names", actors::abyss_notable_names),
+    ("node-id-list", actors::node_id_list),
 ];
 
 fn arg(name: &str) -> Option<String> {
