@@ -4,15 +4,20 @@
 //!   data-convert convert --pob <pobRoot> --dump <file> --out <dir> [--only gems,item-bases,...]
 //!   data-convert all     --pob <pobRoot> --dump <file> --out <dir> [--only ...]
 
+mod closures;
+mod constants;
+mod costs;
 mod ctx;
 mod dump;
 mod fields;
 mod gems;
+mod globals;
 mod item_bases;
 mod js;
 mod mod_cache;
 mod mod_parser;
 mod mods;
+mod rules;
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -21,10 +26,15 @@ use std::time::Instant;
 type Converter = fn(&mut ctx::Ctx) -> ctx::R<js::J>;
 
 const CONVERTERS: &[(&str, Converter)] = &[
+    ("globals", globals::convert),
+    ("constants", constants::convert),
+    ("rules", rules::convert),
+    ("costs", costs::convert),
     ("gems", gems::convert),
     ("item-bases", item_bases::convert),
     ("mod-parser", mod_parser::convert),
     ("mod-cache", mod_cache::convert),
+    ("closures", closures::convert),
 ];
 
 fn arg(name: &str) -> Option<String> {
