@@ -114,7 +114,7 @@ pub(super) fn pass_tail(off: &mut Off<'_>, q: &Q, pi: usize) {
         let more_dur = q.more(Some(&c), &names) * dmore(&edb, None, &self_names);
         off.pset_num(pi, "ChillDurationMod", (1.0 + inc_dur / 100.0) * more_dur);
         let chill = ailment_data("Chill");
-        let site = format!("{LUA}:5400");
+        let site = format!("{LUA}:5431");
         // CalcOffence.lua:5430-5431 (07fa089bf): +maximum Chill effect (BASE `ChillMax`) also raises the cap
         let max = q
             .override_num(None, &["ChillMax"], &site)
