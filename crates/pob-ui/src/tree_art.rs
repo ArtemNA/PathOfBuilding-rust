@@ -455,7 +455,15 @@ impl TreeArt {
         let groups = src.tab("groups").ok_or("tree.lua: no groups")?;
         let mut group_oo = HashMap::new();
         let mut group_keys = Vec::new();
-        for (k, v) in &groups.fields {
+        // 07fa089bf: PassiveTree.lua:75-90 `convertKeysToNumbers` + saveTableToFile write `groups` as a positional list (3_30/tree.lua),
+        // older trees as `[n] = {`; positional entries are the array part, keys 1..n
+        let positional: Vec<(LuaKey, LuaVal)> = groups
+            .arr
+            .iter()
+            .enumerate()
+            .map(|(i, v)| (LuaKey::Num((i + 1) as f64), v.clone()))
+            .collect();
+        for (k, v) in positional.iter().chain(&groups.fields) {
             let (LuaKey::Num(k), LuaVal::Table(g)) = (k, v) else { continue };
             group_keys.push(*k);
             let mut oo = [false; 4];
@@ -475,8 +483,13 @@ impl TreeArt {
             }
             group_oo.insert(*k as i64, oo);
         }
-        let group_order: Vec<i64> = constructor_pairs(&group_keys, groups.fields.len())
-            .into_iter()
+        // `pairs`: the array part in ascending order, then the hash part (the keyed fields, in the constructor's hash order)
+        let n_arr = positional.iter().filter(|(_, v)| matches!(v, LuaVal::Table(_))).count();
+        let (arr_keys, hash_keys) = group_keys.split_at(n_arr);
+        let group_order: Vec<i64> = arr_keys
+            .iter()
+            .copied()
+            .chain(constructor_pairs(hash_keys, groups.fields.len()))
             .map(|k| k as i64)
             .collect();
 

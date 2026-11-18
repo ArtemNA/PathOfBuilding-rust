@@ -44,18 +44,23 @@ pub struct ClusterJewel {
     pub nothingness_count: Option<f64>,
     pub added_mods: Vec<String>,
     pub inc_effect: Option<f64>,
+    /// `jewel.jewelData.blightcoreNotables` (Item.lua:2515-2518, 07fa089bf): a Putrid Seed's "1 added passive skill is X" names in
+    /// line order; `None` = nil (not a Putrid Seed). Truthy even when empty (L4).
+    pub blightcore_notables: Option<Vec<String>>,
 }
 
 /// `GetJewel(itemId)` (:901-910): the item when it exists and has `jewelData`, else nil.
 pub type JewelLookup<'a> = &'a dyn Fn(f64) -> Option<Rc<ClusterJewel>>;
 
-/// `self.subGraphs[id]` -- the parts `BuildClusterJewelGraphs` reads back (nodes, parentSocket, entranceNode).
+/// `self.subGraphs[id]` -- the parts `BuildClusterJewelGraphs` reads back (nodes, parentSocket, entranceNode / entranceNodes).
 #[derive(Clone)]
 pub(crate) struct SubGraph {
     /// Indices into `PassiveSpec::nodes`, `subGraph.nodes` order.
     nodes: Vec<usize>,
     parent_socket: usize,
     entrance: Option<usize>,
+    /// `subGraph.entranceNodes` -- a Putrid Seed's graph (PassiveSpec.lua:1924, 07fa089bf); `None` = nil (a cluster graph).
+    entrance_nodes: Option<Vec<usize>>,
     /// `subGraph.group.x` / `.y` / the orbit of `oo[nodeOrbit]` (display only, read by the tree view).
     group: (f64, f64),
     node_orbit: f64,
@@ -70,8 +75,11 @@ pub struct SubGraphView {
     pub y: f64,
     /// `group.oo[orbit]`.
     pub node_orbit: f64,
-    /// `linkNodes(node1, node2)`: indices into `PassiveSpec::nodes`.
+    /// `linkNodes(node1, node2)`: indices into `PassiveSpec::nodes`. A Putrid Seed's graph: the `BuildConnector(node, other)` pairs
+    /// (PassiveSpec.lua:1949-1965), so the last one is not `(entranceNode, parentSocket)`.
     pub links: Vec<(usize, usize)>,
+    /// A Putrid Seed's graph (`subGraph.entranceNodes` is set, PassiveSpec.lua:1924, 07fa089bf).
+    pub is_blightcore: bool,
 }
 
 impl PassiveSpec {
@@ -85,6 +93,7 @@ impl PassiveSpec {
                 y: sg.group.1,
                 node_orbit: sg.node_orbit,
                 links: sg.links.clone(),
+                is_blightcore: sg.entrance_nodes.is_some(),
             })
             .collect()
     }
@@ -116,7 +125,7 @@ fn group_node_ids(tree: &PassiveTree, g: i64) -> Vec<Option<u32>> {
 
 /// `nodeId + i` with a template index (an integral Lua number).
 fn offset_id(base: u32, i: i64) -> Result<u32, TreeError> {
-    u32::try_from(i64::from(base) + i).map_err(|_| err(2232, format!("node id {base} + {i} out of range")))
+    u32::try_from(i64::from(base) + i).map_err(|_| err(2293, format!("node id {base} + {i} out of range")))
 }
 
 impl PassiveSpec {
@@ -204,7 +213,7 @@ impl PassiveSpec {
         for &(to, item_id) in &jewels.0 {
             if other.get(to) != Some(&item_id) {
                 self.unimplemented.push(format!(
-                    "{SPEC}:1818 D13: two jewels map to socket {} -- which one wins depends on the per-process pairs(self.slots) order of ItemsTab:PopulateSlots",
+                    "{SPEC}:1819 D13: two jewels map to socket {} -- which one wins depends on the per-process pairs(self.slots) order of ItemsTab:PopulateSlots",
                     pob_lua::tostring_num(to)
                 ));
             }
@@ -267,11 +276,16 @@ impl PassiveSpec {
                     }
                 }
             }
-            let entrance = sg.entrance;
-            let pos = entrance
-                .and_then(|e| self.nodes[sg.parent_socket].linked.iter().position(|&l| l == e))
-                .ok_or_else(|| err(1826, "Entrance for subGraph not linked to parent socket???"))?;
-            self.nodes[sg.parent_socket].linked.remove(pos);
+            // :1850-1854 (07fa089bf) `ipairs(subGraph.entranceNodes or { subGraph.entranceNode })` -- `{ nil }` is empty.
+            let entrances = sg.entrance_nodes.clone().unwrap_or_else(|| sg.entrance.into_iter().collect());
+            for entrance in entrances {
+                let pos = self.nodes[sg.parent_socket]
+                    .linked
+                    .iter()
+                    .position(|&l| l == entrance)
+                    .ok_or_else(|| err(1852, "Entrance for subGraph not linked to parent socket???"))?;
+                self.nodes[sg.parent_socket].linked.remove(pos);
+            }
         }
         // Every subgraph node sits after the Init nodes; with all subgraphs gone, so are they.
         self.nodes.truncate(self.base_len);
@@ -287,11 +301,17 @@ impl PassiveSpec {
             let large = node.expansion_jewel.as_ref().is_some_and(|e| e.size == Some(2.0));
             if self.alloc_nodes.contains_key(&node_id)
                 && large
-                && let Some(jewel) = jewel.filter(|j| j.valid)
+                && let Some(jewel) = jewel.clone().filter(|j| j.valid)
             {
                 // This is a Large Jewel Socket, and it has a cluster jewel in it
                 let parent = self.node_idx(node_id).expect("an allocated node is a spec node");
                 self.build_subgraph(&jewel, parent, None, get_jewel)?;
+            } else if self.alloc_nodes.contains_key(&node_id)
+                && let Some(jewel) = jewel.filter(|j| j.blightcore_notables.is_some())
+            {
+                // :1879-1880 (07fa089bf)
+                let parent = self.node_idx(node_id).expect("an allocated node is a spec node");
+                self.build_blightcore_subgraph(&jewel, parent)?;
             }
         }
 
@@ -326,7 +346,7 @@ impl PassiveSpec {
         for id in group_node_ids(&self.tree, group) {
             let node = id
                 .and_then(|id| self.tree.node(id))
-                .ok_or_else(|| err(1886, format!("group {group}: a node id that is not in the tree")))?;
+                .ok_or_else(|| err(1891, format!("group {group}: a node id that is not in the tree")))?;
             if node.expansion_jewel.as_ref().is_some_and(|e| e.index == Some(index)) {
                 return Ok(Some(node.id));
             }
@@ -360,7 +380,7 @@ impl PassiveSpec {
             legacy_group = g;
             group_size = ej
                 .size
-                .ok_or_else(|| err(1898, "comparing a number with nil (expansionJewel.size)"))?;
+                .ok_or_else(|| err(1903, "comparing a number with nil (expansionJewel.size)"))?;
             guard += 1;
         }
         Ok(legacy_group)
@@ -382,7 +402,7 @@ impl PassiveSpec {
         } else {
             // :1932 launch:ShowErrMsg (a message box) -- then the "a little krangled" fallback.
             self.unimplemented.push(format!(
-                "{SPEC}:1932 ShowErrMsg: unexpected cluster jewel node counts {} -> {}",
+                "{SPEC}:1993 ShowErrMsg: unexpected cluster jewel node counts {} -> {}",
                 pob_lua::tostring_num(src_n),
                 pob_lua::tostring_num(dest_n)
             ));
@@ -422,7 +442,7 @@ impl PassiveSpec {
         if self.legacy_cluster_node_map.is_none() {
             return Ok(());
         }
-        let nil = |what: &str| err(1955, format!("{what} is nil (a Lua error)"));
+        let nil = |what: &str| err(2016, format!("{what} is nil (a Lua error)"));
         let legacy_spo = proxy
             .o
             .and_then(as_id)
@@ -446,24 +466,24 @@ impl PassiveSpec {
             let legacy_rel = lua_mod(node_index + legacy_proxy_rel);
             let legacy_oidx = self
                 .translate_cluster_orbit_index(legacy_rel, total, legacy_spo)
-                .ok_or_else(|| err(1959, "table index is nil (legacyNodeOidx)"))?;
+                .ok_or_else(|| err(2020, "table index is nil (legacyNodeOidx)"))?;
             if legacy_by_oidx.insert(legacy_oidx, node.id).is_some_and(|prev| prev != node.id) {
                 collision = true;
             }
             let oidx = node.oidx.ok_or_else(|| nil("node.oidx"))? as i64;
             let current_rel = self
                 .translate_cluster_orbit_index(oidx, skills_per_orbit, total)
-                .ok_or_else(|| err(1962, "currentNodeOidxRelativeToClusterIndicies is nil"))?;
+                .ok_or_else(|| err(2023, "currentNodeOidxRelativeToClusterIndicies is nil"))?;
             let current = self
                 .translate_cluster_orbit_index(current_rel, total, legacy_spo)
-                .ok_or_else(|| err(1963, "table index is nil (currentNodeOidxInLegacySkillsPerOrbit)"))?;
+                .ok_or_else(|| err(2024, "table index is nil (currentNodeOidxInLegacySkillsPerOrbit)"))?;
             if current_by_oidx.insert(current, node.id).is_some_and(|prev| prev != node.id) {
                 collision = true;
             }
         }
         if collision {
             self.unimplemented.push(format!(
-                "{SPEC}:1957-1964 D13: two cluster nodes share a legacy orbit index -- the mapping depends on pairs(indicies)"
+                "{SPEC}:2018-2025 D13: two cluster nodes share a legacy orbit index -- the mapping depends on pairs(indicies)"
             ));
         }
         for (oidx, &legacy) in &legacy_by_oidx {
@@ -493,14 +513,14 @@ impl PassiveSpec {
             .copied()
             .ok_or_else(|| {
                 TreeError(format!(
-                    "Classes/PassiveTree.lua:899: subgraph node {}: no orbit angle for o={:?} oidx={:?}",
+                    "Classes/PassiveTree.lua:946: subgraph node {}: no orbit angle for o={:?} oidx={:?}",
                     node.id, node.o, node.oidx
                 ))
             })?;
         let radius = o
             .and_then(|o| tree.orbit_radii.get(o))
             .copied()
-            .ok_or_else(|| TreeError(format!("Classes/PassiveTree.lua:900: subgraph node {}: no orbit radius", node.id)))?;
+            .ok_or_else(|| TreeError(format!("Classes/PassiveTree.lua:947: subgraph node {}: no orbit radius", node.id)))?;
         node.angle = Some(angle);
         // MINEFIELD-RUST R2: `f64::sin/cos` = desktop UCRT.
         node.x = Some(gx + angle.sin() * radius);
@@ -545,10 +565,10 @@ impl PassiveSpec {
             .tree_node()
             .expansion_jewel
             .clone()
-            .ok_or_else(|| err(1971, "attempt to index a nil value (expansionJewel)"))?;
+            .ok_or_else(|| err(2032, "attempt to index a nil value (expansionJewel)"))?;
         let cj = jewel
             .cluster_jewel
-            .ok_or_else(|| err(1972, "attempt to index a nil value (jewel.clusterJewel)"))?;
+            .ok_or_else(|| err(2033, "attempt to index a nil value (jewel.clusterJewel)"))?;
 
         // :1982-1995 -- the subgraph id.
         let mut id = id.unwrap_or(0x10000);
@@ -556,7 +576,7 @@ impl PassiveSpec {
             let idx = expansion
                 .index
                 .and_then(as_id)
-                .ok_or_else(|| err(1991, "bad argument to 'lshift' (expansionJewel.index)"))?;
+                .ok_or_else(|| err(2052, "bad argument to 'lshift' (expansionJewel.index)"))?;
             Ok(idx << by)
         };
         if expansion.size == Some(2.0) {
@@ -564,7 +584,7 @@ impl PassiveSpec {
         } else if expansion.size == Some(1.0) {
             id += shift(9)?;
         }
-        let size_index = as_id(cj.size_index).ok_or_else(|| err(1995, "clusterJewel.sizeIndex is not an index"))?;
+        let size_index = as_id(cj.size_index).ok_or_else(|| err(2056, "clusterJewel.sizeIndex is not an index"))?;
         let node_id = id + (size_index << 4);
         self.sub_graphs.insert(
             node_id,
@@ -572,6 +592,7 @@ impl PassiveSpec {
                 nodes: Vec::new(),
                 parent_socket,
                 entrance: None,
+                entrance_nodes: None,
                 group: (0.0, 0.0),
                 // :2001 `oo = { }`: a keystone's group returns (:2124) before the flag is set (:2134), it has no orbit art
                 node_orbit: -1.0,
@@ -586,10 +607,10 @@ impl PassiveSpec {
             .and_then(pob_lua::tonumber)
             .and_then(as_id)
             .and_then(|p| tree.node(p))
-            .ok_or_else(|| err(2001, "Proxy node not found"))?;
+            .ok_or_else(|| err(2062, "Proxy node not found"))?;
         let proxy_group = proxy
             .group
-            .ok_or_else(|| err(2018, "attempt to index a nil value (proxyNode.group)"))?;
+            .ok_or_else(|| err(2079, "attempt to index a nil value (proxyNode.group)"))?;
         let (gx, gy) = {
             let g = &tree.groups[&proxy_group];
             self.sub_graphs[&node_id].group = (g.x, g.y);
@@ -601,7 +622,7 @@ impl PassiveSpec {
             let &ks = tree
                 .cluster_node_map
                 .get(name)
-                .ok_or_else(|| err(2061, format!("Keystone node not found: {name}")))?;
+                .ok_or_else(|| err(2122, format!("Keystone node not found: {name}")))?;
             let kn = &tree.nodes[ks];
             let mut node = subgraph_node(node_id, NodeType::Keystone, kn.dn.clone(), kn.sd.clone(), kn.icon.clone(), 0.0, 1.0);
             self.process_subgraph_node(&mut node, gx, gy)?;
@@ -620,7 +641,7 @@ impl PassiveSpec {
         let legacy_proxy_group = if self.legacy_cluster_node_map.is_some() {
             let size = expansion
                 .size
-                .ok_or_else(|| err(1898, "comparing a number with nil (expansionJewel.size)"))?;
+                .ok_or_else(|| err(1903, "comparing a number with nil (expansionJewel.size)"))?;
             Some(self.build_legacy_proxy_group(proxy_group, size, cj.size_index)?)
         } else {
             None
@@ -640,7 +661,7 @@ impl PassiveSpec {
                 return Ok(());
             };
             if !sort_order.contains_key(&tree.nodes[base].dn) {
-                return Err(err(2124, format!("Cluster notable has no sort order: {name}")));
+                return Err(err(2185, format!("Cluster notable has no sort order: {name}")));
             }
             notable_list.push(base);
         }
@@ -687,7 +708,7 @@ impl PassiveSpec {
             |spec: &mut PassiveSpec, pending: &mut Vec<TreeNode>, node_index: i64, jewel_index: f64| -> Result<(), TreeError> {
                 let socket = spec
                     .find_cluster_socket(proxy_group, jewel_index)?
-                    .ok_or_else(|| err(2162, "Socket not found (ran out of sockets nani?)"))?;
+                    .ok_or_else(|| err(2223, "Socket not found (ran out of sockets nani?)"))?;
                 let node = subgraph_socket(&tree, socket, node_orbit, node_index as f64);
                 let sid = node.id;
                 indicies.insert(node_index, pending.len());
@@ -707,7 +728,7 @@ impl PassiveSpec {
             make_jewel(self, &mut pending, 6, 1.0)?;
         } else {
             if socket_count > cj.socket_indicies.len() as f64 {
-                return Err(err(2193, "Too many sockets!"));
+                return Err(err(2254, "Too many sockets!"));
             }
             const GET_JEWELS: [f64; 3] = [0.0, 2.0, 1.0];
             let mut i = 1.0;
@@ -818,20 +839,20 @@ impl PassiveSpec {
             index += 1.0;
         }
 
-        let entrance_p = *indicies.get(&0).ok_or_else(|| err(2308, "No entrance to subgraph"))?;
+        let entrance_p = *indicies.get(&0).ok_or_else(|| err(2369, "No entrance to subgraph"))?;
 
         // :2311-2315 Convert from cluster-template index space into the tree's orbit index space.
         let skills_per_orbit = tree
             .skills_per_orbit
             .get(size_index as usize + 1)
             .copied()
-            .ok_or_else(|| err(2312, "tree.skillsPerOrbit[sizeIndex + 2] is nil"))?;
+            .ok_or_else(|| err(2373, "tree.skillsPerOrbit[sizeIndex + 2] is nil"))?;
         let start_oidx = cluster_jewels()
             .orbit_offsets
             .get(proxy.id.to_string().as_str())
             .and_then(|o| o.get(size_index.to_string().as_str()))
             .and_then(|v| v.as_f64())
-            .ok_or_else(|| err(2313, format!("data.clusterJewels.orbitOffsets[{}][{size_index}] is nil", proxy.id)))?;
+            .ok_or_else(|| err(2374, format!("data.clusterJewels.orbitOffsets[{}][{size_index}] is nil", proxy.id)))?;
         self.apply_cluster_orbit_index_adjustment(&mut pending, &indicies, start_oidx, cj.total_indicies, skills_per_orbit)?;
         self.build_legacy_cluster_orbit_mappings(&pending, &indicies, proxy, cj.total_indicies, skills_per_orbit)?;
 
@@ -909,6 +930,101 @@ impl PassiveSpec {
         Ok(())
     }
 
+    /// :1911-1966 (07fa089bf) `BuildBlightcoreSubgraph(jewel, parentSocket)` -- adds the proxy passives a Putrid Seed grows from
+    /// a Large Jewel Socket. Unlike cluster jewels, these are fixed tree nodes. The notables allocate the jewel's granted
+    /// notables. `parent_socket` indexes `self.nodes`; connectors (`BuildConnector`) and `sprites` are display only, the
+    /// linked pairs are kept in `links` (in `BuildConnector` call order) like `BuildSubgraph`'s.
+    fn build_blightcore_subgraph(&mut self, jewel: &ClusterJewel, parent_socket: usize) -> Result<(), TreeError> {
+        let tree = self.tree.clone();
+        let parent_id = self.nodes[parent_socket].id;
+        let Some(layout) = tree.blightcore_layouts.get(&parent_id).cloned() else {
+            return Ok(());
+        };
+        let (px, py) = {
+            let t = self.nodes[parent_socket].tree_node();
+            (t.x, t.y)
+        };
+        self.sub_graphs.insert(
+            parent_id,
+            SubGraph {
+                nodes: Vec::new(),
+                parent_socket,
+                entrance: None,
+                entrance_nodes: Some(Vec::new()),
+                // `group = { x = parentSocket.x, y = parentSocket.y, oo = {} }` (display only; a tree socket has a position)
+                group: (px.unwrap_or_default(), py.unwrap_or_default()),
+                // `oo = {}`: no orbit art
+                node_orbit: -1.0,
+                links: Vec::new(),
+            },
+        );
+
+        // a map of what "added passive skill is *" enchant index each node uses
+        let notable_index = cluster_jewels();
+        let notables: &[String] = jewel.blightcore_notables.as_deref().unwrap_or_default();
+        let mut ids: Vec<usize> = Vec::with_capacity(layout.len());
+        for &ti in layout.iter() {
+            // copy the node and replace it so that it allocates the anointed node
+            // nodes without a matching anoint stay as "mycelial growths"
+            let tree_node = &tree.nodes[ti];
+            let mut node = TreeNode {
+                is_proxy: false,
+                is_blightcore: true,
+                ..tree_node.clone()
+            };
+            // `index and blightcoreNotables[index] and self.tree.notableMap[blightcoreNotables[index]]` (1-based Lua index)
+            let notable = notable_index
+                .blightcore_notable_index(tree_node.id)
+                .filter(|&index| index >= 1.0 && index.fract() == 0.0)
+                .and_then(|index| notables.get(index as usize - 1))
+                .and_then(|name| tree.notable_map.get(name.as_str()))
+                .map(|&ni| &tree.nodes[ni]);
+            if let Some(notable) = notable {
+                node.dn = notable.dn.clone();
+                node.name = notable.name.clone();
+                node.icon = notable.icon.clone();
+                node.sd = vec![format!("Allocates {}", notable.dn)];
+                // `self.tree:ProcessStats(node)` -- fresh mods/modKey/modList on the copy (the tree node keeps its own).
+                let holder = StatHolder {
+                    id: f64::from(node.id),
+                    str_id: None,
+                    ty: Some(node.ty),
+                    dn: &node.dn,
+                };
+                let mut sd = std::mem::take(&mut node.sd);
+                let mut stats = NodeStats::default();
+                process_stats(&holder, &mut sd, &mut stats, 1, tree.parse_mode);
+                node.sd = sd;
+                node.stats = stats;
+            }
+            let idx = self.push_subgraph_node(node);
+            self.sub_graphs[&parent_id].nodes.push(idx);
+            // `self.nodes[node.id] = node` -- a proxy node is never an Init node (PassiveSpec.lua:54): nothing is replaced.
+            self.insert_index(idx)?;
+            ids.push(idx);
+        }
+
+        // connect nodes in the same group to each other
+        for &i in &ids {
+            let linked_id = self.nodes[i].tree_node().linked_id.clone();
+            let proxy_key = self.nodes[i].tree_node().proxy_key.clone();
+            for other_id in linked_id {
+                let Some(other) = self.node_idx(other_id) else { continue };
+                let same_group = other == parent_socket || self.nodes[other].tree_node().proxy_key == proxy_key;
+                if same_group && !self.nodes[i].linked.contains(&other) {
+                    self.link_nodes(i, other);
+                    if other == parent_socket
+                        && let Some(entrances) = self.sub_graphs[&parent_id].entrance_nodes.as_mut()
+                    {
+                        entrances.push(i);
+                    }
+                    self.sub_graphs[&parent_id].links.push((i, other));
+                }
+            }
+        }
+        Ok(())
+    }
+
     fn push_subgraph_node(&mut self, node: TreeNode) -> usize {
         let tree = self.tree.clone();
         self.nodes.push(SpecNode::owned(&tree, node));
@@ -923,7 +1039,7 @@ impl PassiveSpec {
             && prev != idx
         {
             return Err(TreeError(format!(
-                "unimplemented: {SPEC}:2349 subgraph node {id} replaces an existing spec node"
+                "unimplemented: {SPEC}:2410 subgraph node {id} replaces an existing spec node"
             )));
         }
         Ok(())
@@ -948,6 +1064,8 @@ fn subgraph_node(id: u32, ty: NodeType, dn: String, sd: Vec<String>, icon: Strin
         is_multiple_choice: false,
         is_multiple_choice_option: false,
         is_proxy: false,
+        proxy_key: None,
+        is_blightcore: false,
         is_blighted: false,
         is_jewel_socket: false,
         is_mastery: false,

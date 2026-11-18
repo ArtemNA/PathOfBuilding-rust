@@ -20,10 +20,11 @@ fn first_value(mods: &[pob_mods::Mod]) -> f64 {
 
 #[test]
 fn patch_counts_from_luajit() {
-    // 2 inf in both files, 14 `-0` ("0% reduced ..." lines) in the cache; nothing else (no nan / -inf anywhere).
-    assert_eq!(patches().unwrap().len(), 18);
+    // 2 inf in both files, 13 `-0` ("0% reduced ..." lines) in the cache; nothing else (no nan / -inf anywhere). 07fa089bf: 14 -> 13,
+    // `c["0% reduced Rarity of Items found"]` is gone from Data/ModCache.lua (grep: 0 on 07fa089bf, 1 on 3dbca4463).
+    assert_eq!(patches().unwrap().len(), 17);
     assert_eq!(count("mod-cache.json", "inf"), 2);
-    assert_eq!(count("mod-cache.json", "-0"), 14);
+    assert_eq!(count("mod-cache.json", "-0"), 13);
     assert_eq!(count("mod-parser.json", "inf"), 2);
 }
 
@@ -44,7 +45,7 @@ fn mod_cache_carries_inf_and_negative_zero() {
         assert!(v == 0.0 && v.is_sign_negative(), "{line}: {v:?}");
         neg_zero += 1;
     }
-    assert_eq!(neg_zero, 14);
+    assert_eq!(neg_zero, 13);
     // every other 0 value of the cache stays +0 (the patch touches only what LuaJIT has as -0)
     let zeros_negative: usize = c
         .entries
@@ -52,7 +53,7 @@ fn mod_cache_carries_inf_and_negative_zero() {
         .flat_map(|e| e.mods.iter().flatten())
         .filter(|m| matches!(&m.value, Value::Num(n) if *n == 0.0 && n.is_sign_negative()))
         .count();
-    assert_eq!(zeros_negative, 14);
+    assert_eq!(zeros_negative, 13);
 }
 
 #[test]

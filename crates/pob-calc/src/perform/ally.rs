@@ -145,7 +145,7 @@ pub(super) fn ally_life(
         let override_limit = match summoned_minion_override {
             None => f64::INFINITY,
             Some(ConfigValue::Num(v)) => *v,
-            Some(other) => panic!("Modules/CalcPerform.lua:3674: bad argument #2 to 'min' (number expected, got {other:?})"),
+            Some(other) => panic!("Modules/CalcPerform.lua:3682: bad argument #2 to 'min' (number expected, got {other:?})"),
         };
         let spectre_limit = min2(player.output.opt_num("ActiveSpectreLimit").unwrap_or(0.0), override_limit);
 
@@ -231,7 +231,7 @@ pub(super) fn ally_life(
                     let st = env.skills.as_ref().expect("skills on");
                     let n = st.active_skill_list[i].minion.as_ref().expect("minion").md("name");
                     n.as_str()
-                        .unwrap_or_else(|| panic!("Modules/CalcPerform.lua:3741: minionData.name is not a string"))
+                        .unwrap_or_else(|| panic!("Modules/CalcPerform.lua:3749: minionData.name is not a string"))
                         .to_owned()
                 };
                 let entries = list.entry(pool.life.to_owned()).or_default();

@@ -41,7 +41,7 @@ pub(super) fn child_skill_lists(env: &mut Env) {
         let base = sk
             .skill_mod_list
             .clone()
-            .unwrap_or_else(|| panic!("Modules/CalcPerform.lua:1296: activeSkill.baseSkillModList is nil"));
+            .unwrap_or_else(|| panic!("Modules/CalcPerform.lua:1298: activeSkill.baseSkillModList is nil"));
         lists.push(ModStore::new_list(Some(base)));
         core.push(pob_mods::ActiveSkill {
             skill_types: sk.skill_types.iter().map(|&t| f64::from(t)).collect(),
@@ -140,7 +140,7 @@ pub(super) fn skills_loop(env: &mut Env, output: &mut Output) -> LoopOut {
             .skill_cfg
             .as_ref()
             .map(|c| c.mod_cfg(&skills, &sk.skill_types, None))
-            .unwrap_or_else(|| panic!("Modules/CalcPerform.lua:1336: activeSkill.skillCfg is nil"));
+            .unwrap_or_else(|| panic!("Modules/CalcPerform.lua:1338: activeSkill.skillCfg is nil"));
         let ge = &skills.effects[sk.active_effect.borrow().granted_effect];
         let name = ge.name.as_str();
         let flag = |k: &str| sk.skill_flags.get(k).copied().unwrap_or(false);
@@ -174,7 +174,7 @@ pub(super) fn skills_loop(env: &mut Env, output: &mut Output) -> LoopOut {
                 .sum(Base, Some(&main.cfg), &["ActiveTotemLimit", "ActiveBallistaLimit"]));
             let atl = max2(limit, output.opt_num("ActiveTotemLimit").unwrap_or(0.0));
             output.set_num("ActiveTotemLimit", atl);
-            let summoned = super::or_override(super::override_(&mod_db, &["TotemsSummoned"]), atl, "Modules/CalcPerform.lua:1351");
+            let summoned = super::or_override(super::override_(&mod_db, &["TotemsSummoned"]), atl, "Modules/CalcPerform.lua:1353");
             output.set_num("TotemsSummoned", summoned);
             max_mult(&enemy_db, "TotemsSummoned", summoned);
         }
@@ -287,14 +287,14 @@ pub(super) fn skills_loop(env: &mut Env, output: &mut Output) -> LoopOut {
                 let limit = md.get("limit");
                 let limit_name = limit.as_str().map(str::to_owned);
                 if !limit.is_nil() && limit_name.is_none() {
-                    panic!("Modules/CalcPerform.lua:1443: minionData.limit is not a string ({limit:?})");
+                    panic!("Modules/CalcPerform.lua:1445: minionData.limit is not a string ({limit:?})");
                 }
                 let key = limit_name.clone().unwrap_or_else(|| format!("{}:{minion_type}", ge.id));
                 let mut count = 1.0;
                 if let Some(ln) = &limit_name {
                     let ov = super::override_(&mod_db, &[ln]);
                     count = match ov {
-                        Some(v) if v.truthy() => super::num_val(&v, "Modules/CalcPerform.lua:1446"),
+                        Some(v) if v.truthy() => super::num_val(&v, "Modules/CalcPerform.lua:1448"),
                         _ => {
                             skill_guard(sml.malformed, &[ln]);
                             let val = ok(crate::calc_lib::val(&sml.list.borrow(), ln, None));
@@ -365,7 +365,7 @@ pub(super) fn skills_loop(env: &mut Env, output: &mut Output) -> LoopOut {
         // :1487-1490 The Saviour: `infoMessage` / `infoTrigger` are read by the trigger/offence phase (R7).
         if name == "Reflection" || data_truthy(sk, "triggeredBySaviour") {
             notes.push(format!(
-                "CalcPerform.lua:1488-1489 activeSkill.infoMessage/infoTrigger of skill {} ({name}) (read by CalcTriggers/offence, R7)",
+                "CalcPerform.lua:1490-1491 activeSkill.infoMessage/infoTrigger of skill {} ({name}) (read by CalcTriggers/offence, R7)",
                 i + 1
             ));
         }

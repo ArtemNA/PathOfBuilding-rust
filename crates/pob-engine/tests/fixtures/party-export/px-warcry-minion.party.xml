@@ -5,10 +5,10 @@
 		<ExportedBuffs name="Aura">
 			Anger
 100
+109|Skill:Anger|FireMin|BASE|-|Spell|type=GlobalEffect/effectType=Aura
 155|Skill:Anger|FireMax|BASE|-|Spell|type=GlobalEffect/effectType=Aura
 109|Skill:Anger|FireMin|BASE|-|Attack|type=GlobalEffect/effectType=Aura
 155|Skill:Anger|FireMax|BASE|-|Attack|type=GlobalEffect/effectType=Aura
-109|Skill:Anger|FireMin|BASE|-|Spell|type=GlobalEffect/effectType=Aura
 ---
 extraAura
 true|Tree:66771|Onslaught|FLAG|-|-|-

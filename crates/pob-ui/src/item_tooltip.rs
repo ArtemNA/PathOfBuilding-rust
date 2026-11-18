@@ -42,6 +42,9 @@ pub struct CompareSlot {
 /// What the caller knows of the tab: `slot` of `AddItemTooltip` and the slots for `AddItemStatDifferences`.
 pub struct ItemTooltipArgs<'a> {
     pub slot: Option<&'a CompareSlot>,
+    /// A slot given by NAME (07fa089bf callers): `Some(self.slots[name])`. `AddItemTooltip` sees it as a slot without `slotNum` /
+    /// `nodeId`; the slot-only comparison (:5064-5067) uses the looked-up slot, or nothing.
+    pub slot_by_name: Option<Option<CompareSlot>>,
     pub db_mode: bool,
     pub max_width: Option<f64>,
     /// `self.slots` passing the test of :4975, in `orderedSlots` order; filled by the tab per item type.
@@ -117,7 +120,7 @@ pub fn socket_description_line(item: &Item) -> String {
             "B" => cc("INTELLIGENCE"),
             "W" => cc("SCION"),
             "A" => "^xB0B0B0".to_string(),
-            _ => panic!("Classes/ItemsTab.lua:4270: attempt to concatenate local 'code' (a nil value)"),
+            _ => panic!("Classes/ItemsTab.lua:4325: attempt to concatenate local 'code' (a nil value)"),
         };
         line.push_str(&code);
         line.push_str(&s.color);
@@ -1133,6 +1136,10 @@ pub fn add_item_stat_differences(t: &mut Tooltip, g: &Gfx, e: &Engine, item: &Rc
         let mut stats: Vec<String> = Vec::new();
         let dur_inc = sum(e, ModType::Inc, false, "FlaskDuration");
         let mut effect_inc = sum(e, ModType::Inc, true, "FlaskEffect");
+        // ItemsTab.lua:4789-4791 (07fa089bf)
+        if item.base_name.as_deref() == Some("Iron Flask") {
+            effect_inc += sum(e, ModType::Inc, true, "IronFlaskEffect");
+        }
         let (mut life_dur, mut mana_dur) = (0.0, 0.0);
         if item.rarity == "MAGIC" && bf.life.is_none() && bf.mana.is_none() {
             effect_inc += sum(e, ModType::Inc, true, "MagicUtilityFlaskEffect");
@@ -1144,6 +1151,8 @@ pub fn add_item_stat_differences(t: &mut Tooltip, g: &Gfx, e: &Engine, item: &Rc
                 let life_inc = sum(e, ModType::Inc, false, "FlaskLifeRecovery");
                 let life_more = e.result().env.mod_db.borrow().more(None, &["FlaskLifeRecovery"]).unwrap_or(1.0);
                 let life_rate_inc = sum(e, ModType::Inc, false, "FlaskLifeRecoveryRate");
+                // ItemsTab.lua:4805 (07fa089bf)
+                let life_rate_more = e.result().env.mod_db.borrow().more(None, &["FlaskLifeRecoveryRate"]).unwrap_or(1.0);
                 let instant = n("instantPerc") + sum(e, ModType::Base, false, "LifeFlaskInstantRecovery");
                 let low = e
                     .result()
@@ -1167,7 +1176,9 @@ pub fn add_item_stat_differences(t: &mut Tooltip, g: &Gfx, e: &Engine, item: &Rc
                     * low_multi;
                 let grad = b * out("LifeRecoveryRateMod");
                 let es_grad = b * out("EnergyShieldRecoveryRateMod");
-                life_dur = n("duration") * (1.0 + dur_inc / 100.0) / (1.0 + rate_inc / 100.0) / (1.0 + life_rate_inc / 100.0);
+                // ItemsTab.lua:4818 (07fa089bf): `/ lifeRateMore`
+                life_dur =
+                    n("duration") * (1.0 + dur_inc / 100.0) / (1.0 + rate_inc / 100.0) / (1.0 + life_rate_inc / 100.0) / life_rate_more;
                 if n("lifeAdditional") > 0.0 && !e.config_flag_set("conditionFullLife") {
                     let total_add = n("lifeAdditional") / 100.0 * n("lifeTotal") * out("LifeRecoveryRateMod");
                     let add_grad = life_dur / 10.0 * total_add;
@@ -1454,6 +1465,16 @@ pub fn add_item_stat_differences(t: &mut Tooltip, g: &Gfx, e: &Engine, item: &Rc
             };
             lines(t, e.item_compare_run(out, &header).unwrap_or_else(|er| panic!("{er}")));
         };
+        // :5064-5067 `slot = type(slot) ~= "string" and slot or self.slots[slot]; if slot then addCompareForSlot(slot) end; return`
+        if main().s.borrow().slot_only_tooltips
+            && let Some(by_name) = &a.slot_by_name
+        {
+            if let Some(slot) = by_name {
+                let (sel, out) = run(slot);
+                add_compare(t, slot, &sel, &out);
+            }
+            return;
+        }
         if main().s.borrow().slot_only_tooltips
             && let Some(slot) = a.slot
         {

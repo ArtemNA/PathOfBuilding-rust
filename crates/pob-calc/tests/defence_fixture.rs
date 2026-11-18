@@ -140,6 +140,7 @@ fn phase_unimplemented(r: &CalculateResult) -> Vec<String> {
 }
 
 #[test]
+#[ignore = "U-R6 (2.68.0, 07fa089bf): pob-ts is the 2.67.2 reference (no MaximumLifeManaDifference / MissingUnreservedLifePercent / SocketedSkillGemsIn*, the old ModCache in CacheOnly); the truth is LuaJIT (UPDATE-PROMPT.md 7.5)"]
 fn defence_only_equals_pob_ts_for_six_goldens() {
     let mut report = Vec::new();
     let mut bad = Vec::new();
@@ -179,11 +180,17 @@ fn defence_only_equals_pob_ts_for_six_goldens() {
 }
 
 /// The comparator is not vacuous on the defence keys: a flipped bit and a dropped key are caught.
+/// Keys 2.68.0 (07fa089bf) added to `output` that pob-ts (the 2.67.2 reference) never emits: dropped before a comparison with it.
+const NEW_IN_2_68: [&str; 2] = ["MaximumLifeManaDifference", "MissingUnreservedLifePercent"];
+
 #[test]
 fn comparator_is_not_vacuous() {
     let fx = fixture("OccVortex");
     let r = run("OccVortex");
     let (mut stats, _) = stats_dump(&r);
+    NEW_IN_2_68.iter().for_each(|k| {
+        stats.shift_remove(*k);
+    });
     let theirs = Json::Object(fx["stats"].as_object().unwrap().clone());
     let ev = r.perform.player.output.num("Evasion");
     stats.insert("Evasion".into(), json!(format_g(f64::from_bits(ev.to_bits() + 1), 17)));

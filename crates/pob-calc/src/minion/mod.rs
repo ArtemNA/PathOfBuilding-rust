@@ -176,7 +176,7 @@ pub(crate) fn add_minion_modifiers(list: &StoreRef, cfg: Option<&ModCfg>, minion
         if ty.is_nil() || ty.is_str(minion_type) {
             match v.get("mod") {
                 Value::Mod(m) => minion_db.borrow_mut().add_mod(m),
-                other => panic!("{CP}:1250: MinionModifier value.mod is not a mod ({})", other.type_name()),
+                other => panic!("{CP}:1252: MinionModifier value.mod is not a mod ({})", other.type_name()),
             }
         }
     }
@@ -223,7 +223,7 @@ pub(crate) fn init_minion_mod_db(env: &mut Env, i: usize, aegis_item: Option<Rc<
         let m = sk
             .minion
             .as_deref()
-            .unwrap_or_else(|| panic!("{CP}:1156: activeSkill.minion is nil"))
+            .unwrap_or_else(|| panic!("{CP}:1158: activeSkill.minion is nil"))
             .clone();
         let truthy = |k: &str| sk.skill_data.get(k).is_some_and(Value::truthy);
         (
@@ -233,7 +233,7 @@ pub(crate) fn init_minion_mod_db(env: &mut Env, i: usize, aegis_item: Option<Rc<
             truthy("minionUseMainHandWeapon"),
         )
     };
-    let actor_rc = minion.actor.clone().unwrap_or_else(|| panic!("{CP}:1158: minion.modDB is nil"));
+    let actor_rc = minion.actor.clone().unwrap_or_else(|| panic!("{CP}:1160: minion.modDB is nil"));
     let db = actor_rc.borrow().mod_db.clone();
     let lvl = minion.level;
     // :1158-1159
@@ -243,7 +243,7 @@ pub(crate) fn init_minion_mod_db(env: &mut Env, i: usize, aegis_item: Option<Rc<
     let at = |t: &[f64], what: &str| {
         monster_table_at(t, lvl).unwrap_or_else(|| panic!("{CP}: attempt to perform arithmetic on a nil value ({what}[{lvl}])"))
     };
-    let mut base_life = at(minion.life_table.table(), "lifeTable") * md_num(&minion, "life", 1160);
+    let mut base_life = at(minion.life_table.table(), "lifeTable") * md_num(&minion, "life", 1162);
     if minion.hostile {
         base_life *= map_level_life_mult(env.enemy_level);
     }
@@ -255,20 +255,20 @@ pub(crate) fn init_minion_mod_db(env: &mut Env, i: usize, aegis_item: Option<Rc<
         } else {
             &constants().monster_ally_life_table
         };
-        let mut base_es = at(es_table, "esTable") * md_num(&minion, "life", 1167) * es;
+        let mut base_es = at(es_table, "esTable") * md_num(&minion, "life", 1169) * es;
         if minion.hostile {
             base_es *= map_level_life_mult(env.enemy_level);
         }
         nm(&db, "EnergyShield", ModType::Base, n(base_es.floor()), "Base", 0, 0, vec![]);
     } else if minion.md("energyShield").truthy() {
-        panic!("{CP}:1167: attempt to perform arithmetic on field 'energyShield'");
+        panic!("{CP}:1169: attempt to perform arithmetic on field 'energyShield'");
     }
     // :1173-1174 armour / evasion (`minionData.armour or 1`)
     let or1 = |k: &str| match minion.md(k) {
         Value::Nil | Value::Bool(false) => 1.0,
         v => v
             .as_num()
-            .unwrap_or_else(|| panic!("{CP}:1173: attempt to perform arithmetic on field '{k}'")),
+            .unwrap_or_else(|| panic!("{CP}:1175: attempt to perform arithmetic on field '{k}'")),
     };
     let c = constants();
     nm(
@@ -298,7 +298,7 @@ pub(crate) fn init_minion_mod_db(env: &mut Env, i: usize, aegis_item: Option<Rc<
         let per = match ok(mod_db.borrow().override_(None, &["DexAccBonusOverride"])) {
             Some(v) if v.truthy() => v
                 .as_num()
-                .unwrap_or_else(|| panic!("{CP}:1176: attempt to perform arithmetic on a {} value", v.type_name())),
+                .unwrap_or_else(|| panic!("{CP}:1178: attempt to perform arithmetic on a {} value", v.type_name())),
             _ => crate::setup::misc("AccuracyPerDexBase"),
         };
         nm(&db, "Accuracy", ModType::Base, n(acc + dex * per), "Player", 0, 0, vec![]);
@@ -431,7 +431,7 @@ pub(crate) fn init_minion_mod_db(env: &mut Env, i: usize, aegis_item: Option<Rc<
         for v in &t.array {
             match v {
                 Value::Mod(m) => db.borrow_mut().add_mod(m.clone()),
-                other => panic!("{CP}:1202: minionData.modList entry is not a mod ({})", other.type_name()),
+                other => panic!("{CP}:1204: minionData.modList entry is not a mod ({})", other.type_name()),
             }
         }
     }
@@ -468,35 +468,35 @@ pub(crate) fn init_minion_mod_db(env: &mut Env, i: usize, aegis_item: Option<Rc<
         if p_w1_type.is_str("Bow") {
             let w1 = p_items
                 .get("Weapon 1")
-                .unwrap_or_else(|| panic!("{CP}:1216: attempt to index field 'Weapon 1' (a nil value)"));
-            db.borrow_mut().add_list(&slot_list_only(w1, 1216));
+                .unwrap_or_else(|| panic!("{CP}:1218: attempt to index field 'Weapon 1' (a nil value)"));
+            db.borrow_mut().add_list(&slot_list_only(w1, 1218));
         }
         if let Some(w2) = p_items.get("Weapon 2")
             && w2.ty.as_deref() == Some("Quiver")
         {
             let scale = max2(ok(mod_db.borrow().sum(ModType::Base, None, &["WidowHailMultiplier"])), 1.0);
-            let list = item_mod_list_only(w2, 1219);
+            let list = item_mod_list_only(w2, 1221);
             ok(db.borrow_mut().scale_add_list(&list, scale, false));
         }
         if ok(mod_db.borrow().flag(None, &["BlinkAndMirrorUseGloves"])) == Some(true)
             && let Some(g) = p_items.get("Gloves")
         {
-            db.borrow_mut().add_list(&item_mod_list_only(g, 1222));
+            db.borrow_mut().add_list(&item_mod_list_only(g, 1224));
         }
     }
     // :1226-1228
     if sd_main_hand {
         let w1 = p_items
             .get("Weapon 1")
-            .unwrap_or_else(|| panic!("{CP}:1227: attempt to index field 'Weapon 1' (a nil value)"));
-        db.borrow_mut().add_list(&slot_list_only(w1, 1227));
+            .unwrap_or_else(|| panic!("{CP}:1229: attempt to index field 'Weapon 1' (a nil value)"));
+        db.borrow_mut().add_list(&slot_list_only(w1, 1229));
     }
     // :1229-1250 item set / used slots (`pairs(env.build.itemsTab.slots)` -- `orderedSlots` order here, see the module doc)
     if minion.item_set.is_some() || minion.uses.is_some() {
         let uses = minion
             .uses
             .clone()
-            .unwrap_or_else(|| panic!("{CP}:1231: attempt to index field 'uses' (a nil value)"));
+            .unwrap_or_else(|| panic!("{CP}:1233: attempt to index field 'uses' (a nil value)"));
         let set = minion.item_set.map(|k| env.build.item_sets[k].clone());
         for slot in env.ordered_slots.clone() {
             // `pairs(slots)` covers every slot control, `orderedSlots` too (ItemsTab.lua:141-235)
@@ -633,7 +633,7 @@ fn build_minion_in(env: &Env, actor_env: &Env, st: &mut SkillsState, i: usize, s
             }
         }
     } else {
-        panic!("Modules/CalcActiveSkill.lua:885: bad argument #1 to 'ipairs' (table expected)");
+        panic!("Modules/CalcActiveSkill.lua:903: bad argument #1 to 'ipairs' (table expected)");
     }
     crate::perform::skill_guard(&parent.malformed_mods, &["ExtraMinionSkill"]);
     for v in ok(skill_list.borrow().list(Some(&parent_cfg), &["ExtraMinionSkill"])) {
@@ -641,12 +641,12 @@ fn build_minion_in(env: &Env, actor_env: &Env, st: &mut SkillsState, i: usize, s
         let listed = match &ml {
             Value::Nil | Value::Bool(false) => true,
             Value::Table(t) => t.array.iter().any(|x| x.is_str(&minion.ty)),
-            other => panic!("Modules/CalcActiveSkill.lua:891: isValueInArray of a {}", other.type_name()),
+            other => panic!("Modules/CalcActiveSkill.lua:909: isValueInArray of a {}", other.type_name()),
         };
         if listed {
             match v.get("skillId") {
                 Value::Str(id) => ids.push(id.to_string()),
-                other => panic!("Modules/CalcActiveSkill.lua:892: ExtraMinionSkill skillId is {}", other.type_name()),
+                other => panic!("Modules/CalcActiveSkill.lua:910: ExtraMinionSkill skillId is {}", other.type_name()),
             }
         }
     }
@@ -661,7 +661,7 @@ fn build_minion_in(env: &Env, actor_env: &Env, st: &mut SkillsState, i: usize, s
     let damage_eff = match parent.skill_data.get("minionDamageEffectiveness") {
         None | Some(Value::Nil | Value::Bool(false)) => 0.0,
         Some(v) => v.as_num().unwrap_or_else(|| {
-            panic!("Modules/CalcActiveSkill.lua:916: attempt to perform arithmetic on field 'minionDamageEffectiveness'")
+            panic!("Modules/CalcActiveSkill.lua:934: attempt to perform arithmetic on field 'minionDamageEffectiveness'")
         }),
     };
     let parent_src = parent.active_effect.borrow().src_instance;
@@ -785,7 +785,7 @@ fn build_minion_in(env: &Env, actor_env: &Env, st: &mut SkillsState, i: usize, s
     // :919-929 the minion's main skill (MAIN writes the choice back to the gem)
     let n_skills = list.len() as f64;
     let mode = env.mode;
-    let src = parent_src.unwrap_or_else(|| panic!("Modules/CalcActiveSkill.lua:921: attempt to index field 'srcInstance' (a nil value)"));
+    let src = parent_src.unwrap_or_else(|| panic!("Modules/CalcActiveSkill.lua:939: attempt to index field 'srcInstance' (a nil value)"));
     let gi = &mut st.tab.socket_group_list_mut()[src.0].gem_list[src.1];
     let skill_index = if mode == "CALCS" {
         let k = max2(n_skills.min(gi.skill_minion_skill_calcs.unwrap_or(1.0)), 1.0);

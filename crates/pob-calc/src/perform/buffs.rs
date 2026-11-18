@@ -109,7 +109,7 @@ pub(super) fn merge_mods(src: &[Rc<Mod>], dest: &mut Vec<Rc<Mod>>) {
                         let mv = m
                             .value
                             .as_num()
-                            .unwrap_or_else(|| panic!("{CP}:55: attempt to compare number with {}", m.value.type_name()));
+                            .unwrap_or_else(|| panic!("{CP}:56: attempt to compare number with {}", m.value.type_name()));
                         if mv > dv {
                             *dest_mod = m.clone();
                         }
@@ -297,7 +297,7 @@ fn totem_aura_mods(lists: [&[Rc<Mod>]; 2], scale: f64, src: &StoreRef) {
                             let sv = sub
                                 .get("value")
                                 .as_num()
-                                .unwrap_or_else(|| panic!("{CP}:2531: bad argument #1 to 'floor' (number expected)"));
+                                .unwrap_or_else(|| panic!("{CP}:2539: bad argument #1 to 'floor' (number expected)"));
                             sub.set("value", Value::Num(scale_value(sv)));
                             let mut nv = tm.value.clone();
                             nv.set("mod", sub);
@@ -343,18 +343,18 @@ pub(super) fn determine_curse_priority(env: &Env, curse_name: &str, skill: Optio
     }
     let base_priority = prio(curse_name).unwrap_or(0.0);
     let socket_base = prio("SocketPriorityBase")
-        .unwrap_or_else(|| panic!("{CP}:603: attempt to perform arithmetic on field 'SocketPriorityBase' (a nil value)"));
+        .unwrap_or_else(|| panic!("{CP}:605: attempt to perform arithmetic on field 'SocketPriorityBase' (a nil value)"));
     let socket_priority = socket * socket_base;
     // `slot:gsub(" (Swap)", "")` -- a capture, not literal parentheses: removes " Swap".
     let mut slot_priority = prio(&crate::setup::lua_gsub(&slot, " (Swap)", "")).unwrap_or(0.0);
     let mut source_priority = 0.0;
     if let Some((_, true)) = skill {
-        source_priority = prio("CurseFromAura").unwrap_or_else(|| panic!("{CP}:607: data.cursePriority.CurseFromAura is nil"));
+        source_priority = prio("CurseFromAura").unwrap_or_else(|| panic!("{CP}:609: data.cursePriority.CurseFromAura is nil"));
     } else if !source.is_empty() {
-        source_priority = prio("CurseFromEquipment").unwrap_or_else(|| panic!("{CP}:609: data.cursePriority.CurseFromEquipment is nil"));
+        source_priority = prio("CurseFromEquipment").unwrap_or_else(|| panic!("{CP}:611: data.cursePriority.CurseFromEquipment is nil"));
     }
     if !source.is_empty() && (Some(slot_priority) == prio("Ring 2") || Some(slot_priority) == prio("Ring 3")) {
-        slot_priority = prio("Ring 1").unwrap_or_else(|| panic!("{CP}:612: data.cursePriority['Ring 1'] is nil"));
+        slot_priority = prio("Ring 1").unwrap_or_else(|| panic!("{CP}:614: data.cursePriority['Ring 1'] is nil"));
     }
     base_priority + socket_priority + slot_priority + source_priority
 }
@@ -375,7 +375,7 @@ fn spectre_copies(v: &Value, name: &str) -> Vec<Rc<Mod>> {
             c.source = Some(Rc::from(format!("Spectre:{name}").as_str()));
             out.push(Rc::new(c));
         }
-        other => panic!("{CP}:2246: spectre modifier value is a {} (a mod expected)", other.type_name()),
+        other => panic!("{CP}:2254: spectre modifier value is a {} (a mod expected)", other.type_name()),
     };
     match v {
         Value::Table(t) => {
@@ -388,7 +388,7 @@ fn spectre_copies(v: &Value, name: &str) -> Vec<Rc<Mod>> {
             }
         }
         Value::Mod(m) => one(&Value::Mod(m.clone())),
-        other => panic!("{CP}:2246: bad argument #1 to 'pairs' (table expected, got {})", other.type_name()),
+        other => panic!("{CP}:2254: bad argument #1 to 'pairs' (table expected, got {})", other.type_name()),
     }
     out
 }
@@ -411,7 +411,7 @@ fn spectres(env: &Env, mod_db: &StoreRef, active: &[String], out: &mut Combined)
         let name = data.get("name");
         let name = name
             .as_str()
-            .unwrap_or_else(|| panic!("{CP}:2246: spectreData.name is not a string"));
+            .unwrap_or_else(|| panic!("{CP}:2254: spectreData.name is not a string"));
         if super::cond(mod_db, "HaveBeastSpectre") != Some(true)
             && let Value::Table(tags) = data.get("monsterTags")
             && tags.array.iter().any(|t| t.is_str("beast"))
@@ -419,11 +419,11 @@ fn spectres(env: &Env, mod_db: &StoreRef, active: &[String], out: &mut Combined)
             set_cond(mod_db, "HaveBeastSpectre", true);
         }
         let Value::Table(mods) = data.get("modList") else {
-            panic!("{CP}:2241: spectreData.modList is not a table")
+            panic!("{CP}:2249: spectreData.modList is not a table")
         };
         for m in &mods.array {
             let Value::Mod(md) = m else {
-                panic!("{CP}:2242: spectreData.modList entry is not a mod")
+                panic!("{CP}:2250: spectreData.modList entry is not a mod")
             };
             let is_list = md.ty == Some(ModType::List);
             match &*md.name {
@@ -431,7 +431,7 @@ fn spectres(env: &Env, mod_db: &StoreRef, active: &[String], out: &mut Combined)
                     out.minion_curse_limit = md
                         .value
                         .as_num()
-                        .unwrap_or_else(|| panic!("{CP}:2244: attempt to perform arithmetic on field 'value'"))
+                        .unwrap_or_else(|| panic!("{CP}:2252: attempt to perform arithmetic on field 'value'"))
                         + 1.0;
                     break;
                 }
@@ -510,7 +510,7 @@ fn minion_skill_buffs(
         let has_ty = |t: &str| ms.skill_types.contains(&skill_type_u32(t));
         for buff in &ms.buff_list {
             let ty = buff.ty.as_str().unwrap_or("");
-            let name = || str_of(&buff.name, 2796, "buff.name");
+            let name = || str_of(&buff.name, 2804, "buff.name");
             match ty {
                 "Buff" if mode_buffs && enable => {
                     let active = buff.active_skill_buff == Some(true);
@@ -560,14 +560,14 @@ fn minion_skill_buffs(
                         if data_truthy("thisIsNotABuff") {
                             out.buffs
                                 .get_mut(name)
-                                .unwrap_or_else(|| panic!("{CP}:2835: attempt to index field '?' (a nil value)"))
+                                .unwrap_or_else(|| panic!("{CP}:2843: attempt to index field '?' (a nil value)"))
                                 .not_buff = true;
                         }
                     }
                 }
                 "Aura" if mode_buffs && enable => {
                     let name = name();
-                    let extra = extra_effect_list(&cm_db, Some(&skill_cfg), "ExtraAuraEffect", 2843);
+                    let extra = extra_effect_list(&cm_db, Some(&skill_cfg), "ExtraAuraEffect", 2851);
                     if flag(&cm_db, &["SelfAurasCannotAffectAllies"])
                         || flag(&cm_db, &["SelfAurasOnlyAffectYou"])
                         || flag(&cm_db, &["SelfAuraSkillsCannotAffectAllies"])
@@ -586,7 +586,7 @@ fn minion_skill_buffs(
                             * super::more(mod_db, Some(&skill_cfg), &["BuffEffectOnSelf", "AuraEffectOnSelf"]);
                         let mult = (1.0 + inc / 100.0) * more;
                         // :2886 unless an ally's same aura is stronger
-                        if ally_allows(&env.party, "Aura", name, mult, 2886) {
+                        if ally_allows(&env.party, "Aura", name, mult, 2894) {
                             set_cond(mod_db, "AffectedByAura", true);
                             if name.as_bytes().get(..4) == Some(b"Vaal") {
                                 set_cond(mod_db, &format!("AffectedBy{}", no_spaces(name.get(5..).unwrap_or(""))), true);
@@ -609,7 +609,7 @@ fn minion_skill_buffs(
                             * super::more(&em.db, Some(&skill_cfg), &["BuffEffectOnSelf", "AuraEffectOnSelf"]);
                         let mult = (1.0 + inc / 100.0) * more;
                         // :2904 unless an ally's same aura is stronger
-                        if ally_allows(&env.party, "Aura", name, mult, 2904) {
+                        if ally_allows(&env.party, "Aura", name, mult, 2912) {
                             set_cond(&em.db, &key, true);
                             set_cond(&em.db, "AffectedByAura", true);
                             let src = new_list();
@@ -663,18 +663,18 @@ fn minion_skill_buffs(
                 }
                 "Debuff" | "AuraDebuff" => {
                     let stack_count = if buff.stack_var.truthy() {
-                        let var = str_of(&buff.stack_var, 2941, "buff.stackVar");
+                        let var = str_of(&buff.stack_var, 2949, "buff.stackVar");
                         let mut c = q.sum(ModType::Base, Some(&skill_cfg), &[&format!("Multiplier:{var}")]);
                         if buff.stack_limit.truthy() {
-                            c = min2(c, num_of(&buff.stack_limit, 2943, "stackLimit"));
+                            c = min2(c, num_of(&buff.stack_limit, 2951, "stackLimit"));
                         } else if buff.stack_limit_var.truthy() {
-                            let var = str_of(&buff.stack_limit_var, 2945, "buff.stackLimitVar");
+                            let var = str_of(&buff.stack_limit_var, 2953, "buff.stackLimitVar");
                             c = min2(c, q.sum(ModType::Base, Some(&skill_cfg), &[&format!("Multiplier:{var}")]));
                         }
                         c
                     } else {
                         match ms.skill_data.get("stackCount") {
-                            Some(v) if v.truthy() => num_of(v, 2948, "stackCount"),
+                            Some(v) if v.truthy() => num_of(v, 2956, "stackCount"),
                             _ => 1.0,
                         }
                     };
@@ -698,7 +698,7 @@ fn minion_skill_buffs(
                                     if let Some(x) = out.exports.as_mut() {
                                         x.set_aura_debuff(name, mult, buff.mod_list.clone());
                                     }
-                                    if ally_exceeds(&env.party, "AuraDebuff", name, mult, 2995) {
+                                    if ally_exceeds(&env.party, "AuraDebuff", name, mult, 3003) {
                                         mult = 0.0;
                                     }
                                 }
@@ -748,7 +748,7 @@ pub(super) fn combine(env: &mut Env) -> Combined {
     let mod_db = env.mod_db.clone();
     let enemy_db = env.enemy_db.clone();
     let (mode_buffs, mode_effective) = (env.mode_buffs, env.mode_effective);
-    let main = super::player_main_skill(env, 2312);
+    let main = super::player_main_skill(env, 2320);
     let mut notes: Vec<String> = Vec::new();
     let mut out = Combined::default();
     // :1312 `env.build.partyTab.enableExportBuffs and env.mode ~= "CALCULATOR"`
@@ -801,7 +801,7 @@ pub(super) fn combine(env: &mut Env) -> Combined {
         let cached = |keys: &[&str], notes: &mut Vec<String>| match crate::session::get_cached_output_value(env, i, keys) {
             Ok(v) => Some(v),
             Err(e) => {
-                notes.push(format!("CalcPerform.lua:2281-2301 stages of {name}: {e}"));
+                notes.push(format!("CalcPerform.lua:2289-2309 stages of {name}: {e}"));
                 None
             }
         };
@@ -811,8 +811,8 @@ pub(super) fn combine(env: &mut Env) -> Combined {
                 let Some(v) = cached(&["Speed", "Duration"], &mut notes) else {
                     continue;
                 };
-                let rate = v[0].unwrap_or_else(|| nil_arith(2283, "rate"));
-                let duration = v[1].unwrap_or_else(|| nil_arith(2283, "duration"));
+                let rate = v[0].unwrap_or_else(|| nil_arith(2291, "rate"));
+                let duration = v[1].unwrap_or_else(|| nil_arith(2291, "duration"));
                 let list = skill_list_of(env, i);
                 let base_max = ok(list.borrow().sum(ModType::Base, Some(&main.cfg), &["BlightBaseMaxStages"]));
                 let maximum = min2((rate * duration).floor() - 1.0, base_max - 1.0);
@@ -836,7 +836,7 @@ pub(super) fn combine(env: &mut Env) -> Combined {
                     continue;
                 };
                 let freq = v[0].unwrap_or(0.0);
-                let duration = v[1].unwrap_or_else(|| nil_arith(2289, "duration"));
+                let duration = v[1].unwrap_or_else(|| nil_arith(2297, "duration"));
                 let ticks = max2(min2((freq * duration).floor() - 1.0, 19.0), 0.0);
                 let list = skill_list_of(env, i);
                 for suffix in ["MaxStages", "StageAfterFirst"] {
@@ -855,7 +855,7 @@ pub(super) fn combine(env: &mut Env) -> Combined {
             "Earthquake of Amplification" => {
                 // :2299-2301
                 let Some(v) = cached(&["Duration"], &mut notes) else { continue };
-                let duration = v[0].unwrap_or_else(|| nil_arith(2300, "duration"));
+                let duration = v[0].unwrap_or_else(|| nil_arith(2308, "duration"));
                 let list = skill_list_of(env, i);
                 nm(
                     &list,
@@ -917,7 +917,7 @@ pub(super) fn combine(env: &mut Env) -> Combined {
                 && ok(q
                     .list
                     .borrow()
-                    .get_condition(str_of(&buff.cond, 2312, "buff.cond"), Some(&skill_cfg), false))
+                    .get_condition(str_of(&buff.cond, 2320, "buff.cond"), Some(&skill_cfg), false))
                     != Some(true)
             {
                 // Nothing!
@@ -926,12 +926,12 @@ pub(super) fn combine(env: &mut Env) -> Combined {
             if buff.enemy_cond.truthy()
                 && ok(enemy_db
                     .borrow()
-                    .get_condition(str_of(&buff.enemy_cond, 2314, "buff.enemyCond"), None, false))
+                    .get_condition(str_of(&buff.enemy_cond, 2322, "buff.enemyCond"), None, false))
                     != Some(true)
             {
                 continue;
             }
-            let buff_name = || str_of(&buff.name, 2316, "buff.name");
+            let buff_name = || str_of(&buff.name, 2324, "buff.name");
             let active = buff.active_skill_buff == Some(true);
             match ty {
                 "GlobalDB" => mod_db.borrow_mut().add_list(&buff.mod_list),
@@ -1018,16 +1018,16 @@ pub(super) fn combine(env: &mut Env) -> Combined {
                 }
                 "Debuff" | "AuraDebuff" => {
                     let stack_count = if buff.stack_var.truthy() {
-                        let var = str_of(&buff.stack_var, 2582, "buff.stackVar");
+                        let var = str_of(&buff.stack_var, 2590, "buff.stackVar");
                         let mut c = q.sum(ModType::Base, Some(&skill_cfg), &[&format!("Multiplier:{var}")]);
                         if buff.stack_limit.truthy() {
                             let lim = buff
                                 .stack_limit
                                 .as_num()
-                                .unwrap_or_else(|| panic!("{CP}:2584: bad argument #2 to 'min' (number expected)"));
+                                .unwrap_or_else(|| panic!("{CP}:2592: bad argument #2 to 'min' (number expected)"));
                             c = min2(c, lim);
                         } else if buff.stack_limit_var.truthy() {
-                            let var = str_of(&buff.stack_limit_var, 2586, "buff.stackLimitVar");
+                            let var = str_of(&buff.stack_limit_var, 2594, "buff.stackLimitVar");
                             c = min2(c, q.sum(ModType::Base, Some(&skill_cfg), &[&format!("Multiplier:{var}")]));
                         }
                         c
@@ -1035,7 +1035,7 @@ pub(super) fn combine(env: &mut Env) -> Combined {
                         match sk.skill_data.get("stackCount") {
                             Some(v) if v.truthy() => v
                                 .as_num()
-                                .unwrap_or_else(|| panic!("{CP}:2592: attempt to compare number with {}", v.type_name())),
+                                .unwrap_or_else(|| panic!("{CP}:2600: attempt to compare number with {}", v.type_name())),
                             _ => 1.0,
                         }
                     };
@@ -1048,7 +1048,7 @@ pub(super) fn combine(env: &mut Env) -> Combined {
                         let mut mult = 1.0;
                         let mut extra: Vec<Rc<Mod>> = Vec::new();
                         if ty == "AuraDebuff" {
-                            extra = extra_effect_list(&mod_db, Some(&skill_cfg), "ExtraAuraDebuffEffect", 2602);
+                            extra = extra_effect_list(&mod_db, Some(&skill_cfg), "ExtraAuraDebuffEffect", 2610);
                             mult = 0.0;
                             if !flag(&mod_db, &["SelfAurasOnlyAffectYou"]) {
                                 let names = ["AuraEffect", "BuffEffect", "DebuffEffect"];
@@ -1061,7 +1061,7 @@ pub(super) fn combine(env: &mut Env) -> Combined {
                                     x.set_aura_debuff(name, mult, mods);
                                 }
                                 // :2662-2664 a stronger ally aura debuff of the same name wins
-                                if ally_exceeds(&env.party, "AuraDebuff", name, mult, 2662) {
+                                if ally_exceeds(&env.party, "AuraDebuff", name, mult, 2670) {
                                     mult = 0.0;
                                 }
                             }
@@ -1105,7 +1105,7 @@ pub(super) fn combine(env: &mut Env) -> Combined {
                 }
                 // :2737-2779 Link: `env.mode_buffs and #linkSkills < 1 and (partyTabEnableExportBuffs or linksApplyToMinions)`
                 "Link" if mode_buffs && link_skills.is_empty() && (export_buffs || links_apply_to_minions) => {
-                    let extra = extra_effect_list(&mod_db, Some(&skill_cfg), "ExtraLinkEffect", 2715);
+                    let extra = extra_effect_list(&mod_db, Some(&skill_cfg), "ExtraLinkEffect", 2723);
                     if extra.iter().any(|m| &*m.name == "ParentNonUniqueFlasksAppliedToYou") {
                         out.non_unique_flasks_apply_to_minion = true;
                     }
@@ -1210,12 +1210,12 @@ fn allies(env: &Env, mod_db: &StoreRef, enemy_db: &StoreRef, minion: Option<&Min
     let party = env.party.clone();
     let aura = &party.aura;
     if let Some(g) = aura.group("otherEffects") {
-        for (buff_name, buff) in party_entries(g, 3029) {
+        for (buff_name, buff) in party_entries(g, 3037) {
             let key = format!("AffectedBy{}", no_spaces(buff_name));
             set_cond(mod_db, &key, true);
             let inc = super::inc(mod_db, &["BuffEffectOnSelf", "AuraEffectOnSelf"]);
             let more = super::more(mod_db, None, &["BuffEffectOnSelf", "AuraEffectOnSelf"]);
-            let eff = effect_mult_num(&buff.effect_mult, 3029);
+            let eff = effect_mult_num(&buff.effect_mult, 3037);
             merge_scaled(&buff.mod_list, (eff + inc) / 100.0 * more, &mut out.buffs, buff_name);
             if let Some(mc) = minion {
                 set_cond(&mc.db, &key, true);
@@ -1235,7 +1235,7 @@ fn allies(env: &Env, mod_db: &StoreRef, enemy_db: &StoreRef, minion: Option<&Min
                 set_cond(mod_db, &key, true);
                 merge_scaled(
                     &a.mod_list,
-                    effect_mult_num(&a.effect_mult, 3049) / 100.0,
+                    effect_mult_num(&a.effect_mult, 3057) / 100.0,
                     &mut out.buffs,
                     aura_name,
                 );
@@ -1247,7 +1247,7 @@ fn allies(env: &Env, mod_db: &StoreRef, enemy_db: &StoreRef, minion: Option<&Min
                 set_cond(&mc.db, &key, true);
                 merge_scaled(
                     &a.mod_list,
-                    effect_mult_num(&a.effect_mult, 3056) / 100.0,
+                    effect_mult_num(&a.effect_mult, 3064) / 100.0,
                     &mut out.minion_buffs,
                     aura_name,
                 );
@@ -1264,7 +1264,7 @@ fn allies(env: &Env, mod_db: &StoreRef, enemy_db: &StoreRef, minion: Option<&Min
                 set_cond(mod_db, &key, true);
                 merge_scaled(
                     &a.mod_list,
-                    effect_mult_num(&a.effect_mult, 3069) / 100.0,
+                    effect_mult_num(&a.effect_mult, 3077) / 100.0,
                     &mut out.buffs,
                     aura_name,
                 );
@@ -1276,7 +1276,7 @@ fn allies(env: &Env, mod_db: &StoreRef, enemy_db: &StoreRef, minion: Option<&Min
                 set_cond(&mc.db, &key, true);
                 merge_scaled(
                     &a.mod_list,
-                    effect_mult_num(&a.effect_mult, 3076) / 100.0,
+                    effect_mult_num(&a.effect_mult, 3084) / 100.0,
                     &mut out.minion_buffs,
                     aura_name,
                 );
@@ -1294,7 +1294,7 @@ fn allies(env: &Env, mod_db: &StoreRef, enemy_db: &StoreRef, minion: Option<&Min
                 set_cond(mod_db, &key, true);
                 merge_scaled(
                     &a.mod_list,
-                    effect_mult_num(&a.effect_mult, 3090) / 100.0,
+                    effect_mult_num(&a.effect_mult, 3098) / 100.0,
                     &mut out.debuffs,
                     aura_name,
                 );
@@ -1308,21 +1308,21 @@ fn allies(env: &Env, mod_db: &StoreRef, enemy_db: &StoreRef, minion: Option<&Min
             let eff = if w.effect_mult.is_nil() {
                 100.0
             } else {
-                effect_mult_num(&w.effect_mult, 3116)
+                effect_mult_num(&w.effect_mult, 3124)
             };
             for wb in &w.mod_list {
                 let bonus = match wb.tags.first() {
                     Some(t) => match t.get("warcryPowerBonus") {
                         Value::Nil | Value::Bool(false) => 1.0,
-                        v => effect_mult_num(&v, 3116),
+                        v => effect_mult_num(&v, 3124),
                     },
-                    None => panic!("{CP}:3116: attempt to index field '?' (a nil value)"),
+                    None => panic!("{CP}:3124: attempt to index field '?' (a nil value)"),
                 };
                 scale_add(&src, std::slice::from_ref(wb), eff / 100.0 * bonus);
             }
             src
         };
-        for (warcry_name, w) in party_entries(g, 3115) {
+        for (warcry_name, w) in party_entries(g, 3123) {
             let key = format!("AffectedBy{}", no_spaces(warcry_name));
             if super::cond(mod_db, &key) != Some(true) {
                 set_cond(mod_db, "AffectedByWarcry", true);
@@ -1340,7 +1340,7 @@ fn allies(env: &Env, mod_db: &StoreRef, enemy_db: &StoreRef, minion: Option<&Min
     }
     if let Some(g) = party.link.group("Link") {
         // :3131-3142
-        for (link_name, l) in party_entries(g, 3138) {
+        for (link_name, l) in party_entries(g, 3146) {
             let key = format!("AffectedBy{}", no_spaces(link_name));
             if super::cond(mod_db, &key) != Some(true) {
                 set_cond(mod_db, "AffectedByLink", true);
@@ -1348,7 +1348,7 @@ fn allies(env: &Env, mod_db: &StoreRef, enemy_db: &StoreRef, minion: Option<&Min
                 let eff = if l.effect_mult.is_nil() {
                     100.0
                 } else {
-                    effect_mult_num(&l.effect_mult, 3138)
+                    effect_mult_num(&l.effect_mult, 3146)
                 };
                 merge_scaled(&l.mod_list, eff / 100.0, &mut out.buffs, link_name);
             }
@@ -1373,7 +1373,7 @@ fn warcry(
     minion_buffs: &mut Buffs,
     exports: Option<&mut super::exports::BuffExports>,
 ) {
-    let buff_name = str_of(&buff.name, 2367, "buff.name");
+    let buff_name = str_of(&buff.name, 2375, "buff.name");
     // `buff.name:gsub(" Cry", ""):gsub("'s",""):gsub(" ","")` -- plain text in all three patterns.
     let warcry_name = buff_name.replace(" Cry", "").replace("'s", "").replace(' ', "");
     let base_exerts = q.sum(ModType::Base, Some(main_cfg), &[&format!("{warcry_name}ExertedAttacks")]);
@@ -1413,7 +1413,7 @@ fn warcry(
             super::base(mod_db, &["WarcryPower"]) * (1.0 + super::inc(mod_db, &["WarcryPower"]) / 100.0),
             super::base(mod_db, &["MinimumWarcryPower"]),
         ),
-        "Modules/CalcPerform.lua:2380",
+        "Modules/CalcPerform.lua:2388",
     );
     // :2381-2385 the write into the shared tag (R6-ARCH §6, `Tag::set_warcry_power_bonus`).
     for wb in &buff.mod_list {
@@ -1421,22 +1421,22 @@ fn warcry(
         if t0.get("effectType").as_str() == Some("Warcry") && t0.get("div").truthy() {
             let limit = t0.get("limit");
             let power = if limit.truthy() {
-                min2(warcry_power, num_of(&limit, 2382, "limit"))
+                min2(warcry_power, num_of(&limit, 2390, "limit"))
             } else {
                 warcry_power
             };
-            let div = num_of(&t0.get("div"), 2382, "div");
+            let div = num_of(&t0.get("div"), 2390, "div");
             t0.set_warcry_power_bonus(Value::Num((power / div).floor()));
         }
     }
     let full_duration = crate::offence::calc_skill_duration(&q.list, q.malformed, skill_cfg, &sk.skill_data, env.mode_effective, enemy_db);
     let actual_cooldown = match q.override_(Some(skill_cfg), &["CooldownRecovery"]) {
-        Some(v) if v.truthy() => num_of(&v, 2387, "cooldownOverride"),
+        Some(v) if v.truthy() => num_of(&v, 2395, "cooldownOverride"),
         _ => {
             let cooldown = match sk.skill_data.get("cooldown") {
                 Some(Value::Num(c)) => *c,
                 other => panic!(
-                    "{CP}:2387: attempt to perform arithmetic on field 'cooldown' (a {} value)",
+                    "{CP}:2395: attempt to perform arithmetic on field 'cooldown' (a {} value)",
                     other.map_or("nil", Value::type_name)
                 ),
             };
@@ -1463,10 +1463,10 @@ fn warcry(
             let t0 = wb
                 .tags
                 .first()
-                .unwrap_or_else(|| panic!("{CP}:2398: attempt to index a nil value (field '?')"));
+                .unwrap_or_else(|| panic!("{CP}:2406: attempt to index a nil value (field '?')"));
             let bonus = t0.get("warcryPowerBonus");
             let bonus = if bonus.truthy() {
-                num_of(&bonus, 2398, "warcryPowerBonus")
+                num_of(&bonus, 2406, "warcryPowerBonus")
             } else {
                 1.0
             };
@@ -1488,10 +1488,10 @@ fn warcry(
             let t0 = wb
                 .tags
                 .first()
-                .unwrap_or_else(|| panic!("{CP}:2411: attempt to index a nil value (field '?')"));
+                .unwrap_or_else(|| panic!("{CP}:2419: attempt to index a nil value (field '?')"));
             let bonus = t0.get("warcryPowerBonus");
             let bonus = if bonus.truthy() {
-                num_of(&bonus, 2411, "warcryPowerBonus")
+                num_of(&bonus, 2419, "warcryPowerBonus")
             } else {
                 1.0
             };
@@ -1519,7 +1519,7 @@ fn warcry(
                     let k = format!("{dt}{suffix}");
                     let v = wd1.get(&k);
                     if v.truthy() {
-                        let v = num_of(&v, 2425, &k);
+                        let v = num_of(&v, 2433, &k);
                         nm(
                             &extra,
                             &k,
@@ -1575,9 +1575,9 @@ fn aura(
     out: &mut Combined,
     minion: Option<&MinionCtx>,
 ) {
-    let name = str_of(&buff.name, 2462, "buff.name");
+    let name = str_of(&buff.name, 2470, "buff.name");
     // :2444-2460 extra modifiers to apply to aura skills
-    let extra = extra_effect_list(mod_db, Some(skill_cfg), "ExtraAuraEffect", 2446);
+    let extra = extra_effect_list(mod_db, Some(skill_cfg), "ExtraAuraEffect", 2454);
     if !sk.skill_data.get("auraCannotAffectSelf").is_some_and(Value::truthy) {
         let names = [
             "AuraEffect",
@@ -1591,7 +1591,7 @@ fn aura(
         let more = q.more(Some(skill_cfg), &names);
         let mult = (1.0 + inc / 100.0) * more;
         // :2491 `AlliesAurasCannotAffectSelf or not allyBuffs["Aura"] or not allyBuffs["Aura"][name] or effectMult / 100 <= mult`
-        if flag(mod_db, &["AlliesAurasCannotAffectSelf"]) || ally_allows(&env.party, "Aura", name, mult, 2491) {
+        if flag(mod_db, &["AlliesAurasCannotAffectSelf"]) || ally_allows(&env.party, "Aura", name, mult, 2499) {
             set_cond(mod_db, "AffectedByAura", true);
             if name.as_bytes().get(..4) == Some(b"Vaal") {
                 // `buff.name:sub(6)`
@@ -1618,7 +1618,7 @@ fn aura(
             let more = q.more(Some(skill_cfg), &["AuraEffect", "BuffEffect"])
                 * super::more(&mc.db, Some(skill_cfg), &["BuffEffectOnSelf", "AuraEffectOnSelf"]);
             let mult = (1.0 + inc / 100.0) * more;
-            if ally_allows(&env.party, "Aura", name, mult, 2509) {
+            if ally_allows(&env.party, "Aura", name, mult, 2517) {
                 set_cond(&mc.db, &format!("AffectedBy{}", no_spaces(name)), true);
                 set_cond(&mc.db, "AffectedByAura", true);
                 let src = new_list();
@@ -1665,7 +1665,7 @@ fn aura(
     {
         let found = sk.buff_list.iter().any(|b| b.ty.as_str() == Some("AuraDebuff"));
         if !found {
-            let extra = extra_effect_list(mod_db, Some(skill_cfg), "ExtraAuraDebuffEffect", 2556);
+            let extra = extra_effect_list(mod_db, Some(skill_cfg), "ExtraAuraDebuffEffect", 2564);
             // :2601 `mult = ...` assigns a Lua GLOBAL (no local `mult` in scope; this phase never reads it);
             // :2605 the ally check only writes that global (`mult = 0`) -- evaluated for its errors alone.
             let names = ["AuraEffect", "BuffEffect", "DebuffEffect"];
@@ -1674,7 +1674,7 @@ fn aura(
             if let Some(x) = out.exports.as_mut() {
                 x.set_aura_debuff(name, mult, extra.clone());
             }
-            let _ = ally_exceeds(&env.party, "AuraDebuff", name, mult, 2605);
+            let _ = ally_exceeds(&env.party, "AuraDebuff", name, mult, 2613);
             // `newModList:AddList(extraAuraModList)` -- the unscaled mods.
             merge_buff(&extra, &mut out.debuffs, name);
         }
@@ -1697,7 +1697,7 @@ fn curse(
     let st = env.skills.as_ref().expect("skills on");
     let sk = &st.active_skill_list[i];
     let has = |t: &str| sk.skill_types.contains(&skill_type_u32(t));
-    let name = str_of(&buff.name, 2612, "buff.name");
+    let name = str_of(&buff.name, 2620, "buff.name");
     let mark = has("Mark");
     set_cond(mod_db, &format!("SelfCast{}", no_spaces(name)), !(has("Triggered") || has("Aura")));
     let config_var = format!("balanceOfTerrorSelfCast{}", no_spaces(name));

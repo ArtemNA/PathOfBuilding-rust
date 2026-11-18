@@ -13,10 +13,10 @@ PartyMemberMaximumEnduranceChargesEqualToYours
 		<ExportedBuffs name="Aura">
 			Anger
 100
-109|Skill:Anger|FireMin|BASE|-|Attack|type=GlobalEffect/effectType=Aura
-155|Skill:Anger|FireMax|BASE|-|Attack|type=GlobalEffect/effectType=Aura
 109|Skill:Anger|FireMin|BASE|-|Spell|type=GlobalEffect/effectType=Aura
 155|Skill:Anger|FireMax|BASE|-|Spell|type=GlobalEffect/effectType=Aura
+109|Skill:Anger|FireMin|BASE|-|Attack|type=GlobalEffect/effectType=Aura
+155|Skill:Anger|FireMax|BASE|-|Attack|type=GlobalEffect/effectType=Aura
 ---
 Clarity
 100
@@ -39,8 +39,8 @@ Hatred
 ---
 Malevolence
 100
-20|Skill:Malevolence|Damage|MORE|Dot|-|type=GlobalEffect/effectType=Aura
 19|Skill:Malevolence|Duration|INC|-|-|type=GlobalEffect/effectType=Aura
+20|Skill:Malevolence|Damage|MORE|Dot|-|type=GlobalEffect/effectType=Aura
 ---
 Pride
 100
@@ -57,11 +57,11 @@ true|Custom:Default|YourFortifyEqualToParent|FLAG|-|-|type=GlobalEffect/effectTy
 true|Tree:66771|Onslaught|FLAG|-|-|-
 ---
 otherEffects
+Sigil of Power|100|141|Skill:SigilOfPower|LightningMax|BASE|-|-|type=Multiplier/limitVar=SigilOfPowerMaxStages/var=SigilOfPowerStage,type=GlobalEffect/effectName=Sigil of Power/effectType=Buff
+Sigil of Power|100|141|Skill:SigilOfPower|LightningMax|BASE|-|-|type=Multiplier/actor=parent/limitVar=SigilOfPowerMaxStages/var=SigilOfPowerStage,type=GlobalEffect/effectName=Sigil of Power/effectType=Buff
 Sigil of Power|100|4|Skill:SigilOfPower|Multiplier:SigilOfPowerMaxStages|BASE|-|-|type=GlobalEffect/effectType=Buff/unscalable=true
 Sigil of Power|100|7|Skill:SigilOfPower|LightningMin|BASE|-|-|type=Multiplier/limitVar=SigilOfPowerMaxStages/var=SigilOfPowerStage,type=GlobalEffect/effectName=Sigil of Power/effectType=Buff
 Sigil of Power|100|7|Skill:SigilOfPower|LightningMin|BASE|-|-|type=Multiplier/actor=parent/limitVar=SigilOfPowerMaxStages/var=SigilOfPowerStage,type=GlobalEffect/effectName=Sigil of Power/effectType=Buff
-Sigil of Power|100|141|Skill:SigilOfPower|LightningMax|BASE|-|-|type=Multiplier/limitVar=SigilOfPowerMaxStages/var=SigilOfPowerStage,type=GlobalEffect/effectName=Sigil of Power/effectType=Buff
-Sigil of Power|100|141|Skill:SigilOfPower|LightningMax|BASE|-|-|type=Multiplier/actor=parent/limitVar=SigilOfPowerMaxStages/var=SigilOfPowerStage,type=GlobalEffect/effectName=Sigil of Power/effectType=Buff
 ---
 		</ExportedBuffs>
 		<ExportedBuffs name="Curse">
@@ -83,14 +83,14 @@ false
 Sniper&apos;s Mark
 100
 true
-29|Skill:SnipersMark|ProjectileDamageTaken|INC|-|-|type=GlobalEffect/effectType=Curse
 2|Skill:SnipersMark|SelfSplitCount|BASE|-|-|type=GlobalEffect/effectType=Curse
+29|Skill:SnipersMark|ProjectileDamageTaken|INC|-|-|type=GlobalEffect/effectType=Curse
 ---
 Vulnerability
 144
 false
-25|Skill:Vulnerability|SelfBleedChance|BASE|-|-|type=GlobalEffect/effectType=Curse
 15|Skill:Vulnerability|PhysicalDamageTaken|INC|-|-|type=GlobalEffect/effectType=Curse
+25|Skill:Vulnerability|SelfBleedChance|BASE|-|-|type=GlobalEffect/effectType=Curse
 ---
 		</ExportedBuffs>
 		<ExportedBuffs name="EnemyConditions">

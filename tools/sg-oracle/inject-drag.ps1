@@ -4,6 +4,7 @@
 #   pwsh tools/sg-oracle/run.ps1 -Script input-probe.lua -ScriptArgs 'drag 1080,320' -Inject inject-drag.ps1
 param($Process, [string]$Out)
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'hidden-desktop.ps1') # the hidden desktop: no window on the user's monitors (SG_VISIBLE=1: visible)
 Add-Type -Namespace SgOracle -Name D -MemberDefinition @"
 [DllImport("user32.dll")] public static extern bool PostMessageW(IntPtr h, uint m, IntPtr w, IntPtr l);
 "@
@@ -11,7 +12,7 @@ $log = [System.Collections.Generic.List[object]]::new()
 $sw = [Diagnostics.Stopwatch]::StartNew()
 function L($what) { $log.Add(@($sw.ElapsedMilliseconds, $what)) }
 for ($i = 0; $i -lt 100 -and -not (Test-Path "$Out\ready"); $i++) { Start-Sleep -Milliseconds 100 }
-$Process.Refresh(); $h = $Process.MainWindowHandle
+$h = Get-SgWindow -Process $Process
 function P([uint32]$msg, [int64]$w, [int64]$l) { [void][SgOracle.D]::PostMessageW($h, $msg, [IntPtr]$w, [IntPtr]$l) }
 function XY([int]$x, [int]$y) { [int64]$x -bor ([int64]$y -shl 16) }
 $n = 0

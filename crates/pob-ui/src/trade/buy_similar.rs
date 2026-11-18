@@ -123,7 +123,8 @@ pub fn add_mod_entries(item: &Item, sources: &[(&[ModLine], &str)]) -> Vec<ModEn
                 entry.trade_ids = h
                     .ids
                     .iter()
-                    .map(|x| format!("{ty}.stat_{x}"))
+                    // CompareBuySimilar.lua:257-263 (07fa089bf): `string.format("%s.%s%s", source.type, prefix, hash)`
+                    .map(|x| format!("{ty}.{}{x}", h.prefix))
                     .filter(|id| existing.contains(id))
                     .collect();
                 entry.value = h.value.map(dkjson::n);

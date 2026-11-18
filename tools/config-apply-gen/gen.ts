@@ -114,7 +114,7 @@ type Exp =
   | { k: 'nil'; line: number } | { k: 'bool'; v: boolean; line: number } | { k: 'num'; v: number; line: number } | { k: 'str'; v: string; line: number }
   | { k: 'name'; v: string; line: number }
   | { k: 'bin'; op: string; a: Exp; b: Exp; line: number } | { k: 'un'; op: string; a: Exp; line: number }
-  | { k: 'call'; f: 'm_min' | 'm_max' | 'type' | 'createMod'; args: Exp[]; line: number }
+  | { k: 'call'; f: 'm_min' | 'm_max' | 'type' | 'createMod'; args: Exp[]; line: number; luaName?: string }
   | { k: 'skilltype'; v: string; line: number }
   | { k: 'table'; fields: { key: string | null; v: Exp }[]; line: number }
 type Stat =
@@ -247,6 +247,15 @@ class Parser {
       this.expect('(')
       return { k: 'call', f: t.v, args: this.explist(')'), line: t.line }
     }
+    // `math.min` / `math.max` (07fa089bf, ConfigOptions.lua:180) are the very functions the file's `m_min` / `m_max` locals
+    // hold (ConfigOptions.lua:7-8), so they translate the same -- only LuaJIT's error names the call site's field: 'min', not 'm_min'.
+    if (t.v === 'math' && this.is('.')) {
+      this.next()
+      const f = this.name()
+      if (f !== 'min' && f !== 'max') reject(`math.${f}`)
+      this.expect('(')
+      return { k: 'call', f: f === 'min' ? 'm_min' : 'm_max', args: this.explist(')'), line: t.line, luaName: f }
+    }
     if (t.v === 'modLib' && this.is('.')) {
       this.next()
       const f = this.name()
@@ -338,7 +347,7 @@ function scalar(e: Exp, cx: Ctx): Sc {
     case 'call': {
       if (e.f === 'm_min' || e.f === 'm_max') {
         if (e.args.length !== 2) reject(`${e.f} with ${e.args.length} arguments`)
-        return { code: `${e.f === 'm_min' ? 'lmin' : 'lmax'}(${ref(scalar(e.args[0]!, cx))}, ${ref(scalar(e.args[1]!, cx))}, ${e.line})?`, place: false }
+        return { code: `${e.f === 'm_min' ? 'lmin' : 'lmax'}(${ref(scalar(e.args[0]!, cx))}, ${ref(scalar(e.args[1]!, cx))}, ${e.line}, "${e.luaName ?? e.f}")?`, place: false }
       }
       if (e.f === 'type') {
         if (e.args.length !== 1) reject('type with != 1 argument')

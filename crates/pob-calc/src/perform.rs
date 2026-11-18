@@ -621,7 +621,7 @@ pub fn do_actor_life_mana(db: &StoreRef, output: &mut Output, mut bd: Option<&mu
         let life = or_override(
             ov.clone(),
             max2(round(b * (1.0 + i / 100.0) * m * (1.0 - conv / 100.0), None), 1.0),
-            "Modules/CalcPerform.lua:93",
+            "Modules/CalcPerform.lua:94",
         );
         output.set_num("Life", life);
         // :94-109
@@ -636,7 +636,7 @@ pub fn do_actor_life_mana(db: &StoreRef, output: &mut Output, mut bd: Option<&mu
                 t.push(crate::sf!("x %.2f ^8(more/less)", m));
             }
             if let Some(o) = &ov {
-                t.push(crate::sf!("= %g ^8(life override)", num_val(o, "Modules/CalcPerform.lua:105")));
+                t.push(crate::sf!("= %g ^8(life override)", num_val(o, "Modules/CalcPerform.lua:106")));
             }
             t.push(crate::sf!("= %g", life));
             bd.put("Life", t);
@@ -668,6 +668,8 @@ pub fn do_actor_life_mana(db: &StoreRef, output: &mut Output, mut bd: Option<&mu
     }
     let (life, mana) = (output.num("Life"), output.num("Mana"));
     output.set_num("LowestOfMaximumLifeAndMaximumMana", min2(life, mana));
+    // CalcPerform.lua:134 (07fa089bf)
+    output.set_num("MaximumLifeManaDifference", (life - mana).abs());
 }
 
 // --- CalcPerform.lua:138-548 `doActorAttribsConditions` -----------------------------------------------------------------
@@ -754,10 +756,10 @@ pub(super) fn do_actor_attribs_conditions(env: &mut Env, who: Who, st: &mut Acto
                 set_cond(&db, "Unencumbered", true);
             }
         } else {
-            let info = weapon_info(&wd1_type, "Modules/CalcPerform.lua:158");
-            set_cond(&db, &info_flag(info, "Modules/CalcPerform.lua:159"), true);
+            let info = weapon_info(&wd1_type, "Modules/CalcPerform.lua:160");
+            set_cond(&db, &info_flag(info, "Modules/CalcPerform.lua:161"), true);
             if actor.weapon_data1.get("countsAsAll1H").truthy() {
-                apply_counts_as_all_1h(&mut actor.weapon_data1, &db, "Modules/CalcPerform.lua:163");
+                apply_counts_as_all_1h(&mut actor.weapon_data1, &db, "Modules/CalcPerform.lua:165");
             }
             apply_weapon_hand_conditions(info, &db);
         }
@@ -775,16 +777,16 @@ pub(super) fn do_actor_attribs_conditions(env: &mut Env, who: Who, st: &mut Acto
                     .and_then(|c| c.get(0))
                     .and_then(|c| c.bytes(base_name.as_bytes()))
                     .map(|b| String::from_utf8_lossy(b).into_owned())
-                    .unwrap_or_else(|| panic!("Modules/CalcPerform.lua:190: attempt to concatenate a nil value"));
+                    .unwrap_or_else(|| panic!("Modules/CalcPerform.lua:192: attempt to concatenate a nil value"));
                 set_cond(&db, &format!("Using{word}"), true);
             }
         }
         let wd2_type = actor.weapon_data2.get("type");
         if wd2_type.truthy() {
-            let info = weapon_info(&wd2_type, "Modules/CalcPerform.lua:196");
-            set_cond(&db, &info_flag(info, "Modules/CalcPerform.lua:197"), true);
+            let info = weapon_info(&wd2_type, "Modules/CalcPerform.lua:198");
+            set_cond(&db, &info_flag(info, "Modules/CalcPerform.lua:199"), true);
             if actor.weapon_data2.get("countsAsAll1H").truthy() {
-                apply_counts_as_all_1h(&mut actor.weapon_data2, &db, "Modules/CalcPerform.lua:201");
+                apply_counts_as_all_1h(&mut actor.weapon_data2, &db, "Modules/CalcPerform.lua:203");
             }
             apply_weapon_hand_conditions(info, &db);
         }
@@ -806,7 +808,7 @@ pub(super) fn do_actor_attribs_conditions(env: &mut Env, who: Who, st: &mut Acto
                 if w.get("type").is_str("One Handed Sword") && w.get("subType").is_str("Thrusting") {
                     return Value::str("One Handed Sword");
                 }
-                let info = weapon_info(&w.get("type"), "Modules/CalcPerform.lua:234");
+                let info = weapon_info(&w.get("type"), "Modules/CalcPerform.lua:236");
                 match &info.label {
                     Some(l) => Value::str(l),
                     None if w.get("subType").truthy() => w.get("subType"),
@@ -814,8 +816,8 @@ pub(super) fn do_actor_attribs_conditions(env: &mut Env, who: Who, st: &mut Acto
                 }
             };
             if !weapon_type(&actor.weapon_data1).raw_eq(&weapon_type(&actor.weapon_data2)) {
-                let info1 = weapon_info(&actor.weapon_data1.get("type"), "Modules/CalcPerform.lua:237");
-                let info2 = weapon_info(&actor.weapon_data2.get("type"), "Modules/CalcPerform.lua:238");
+                let info1 = weapon_info(&actor.weapon_data1.get("type"), "Modules/CalcPerform.lua:239");
+                let info2 = weapon_info(&actor.weapon_data2.get("type"), "Modules/CalcPerform.lua:240");
                 if info1.one_hand == Some(true) && info2.one_hand == Some(true) {
                     set_cond(&db, "WieldingDifferentWeaponTypes", true);
                 }
@@ -828,7 +830,7 @@ pub(super) fn do_actor_attribs_conditions(env: &mut Env, who: Who, st: &mut Acto
     if env.mode_combat {
         // :245-285 `actor.mainSkill.skillData.triggered` / `.skillFlags.*` / `.skillTypes[...]` (the stub answers "no" to all).
         let ms =
-            main_skill(env, who).unwrap_or_else(|| panic!("Modules/CalcPerform.lua:245: attempt to index field 'mainSkill' (a nil value)"));
+            main_skill(env, who).unwrap_or_else(|| panic!("Modules/CalcPerform.lua:247: attempt to index field 'mainSkill' (a nil value)"));
         let cond_true = |k: &str| set_cond(&db, k, true);
         if !ms.triggered && !ms.flag("trap") && !ms.flag("mine") && !ms.flag("totem") {
             if ms.flag("attack") {
@@ -872,7 +874,7 @@ pub(super) fn do_actor_attribs_conditions(env: &mut Env, who: Who, st: &mut Acto
             cond_true("TriggeredTrapsRecently");
         }
         // :286-294 `A or (B and not C) or D` -- `and` binds tighter than `or`; C reads `env.player.mainSkill.skillCfg`.
-        let player_cfg = player_main_skill(env, 286).cfg;
+        let player_cfg = player_main_skill(env, 288).cfg;
         let crit_alt = flag(&db, &["CritAlwaysAltAilments"]) && !flag_cfg(&db, Some(&player_cfg), &["NeverCrit"]);
         if base(&db, &["EnemyScorchChance"]) > 0.0 || crit_alt || flag(&db, &["IgniteCanScorch"]) {
             set_cond(&db, "CanInflictScorch", true);
@@ -887,7 +889,7 @@ pub(super) fn do_actor_attribs_conditions(env: &mut Env, who: Who, st: &mut Acto
     }
     // --- :398-407 exposure: `env.player.mainSkill.skillModList:Sum("BASE", env.player.mainSkill.skillCfg, ...)` -----------
     if env.mode_effective {
-        let ms = player_main_skill(env, 399);
+        let ms = player_main_skill(env, 401);
         for element in ["Fire", "Cold", "Lightning"] {
             let name = format!("{element}ExposureChance");
             ms.guard(&[&name]);
@@ -944,7 +946,7 @@ pub(super) fn do_actor_attribs_conditions(env: &mut Env, who: Who, st: &mut Acto
             let per_dex = or_override(
                 override_(&db, &["DexAccBonusOverride"]),
                 misc("AccuracyPerDexBase"),
-                "Modules/CalcPerform.lua:531",
+                "Modules/CalcPerform.lua:533",
             );
             nm(
                 &db,
@@ -1132,7 +1134,7 @@ fn calculate_omniscience(env: &Env, db: &StoreRef, output: &mut Output, mut bdow
                 .tree
                 .classes
                 .get(class_id)
-                .unwrap_or_else(|| panic!("Modules/CalcPerform.lua:430: no class {class_id} in the tree"));
+                .unwrap_or_else(|| panic!("Modules/CalcPerform.lua:432: no class {class_id} in the tree"));
             (c.base_str, c.base_dex, c.base_int)
         }
     };
@@ -1142,7 +1144,7 @@ fn calculate_omniscience(env: &Env, db: &StoreRef, output: &mut Output, mut bdow
             "Dex" => bd,
             _ => bi,
         }
-        .unwrap_or_else(|| panic!("Modules/CalcPerform.lua:436: attempt to perform arithmetic on a nil value (base_{stat})"))
+        .unwrap_or_else(|| panic!("Modules/CalcPerform.lua:438: attempt to perform arithmetic on a nil value (base_{stat})"))
     };
     for pass in 1..=2 {
         if pass != 1 {
@@ -1230,10 +1232,10 @@ pub fn do_actor_life_mana_reservation(db: &StoreRef, st: &mut ActorState, add_au
             for value in list(db, &[&format!("GrantReserved{pool}AsAura")]) {
                 // :578-580 `copyTable(value.mod)`, value scaled, wrapped as an ExtraAura.
                 let Value::Mod(m) = value.get("mod") else {
-                    panic!("Modules/CalcPerform.lua:578: attempt to index field 'mod' (a non-mod value)")
+                    panic!("Modules/CalcPerform.lua:580: attempt to index field 'mod' (a non-mod value)")
                 };
                 let mut aura = m.deep_copy();
-                let v = num_val(&aura.value, "Modules/CalcPerform.lua:579");
+                let v = num_val(&aura.value, "Modules/CalcPerform.lua:581");
                 aura.value = n((v * min2(reserved, max)).floor());
                 let mut t = Table::default();
                 t.hash.insert(Rc::from("mod"), Value::Mod(Rc::new(aura)));
@@ -1291,7 +1293,7 @@ fn minion_modifiers(env: &Env) {
             mdb.borrow_mut().add_mod(Rc::new(c));
         }
     } else {
-        let pm = player_main_skill(env, 1957);
+        let pm = player_main_skill(env, 1965);
         pm.guard(&["MinionModifier"]);
         crate::minion::add_minion_modifiers(&pm.list, Some(&pm.cfg), &mdb, &m.ty);
         for name in list(&mdb, &["Keystone"]) {
@@ -1314,10 +1316,10 @@ fn do_actor_misc(env: &mut Env, who: Who, st: &mut ActorState, party: &PartyStub
     if env.mode_combat {
         // :646 `env.player.mainSkill.baseSkillModList:Flag(env.player.mainSkill.skillCfg, "Cruelty")` (3dbca4463 #10385: the
         // Cruelty flag is now SkillType-tagged; the stub has no baseSkillModList; its empty skillModList answers the same "no").
-        let player_ms = player_main_skill(env, 646);
+        let player_ms = player_main_skill(env, 648);
         player_ms.guard(&["Cruelty"]);
         if flag_cfg(&player_ms.base, Some(&player_ms.cfg), &["Cruelty"]) {
-            let v = or_override(override_(&db, &["Cruelty"]), 40.0, "Modules/CalcPerform.lua:647");
+            let v = or_override(override_(&db, &["Cruelty"]), 40.0, "Modules/CalcPerform.lua:649");
             set_mult(&db, "Cruelty", v);
         }
         // :649-651 Minimum Rage
@@ -1328,7 +1330,7 @@ fn do_actor_misc(env: &mut Env, who: Who, st: &mut ActorState, party: &PartyStub
         // :653 `A and B or C and D and E or 0`
         let parent_fortify = if fl("YourFortifyEqualToParent") {
             parent
-                .unwrap_or_else(|| panic!("Modules/CalcPerform.lua:653: attempt to index field 'parent' (a nil value)"))
+                .unwrap_or_else(|| panic!("Modules/CalcPerform.lua:655: attempt to index field 'parent' (a nil value)"))
                 .opt_num("FortificationStacks")
         } else {
             None
@@ -1356,7 +1358,7 @@ fn do_actor_misc(env: &mut Env, who: Who, st: &mut ActorState, party: &PartyStub
                 or_override(
                     override_(&db, &["MaximumFortification"]),
                     sum(&db, Base, skill_cfg.as_ref(), &["MaximumFortification"]),
-                    "Modules/CalcPerform.lua:662",
+                    "Modules/CalcPerform.lua:664",
                 ),
                 allied_fortify,
             );
@@ -1372,7 +1374,7 @@ fn do_actor_misc(env: &mut Env, who: Who, st: &mut ActorState, party: &PartyStub
             // defaults to the minimum stacks)
             let stack_override = override_(&db, &["FortificationStacks"]);
             let stacks = min2(
-                or_override(stack_override.clone(), max_stacks, "Modules/CalcPerform.lua:664"),
+                or_override(stack_override.clone(), max_stacks, "Modules/CalcPerform.lua:666"),
                 max_stacks,
             );
             let increased_duration = sum(&skill_mod_list, Inc, None, &["FortifyDuration"]);
@@ -1383,7 +1385,7 @@ fn do_actor_misc(env: &mut Env, who: Who, st: &mut ActorState, party: &PartyStub
                 "RemovableFortification",
                 min2(
                     max_stacks - min_stacks,
-                    or_override(stack_override, max_stacks, "Modules/CalcPerform.lua:668") - min_stacks,
+                    or_override(stack_override, max_stacks, "Modules/CalcPerform.lua:670") - min_stacks,
                 ),
             );
             out.set_num("FortificationStacks", stacks);
@@ -1391,7 +1393,7 @@ fn do_actor_misc(env: &mut Env, who: Who, st: &mut ActorState, party: &PartyStub
             let dur = or_override(
                 ok(skill_mod_list.borrow().override_(None, &["FortifyDuration"])),
                 misc("FortifyBaseDuration"),
-                "Modules/CalcPerform.lua:671",
+                "Modules/CalcPerform.lua:673",
             );
             out.set_num("FortifyDuration", dur * (1.0 + increased_duration / 100.0));
             // :672 a string, so Willowgift's mod can be shown instead
@@ -1414,12 +1416,12 @@ fn do_actor_misc(env: &mut Env, who: Who, st: &mut ActorState, party: &PartyStub
                 let base_name = item
                     .base_name
                     .as_deref()
-                    .unwrap_or_else(|| panic!("Modules/CalcPerform.lua:689: attempt to index field 'baseName' (a nil value)"));
+                    .unwrap_or_else(|| panic!("Modules/CalcPerform.lua:691: attempt to index field 'baseName' (a nil value)"));
                 if base_name.contains("Silver Flask") {
                     onslaught_from_flask = true;
                     let effect_inc = item.flask_data.as_ref().and_then(|d| d.num("effectInc"));
                     let effect_inc = effect_inc
-                        .unwrap_or_else(|| panic!("Modules/CalcPerform.lua:692: attempt to perform arithmetic on field 'effectInc'"));
+                        .unwrap_or_else(|| panic!("Modules/CalcPerform.lua:694: attempt to perform arithmetic on field 'effectInc'"));
                     let mut cur = effect_inc + sum(&db, Inc, Some(&player_cfg), &["FlaskEffect"]);
                     if item.rarity == "MAGIC" {
                         cur += sum(&db, Inc, Some(&player_cfg), &["MagicUtilityFlaskEffect"]);
@@ -1624,7 +1626,7 @@ fn do_actor_misc(env: &mut Env, who: Who, st: &mut ActorState, party: &PartyStub
                 None => 1.0,
                 Some(crate::output::OutValue::Bool(false)) => 1.0,
                 Some(crate::output::OutValue::Num(v)) => *v,
-                Some(other) => panic!("Modules/CalcPerform.lua:810: attempt to perform arithmetic on {other:?}"),
+                Some(other) => panic!("Modules/CalcPerform.lua:812: attempt to perform arithmetic on {other:?}"),
             };
             // `(multipliers.BuffOnSelf or 0) + (output.ActivePhantasmLimit or 1) - 1`, left to right.
             let cur = db.borrow().multipliers.get("BuffOnSelf").copied().unwrap_or(0.0);
@@ -1650,7 +1652,7 @@ fn do_actor_misc(env: &mut Env, who: Who, st: &mut ActorState, party: &PartyStub
             let mut effect = 1.0 + inc(&db, &["BlindEffect", "BuffEffectOnSelf"]) / 100.0;
             let blind_override = override_(&db, &["BlindEffect"]);
             if let Some(v) = blind_override.filter(Value::truthy) {
-                effect = min2(num_val(&v, "Modules/CalcPerform.lua:862") / 100.0, effect);
+                effect = min2(num_val(&v, "Modules/CalcPerform.lua:864") / 100.0, effect);
             }
             nm(&db, "Accuracy", More, (-20.0 * effect).floor(), "Blind", 0, 0, vec![]);
             nm(&db, "Evasion", More, (-20.0 * effect).floor(), "Blind", 0, 0, vec![]);
@@ -1715,7 +1717,7 @@ fn do_actor_misc(env: &mut Env, who: Who, st: &mut ActorState, party: &PartyStub
         let mana_burn_config = match env.config.input.get("multiplierManaBurnStacks") {
             None | Some(pob_build::ConfigValue::Bool(false)) => 0.0,
             Some(pob_build::ConfigValue::Num(v)) => *v,
-            Some(other) => panic!("Modules/CalcPerform.lua:935: attempt to compare number with {other:?}"),
+            Some(other) => panic!("Modules/CalcPerform.lua:937: attempt to compare number with {other:?}"),
         };
         if mana_burn_config > 0.0 {
             let mut max_mana_burn = base(&db, &["MaxManaBurnStacks"]);
@@ -1772,7 +1774,7 @@ fn do_actor_misc(env: &mut Env, who: Who, st: &mut ActorState, party: &PartyStub
             let max = or_override(
                 override_(&db, &["SoulEaterMax"]),
                 base(&db, &["SoulEaterMax"]),
-                "Modules/CalcPerform.lua:969",
+                "Modules/CalcPerform.lua:971",
             );
             let t = || tag(&[("type", s("Multiplier")), ("var", s("SoulEaterStack")), ("limit", n(max))]);
             nm(&db, "Speed", Inc, 5.0, "Base", mod_flag("Attack"), 0, vec![t()]);
@@ -1796,14 +1798,14 @@ fn elusive(env: &Env, who: Who, db: &StoreRef, st: &mut ActorState) {
     // :815 `actor.mainSkill.skillModList:Flag(nil, "SupportedByNightblade")` -- the enemy has no mainSkill, so an Elusive enemy
     // is Lua's index error.
     let ms =
-        main_skill(env, who).unwrap_or_else(|| panic!("Modules/CalcPerform.lua:815: attempt to index field 'mainSkill' (a nil value)"));
+        main_skill(env, who).unwrap_or_else(|| panic!("Modules/CalcPerform.lua:817: attempt to index field 'mainSkill' (a nil value)"));
     ms.guard(&["SupportedByNightblade"]);
     if flag(&ms.list, &["SupportedByNightblade"]) {
         inc_ += inc(db, &["NightbladeSupportedElusiveEffect"]);
     }
     inc_ += max_skill_inc;
     let effect_mod = (1.0 + inc_ / 100.0) * more(db, None, &["ElusiveEffect", "BuffEffectOnSelf"]) * 100.0;
-    let min_threshold = or_override(override_(db, &["ElusiveEffectMinThreshold"]), 0.0, "Modules/CalcPerform.lua:820");
+    let min_threshold = or_override(override_(db, &["ElusiveEffectMinThreshold"]), 0.0, "Modules/CalcPerform.lua:822");
     let increase_duration = base(db, &["ElusiveEffectIncreaseDuration"]);
     let mut peak = effect_mod;
     if increase_duration > 0.0 {
@@ -1823,7 +1825,7 @@ fn elusive(env: &Env, who: Who, db: &StoreRef, st: &mut ActorState) {
     nm(db, "ElusiveEffect", ModType::Inc, max_skill_inc, "Max Skill Effect", 0, 0, vec![]);
     if let Some(v) = override_(db, &["ElusiveEffect"]).filter(Value::truthy) {
         st.output
-            .set_num("ElusiveEffectMod", min2(num_val(&v, "Modules/CalcPerform.lua:838"), peak));
+            .set_num("ElusiveEffectMod", min2(num_val(&v, "Modules/CalcPerform.lua:840"), peak));
     }
     let effect = st.output.num("ElusiveEffectMod") / 100.0;
     set_cond(db, "Elusive", true);
@@ -1911,12 +1913,12 @@ fn do_actor_charges(env: &Env, who: Who, st: &mut ActorState, party: &PartyStub)
     let v = or_override(
         override_(&db, &["PowerChargesMax"]),
         max2(base(&db, &["PowerChargesMax"]), 0.0),
-        "Modules/CalcPerform.lua:987",
+        "Modules/CalcPerform.lua:989",
     );
     o.set_num("PowerChargesMax", v);
     o.set_num("PowerChargesDuration", charge_duration("Power"));
     if fl("MaximumFrenzyChargesIsMaximumPowerCharges") {
-        let src = first_mod_source(&db, "MaximumFrenzyChargesIsMaximumPowerCharges", 991);
+        let src = first_mod_source(&db, "MaximumFrenzyChargesIsMaximumPowerCharges", 993);
         let m = create_mod(
             "FrenzyChargesMax",
             Some(ModType::Override),
@@ -1937,11 +1939,11 @@ fn do_actor_charges(env: &Env, who: Who, st: &mut ActorState, party: &PartyStub)
         },
         0.0,
     );
-    let v = or_override(override_(&db, &["FrenzyChargesMax"]), fallback, "Modules/CalcPerform.lua:995");
+    let v = or_override(override_(&db, &["FrenzyChargesMax"]), fallback, "Modules/CalcPerform.lua:997");
     o.set_num("FrenzyChargesMax", v);
     o.set_num("FrenzyChargesDuration", charge_duration("Frenzy"));
     if fl("MaximumEnduranceChargesIsMaximumFrenzyCharges") {
-        let src = first_mod_source(&db, "MaximumEnduranceChargesIsMaximumFrenzyCharges", 998);
+        let src = first_mod_source(&db, "MaximumEnduranceChargesIsMaximumFrenzyCharges", 1000);
         let m = create_mod(
             "EnduranceChargesMax",
             Some(ModType::Override),
@@ -1968,7 +1970,7 @@ fn do_actor_charges(env: &Env, who: Who, st: &mut ActorState, party: &PartyStub)
     let v = or_override(
         override_(&db, &["EnduranceChargesMax"]),
         max2(inner, 0.0),
-        "Modules/CalcPerform.lua:1001",
+        "Modules/CalcPerform.lua:1003",
     );
     o.set_num("EnduranceChargesMax", v);
     o.set_num("EnduranceChargesDuration", charge_duration("Endurance"));
@@ -2074,7 +2076,7 @@ fn do_actor_charges(env: &Env, who: Who, st: &mut ActorState, party: &PartyStub)
         let v = or_override(
             override_(&db, &["PowerCharges"]),
             o.num("PowerChargesMax"),
-            "Modules/CalcPerform.lua:1047",
+            "Modules/CalcPerform.lua:1049",
         );
         o.set_num("PowerCharges", v);
     }
@@ -2095,7 +2097,7 @@ fn do_actor_charges(env: &Env, who: Who, st: &mut ActorState, party: &PartyStub)
         let v = or_override(
             override_(&db, &["FrenzyCharges"]),
             o.num("FrenzyChargesMax"),
-            "Modules/CalcPerform.lua:1059",
+            "Modules/CalcPerform.lua:1061",
         );
         o.set_num("FrenzyCharges", v);
     }
@@ -2116,7 +2118,7 @@ fn do_actor_charges(env: &Env, who: Who, st: &mut ActorState, party: &PartyStub)
         let v = or_override(
             override_(&db, &["EnduranceCharges"]),
             o.num("EnduranceChargesMax"),
-            "Modules/CalcPerform.lua:1071",
+            "Modules/CalcPerform.lua:1073",
         );
         o.set_num("EnduranceCharges", v);
         if fl("CanGainBrineCharges") {
@@ -2144,7 +2146,7 @@ fn do_actor_charges(env: &Env, who: Who, st: &mut ActorState, party: &PartyStub)
         let v = or_override(
             override_(&db, &["SiphoningCharges"]),
             o.num("SiphoningChargesMax"),
-            "Modules/CalcPerform.lua:1086",
+            "Modules/CalcPerform.lua:1088",
         );
         o.set_num("SiphoningCharges", v);
     }
@@ -2152,7 +2154,7 @@ fn do_actor_charges(env: &Env, who: Who, st: &mut ActorState, party: &PartyStub)
         let v = or_override(
             override_(&db, &["ChallengerCharges"]),
             o.num("ChallengerChargesMax"),
-            "Modules/CalcPerform.lua:1089",
+            "Modules/CalcPerform.lua:1091",
         );
         o.set_num("ChallengerCharges", v);
     }
@@ -2160,7 +2162,7 @@ fn do_actor_charges(env: &Env, who: Who, st: &mut ActorState, party: &PartyStub)
         let v = or_override(
             override_(&db, &["BlitzCharges"]),
             o.num("BlitzChargesMax"),
-            "Modules/CalcPerform.lua:1092",
+            "Modules/CalcPerform.lua:1094",
         );
         o.set_num("BlitzCharges", v);
     }
@@ -2168,30 +2170,30 @@ fn do_actor_charges(env: &Env, who: Who, st: &mut ActorState, party: &PartyStub)
         let v = or_override(
             override_(&db, &["InspirationCharges"]),
             o.num("InspirationChargesMax"),
-            "Modules/CalcPerform.lua:1095",
+            "Modules/CalcPerform.lua:1097",
         );
         o.set_num("InspirationCharges", v);
     }
     if fl("UseGhostShrouds") {
-        let v = or_override(override_(&db, &["GhostShrouds"]), 3.0, "Modules/CalcPerform.lua:1098");
+        let v = or_override(override_(&db, &["GhostShrouds"]), 3.0, "Modules/CalcPerform.lua:1100");
         o.set_num("GhostShrouds", v);
     }
     let v = min2(
         or_override(
             override_(&db, &["BloodCharges"]),
             o.num("BloodChargesMax"),
-            "Modules/CalcPerform.lua:1100",
+            "Modules/CalcPerform.lua:1102",
         ),
         o.num("BloodChargesMax"),
     );
     o.set_num("BloodCharges", v);
     let v = min2(
-        or_override(override_(&db, &["SpiritCharges"]), 0.0, "Modules/CalcPerform.lua:1101"),
+        or_override(override_(&db, &["SpiritCharges"]), 0.0, "Modules/CalcPerform.lua:1103"),
         o.num("SpiritChargesMax"),
     );
     o.set_num("SpiritCharges", v);
     let v = min2(
-        or_override(override_(&db, &["SpiritInfusion"]), 0.0, "Modules/CalcPerform.lua:1102"),
+        or_override(override_(&db, &["SpiritInfusion"]), 0.0, "Modules/CalcPerform.lua:1104"),
         o.num("SpiritInfusionsMax"),
     );
     o.set_num("SpiritInfusions", v);
@@ -2199,7 +2201,7 @@ fn do_actor_charges(env: &Env, who: Who, st: &mut ActorState, party: &PartyStub)
         or_override(
             override_(&db, &["CrabBarriers"]),
             o.num("CrabBarriersMax"),
-            "Modules/CalcPerform.lua:1105",
+            "Modules/CalcPerform.lua:1107",
         ),
         o.num("CrabBarriersMax"),
     );
@@ -2281,7 +2283,7 @@ fn defence_for_conditionals(env: &Env, who: Who, st: &mut ActorState) {
             } else {
                 match armour_data.get(stat) {
                     Value::Nil | Value::Bool(false) => 0.0,
-                    v => num_val(&v, "Modules/CalcDefence.lua:490"),
+                    v => num_val(&v, "Modules/CalcDefence.lua:492"),
                 }
             };
             if base_v > 0.0 {
@@ -2440,7 +2442,7 @@ pub fn perform_skip_ehp(
     // :1316-1321 `env.minion = env.player.mainSkill.minion`; `output.Minion = { }` is the minion's output; `initMinionModDB` (R7.10)
     env.minion = None;
     let mut minion_state: Option<Rc<std::cell::RefCell<ActorState>>> = None;
-    if player_main_skill(env, 1316).has_minion {
+    if player_main_skill(env, 1318).has_minion {
         let i = env.skills.as_ref().and_then(|s| s.main_skill).expect("mainSkill");
         let actor = env
             .skills
@@ -2535,7 +2537,7 @@ pub fn perform_skip_ehp(
     let wp = or_override(
         override_(&mod_db, &["WarcryPower"]),
         base(&mod_db, &["WarcryPower"]),
-        "Modules/CalcPerform.lua:1347",
+        "Modules/CalcPerform.lua:1349",
     );
     player.output.set_num("WarcryPower", wp);
     set_mult(&mod_db, "WarcryPower", wp);
@@ -2745,7 +2747,7 @@ pub fn perform_skip_ehp(
                         let have = player
                             .output
                             .opt_num(breakdown_attr)
-                            .unwrap_or_else(|| panic!("Modules/CalcPerform.lua:2132: attempt to compare nil with number"));
+                            .unwrap_or_else(|| panic!("Modules/CalcPerform.lua:2140: attempt to compare nil with number"));
                         let codes = &globals().color_codes;
                         let req_v: BVal = if req > have {
                             format!("{}{}", codes.get("NEGATIVE").expect("colorCodes.NEGATIVE"), tostring_num(req)).into()
@@ -2760,7 +2762,7 @@ pub fn perform_skip_ehp(
                             let item = req_source.source_item.as_ref().expect("reqSource.sourceItem");
                             let color = codes.get(item.rarity.as_str()).map(String::as_str).unwrap_or_else(|| {
                                 panic!(
-                                    "Modules/CalcPerform.lua:2138: attempt to concatenate a nil value (colorCodes.{})",
+                                    "Modules/CalcPerform.lua:2146: attempt to concatenate a nil value (colorCodes.{})",
                                     item.rarity
                                 )
                             });
@@ -2826,7 +2828,7 @@ pub fn perform_skip_ehp(
                 .skill_cfg
                 .as_ref()
                 .map(|c| c.skill_name.as_str())
-                .unwrap_or_else(|| panic!("Modules/CalcPerform.lua:2169: attempt to index field 'skillCfg' (a nil value)"));
+                .unwrap_or_else(|| panic!("Modules/CalcPerform.lua:2177: attempt to index field 'skillCfg' (a nil value)"));
             if has(sk, "Herald") && !herald_list.contains(&name) {
                 herald_list.push(name);
                 bump_mult(&mod_db, "Herald", 1.0);
@@ -2849,7 +2851,7 @@ pub fn perform_skip_ehp(
         for e in entries {
             let m = &e.mod_;
             let modifiers = get_converted_mod_tags(m, multiplier);
-            let v = (num_val(&m.value, "Modules/CalcPerform.lua:2186") * multiplier).floor();
+            let v = (num_val(&m.value, "Modules/CalcPerform.lua:2194") * multiplier).floor();
             let created = create_mod(
                 "EnemyShockEffect",
                 Some(ModType::Inc),
@@ -2927,7 +2929,7 @@ pub fn perform_skip_ehp(
             .non_damaging_ailment
             .get("Chill")
             .and_then(|a| a.default)
-            .unwrap_or_else(|| panic!("Modules/CalcPerform.lua:3379: data.nonDamagingAilment.Chill.default is nil"));
+            .unwrap_or_else(|| panic!("Modules/CalcPerform.lua:3387: data.nonDamagingAilment.Chill.default is nil"));
         for &i in &loop_out.guaranteed_chill_skills {
             let sk = &st.active_skill_list[i];
             let sml = skill_list_of(env, i);
@@ -2978,13 +2980,13 @@ pub fn perform_skip_ehp(
         }
     }
     // :3411-3415 Hallowing Flame (skills off: recorded, as pob-ts does).
-    let player_ms = player_main_skill(env, 3411);
+    let player_ms = player_main_skill(env, 3419);
     if flag_cfg(&mod_db, Some(&player_ms.cfg), &["Condition:CanInflictHallowingFlame"]) {
         if skills_on {
             let magnitude = or_override(
                 override_(&mod_db, &["HallowingFlameMagnitude"]),
                 inc(&mod_db, &["HallowingFlameMagnitude"]),
-                "Modules/CalcPerform.lua:3412",
+                "Modules/CalcPerform.lua:3420",
             );
             let val = (25.0 * (1.0 + magnitude / 100.0)).floor();
             let m = create_mod(
@@ -3025,7 +3027,7 @@ pub fn perform_skip_ehp(
     }
     for value in list(&mod_db, &["ExtraAura"]) {
         let Value::Mod(m) = value.get("mod") else {
-            panic!("Modules/CalcPerform.lua:3419: ExtraAura value without a mod")
+            panic!("Modules/CalcPerform.lua:3427: ExtraAura value without a mod")
         };
         let mod_list = [m];
         if !value.get("onlyAllies").truthy() && !(value.get("fromAllies").truthy() && flag(&mod_db, &["AlliesAurasCannotAffectSelf"])) {
@@ -3069,7 +3071,7 @@ pub fn perform_skip_ehp(
     // :3474-3486 the party members' extra auras (`allyBuffs["extraAura"]`, R-party)
     let party_tab = env.party.clone();
     if let Some(g) = party_tab.aura.group("extraAura") {
-        for (_, buff) in buffs::party_entries(g, 3479) {
+        for (_, buff) in buffs::party_entries(g, 3487) {
             let i = inc(&mod_db, &["BuffEffectOnSelf", "AuraEffectOnSelf"]);
             let m = more(&mod_db, None, &["BuffEffectOnSelf", "AuraEffectOnSelf"]);
             ok(mod_db.borrow_mut().scale_add_list(&buff.mod_list, (1.0 + i / 100.0) * m, false));
@@ -3084,7 +3086,7 @@ pub fn perform_skip_ehp(
     // :3462-3467 `AffectedByAuraMod`: upstream iterates `affectedByAura`, an undeclared GLOBAL (nil), so `pairs(nil)`
     // throws the moment the build has such a mod (D20, upstream bug).
     if !list(&mod_db, &["AffectedByAuraMod"]).is_empty() {
-        panic!("Modules/CalcPerform.lua:3464: bad argument #1 to 'pairs' (table expected, got nil)");
+        panic!("Modules/CalcPerform.lua:3472: bad argument #1 to 'pairs' (table expected, got nil)");
     }
 
     // --- :3470 merge keystones again, to catch any that were added by buffs ---------------------------------------------
@@ -3094,7 +3096,7 @@ pub fn perform_skip_ehp(
     if flag(&mod_db, &["DisableWeapons"]) {
         let rec = rules()
             .unarmed_weapon_data_for(env.class_id as f64)
-            .unwrap_or_else(|| panic!("Modules/CalcPerform.lua:3474: data.unarmedWeaponData[{}] is nil", env.class_id));
+            .unwrap_or_else(|| panic!("Modules/CalcPerform.lua:3482: data.unarmedWeaponData[{}] is nil", env.class_id));
         let mut d = DataTable::default();
         d.set("type", Value::str(&rec.ty));
         d.set("AttackRate", n(rec.AttackRate));
@@ -3230,6 +3232,22 @@ pub fn perform_skip_ehp(
     }
     // --- :3802-3809 the minion: defence, estimations (R7.10), triggers and offence (R7.10b) ----------------------------------------------
     if state.minion.is_some() {
+        // CalcPerform.lua:3837-3839 (07fa089bf)
+        if flag(&env.mod_db, &["MinionsGainYourSpellSuppressionChance"])
+            && let Some(m) = env.minion.clone()
+        {
+            let mdb = m.borrow().mod_db.clone();
+            nm(
+                &mdb,
+                "SpellSuppressionChance",
+                ModType::Base,
+                state.player.output.num("SpellSuppressionChance"),
+                "Player",
+                0,
+                0,
+                vec![],
+            );
+        }
         match defence {
             Some(def) => {
                 def(env, &mut state, Who::Minion);

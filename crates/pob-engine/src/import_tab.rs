@@ -170,6 +170,10 @@ impl ImportedSubgraphs {
             let mut new = Vec::new();
             // `sub_graph_views` is what `pob-tree` shows of a graph: its links, the last one `(entranceNode, parentSocket)` (:2340-2345); a keystone's graph is one node with no links of its own
             for sg in spec.sub_graph_views() {
+                // PassiveSpec.lua:1914-1966 (07fa089bf): a Putrid Seed graph has no `addToAllocatedSubgraphNodes` pass
+                if sg.is_blightcore {
+                    continue;
+                }
                 let (parent, members): (Option<usize>, Vec<usize>) = match sg.links.last() {
                     Some(&(_, parent)) => {
                         let mut m: Vec<usize> = sg.links.iter().flat_map(|l| [l.0, l.1]).filter(|i| *i != parent).collect();
@@ -371,12 +375,12 @@ impl Engine {
             if latest.sockets.contains_key(&id) {
                 return Ok(Some(id));
             }
-            return Err(format!("Classes/ImportTab.lua:1818: attempt to index a nil value (slot '{name}')"));
+            return Err(format!("Classes/ImportTab.lua:1826: attempt to index a nil value (slot '{name}')"));
         }
         if self.result().env.ordered_slots.iter().any(|s| s.slot_name == name) {
             return Ok(None);
         }
-        Err(format!("Classes/ImportTab.lua:1818: attempt to index a nil value (slot '{name}')"))
+        Err(format!("Classes/ImportTab.lua:1826: attempt to index a nil value (slot '{name}')"))
     }
 
     /// `ImportTab:ImportItem(itemData, slotName, ignoreWeaponSwap, itemSetId)` (:1497-1821). `display`: `displayGroup` of the skills tab, what `gemChangeFunc` writes to.
@@ -397,13 +401,13 @@ impl Engine {
                 if inventory == Some("PassiveJewels") {
                     let latest = self.latest_tree()?;
                     let slots = latest.json.jewel_slots.as_deref().unwrap_or(&[]);
-                    let x = x.ok_or("Classes/ImportTab.lua:1500: attempt to perform arithmetic on field 'x' (a nil value)")?;
+                    let x = x.ok_or("Classes/ImportTab.lua:1505: attempt to perform arithmetic on field 'x' (a nil value)")?;
                     let id = slots
                         .get(x as usize)
-                        .ok_or("Classes/ImportTab.lua:1500: attempt to concatenate a nil value")?;
+                        .ok_or("Classes/ImportTab.lua:1505: attempt to concatenate a nil value")?;
                     Some(format!("Jewel {}", pob_lua::tostring_num(*id)))
                 } else if inventory == Some("Flask") {
-                    let x = x.ok_or("Classes/ImportTab.lua:1502: attempt to perform arithmetic on field 'x' (a nil value)")?;
+                    let x = x.ok_or("Classes/ImportTab.lua:1507: attempt to perform arithmetic on field 'x' (a nil value)")?;
                     Some(format!("Flask {}", pob_lua::tostring_num(x + 1.0)))
                 } else if !(ignore_swap && matches!(inventory, Some("Weapon2" | "Offhand2"))) {
                     inventory.and_then(slot_of_inventory).map(str::to_owned)
@@ -495,7 +499,7 @@ impl Engine {
         if truthy(&item_data["tangled"]) {
             item.influence[influence_index("tangle")] = true;
         }
-        let ilvl = tonumber(&item_data["ilvl"]).ok_or("Classes/ImportTab.lua:1584: attempt to compare number with nil")?;
+        let ilvl = tonumber(&item_data["ilvl"]).ok_or("Classes/ImportTab.lua:1592: attempt to compare number with nil")?;
         if ilvl > 0.0 {
             item.item_level = Some(ilvl);
         }
@@ -537,7 +541,7 @@ impl Engine {
                 let key = name.replace(" Rating", "").replace(' ', "");
                 let ad = item.armour_data.get_or_insert_with(Default::default);
                 for value in arr(&p["values"]) {
-                    let v = tonumber(&value[0]).ok_or("Classes/ImportTab.lua:1635: attempt to perform arithmetic on a nil value")?;
+                    let v = tonumber(&value[0]).ok_or("Classes/ImportTab.lua:1643: attempt to perform arithmetic on a nil value")?;
                     let cur = ad.num(&key).unwrap_or(0.0);
                     ad.set(&key, pob_mods::Value::Num(cur + v));
                 }
@@ -711,7 +715,7 @@ impl Engine {
             let gd = data
                 .gems
                 .get(&gem_id)
-                .ok_or_else(|| format!("Classes/ImportTab.lua:1844: no data.gems['{gem_id}']"))?;
+                .ok_or_else(|| format!("Classes/ImportTab.lua:1852: no data.gems['{gem_id}']"))?;
             let mut level = 20.0;
             let mut quality = 0.0;
             for p in arr(&s["properties"]) {
@@ -731,11 +735,11 @@ impl Engine {
                 ..GemInstance::default()
             };
             let socket = tonumber(&s["socket"])
-                .ok_or("Classes/ImportTab.lua:1853: attempt to perform arithmetic on field 'socket' (a nil value)")?;
+                .ok_or("Classes/ImportTab.lua:1861: attempt to perform arithmetic on field 'socket' (a nil value)")?;
             let group_id = item
                 .sockets
                 .get(socket as usize)
-                .ok_or("Classes/ImportTab.lua:1853: attempt to index a nil value (item.sockets)")?
+                .ok_or("Classes/ImportTab.lua:1861: attempt to index a nil value (item.sockets)")?
                 .group;
             let at = match groups.iter().position(|(g, _)| *g == group_id) {
                 Some(i) => i,
@@ -753,13 +757,12 @@ impl Engine {
                 }
             };
             groups[at].1.gem_list.push(gem);
+            // ImportTab.lua:1867-1871 (07fa089bf): the escaped name, or the name of the gem `FindImbuedSupport` finds; no gemChangeFunc
+            // any more (`RebuildImbuedSupportBySlot` at the end, :1911)
             if let Some(b) = s["builtInSupport"].as_str() {
-                let imbued = lua_sub_gsub(b, "Supported by Level 1 ", "");
-                groups[at].1.imbued_support = Some(imbued.clone());
-                // :1861 `data.gems[data.gemForBaseName[...]]` nil: `gemData.id` is an error in the callback's `if`? `gemData and ...` is false: the support is cleared
-                let support = data.gem_for_base_name.0.get(&format!("{} support", imbued.to_lowercase())).cloned();
-                let shown = display.filter(|d| self.socket_groups().get(d - 1).and_then(|g| g.slot.as_deref()) == Some(slot_name));
-                self.set_imbued_support(slot_name, shown, support.as_deref())?;
+                let name = lua_sub_gsub(&pob_items::lua::escape_ggg_string(b), "Supported by Level 1 ", "");
+                let gem = pob_calc::skills_tab::find_imbued_support(&name);
+                groups[at].1.imbued_support = Some(gem.map_or(name, |g| g.name.clone()));
             }
         }
         // :1868 `pairs(itemSocketGroupList)`: the numeric keys, the order of the table
@@ -780,6 +783,12 @@ impl Engine {
                 });
                 match rep {
                     Some(i) => {
+                        // ImportTab.lua:1897 (07fa089bf) `repGroup.imbuedSupport = repGroup.slot and itemSocketGroup.imbuedSupport or nil`
+                        list[i].imbued_support = if list[i].slot.is_some() {
+                            group.imbued_support.clone()
+                        } else {
+                            None
+                        };
                         for (gem, new) in list[i].gem_list.iter_mut().zip(&group.gem_list) {
                             gem.level = new.level;
                             gem.quality = new.quality;
@@ -794,7 +803,14 @@ impl Engine {
                 }
                 Ok(())
             })?;
+            // ImportTab.lua:1907-1909 (07fa089bf) `if repGroup == displayGroup then SetDisplayGroup(repGroup)`: the shown group's controls
+            // are the UI's (pob-ui redraws the display group from the list)
         }
+        // ImportTab.lua:1911 (07fa089bf)
+        self.edit_skills(|t, _| {
+            rebuild_imbued_of(t);
+            Ok(())
+        })?;
         Ok(())
     }
 
@@ -903,6 +919,10 @@ impl Engine {
                 self.import_item(item, None, ignore_swap, Some(set), display)?;
             }
             self.assign_guardian_item_set(set)?;
+        }
+        // ImportTab.lua:1426-1428 (07fa089bf): `ipairs(charData.wickerman or { })`
+        for item in arr(&char_data["wickerman"]) {
+            self.import_item(item, None, ignore_swap, None, display)?;
         }
         let skills = self.skill_data();
         if let Some(order) = &carry.skill_order {

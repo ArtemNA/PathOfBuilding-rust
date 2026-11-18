@@ -1,5 +1,5 @@
 // R5.1: LuaJIT answers for ModParser.lua's INTERNAL parseMod (upvalue of modLib.parseMod, P5-ARCH 2.6) on three line corpora:
-//   cache = the 23 207 lines of data/mod-cache.json, tree = stats lines of the goldens' passive trees (3_13, 3_29=latest) incl. the
+//   cache = the 23 207 lines of data/mod-cache.json, tree = stats lines of the goldens' passive trees (3_13, 3_30=latest) incl. the
 //   "line .. ' ' .. next" combinations PassiveTree:ProcessStats tries (found by running ProcessStats' loop in LuaJIT itself, both with the
 //   bare parser and with ModCache preloaded), item = ModCache misses of the 6 golden builds' items (pob-ts Item.parse, as oracle.test.ts).
 // Per line: inner(line,1) and the wrapper logic ModParser.lua:7000-7018 over inner (no cache) + "wrapper == real Data/ModCache.lua entry".
@@ -38,7 +38,8 @@ const PRE = String.raw`
 local dkjson = require("dkjson")
 local floor = math.floor
 local function up(fn, name) local i = 1 while true do local n, v = debug.getupvalue(fn, i) if not n then return nil end if n == name then return v end i = i + 1 end end
-local inner = assert(up(modLib.parseMod, "parseMod"), "inner parseMod upvalue not found")
+-- 07fa089bf: ModParser.lua:7148 the cached wrapper calls parseModOrdered (:7122), which holds the inner parseMod
+local inner = assert(up(modLib.parseMod, "parseMod") or (up(modLib.parseMod, "parseModOrdered") and up(up(modLib.parseMod, "parseModOrdered"), "parseMod")), "inner parseMod upvalue not found")
 local function fmt17(v)
   local f = v * 1.0
   if f ~= f then return "nan" elseif f == math.huge then return "inf" elseif f == -math.huge then return "-inf" end
@@ -113,9 +114,24 @@ canon = function(v)
   end
   return t
 end
-local function wrapped(line) -- ModParser.lua:7000-7018 over inner, bypassing the cache
-  local ml, ex = inner(line, 1)
-  if ml and ex then ml, ex = inner(line, 2) end
+-- 07fa089bf: the cached wrapper (ModParser.lua:7148-7162) retries a line that did not parse cleanly with the 3.30 "within N metres"
+-- wording rewritten back to "nearby"; the rewrite table is the wrapper's own upvalue (absent before 2.68.0: no retry)
+local nearbyRewrites = up(modLib.parseMod, "nearbyRewrites")
+local function wrapped(line) -- parseModOrdered (ModParser.lua:7122) over inner + the retry of :7151-7161, bypassing the cache
+  local function ordered(l)
+    local ml, ex = inner(l, 1)
+    if ml and ex then ml, ex = inner(l, 2) end
+    return ml, ex
+  end
+  local ml, ex = ordered(line)
+  local nearbyLine = nearbyRewrites and (not ml or ex) and line:lower()
+  if nearbyLine and nearbyLine:find("within [%d%.]+ metre") then
+    for _, rewrite in ipairs(nearbyRewrites) do
+      nearbyLine = nearbyLine:gsub(rewrite[1], rewrite[2])
+    end
+    local nml, nex = ordered(nearbyLine)
+    if nml and not nex then ml, ex = nml, nil end
+  end
   return ml, ex
 end
 local function errmsg(e) return encStr((tostring(e):gsub("^eval:%d+: ", ""))) end
@@ -270,7 +286,7 @@ const cacheLines = new Set(cacheJson.map((e) => e.line))
 function treeSds(): { sds: string[][]; singles: Map<string, Set<string>> } {
   const sds: string[][] = []
   const singles = new Map<string, Set<string>>()
-  for (const v of ['3_13', '3_29']) {
+  for (const v of ['3_13', '3_30']) {
     const t = JSON.parse(readFileSync(resolve(ROOT, `data/tree/${v}.json`), 'utf8')) as { nodes: Record<string, Rec> }
     const set = new Set<string>()
     const effects = new Set<number>()

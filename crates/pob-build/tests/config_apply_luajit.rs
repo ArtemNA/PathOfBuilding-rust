@@ -1,4 +1,4 @@
-//! R3.5b gate: all 539 `apply` closures of ConfigOptions.lua against LuaJIT, closure by closure.
+//! R3.5b gate: all 543 `apply` closures of ConfigOptions.lua against LuaJIT, closure by closure.
 //!
 //! Fixture `fixtures/config-apply.json` = `tools/lua-corpus/export-config-apply.ts` (docker LuaJIT, PoB HeadlessWrapper,
 //! `newBuild()`): for every var with an `apply` and representative values by type, `apply(val, modList, enemyModList, build)`
@@ -149,16 +149,17 @@ fn ctldiff(before: &ConfigState, after: &ConfigState, with_placeholder: bool) ->
 }
 
 #[test]
-fn all_539_apply_closures_match_luajit() {
+fn all_543_apply_closures_match_luajit() {
     let vars = compare_with_fixture("config-apply.json");
-    assert_eq!(vars, 539, "the fixture covers every var with an apply");
+    // 543: LuaJIT count of ConfigOptions entries with `apply` on 07fa089bf (tools/.scratch/count-data.ts, cfgApply)
+    assert_eq!(vars, 543, "the fixture covers every var with an apply");
 }
 
-/// Every var with an `apply` that is not a `check`: 217.
+/// Every var with an `apply` that is not a `check`: 220 (LuaJIT on 07fa089bf, tools/.scratch/count-tree-cache.ts cfgApplyNoCheck).
 #[test]
 fn string_values_match_luajit() {
     let vars = compare_with_fixture("config-apply-strings.json");
-    assert_eq!(vars, 539 - 322, "the fixture covers every var with an apply but `check`");
+    assert_eq!(vars, 220, "the fixture covers every var with an apply but `check`");
 }
 
 /// The number of vars of the fixture.

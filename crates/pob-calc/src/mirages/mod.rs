@@ -155,7 +155,7 @@ pub(crate) fn triggers_on_detached(env: &Env) -> Result<(), String> {
     if st(env).skill(DETACHED).flag("disable") || is_limited(env, DETACHED) {
         Ok(())
     } else {
-        Err("CalcTriggers.lua:1602-1627 calcs.triggers on a mirage's copy that is not in env.limitedSkills (R7.9)".into())
+        Err("CalcTriggers.lua:1611-1636 calcs.triggers on a mirage's copy that is not in env.limitedSkills (R7.9)".into())
     }
 }
 
@@ -573,13 +573,15 @@ fn wisps_pre(env: &mut Env, new_env: &Env, m: usize) -> Result<(), String> {
     let main_cfg = cfg_of(env, m);
     let less_damage = nq.base(Some(&main_cfg), &["SacredWispsLessDamage"]);
     // :294-300 the Wisps summoning skill
-    let (mut chance, mut max_count) = (None, None);
+    let (mut chance, mut max_count, mut summoned) = (None, None, None);
     let n = st(env).active_skill_list.len();
     for j in 0..n {
         if name_of_skill(st(env), &st(env).active_skill_list[j]) == "Summon Sacred Wisps" {
             let q = q_of(env, j);
             chance = Some(q.base(Some(&main_cfg), &["SacredWispsChance"]));
             max_count = Some(q.base(Some(&main_cfg), &["SacredWispsMaxCount"]));
+            // CalcMirages.lua:299 (07fa089bf): with the Wisps skill's own cfg
+            summoned = Some(2.0 + q.base(Some(&cfg_of(env, j)), &["SacredWispsSummoned"]));
             break;
         }
     }
@@ -593,11 +595,15 @@ fn wisps_pre(env: &mut Env, new_env: &Env, m: usize) -> Result<(), String> {
         let sk = st_mut(env).skill_mut(m);
         if sk.info_message.is_none() {
             let c = max_count.map_or_else(|| "nil".to_owned(), tostring_num);
-            sk.info_message = Some(format!("{c} Sacred Wisps using {new_name}"));
+            // CalcMirages.lua:310-311 (07fa089bf); `mirage.summoned` (:308) has no reader
+            let s = summoned
+                .map(tostring_num)
+                .unwrap_or_else(|| panic!("{CM}:311: attempt to concatenate local 'wispsSummoned' (a nil value)"));
+            sk.info_message = Some(format!("{c} Sacred Wisps using {new_name} ({s} summoned per trigger)"));
         }
     }
     nm(&nq.list, "Damage", ModType::More, Value::Num(less_damage), "Used by Sacred Wisps");
-    let chance = chance.unwrap_or_else(|| panic!("{CM}:312: attempt to perform arithmetic on local 'wispsCastChance' (a nil value)"));
+    let chance = chance.unwrap_or_else(|| panic!("{CM}:316: attempt to perform arithmetic on local 'wispsCastChance' (a nil value)"));
     nm(
         &nq.list,
         "Speed",
@@ -805,7 +811,7 @@ fn generals_cry(env: &mut Env, m: usize) -> Result<bool, String> {
         sk.skill_types.insert(crate::offence::skill_type_u32("Triggered"));
         sk.skill_cfg
             .as_mut()
-            .unwrap_or_else(|| panic!("{CM}:358: attempt to index field 'skillCfg' (a nil value)"))
+            .unwrap_or_else(|| panic!("{CM}:362: attempt to index field 'skillCfg' (a nil value)"))
             .skill_cond
             .insert("usedByMirage".into(), true);
         sk.skill_types.insert(crate::offence::skill_type_u32("OtherThingUsesSkill"));
@@ -815,17 +821,17 @@ fn generals_cry(env: &mut Env, m: usize) -> Result<bool, String> {
     let sess = session(env)?;
     if !sess.cache().contains(mode, &uuid) || mode == CalcMode::Calculator {
         sess.build_active_skill(env, mode, m, Some(&uuid), std::slice::from_ref(&uuid))
-            .map_err(|e| format!("{CM}:362 calcs.buildActiveSkill: {}", e.0))?;
+            .map_err(|e| format!("{CM}:366 calcs.buildActiveSkill: {}", e.0))?;
     }
     let (hit_time, time) = {
         let cache = sess.cache();
         let c = cache
             .get(mode, &uuid)
-            .unwrap_or_else(|| panic!("{CM}:364: attempt to index field '?' (a nil value)"));
+            .unwrap_or_else(|| panic!("{CM}:368: attempt to index field '?' (a nil value)"));
         let r = c.run.borrow();
         if !r.offence_ran {
             return Err(format!(
-                "{CM}:364 GlobalCache.cachedData[{}][{uuid}].Env.player.output: the cached run stopped at a boundary of the port",
+                "{CM}:368 GlobalCache.cachedData[{}][{uuid}].Env.player.output: the cached run stopped at a boundary of the port",
                 mode.as_str()
             ));
         }
@@ -838,7 +844,7 @@ fn generals_cry(env: &mut Env, m: usize) -> Result<bool, String> {
         let g = s
             .skill(i)
             .socket_group
-            .unwrap_or_else(|| panic!("{CM}:368: attempt to index field 'socketGroup' (a nil value)"));
+            .unwrap_or_else(|| panic!("{CM}:372: attempt to index field 'socketGroup' (a nil value)"));
         s.tab.socket_group_list()[g].slot.clone()
     };
     let main_slot = slot_of(env, m);
@@ -852,7 +858,7 @@ fn generals_cry(env: &mut Env, m: usize) -> Result<bool, String> {
             break;
         }
     }
-    let gc = gc.unwrap_or_else(|| panic!("{CM}:376: attempt to index local 'generalsCryActiveSkill' (a nil value)"));
+    let gc = gc.unwrap_or_else(|| panic!("{CM}:380: attempt to index local 'generalsCryActiveSkill' (a nil value)"));
     let main_q = q_of(env, m);
     // :376-380 scale DPS with the mirage quantity
     let mut max_warriors = 0.0;
@@ -870,7 +876,7 @@ fn generals_cry(env: &mut Env, m: usize) -> Result<bool, String> {
         max_warriors += md
             .value
             .as_num()
-            .unwrap_or_else(|| panic!("{CM}:379: attempt to perform arithmetic on field 'value'"));
+            .unwrap_or_else(|| panic!("{CM}:383: attempt to perform arithmetic on field 'value'"));
     }
     // :383-391
     let mut spawn_time = 0.3 + 0.2 * max_warriors;
@@ -886,7 +892,7 @@ fn generals_cry(env: &mut Env, m: usize) -> Result<bool, String> {
     // :395-396
     let t = hit_time
         .or(time)
-        .unwrap_or_else(|| panic!("{CM}:395: bad argument #2 to 'max' (number expected, got nil)"));
+        .unwrap_or_else(|| panic!("{CM}:399: bad argument #2 to 'max' (number expected, got nil)"));
     cooldown = max2(cooldown, t);
     main_q.new_mod(
         "DPS",

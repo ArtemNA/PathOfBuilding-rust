@@ -604,16 +604,14 @@ impl SkillsTab {
         self.group_count.set_text(g, &tostring_num(group.group_count.unwrap_or(1.0)), false);
         let imbued = self.imbued();
         if let Some(name) = &group.imbued_support {
-            let d = pob_data::gems::gems();
-            let gem = d
-                .gem_for_base_name
-                .get(&format!("{} support", name.to_ascii_lowercase()))
-                .and_then(|i| d.gems.0.get(i))
-                .expect("Classes/SkillsTab.lua:1290: attempt to index local 'gemId' (a nil value)");
-            *imbued.gem_id.borrow_mut() = Some(gem.id.clone());
+            // SkillsTab.lua:1297-1300 (07fa089bf): `FindImbuedSupport` (saved and import names), nil -> "^8"
+            let gem = pob_calc::skills_tab::find_imbued_support(name);
+            *imbued.gem_id.borrow_mut() = gem.map(|gem| gem.id.clone());
             imbued.edit.set_text(g, name, false);
             let skills = pob_data::skills::skills();
-            *imbued.edit.inactive_col.borrow_mut() = skill_color(skills.get(&gem.granted_effect_id).and_then(|x| x.color));
+            // `gem and data.skillColorMap[...] or "^8"`: a nil colour falls through to "^8" too
+            let col = gem.map(|gem| skill_color(skills.get(&gem.granted_effect_id).and_then(|x| x.color)));
+            *imbued.edit.inactive_col.borrow_mut() = col.filter(|c| !c.is_empty()).unwrap_or_else(|| "^8".into());
         } else {
             *imbued.gem_id.borrow_mut() = None;
             imbued.edit.set_text(g, "", false);
@@ -2237,7 +2235,17 @@ pub fn new_skills_tab(g: &mut Gfx, build: Weak<BuildMode>) -> Rc<SkillsTab> {
             rect(0.0, 30.0, 0.0, 16.0),
             Prop::func(move |_| t1().source_note_text()),
         );
-        source_note.base.shown.set_fn(has_source);
+        // SkillsTab.lua:384-386 (07fa089bf): not for the "Config" groups (Custom Modifiers)
+        let t1 = t.clone();
+        source_note.base.shown.set_fn(move |_: &Gfx| {
+            let s = t1();
+            s.display_index().is_some_and(|d| {
+                s.read(|e| {
+                    let src = e.socket_groups()[d - 1].source.clone();
+                    src.is_some() && src.as_deref() != Some("Config")
+                })
+            })
+        });
         host.add("sourceNote", source_note.clone());
         let scroll_bar_h = ScrollBarControl::new(None, rect(0.0, 0.0, 0.0, 18.0), Some(100.0), Some("HORIZONTAL"), true);
         host.add("scrollBarH", scroll_bar_h.clone());
@@ -2456,7 +2464,7 @@ fn socket_description_line(item: &pob_items::Item) -> String {
             "B" => cc("INTELLIGENCE"),
             "W" => cc("SCION"),
             "A" => "^xB0B0B0".to_string(),
-            o => panic!("Classes/ItemsTab.lua:4270: attempt to concatenate local 'code' (a nil value): socket {o}"),
+            o => panic!("Classes/ItemsTab.lua:4325: attempt to concatenate local 'code' (a nil value): socket {o}"),
         };
         line.push_str(&code);
         line.push_str(&s.color);

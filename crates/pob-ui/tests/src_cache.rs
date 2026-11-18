@@ -413,8 +413,8 @@ fn the_art_of_every_tree_is_the_same() {
         }
     }
     assert!(failed.is_empty(), "{failed:#?}");
-    // 42 folders of TreeData: 41 versions and `legion`
-    assert_eq!(seen, 41);
+    // 44 folders of TreeData: the 43 versions of `treeVersionList` (GameVersions.lua:11-13 @ 07fa089bf) and `legion`
+    assert_eq!(seen, 43);
 }
 
 /// The art of a tree by the text and by the table (`--ignored --nocapture`): what the first opening of the Tree tab and a change of the tree version read. Min of 7.
@@ -461,5 +461,5 @@ fn the_tree_tables_are_projections() {
             n += 1;
         }
     }
-    assert_eq!(n, 41);
+    assert_eq!(n, 43); // GameVersions.lua:11-13 `treeVersionList` @ 07fa089bf
 }

@@ -174,6 +174,81 @@ pub struct Evaluation {
     pub output: HashMap<String, f64>,
     pub weight: f64,
     pub dns: Option<Vec<String>>,
+    /// `statDetails` (TradeQuery.lua:919-922, :941, 07fa089bf).
+    pub stat_details: Option<Vec<StatDetail>>,
+}
+
+/// An entry of `:ComputeStatDetails` (TradeQuery.lua:855-860, 07fa089bf).
+#[derive(Clone, Debug, PartialEq)]
+pub struct StatDetail {
+    pub label: String,
+    pub stat: String,
+    pub percent_change: f64,
+    /// `statTable.weightMult or 0`.
+    pub weight_mult: f64,
+}
+
+/// `getTradeStatValue(output, statTable, useFullDpsFallback)` (TradeQuery.lua:821-828, 07fa089bf).
+fn get_trade_stat_value(output: &pob_calc::output::Output, stat: &str, use_full_dps_fallback: bool) -> f64 {
+    let o = Out::Full(output);
+    if use_full_dps_fallback {
+        return get_stat(o, "TotalDPS") + get_stat(o, "TotalDotDPS") + get_stat(o, "CombinedDPS");
+    }
+    get_stat(o, stat)
+}
+
+/// `getTradeStatRatio(baseOutput, newOutput, statTable)` (TradeQuery.lua:830-845, 07fa089bf).
+fn get_trade_stat_ratio(base: &pob_calc::output::Output, new: &pob_calc::output::Output, stat: &str) -> f64 {
+    // `not (baseOutput.FullDPS and newOutput.FullDPS)`
+    let use_full_dps_fallback = stat == "FullDPS" && !(base.get("FullDPS").is_some() && new.get("FullDPS").is_some());
+    let base_stat = get_trade_stat_value(base, stat, use_full_dps_fallback);
+    let new_stat = get_trade_stat_value(new, stat, use_full_dps_fallback);
+    if base_stat == f64::INFINITY {
+        return if new_stat == f64::INFINITY { 1.0 } else { 0.0 };
+    } else if new_stat == f64::INFINITY {
+        return generator::MAX_STAT_INCREASE;
+    } else if base_stat == 0.0 {
+        if new_stat == 0.0 {
+            return 1.0;
+        }
+        return if new_stat > 0.0 { generator::MAX_STAT_INCREASE } else { 0.0 };
+    }
+    let r = new_stat / if base_stat != 0.0 { base_stat } else { 1.0 };
+    // `m_min(r, data.misc.maxStatIncrease)`: NaN stays, as in `WeightedRatioOutputs`
+    if generator::MAX_STAT_INCREASE < r {
+        generator::MAX_STAT_INCREASE
+    } else {
+        r
+    }
+}
+
+/// `TradeQueryClass:ComputeStatDetails(baseOutput, newOutput)` (TradeQuery.lua:847-863, 07fa089bf).
+fn compute_stat_details(base: &pob_calc::output::Output, new: &pob_calc::output::Output, list: &[TradeStat]) -> Vec<StatDetail> {
+    list.iter()
+        .map(|s| {
+            let ratio = get_trade_stat_ratio(base, new, &s.stat);
+            // `(statTable.transform(statRatio) - statTable.transform(1)) * 100`; `transform` is `function(value) return -value end`
+            let percent_change = if s.negate { (-ratio - -1.0) * 100.0 } else { (ratio - 1.0) * 100.0 };
+            StatDetail {
+                label: s.label.clone(),
+                stat: s.stat.clone(),
+                percent_change,
+                weight_mult: s.weight_mult.unwrap_or(0.0),
+            }
+        })
+        .collect()
+}
+
+/// `TradeQueryClass:GetResultScorePercent(evaluation)` (TradeQuery.lua:865-877, 07fa089bf).
+fn get_result_score_percent(evaluation: Option<&Evaluation>) -> Option<f64> {
+    let details = evaluation?.stat_details.as_ref()?;
+    let mut total_weight = 0.0;
+    let mut score_percent = 0.0;
+    for d in details {
+        total_weight += d.weight_mult;
+        score_percent += d.percent_change * d.weight_mult;
+    }
+    (total_weight > 0.0).then(|| score_percent / total_weight)
 }
 
 #[derive(Clone, Debug)]
@@ -1163,7 +1238,7 @@ impl TradeQuery {
         small
     }
 
-    /// `:GetResultEvaluation(row_idx, result_index)` (:822-881).
+    /// `:GetResultEvaluation(row_idx, result_index)` (TradeQuery.lua:880-945, 07fa089bf).
     fn get_result_evaluation(&self, row: usize, index: usize) -> Vec<Evaluation> {
         let tab = self.tab();
         let list = self.stat_list().unwrap_or_default();
@@ -1211,10 +1286,12 @@ impl TradeQuery {
                         output,
                         weight,
                         dns: Some(nodes.iter().map(|&t| spec.tree.nodes[t].dn.clone()).collect()),
+                        // TradeQuery.lua:919-922 (07fa089bf): `self:ComputeStatDetails(baseOutput, fullOutputNN)`
+                        stat_details: Some(compute_stat_details(&b.state.player.output, &r.state.player.output, &list)),
                     })
                 };
                 let [a, b2, c] = added[..] else {
-                    return Err("Classes/TradeQuery.lua:847: table index is nil".to_string());
+                    return Err("Classes/TradeQuery.lua:905: table index is nil".to_string());
                 };
                 let mut out = vec![
                     eval(&[a, b2], 4.0)?,
@@ -1252,38 +1329,68 @@ impl TradeQuery {
             let r = run.borrow();
             let output = self.reduce_output(Out::Full(&r.state.player.output), &list);
             let weight = weighted_ratio_outputs(base_out, Out::Small(&output), &list);
-            Ok(vec![Evaluation { output, weight, dns: None }])
+            // TradeQuery.lua:941-942 (07fa089bf)
+            let stat_details = compute_stat_details(&b.state.player.output, &r.state.player.output, &list);
+            Ok(vec![Evaluation {
+                output,
+                weight,
+                dns: None,
+                stat_details: Some(stat_details),
+            }])
         });
         let v = result.unwrap_or_else(|e| panic!("{e}"));
         self.result_tbl.borrow_mut().get_mut(&row).expect("row")[index - 1].evaluation = Some(v.clone());
         v
     }
 
-    /// `:UpdateDropdownList(row_idx)` (:884-899).
+    /// `:UpdateDropdownList(row_idx)` (TradeQuery.lua:948-975, 07fa089bf).
     fn update_dropdown_list(&self, g: &Gfx, row: usize) {
-        let rows = self.result_tbl.borrow();
-        let Some(results) = rows.get(&row) else { return };
+        use pob_lua::format::{Arg, format};
+        let Some(dropdown) = self.rows.borrow().get(&row).map(|r| r.result.clone()) else {
+            return;
+        };
+        if !self.result_tbl.borrow().contains_key(&row) {
+            return;
+        }
+        let Some(sorted) = self
+            .sorted_result_tbl
+            .borrow()
+            .get(&row)
+            .map(|s| s.iter().map(|x| x.index).collect::<Vec<_>>())
+        else {
+            return;
+        };
         let mut labels = Vec::new();
-        let sorted = self.sorted_result_tbl.borrow();
-        for i in 0..results.len() {
-            let pb = sorted[&row][i].index;
-            let r = &results[pb - 1];
-            let price = pob_lua::format::format(
-                " %s(%d %s)",
+        for pb in sorted {
+            let Some(r) = self.result_tbl.borrow()[&row].get(pb.wrapping_sub(1)).map(|r| r.item.clone()) else {
+                continue;
+            };
+            // `s_format(" %s(%s %s)", colorCodes["CURRENCY"], tostring(result.amount), result.currency)`
+            let price = format(
+                " %s(%s %s)",
                 &[
-                    pob_lua::format::Arg::Str(&cc("CURRENCY")),
-                    pob_lua::format::Arg::Num(r.item.amount.unwrap_or(0.0)),
-                    pob_lua::format::Arg::Str(r.item.currency.as_deref().unwrap_or("")),
+                    Arg::Str(&cc("CURRENCY")),
+                    r.amount.map_or(Arg::Nil, Arg::Num),
+                    r.currency.as_deref().map_or(Arg::Nil, Arg::Str),
                 ],
             )
             .expect("format");
-            let item = Item::parse_with(&r.item.item_string, None, false);
-            labels.push(DropItem::str(&format!("{}{}{price}", cc(&item.rarity), item.name)));
+            let item = Item::parse_with(&r.item_string, None, false);
+            // `if self.itemsTab.build then`: the items tab always has its build here
+            let eval = self.get_result_evaluation(row, pb);
+            let score_percent = get_result_score_percent(eval.first());
+            let score_detail = score_percent.map(|p| {
+                let color = if p >= 0.0 { cc("POSITIVE") } else { cc("NEGATIVE") };
+                format("%s%+.1f%%", &[Arg::Str(&color), Arg::Num(p)]).expect("format")
+            });
+            labels.push(DropItem {
+                detail: score_detail,
+                strikethrough: score_percent.is_some_and(|p| p < 0.0),
+                ..DropItem::table(&format!("{}{}{price}", cc(&item.rarity), item.name))
+            });
         }
-        let rows2 = self.rows.borrow();
-        let d = &rows2[&row].result;
-        d.sel_index.set(1);
-        d.set_list(g, Some(labels));
+        dropdown.sel_index.set(1);
+        dropdown.set_list(g, Some(labels));
     }
 
     /// `:ResetResultRow(rowIdx)` (:900-907).
@@ -1653,6 +1760,9 @@ impl TradeQuery {
             None,
             false,
         );
+        // TradeQuery.lua:1300-1301 (07fa089bf)
+        result.enable_dropped_width.set(true);
+        result.max_dropped_width.set(600.0);
         let rr: ControlRef = result.clone();
         controls.insert(format!("resultDropdown{row}"), result.clone());
         let m = self.me.borrow().clone();
@@ -1676,6 +1786,44 @@ impl TradeQuery {
                     .add_tooltip(tooltip, g, &item, t.tooltip_slot(&st2, active2.as_ref()).as_ref(), false);
                 t.megalomaniac_tooltip(tooltip, g, &st2, row, pb);
                 tooltip.add_separator(Some(10.0));
+                // TradeQuery.lua:1333-1346 (07fa089bf): `result.evaluation` as the Megalomaniac lines left it
+                let eval = t
+                    .result_tbl
+                    .borrow()
+                    .get(&row)
+                    .and_then(|r| r.get(pb - 1))
+                    .and_then(|e| e.evaluation.clone());
+                if let Some(first) = eval.as_ref().and_then(|e| e.first())
+                    && let Some(details) = &first.stat_details
+                {
+                    use pob_lua::format::{Arg, format};
+                    let score_percent = get_result_score_percent(Some(first));
+                    let score_color = if score_percent.is_some_and(|p| p >= 0.0) {
+                        cc("POSITIVE")
+                    } else {
+                        cc("NEGATIVE")
+                    };
+                    tooltip.add_line(g, 16.0, Some("^7Score Breakdown:"));
+                    for d in details {
+                        let color = if d.percent_change >= 0.0 { cc("POSITIVE") } else { cc("NEGATIVE") };
+                        let line = format(
+                            "  %s%s: %+.1f%%^7 (weight: %.2f)",
+                            &[
+                                Arg::Str(&color),
+                                Arg::Str(&d.label),
+                                Arg::Num(d.percent_change),
+                                Arg::Num(d.weight_mult),
+                            ],
+                        )
+                        .expect("format");
+                        tooltip.add_line(g, 16.0, Some(&line));
+                    }
+                    if let Some(p) = score_percent {
+                        let line = format("  %sOverall: %+.1f%%", &[Arg::Str(&score_color), Arg::Num(p)]).expect("format");
+                        tooltip.add_line(g, 16.0, Some(&line));
+                    }
+                    tooltip.add_separator(Some(10.0));
+                }
                 tooltip.add_line(
                     g,
                     16.0,
@@ -1727,7 +1875,7 @@ impl TradeQuery {
             let t = m.upgrade().expect("tradeQuery");
             let idx = t.item_index_tbl.borrow().get(&row).copied();
             let Some(idx) = idx else {
-                panic!("Classes/TradeQuery.lua:1275: attempt to index a nil value");
+                panic!("Classes/TradeQuery.lua:1367: attempt to index a nil value");
             };
             let raw = t.result_tbl.borrow()[&row][idx - 1].item.item_string.clone();
             let item = Rc::new(Item::parse_with(&raw, None, false));
@@ -1776,7 +1924,7 @@ impl TradeQuery {
             let t = m.upgrade().expect("tradeQuery");
             let has = t
                 .current_result(row)
-                .unwrap_or_else(|| panic!("Classes/TradeQuery.lua:1334: attempt to index local 'itemResult' (a nil value)"))
+                .unwrap_or_else(|| panic!("Classes/TradeQuery.lua:1426: attempt to index local 'itemResult' (a nil value)"))
                 .whisper
                 .is_some();
             tooltip.add_line(
@@ -1839,7 +1987,7 @@ impl TradeQuery {
     /// The click of `whisperButton` (:1303-1328).
     fn whisper_click(&self, g: &mut Gfx, row: usize) {
         let Some(item) = self.current_result(row) else {
-            panic!("Classes/TradeQuery.lua:1305: attempt to index local 'itemResult' (a nil value)");
+            panic!("Classes/TradeQuery.lua:1397: attempt to index local 'itemResult' (a nil value)");
         };
         if let Some(w) = item.whisper.as_ref().filter(|_| item.price_type.as_deref() != Some("~b/o")) {
             g.copy(w);
@@ -1847,7 +1995,7 @@ impl TradeQuery {
         }
         let last = self.last_queries.borrow().get(&row).cloned().unwrap_or_default();
         let mut exact = dkjson::decode(&last)
-            .unwrap_or_else(|| panic!("Classes/TradeQuery.lua:1312: attempt to index local 'exactQuery' (a nil value)"));
+            .unwrap_or_else(|| panic!("Classes/TradeQuery.lua:1404: attempt to index local 'exactQuery' (a nil value)"));
         let q = &mut exact["query"];
         if q["stats"][0]["type"] == "weight" {
             let w = pob_lua::tonumber(&item.weight).unwrap_or(0.0);
@@ -2096,7 +2244,20 @@ impl TradeQuery {
             "weights": weights,
             "modWeights": mod_weights,
             "lastQueries": self.last_queries.borrow().iter().map(|(k, v)| (k.to_string(), v.clone())).collect::<BTreeMap<_, _>>(),
-            "rowLists": self.rows.borrow().iter().map(|(k, r)| (k.to_string(), r.result.list.borrow().iter().map(|i| i.label.clone().unwrap_or_default()).collect::<Vec<_>>())).collect::<BTreeMap<_, _>>(),
+            // TradeQuery.lua:1302-1308 (07fa089bf): every entry is a table `{ label, detail, strikethrough }`; `detail` and
+            // `strikethrough = scorePercent and scorePercent < 0` exist together (nil without a score), as the runner's json.encode shows them
+            "rowLists": self.rows.borrow().iter().map(|(k, r)| (k.to_string(), r.result.list.borrow().iter().map(|i| {
+                if !i.is_table {
+                    return json!(i.label.clone().unwrap_or_default());
+                }
+                let mut o = serde_json::Map::new();
+                o.insert("label".into(), json!(i.label.clone().unwrap_or_default()));
+                if let Some(d) = &i.detail {
+                    o.insert("detail".into(), json!(d));
+                    o.insert("strikethrough".into(), json!(i.strikethrough));
+                }
+                Json::Object(o)
+            }).collect::<Vec<_>>())).collect::<BTreeMap<_, _>>(),
             "rates": self.currency.borrow().iter().map(|(k, v)| (k.clone(), json!(v.leagues))).collect::<BTreeMap<_, _>>(),
         })
     }
@@ -2300,5 +2461,37 @@ mod tests {
         let mut l = default_stat_list();
         l[1].weight_mult = Some(0.25);
         assert!(!is_same_as_default(&l));
+    }
+
+    #[test]
+    fn score_percent_is_the_weighted_mean() {
+        // TradeQuery.lua:865-877 (07fa089bf)
+        let d = |percent_change: f64, weight_mult: f64| StatDetail {
+            label: String::new(),
+            stat: String::new(),
+            percent_change,
+            weight_mult,
+        };
+        let e = |details: Option<Vec<StatDetail>>| Evaluation {
+            output: HashMap::new(),
+            weight: 0.0,
+            dns: None,
+            stat_details: details,
+        };
+        assert_eq!(get_result_score_percent(None), None);
+        assert_eq!(get_result_score_percent(Some(&e(None))), None);
+        assert_eq!(get_result_score_percent(Some(&e(Some(vec![d(10.0, 0.0)])))), None);
+        assert_eq!(
+            get_result_score_percent(Some(&e(Some(vec![d(10.0, 1.0), d(-40.0, 0.5)])))),
+            Some(-10.0 / 1.5)
+        );
+        let s = pob_lua::format::format(
+            "%s%+.1f%%",
+            &[pob_lua::format::Arg::Str(""), pob_lua::format::Arg::Num(-10.0 / 1.5)],
+        )
+        .unwrap();
+        assert_eq!(s, "-6.7%");
+        let s = pob_lua::format::format("%+.1f", &[pob_lua::format::Arg::Num(12.34)]).unwrap();
+        assert_eq!(s, "+12.3");
     }
 }

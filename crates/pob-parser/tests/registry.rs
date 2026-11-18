@@ -10,17 +10,19 @@ fn tables_and_fns_count_as_upstream() {
     let d = mod_parser();
     let want = [
         ("formList", 85),
-        // 3dbca4463 (R-UP, from the ModParser.lua diff): modNameList +2, specialModList +5 (2 of them closures)
-        ("modNameList", 726),
-        ("modFlagList", 181),
-        ("preFlagList", 190),
-        ("modTagList", 665),
-        ("specialModList", 3_117),
+        // 07fa089bf (R-UP2): every count below measured in LuaJIT on the real upvalues of the inner parseMod
+        // (tools/.scratch/count-modparser.ts, `pairs` count per table; fns = distinct definitions reachable through table values
+        // and upvalues, fn_refs = function values inside the table values). 3dbca4463: modNameList 726, specialModList 3 117.
+        ("modNameList", 728),
+        ("modFlagList", 183),
+        ("preFlagList", 191),
+        ("modTagList", 667),
+        ("specialModList", 3_181),
         ("jewelFuncList", 142),
         ("clusterJewelSkills", 362),
         ("unsupportedModList", 3),
-        ("preSkillNameList", 2_446),
-        ("skillNameList", 662),
+        ("preSkillNameList", 2_456),
+        ("skillNameList", 664),
         ("suffixTypes", 35),
         ("penTypes", 6),
         ("flagTypes", 37),
@@ -34,15 +36,15 @@ fn tables_and_fns_count_as_upstream() {
     for (name, n) in want {
         assert_eq!(d.table(name).len(), n, "{name}");
     }
-    assert_eq!(d.fns.len(), 1_265);
+    assert_eq!(d.fns.len(), 1_292);
     // direct closure values per table (R5.1b §2): special 1 688, modTag 136, preFlag 7, jewel 142 (`{func = fn, type}`)
     let fn_values = |name: &str| d.table(name).vals.iter().filter(|v| matches!(v, PVal::Fn(_))).count();
-    assert_eq!(fn_values("specialModList"), 1_690);
-    assert_eq!(fn_values("modTagList"), 136);
+    assert_eq!(fn_values("specialModList"), 1_726);
+    assert_eq!(fn_values("modTagList"), 137);
     assert_eq!(fn_values("preFlagList"), 7);
     let jewel = d.table("jewelFuncList");
     assert!(jewel.vals.iter().all(|v| v.field("func").is_some_and(|f| matches!(f, PVal::Fn(_)))));
-    assert_eq!(d.fn_refs, 1_975);
+    assert_eq!(d.fn_refs, 2_012);
     // everything else is static
     for name in pob_data::mod_parser::TABLE_NAMES {
         if !matches!(name, "specialModList" | "modTagList" | "preFlagList" | "jewelFuncList") {
@@ -52,7 +54,8 @@ fn tables_and_fns_count_as_upstream() {
     // L9: the two `^tornado shot fires ...` entries keep a tag at [2] with [1] nil
     assert_eq!(d.table("specialModList").orphan_tags.len(), 2);
     assert_eq!(d.gem_id_lookup.len(), d.gem_id_lookup.len().max(1));
-    assert_eq!(d.conqueror_list.len(), 28);
+    // 07fa089bf: + "mazcotl" (ModParser.lua:46-47; 29 `["..."]` entries counted in the Lua table)
+    assert_eq!(d.conqueror_list.len(), 29);
 }
 
 #[test]

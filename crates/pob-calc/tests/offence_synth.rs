@@ -635,9 +635,10 @@ fn minion_scenarios_match_luajit() {
     assert!(bad.is_empty(), "minion scenarios != LuaJIT ({}):\n{}", bad.len(), bad.join("\n"));
     // R7.10b: the player's output = LuaJIT on all 23; `Minion.*` complete and = LuaJIT bit for bit on all 23 (14 215 keys; before R7.10b
     // the 3 322 keys of the minion's triggers / offence were missing, CalcPerform.lua:3807-3808).
+    // 07fa089bf: 14 261 = 14 215 + 23 x 2 (`Minion.MaximumLifeManaDifference` / `Minion.MissingUnreservedLifePercent`, all = LuaJIT)
     assert_eq!(
         (n, player_equal, minion_equal_all, tot_keys, tot_equal, tot_missing),
-        (23, 23, 23, 14215, 14215, 0),
+        (23, 23, 23, 14261, 14261, 0),
         "pinned state of the 23 minion scenarios"
     );
 }
@@ -647,7 +648,7 @@ fn minion_scenarios_match_luajit() {
 /// `unimplemented` notes a synth2 scenario may carry beyond its base golden's, with the measured reason: `(scenario, note prefix, why)`.
 const SYNTH2_KNOWN_NOTES: [(&str, &str, &str); 1] = [(
     "s2-enemy-explode-avg-2types",
-    "Data/Skills/other.lua:6230 skills.EnemyExplode.preDamageFunc: pairs(typeAmountChances)",
+    "Data/Skills/other.lua:6393 skills.EnemyExplode.preDamageFunc: pairs(typeAmountChances)",
     "R13 (lj-strhash): the fixture holds the LuaJIT run of Rust's insertion order; the other order changes no key (r13.otherOrder)",
 )];
 
@@ -661,10 +662,10 @@ const MINION_PATH_P5_NOTE: &str = "CalcPerform.lua:3811-3990 buff export, party 
 /// = LuaJIT but with the boundary note of its cached run).
 const SYNTH2_BOUNDARY: [(&str, &[&str], usize); 0] = [];
 
-/// The CalcPerform.lua:1488-1489 note (The Saviour's Reflection, perform/skills_loop.rs) names the skill's list index, which an extra
+/// The CalcPerform.lua:1490-1491 note (The Saviour's Reflection, perform/skills_loop.rs) names the skill's list index, which an extra
 /// socket group shifts (`s2-saviour-dominating-blow-dlink`: skill 3/4 vs the golden's 2/3) -- compared without it.
 fn note_key(u: &str) -> String {
-    const P: &str = "CalcPerform.lua:1488-1489 activeSkill.infoMessage/infoTrigger of skill ";
+    const P: &str = "CalcPerform.lua:1490-1491 activeSkill.infoMessage/infoTrigger of skill ";
     match u.strip_prefix(P) {
         Some(rest) => format!("{P}#{}", rest.trim_start_matches(|c: char| c.is_ascii_digit())),
         None => u.to_owned(),

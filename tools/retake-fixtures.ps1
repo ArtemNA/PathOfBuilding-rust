@@ -30,6 +30,11 @@ $probes = @(
     @('export-build-model', @(), 'crates/pob-build/tests/fixtures/<build>.model.json (pob-ts)'),
     @('export-xml-config', @(), 'crates/pob-build/tests/fixtures/{xml-lua,config-load}.json'),
     @('export-config-apply', @(), 'crates/pob-build/tests/fixtures/config-apply.json'),
+    @('export-config-apply', @('--strings'), 'crates/pob-build/tests/fixtures/config-apply-strings.json'),
+    @('export-tree-shape', @(), 'crates/pob-tree/tests/fixtures/tree-shape.json'),
+    @('export-socket-synth', @(), 'crates/pob-engine/tests/fixtures/socket-synth/*'),
+    @('crates/pob-items/tests/lua/export-apply-range', @(), 'crates/pob-items/tests/fixtures/apply-range-scalable.luajit.json'),
+    @('crates/pob-lua/tests/lua/export-format-edges', @(), 'crates/pob-lua/tests/fixtures/luajit-format-edges.json (also the desktop lua51.dll of the sg-oracle sandbox: update it first)'),
     @('export-radius', @(), 'crates/pob-tree/tests/fixtures/radius-*.json'),
     @('export-timeless', @(), 'crates/pob-tree/tests/fixtures/timeless-*.json'),
     @('export-buildraw', @(), 'crates/pob-items/tests/fixtures/buildraw.json'),
@@ -52,14 +57,17 @@ $probes = @(
     @('export-breakdown', @(), 'crates/pob-calc/tests/fixtures/breakdown/*'),
     @('export-r8', @(), 'crates/pob-engine/tests/fixtures/r8/*'),
     @('export-calcs', @(), 'crates/pob-engine/tests/fixtures/calcs/*'),
-    @('export-engine', @(), 'crates/pob-engine/tests/fixtures/engine/* (needs the Rust build)')
+    @('export-real', @('--set', 'party-synth'), 'crates/pob-calc/tests/fixtures/party-synth/*.luajit.json (needs the Rust build)'),
+    @('export-engine', @(),'crates/pob-engine/tests/fixtures/engine/* (needs the Rust build)')
 )
 $rows = @()
 Push-Location $root
 try {
     foreach ($p in $probes) {
         $name, $args_, $what = $p
-        $id = ($name + ' ' + ($args_ -join ' ')).Trim()
+        # a bare name lives in tools/lua-corpus; a producer kept next to its crate's tests is given by its path
+        $script = if ($name -match '/') { "$name.ts" } else { "tools/lua-corpus/$name.ts" }
+        $id = ((Split-Path -Leaf $name) + ' ' + ($args_ -join ' ')).Trim()
         if ($id -notmatch $Only -or $id -match $Skip) { continue }
         $file = Join-Path $log (($id -replace ' ', '-') + '.log')
         # the coverage caches are keyed by the XML sha256 only, but hold line numbers of the upstream they were taken on: drop them
@@ -70,7 +78,7 @@ try {
             if ($stem -eq 'offence-synth') { Remove-Item -LiteralPath (Join-Path $root 'tools\.scratch\r7s2-coverage.json') -Force -ErrorAction SilentlyContinue }
         }
         $t = [Diagnostics.Stopwatch]::StartNew()
-        & node "tools/lua-corpus/$name.ts" @args_ *> $file
+        & node $script @args_ *> $file
         $code = $LASTEXITCODE
         $t.Stop()
         $rows += [pscustomobject]@{ probe = $id; exit = $code; seconds = [math]::Round($t.Elapsed.TotalSeconds); writes = $what }

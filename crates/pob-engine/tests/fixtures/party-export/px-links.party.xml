@@ -25,18 +25,18 @@ false
 		<ExportedBuffs name="Link Skills">
 			Destructive Link
 100
-1|Skill:DestructiveLink|MainHandCritIsEqualToParent|FLAG|-|-|type=GlobalEffect/effectType=Link,type=Condition/var=MainHandAttack
 49|Skill:DestructiveLink|CritMultiplier|BASE|-|-|type=GlobalEffect/effectType=Link
+1|Skill:DestructiveLink|MainHandCritIsEqualToParent|FLAG|-|-|type=GlobalEffect/effectType=Link,type=Condition/var=MainHandAttack
 true|Custom:Default|ParentNonUniqueFlasksAppliedToYou|FLAG|-|-|type=GlobalEffect/effectType=Global/unscalable=true
 true|Custom:Default|CurseImmune|FLAG|-|-|-
 true|Custom:Default|ElementalAilmentImmune|FLAG|-|-|-
 ---
 Flame Link
 100
-254|Skill:FlameLink|FireMax|BASE|-|-|type=GlobalEffect/effectType=Link
-5|Skill:FlameLink|FireMin|BASE|-|-|type=GlobalEffect/effectType=Link,type=PercentStat/actor=parent/percent=1/stat=Life
-5|Skill:FlameLink|FireMax|BASE|-|-|type=GlobalEffect/effectType=Link,type=PercentStat/actor=parent/percent=1/stat=Life
-169|Skill:FlameLink|FireMin|BASE|-|-|type=GlobalEffect/effectType=Link
+219|Skill:FlameLink|FireMin|BASE|-|-|type=GlobalEffect/effectType=Link
+329|Skill:FlameLink|FireMax|BASE|-|-|type=GlobalEffect/effectType=Link
+3|Skill:FlameLink|FireMin|BASE|-|-|type=GlobalEffect/effectType=Link,type=PercentStat/actor=parent/percent=1/stat=Life
+3|Skill:FlameLink|FireMax|BASE|-|-|type=GlobalEffect/effectType=Link,type=PercentStat/actor=parent/percent=1/stat=Life
 true|Custom:Default|ParentNonUniqueFlasksAppliedToYou|FLAG|-|-|type=GlobalEffect/effectType=Global/unscalable=true
 true|Custom:Default|CurseImmune|FLAG|-|-|-
 true|Custom:Default|ElementalAilmentImmune|FLAG|-|-|-

@@ -235,6 +235,7 @@ fn diff_db_exact(label: &str, ours: &Json, theirs: &Json, out: &mut Vec<String>)
 }
 
 #[test]
+#[ignore = "U-R6 (2.68.0, 07fa089bf): pob-ts is the 2.67.2 reference (no MaximumLifeManaDifference / MissingUnreservedLifePercent / SocketedSkillGemsIn*, the old ModCache in CacheOnly); the truth is LuaJIT (UPDATE-PROMPT.md 7.5)"]
 fn env_equals_pob_ts_for_six_goldens() {
     let mut report = Vec::new();
     for g in GOLDEN_BUILDS {
@@ -305,10 +306,11 @@ fn source_ref(s: &str) -> Option<(&'static str, u64)> {
     None
 }
 
-/// `/^SocketedGemsIn/`, `/^Socketed(Red|Green|Blue)GemsIn/`, `/^EmptySocketIn/`, `/^Empty(Red|Green|Blue|White)SocketsInAnySlot$/`.
+/// `/^SocketedGemsIn/`, `/^Socketed(Red|Green|Blue|Skill)GemsIn/`, `/^EmptySocketIn/`, `/^Empty(Red|Green|Blue|White)SocketsInAnySlot$/`.
+/// `SocketedSkillGemsIn` (07fa089bf, CalcSetup.lua:1370-1390): counted in the same loop over `socketedGems`, so 0 without the skill phase too.
 fn is_gem(k: &str) -> bool {
     k.starts_with("SocketedGemsIn")
-        || ["Red", "Green", "Blue"]
+        || ["Red", "Green", "Blue", "Skill"]
             .iter()
             .any(|c| k.starts_with(&format!("Socketed{c}GemsIn")))
         || k.starts_with("EmptySocketIn")
@@ -430,6 +432,7 @@ fn classify_db(label: &str, ours: &Json, lj: &Json, gaps: &Gaps, cls: &mut BTree
 }
 
 #[test]
+#[ignore = "U-R6 (2.68.0, 07fa089bf): pob-ts is the 2.67.2 reference (no MaximumLifeManaDifference / MissingUnreservedLifePercent / SocketedSkillGemsIn*, the old ModCache in CacheOnly); the truth is LuaJIT (UPDATE-PROMPT.md 7.5)"]
 fn env_vs_luajit_classified_as_pob_ts() {
     env_vs_luajit(ParseMode::CacheOnly, &EXPECTED_CLASSES);
 }

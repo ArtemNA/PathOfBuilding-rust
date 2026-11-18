@@ -90,6 +90,8 @@ fn jewel_socket_overlay(jewel: &pob_items::item::Item, is_expansion: bool) -> Op
                 "JewelSocketActiveAbyss"
             }
         }
+        // PassiveTreeView.lua:142-143 (07fa089bf)
+        _ if sub_type == Some("Blightcore") => "JewelSocketActiveBlightcore",
         "Ursine Charm" if sub_type == Some("Charm") => "CharmSocketActiveStr",
         "Corvine Charm" if sub_type == Some("Charm") => "CharmSocketActiveInt",
         "Lupine Charm" if sub_type == Some("Charm") => "CharmSocketActiveDex",
@@ -171,6 +173,8 @@ pub struct PassiveTreeView {
     pub unimplemented: Vec<String>,
     /// Test harness only: a sample of the `pairs(tree.nodes)`-dependent orders of one oracle process (see [`Self::set_order_sample`]).
     order_sample: Option<(Vec<u32>, Vec<String>)>,
+    /// Test harness only: samples taken on a given tree version ([`Self::set_order_sample_for`]); they win over `order_sample` on that version.
+    order_sample_by_version: HashMap<String, (Vec<u32>, Vec<String>)>,
     /// Test harness only: `pairs(spec.subGraphs)` of the same process ([`Self::set_sub_graph_order_sample`]).
     sub_graph_order_sample: Option<Vec<u32>>,
 }
@@ -242,6 +246,7 @@ impl PassiveTreeView {
             cache: None,
             unimplemented: Vec::new(),
             order_sample: None,
+            order_sample_by_version: HashMap::new(),
             sub_graph_order_sample: None,
         }
     }
@@ -291,6 +296,21 @@ impl PassiveTreeView {
     /// overlap order of that one screenshot, not a model. The app uses the model (no `root`), one of the orders the original can have.
     pub fn set_order_sample(&mut self, nodes: Vec<u32>, connectors: Vec<String>) {
         self.order_sample = Some((nodes, connectors));
+        self.cache = None;
+    }
+
+    /// A sample recorded with its tree version (newer `treeOrder` records) is kept for that version, an older one for any.
+    pub fn set_order_sample_any(&mut self, version: Option<&str>, nodes: Vec<u32>, connectors: Vec<String>) {
+        match version {
+            Some(v) => self.set_order_sample_for(v, nodes, connectors),
+            None => self.set_order_sample(nodes, connectors),
+        }
+    }
+
+    /// [`Self::set_order_sample`] for one tree version: a scene that changes the tree (a conversion, a new spec) rebuilds
+    /// `pairs(self.nodes)`-dependent tables, so the sample of one version must not stand for another.
+    pub fn set_order_sample_for(&mut self, version: &str, nodes: Vec<u32>, connectors: Vec<String>) {
+        self.order_sample_by_version.insert(version.to_string(), (nodes, connectors));
         self.cache = None;
     }
 
@@ -346,7 +366,11 @@ impl PassiveTreeView {
             .enumerate()
             .filter_map(|(c, cn)| Some((c, spec.node_idx(cn.node_id1)?, spec.node_idx(cn.node_id2)?)))
             .collect();
-        if let Some((nodes, connectors)) = &self.order_sample {
+        if let Some((nodes, connectors)) = self
+            .order_sample_by_version
+            .get(spec.tree.tree_version.as_str())
+            .or(self.order_sample.as_ref())
+        {
             let rank: HashMap<usize, usize> = nodes
                 .iter()
                 .enumerate()
@@ -1054,6 +1078,9 @@ impl PassiveTreeView {
             let mut asset = None;
             if is_abyss_conquered(n1) && is_abyss_conquered(n2) {
                 asset = art.assets.get(&format!("Abyss{}{state_name}", connector.ty));
+            } else if n1.tree_node().is_blightcore || n2.tree_node().is_blightcore {
+                // PassiveTreeView.lua:732-733 (07fa089bf)
+                asset = art.assets.get(&format!("Blight{}{state_name}", connector.ty));
             }
             let asset = asset.or_else(|| art.assets.get(&format!("{}{state_name}", connector.ty)));
             let Some(asset) = asset else { return };
@@ -1233,7 +1260,15 @@ impl PassiveTreeView {
                     };
                     match ty {
                         NodeType::Socket => {
-                            let alt = if tn.expansion_jewel.is_some() { "Alt" } else { "" };
+                            // PassiveTreeView.lua:856-863 (07fa089bf): a socketed Putrid Seed uses the normal socket art, even in a
+                            // Large Jewel Socket
+                            let jewel = socket_jewel(e, &spec, id);
+                            let use_alt_art = tn.expansion_jewel.is_some()
+                                && !(is_alloc
+                                    && jewel
+                                        .as_ref()
+                                        .is_some_and(|j| j.base.and_then(|b| b.sub_type.as_deref()) == Some("Blightcore")));
+                            let alt = if use_alt_art { "Alt" } else { "" };
                             let key = format!("{state}{alt}");
                             let charm = node.name() == Some("Charm Socket");
                             base = overlay(ty, &key, art.version_num)
@@ -1245,8 +1280,8 @@ impl PassiveTreeView {
                                     }
                                 })
                                 .cloned();
-                            if is_alloc && let Some(jewel) = socket_jewel(e, &spec, id) {
-                                overlay_asset = jewel_socket_overlay(&jewel, tn.expansion_jewel.is_some()).map(str::to_owned);
+                            if is_alloc && let Some(jewel) = jewel {
+                                overlay_asset = jewel_socket_overlay(&jewel, use_alt_art).map(str::to_owned);
                             }
                         }
                         NodeType::Mastery => {
@@ -1307,17 +1342,23 @@ impl PassiveTreeView {
                                 if tn.is_blighted { "Blighted" } else { "" }
                             );
                             let mut name = overlay(ty, &key, art.version_num).map(str::to_owned);
+                            let frame_state = match state {
+                                "alloc" => "Allocated",
+                                "path" => "CanAllocate",
+                                _ => "Unallocated",
+                            };
                             if is_abyss_conquered(node) && matches!(ty, NodeType::Notable | NodeType::Keystone) {
                                 let frame_type = if asc.is_some() { "Ascendancy" } else { ty.as_str() };
-                                let frame_state = match state {
-                                    "alloc" => "Allocated",
-                                    "path" => "CanAllocate",
-                                    _ => "Unallocated",
-                                };
                                 let abyss = format!("Abyss{frame_type}Frame{frame_state}");
                                 if art.assets.contains_key(&abyss) {
                                     name = Some(abyss);
                                 }
+                            } else if tn.is_blightcore
+                                && matches!(ty, NodeType::Notable)
+                                && art.assets.contains_key(&format!("BlightNotableFrame{frame_state}"))
+                            {
+                                // PassiveTreeView.lua:906-907 (07fa089bf)
+                                name = Some(format!("BlightNotableFrame{frame_state}"));
                             }
                             overlay_asset = match (asc.and_then(|a| art.bloodline_prefix.get(a)), name) {
                                 (Some(p), Some(n)) => Some(format!("{p}{n}")),
@@ -1498,11 +1539,17 @@ impl PassiveTreeView {
                 let mut over: Option<String> = None;
                 match c.ty() {
                     NodeType::Socket => {
-                        let key = if t.expansion_jewel.is_some() { "allocAlt" } else { "alloc" };
+                        // PassiveTreeView.lua:1133-1139 (07fa089bf): `useAltArt`, as for the build's own sockets
+                        let jewel = compare_jewel(c.id).or_else(|| socket_jewel(e, &spec, c.id).filter(|_| compare_same_build));
+                        let use_alt_art = t.expansion_jewel.is_some()
+                            && !jewel
+                                .as_ref()
+                                .is_some_and(|j| j.base.and_then(|b| b.sub_type.as_deref()) == Some("Blightcore"));
+                        let key = if use_alt_art { "allocAlt" } else { "alloc" };
                         let n = overlay(c.ty(), key, art.version_num).unwrap_or("JewelSocketActiveBlue");
                         base = art.assets.get(n).cloned();
-                        if let Some(j) = compare_jewel(c.id).or_else(|| socket_jewel(e, &spec, c.id).filter(|_| compare_same_build)) {
-                            over = jewel_socket_overlay(&j, t.expansion_jewel.is_some()).map(str::to_owned);
+                        if let Some(j) = jewel {
+                            over = jewel_socket_overlay(&j, use_alt_art).map(str::to_owned);
                         }
                     }
                     NodeType::Mastery => {

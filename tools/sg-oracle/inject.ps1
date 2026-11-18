@@ -3,6 +3,7 @@
 # Each step is preceded by WM_CHAR chr(64+n) = "A".."Y" (step marker; tests only produce lowercase chars), "Z" = end; logged to <Out>/inject.json with a local timestamp.
 param($Process, [string]$Out)   # $Out = runtime/sg (script dir); handshake files live there, not in out/
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'hidden-desktop.ps1') # the hidden desktop: no window on the user's monitors (SG_VISIBLE=1: visible)
 Add-Type -Namespace SgOracle -Name W -MemberDefinition @'
 [DllImport("user32.dll")] public static extern bool PostMessageW(IntPtr h, uint m, IntPtr w, IntPtr l);
 [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr h, int cmd);
@@ -16,7 +17,7 @@ $sw = [Diagnostics.Stopwatch]::StartNew()
 function L($what) { $log.Add(@($sw.ElapsedMilliseconds, $what)) }
 for ($i = 0; $i -lt 100 -and -not (Test-Path "$Out\ready"); $i++) { Start-Sleep -Milliseconds 100 }
 L "ready seen (lua wrote sg/out/ready at frame 3)"
-$Process.Refresh(); $h = $Process.MainWindowHandle
+$h = Get-SgWindow -Process $Process
 if ($h -eq [IntPtr]::Zero) { throw 'no main window' }
 $tid = 0; $pidOut = 0; $tid = [SgOracle.W]::GetWindowThreadProcessId($h, [ref]$pidOut)
 $hkl = '{0:X8}' -f ([SgOracle.W]::GetKeyboardLayout($tid).ToInt64() -band 0xFFFFFFFF)

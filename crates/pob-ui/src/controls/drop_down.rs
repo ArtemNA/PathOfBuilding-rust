@@ -12,13 +12,15 @@ use std::any::Any;
 use std::cell::{Cell, RefCell};
 use std::rc::{Rc, Weak};
 
-/// A list entry: a string, or a table with `label` / `detail` / `searchFilter` (+ caller data).
+/// A list entry: a string, or a table with `label` / `detail` / `searchFilter` / `strikethrough` (+ caller data).
 #[derive(Clone, Default)]
 pub struct DropItem {
     pub is_table: bool,
     pub label: Option<String>,
     pub detail: Option<String>,
     pub search_filter: Option<String>,
+    /// `strikethrough` of a table entry (DropDownControl.lua:327, :411, 07fa089bf).
+    pub strikethrough: bool,
     pub data: Option<Rc<dyn Any>>,
 }
 
@@ -43,6 +45,13 @@ impl DropItem {
             .as_deref()
             .expect("bad argument to DrawString (string expected, got nil)")
     }
+}
+
+/// `drawStrikethrough(label, y, lineHeight)` (DropDownControl.lua:11-15, 07fa089bf).
+fn draw_strikethrough(f: &mut Frame<'_>, label: &str, y: f64, line_height: f64) {
+    let str_width = sg::draw_string_width(f, line_height, "VAR", label);
+    sg::set_draw_color(f, 0.6, 0.6, 0.6);
+    sg::draw_rect(f, 0.0, y + line_height / 2.0, str_width, 1.0);
 }
 
 /// `tooltipFunc(tooltip, mode, index, value)`: mode `"BODY"` / `"OUT"` / `"HOVER"`.
@@ -327,7 +336,7 @@ impl DropDownControl {
         self.hover_sel.get().unwrap_or(self.sel_index.get() as i64)
     }
 
-    /// DropDownControl.lua:537-573
+    /// DropDownControl.lua:558-600 (07fa089bf)
     pub fn check_dropped_width(&self, g: &Gfx, enable: bool) {
         self.enable_dropped_width.set(enable);
         let width = self.base.width.raw().expect("DropDownControl width must be a number");
@@ -339,12 +348,17 @@ impl DropDownControl {
             let line_height = self.height_raw() - 4.0;
             let mut d_width = width;
             for line in self.list.borrow().iter() {
+                let mut detail_width = 0.0;
                 let s = if line.is_table {
+                    // DropDownControl.lua:570-576 (07fa089bf): reserve the detail's right padding plus spacing
+                    if let Some(detail) = &line.detail {
+                        detail_width = sg::draw_string_width(g, line_height, "VAR", detail) + 26.0;
+                    }
                     line.label.clone().unwrap_or_default()
                 } else {
                     line.label.clone().expect("string")
                 };
-                d_width = d_width.max(sg::draw_string_width(g, line_height, "VAR", &s) + 10.0);
+                d_width = d_width.max(sg::draw_string_width(g, line_height, "VAR", &s) + detail_width + 10.0);
             }
             self.dropped_width.set((d_width + scroll_width).min(self.max_dropped_width.get()));
             if self.enable_change_box_width.get() {
@@ -386,7 +400,7 @@ impl Control for DropDownControl {
         true
     }
 
-    /// DropDownControl.lua:212-425
+    /// DropDownControl.lua:218-446 (07fa089bf)
     fn draw(&self, f: &mut Frame<'_>, view_port: &Rect, no_tooltip: bool) {
         let (x, y) = self.get_pos(f);
         let (width, height) = self.get_size(f);
@@ -489,16 +503,23 @@ impl Control for DropDownControl {
         } else {
             sg::set_draw_color(f, 0.66, 0.66, 0.66);
         }
-        let (sel_label, sel_detail) = if self.search.is_search_active() {
-            (Some(format!("Search: {}", self.search.get_search_term_pretty())), None)
+        let (sel_label, sel_detail, sel_strikethrough) = if self.search.is_search_active() {
+            (Some(format!("Search: {}", self.search.get_search_term_pretty())), None, false)
         } else {
             match self.list.borrow().get(self.sel_index.get().wrapping_sub(1)) {
-                Some(item) => (item.label.clone(), if item.is_table { item.detail.clone() } else { None }),
-                None => (None, None),
+                Some(item) if item.is_table => (item.label.clone(), item.detail.clone(), item.strikethrough),
+                Some(item) => (item.label.clone(), None, false),
+                None => (None, None, false),
             }
         };
         sg::set_viewport(f, Some([x + 2.0, y + 2.0, width - height, line_height]));
         sg::draw_string(f, 0.0, 0.0, Some("LEFT"), line_height, "VAR", sel_label.as_deref().unwrap_or(""));
+        // DropDownControl.lua:334-338 (07fa089bf)
+        if sel_strikethrough {
+            draw_strikethrough(f, sel_label.as_deref().unwrap_or(""), 0.0, line_height);
+            let text_color = if enabled { 1.0 } else { 0.66 };
+            sg::set_draw_color(f, text_color, text_color, text_color);
+        }
         if let Some(detail) = &sel_detail {
             let dx = sg::draw_string_width(f, line_height, "VAR", detail);
             if !enabled || dropped {
@@ -581,6 +602,15 @@ impl Control for DropDownControl {
                     }
                     let label = item.label_or_err();
                     sg::draw_string(f, 0.0, y, Some("LEFT"), line_height, "VAR", label);
+                    // DropDownControl.lua:411-418 (07fa089bf)
+                    if item.is_table && item.strikethrough {
+                        draw_strikethrough(f, label, y, line_height);
+                        if hot {
+                            sg::set_draw_color(f, 1.0, 1.0, 1.0);
+                        } else {
+                            sg::set_draw_color(f, 0.66, 0.66, 0.66);
+                        }
+                    }
                     if item.is_table
                         && let Some(detail) = &item.detail
                     {

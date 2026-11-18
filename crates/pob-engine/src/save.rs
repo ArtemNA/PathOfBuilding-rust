@@ -874,7 +874,7 @@ fn save_items(inp: &SaveInput<'_>) -> Result<XmlElement, String> {
             // `s_format("%.2f", tostring(statSort.weightMult))`
             let shown = pob_lua::tonumber(&ts(mult)).unwrap_or(mult);
             let mult =
-                pob_lua::format::format("%.2f", &[pob_lua::format::Arg::Num(shown)]).map_err(|e| format!("ItemsTab.lua:1462: {e}"))?;
+                pob_lua::format::format("%.2f", &[pob_lua::format::Arg::Num(shown)]).map_err(|e| format!("ItemsTab.lua:1485: {e}"))?;
             push(
                 &mut weights,
                 with(

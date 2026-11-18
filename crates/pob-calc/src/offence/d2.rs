@@ -57,8 +57,8 @@ fn average_source_damage(off: &Off<'_>, q: &Q, pi: usize, ailment: &str) -> (f64
             q.flag(c, &[&format!("{ty}Can{ailment}")])
         };
         if applies {
-            hit += pn(off, pi, &format!("{ty}HitAverage"), 4325);
-            crit += pn(off, pi, &format!("{ty}CritAverage"), 4326);
+            hit += pn(off, pi, &format!("{ty}HitAverage"), 4339);
+            crit += pn(off, pi, &format!("{ty}CritAverage"), 4340);
         }
     }
     (hit, crit)
@@ -92,7 +92,7 @@ pub(super) fn pass_tail(off: &mut Off<'_>, q: &Q, pi: usize) {
             };
         }
         let type_mult = if is_boss { 7.68 } else { 1.0 };
-        let nil = || -> ! { panic!("{LUA}:5342: attempt to perform arithmetic on a nil value") };
+        let nil = || -> ! { panic!("{LUA}:5356: attempt to perform arithmetic on a nil value") };
         threshold.unwrap_or_else(|| nil())
             * type_mult
             * map_life.unwrap_or_else(|| nil())
@@ -114,8 +114,11 @@ pub(super) fn pass_tail(off: &mut Off<'_>, q: &Q, pi: usize) {
         let more_dur = q.more(Some(&c), &names) * dmore(&edb, None, &self_names);
         off.pset_num(pi, "ChillDurationMod", (1.0 + inc_dur / 100.0) * more_dur);
         let chill = ailment_data("Chill");
-        let site = format!("{LUA}:5386");
-        let max = q.override_num(None, &["ChillMax"], &site).unwrap_or(chill.max);
+        let site = format!("{LUA}:5400");
+        // CalcOffence.lua:5430-5431 (07fa089bf): +maximum Chill effect (BASE `ChillMax`) also raises the cap
+        let max = q
+            .override_num(None, &["ChillMax"], &site)
+            .unwrap_or_else(|| chill.max + q.base(None, &["ChillMax"]));
         let default = chill
             .default
             .unwrap_or_else(|| panic!("{site}: attempt to perform arithmetic on field 'default' (a nil value)"));
@@ -141,13 +144,13 @@ pub(super) fn pass_tail(off: &mut Off<'_>, q: &Q, pi: usize) {
     }
     // :5399-5414 freeze
     let mode_text = if mode == "CRIT" { "Crits Only" } else { "Average Damage" };
-    if pn(off, pi, "FreezeChanceOnHit", 5399) + pn(off, pi, "FreezeChanceOnCrit", 5399) > 0.0 {
+    if pn(off, pi, "FreezeChanceOnHit", 5413) + pn(off, pi, "FreezeChanceOnCrit", 5413) > 0.0 {
         // :5400-5404
         if off.breakdown {
             let t = BTable::lines([sf!("Ailment mode: %s ^8(can be changed in the Configuration tab)", mode_text)]);
             off.bd_put("FreezeDurationMod", t);
         }
-        let crit_chance = pn(off, pi, "CritChance", 5405);
+        let crit_chance = pn(off, pi, "CritChance", 5419);
         let (h, cr) = average_source_damage(off, q, pi, "Freeze");
         let base_val = calc_ailment_damage(off, q, pi, "Freeze", crit_chance, h, cr, false) * q.more(Some(&c), &["FreezeAsThoughDealing"]);
         if base_val > 0.0 {
@@ -184,7 +187,7 @@ pub(super) fn pass_tail(off: &mut Off<'_>, q: &Q, pi: usize) {
     }
     // :5416-5513 the non-damaging ailments (order-free, see the module doc)
     for a in ["Chill", "Shock", "Scorch", "Brittle", "Sap"] {
-        let total = pn(off, pi, &format!("{a}ChanceOnHit"), 5417) + pn(off, pi, &format!("{a}ChanceOnCrit"), 5417);
+        let total = pn(off, pi, &format!("{a}ChanceOnHit"), 5432) + pn(off, pi, &format!("{a}ChanceOnCrit"), 5432);
         // `(onHit + onCrit) > 0` (NaN fails it)
         if total.partial_cmp(&0.0) != Some(std::cmp::Ordering::Greater) {
             continue;
@@ -196,7 +199,7 @@ pub(super) fn pass_tail(off: &mut Off<'_>, q: &Q, pi: usize) {
         }
         let crit_cond = mode == "CRIT" && !super::c::dflag(&off.mod_db, None, &["AilmentsAreNeverFromCrit"]);
         off.set_pass_cond(pi, "CriticalStrike", crit_cond);
-        let crit_chance = pn(off, pi, "CritChance", 5430);
+        let crit_chance = pn(off, pi, "CritChance", 5445);
         let (h, cr) = average_source_damage(off, q, pi, a);
         let base = calc_ailment_damage(off, q, pi, a, crit_chance, h, cr, false);
         let c = off.pcfg(pi).clone();
@@ -211,7 +214,7 @@ pub(super) fn pass_tail(off: &mut Off<'_>, q: &Q, pi: usize) {
             let more_dur = q.more(Some(&c), &names) * dmore(&edb, None, &self_names);
             let base_dur = ailment_data(a)
                 .duration
-                .unwrap_or_else(|| panic!("{LUA}:5436: attempt to perform arithmetic on field 'duration' (a nil value)"));
+                .unwrap_or_else(|| panic!("{LUA}:5451: attempt to perform arithmetic on field 'duration' (a nil value)"));
             let dur = base_dur * (1.0 + inc_dur / 100.0) * more_dur * off.debuff_duration_mult;
             off.pset_num(pi, &format!("{a}Duration"), dur);
             let effect = q.calc_mod(Some(&c), &[&format!("Enemy{a}Effect")]) * dmod(&edb, None, &[&format!("Self{a}Effect")]);
@@ -244,11 +247,11 @@ pub(super) fn pass_tail(off: &mut Off<'_>, q: &Q, pi: usize) {
     let c = off.pcfg(pi).clone();
     let c = Some(&c);
     // :5516-5524 knockback
-    let crit_chance = pn(off, pi, "CritChance", 5516);
+    let crit_chance = pn(off, pi, "CritChance", 5531);
     let kb = min2(
         100.0,
-        pn(off, pi, "KnockbackChanceOnHit", 5516) * (1.0 - crit_chance / 100.0)
-            + pn(off, pi, "KnockbackChanceOnCrit", 5516) * crit_chance / 100.0
+        pn(off, pi, "KnockbackChanceOnHit", 5531) * (1.0 - crit_chance / 100.0)
+            + pn(off, pi, "KnockbackChanceOnCrit", 5531) * crit_chance / 100.0
             + dsum(&edb, ModType::Base, None, &["SelfKnockbackChance"]),
     );
     off.pset_num(pi, "KnockbackChance", kb);
@@ -267,7 +270,7 @@ pub(super) fn pass_tail(off: &mut Off<'_>, q: &Q, pi: usize) {
     };
     off.pset_num(pi, "EnemyStunThresholdMod", thr);
     let base = if off.sd_truthy("baseStunDuration") {
-        off.sd_num("baseStunDuration", 5533).expect("truthy")
+        off.sd_num("baseStunDuration", 5548).expect("truthy")
     } else {
         0.35
     };
@@ -282,7 +285,7 @@ pub(super) fn pass_tail(off: &mut Off<'_>, q: &Q, pi: usize) {
     // `minimumStunDuration` / `maximumStunDuration` feed only the breakdown
     let minimum = base * more_dur / (1.0 + inc_recov / 100.0);
     let mut stun = minimum;
-    let crit_chance = pn(off, pi, "CritChance", 5542);
+    let crit_chance = pn(off, pi, "CritChance", 5557);
     if inc_dur_crit != 0.0 && crit_chance != 0.0 {
         if crit_chance == 100.0 {
             stun = minimum * (1.0 + (inc_dur + inc_dur_crit) / 100.0);
@@ -356,12 +359,12 @@ pub(super) fn pass_tail(off: &mut Off<'_>, q: &Q, pi: usize) {
     }
     // :5597-5647 impale
     if off.can_deal.get("Physical").copied().unwrap_or(false)
-        && pn(off, pi, "ImpaleChance", 5597) + pn(off, pi, "ImpaleChanceOnCrit", 5597) > 0.0
+        && pn(off, pi, "ImpaleChance", 5612) + pn(off, pi, "ImpaleChanceOnCrit", 5612) > 0.0
     {
         off.set_flag("impale", true);
-        let crit = pn(off, pi, "CritChance", 5599) / 100.0;
-        let impale_chance = min2(pn(off, pi, "ImpaleChance", 5600) / 100.0, 1.0) * (1.0 - crit)
-            + min2(pn(off, pi, "ImpaleChanceOnCrit", 5600) / 100.0, 1.0) * crit;
+        let crit = pn(off, pi, "CritChance", 5614) / 100.0;
+        let impale_chance = min2(pn(off, pi, "ImpaleChance", 5615) / 100.0, 1.0) * (1.0 - crit)
+            + min2(pn(off, pi, "ImpaleChanceOnCrit", 5615) / 100.0, 1.0) * crit;
         let max_stacks = q.base(c, &["ImpaleStacksMax"]) * (1.0 + q.base(c, &["ImpaleAdditionalDurationChance"]) / 100.0);
         let config_stacks = dsum(&edb, ModType::Base, c, &["Multiplier:ImpaleStacks"]);
         let stacks = min2(max_stacks, config_stacks);
@@ -373,7 +376,7 @@ pub(super) fn pass_tail(off: &mut Off<'_>, q: &Q, pi: usize) {
         let stored = base_stored * modifier;
         let hit_damage_mod = stored * stacks;
         let enemy_armour = max2(ok(crate::calc_lib::val(&edb.borrow(), "Armour", None)), 0.0);
-        let armour_reduction = crate::pools::armour_reduction_f(enemy_armour, hit_damage_mod * pn(off, pi, "impaleStoredHitAvg", 5614));
+        let armour_reduction = crate::pools::armour_reduction_f(enemy_armour, hit_damage_mod * pn(off, pi, "impaleStoredHitAvg", 5629));
         let mut resist = min2(
             max2(
                 0.0,
@@ -448,7 +451,7 @@ fn ailment_effect_table(off: &mut Off<'_>, pi: usize, a: &str, damage: f64, effe
     let gnum_or = |off: &Off<'_>, key: &str| match off.gval(key) {
         None | Some(crate::output::OutValue::Bool(false)) => None,
         Some(crate::output::OutValue::Num(x)) => Some(*x),
-        Some(o) => panic!("{LUA}:5440: attempt to compare {o:?} with number"),
+        Some(o) => panic!("{LUA}:5455: attempt to compare {o:?} with number"),
     };
     let maximum = gnum_or(off, &format!("Maximum{a}")).unwrap_or(data.max);
     let current = max2(min2(gnum_or(off, &format!("Current{a}")).unwrap_or(0.0), maximum), 0.0);
@@ -485,14 +488,14 @@ fn ailment_effect_table(off: &mut Off<'_>, pi: usize, a: &str, damage: f64, effe
     );
     // `table.sort(val.effList)` -- numbers, `<`
     // (numbers with `<`: any sort gives the same sequence of values)
-    eff_list.sort_by(|x, y| x.partial_cmp(y).unwrap_or_else(|| panic!("{LUA}:5463: attempt to compare NaN")));
+    eff_list.sort_by(|x, y| x.partial_cmp(y).unwrap_or_else(|| panic!("{LUA}:5478: attempt to compare NaN")));
     let precision = data
         .precision
-        .unwrap_or_else(|| panic!("{LUA}:5469: attempt to perform arithmetic on local 'precision' (a nil value)"));
+        .unwrap_or_else(|| panic!("{LUA}:5484: attempt to perform arithmetic on local 'precision' (a nil value)"));
     let boss = match off.env.config.input.get("enemyIsBoss") {
         Some(pob_build::ConfigValue::Str(s)) => s.to_string(),
         None => "nil".to_owned(),
-        Some(o) => panic!("{LUA}:5472: enemyIsBoss is {o:?}"),
+        Some(o) => panic!("{LUA}:5487: enemyIsBoss is {o:?}"),
     };
     let mut rows = BTable::new();
     for value in eff_list {
@@ -602,7 +605,7 @@ pub(super) fn after_ailments(off: &mut Off<'_>) {
         let sc = &off.cfg;
         let skw = sc
             .keyword_flags
-            .unwrap_or_else(|| panic!("{LUA}:5708: bad argument #1 to 'band' (number expected, got nil)")) as u32;
+            .unwrap_or_else(|| panic!("{LUA}:5723: bad argument #1 to 'band' (number expected, got nil)")) as u32;
         let dc = ModCfg {
             flags: Some(f64::from(mod_flag("Dot"))),
             keyword_flags: Some(f64::from((skw & !keyword_flag("Hit")) | keyword_flag("ChaosDot"))),
@@ -649,18 +652,18 @@ pub(super) fn after_ailments(off: &mut Off<'_>) {
         }
         let inc = q.inc(Some(&dc), &["Damage", "ChaosDamage"]);
         let more = q.more(Some(&dc), &["Damage", "ChaosDamage"]);
-        let site = format!("{LUA}:5725");
+        let site = format!("{LUA}:5740");
         let mult = q
             .override_num(Some(&dc), &["DotMultiplier"], &site)
             .unwrap_or_else(|| q.base(Some(&dc), &["DotMultiplier"]) + q.base(Some(&dc), &["ChaosDotMultiplier"]));
-        let decay = off.sd_num("decay", 5726).expect("truthy");
+        let decay = off.sd_num("decay", 5741).expect("truthy");
         off.out()
             .set_num("DecayDPS", decay * (1.0 + inc / 100.0) * more * (1.0 + mult / 100.0) * eff_mult);
         let d = 8.0 * off.debuff_duration_mult;
         off.out().set_num("DecayDuration", d);
         // :5728-5740
         if off.breakdown {
-            let total = off.out_num("DecayDPS", 5730);
+            let total = off.out_num("DecayDPS", 5745);
             let mut t = BTable::new();
             crate::breakdown::dot(&mut t, decay, inc, more, Some(mult), None, None, Some(eff_mult), total);
             off.bd_put("DecayDPS", t);
@@ -708,7 +711,7 @@ pub(super) fn after_ailments(off: &mut Off<'_>) {
         let mult = match ok(mdb.borrow().override_(Some(&dot_type), &["DotMultiplier"])) {
             Some(v) if v.truthy() => v
                 .as_num()
-                .unwrap_or_else(|| panic!("{LUA}:5763: attempt to perform arithmetic on a {} value", v.type_name())),
+                .unwrap_or_else(|| panic!("{LUA}:5778: attempt to perform arithmetic on a {} value", v.type_name())),
             _ => {
                 dsum(&mdb, ModType::Base, Some(&dot_type), &["DotMultiplier"])
                     + dsum(&mdb, ModType::Base, Some(&dot_type), &["FireDotMultiplier"])
@@ -719,7 +722,7 @@ pub(super) fn after_ailments(off: &mut Off<'_>) {
         let replace = match cur {
             None | Some(crate::output::OutValue::Bool(false)) => true,
             Some(crate::output::OutValue::Num(x)) => x < total,
-            Some(o) => panic!("{LUA}:5764: attempt to compare {o:?} with number"),
+            Some(o) => panic!("{LUA}:5779: attempt to compare {o:?} with number"),
         };
         if replace {
             off.out().set_num("BurningGroundDPS", total);

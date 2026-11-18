@@ -233,8 +233,12 @@ pub fn load_skill(group: &SocketGroupModel, skills: &Skills) -> Result<SocketGro
         source: group.source.clone(),
         main_active_skill: Some(group.main_active_skill),
         main_active_skill_calcs: Some(group.main_active_skill_calcs),
-        // :456 `if node.attrib.imbuedSupport and node.attrib.slot` (pob-build keeps it only then)
-        imbued_support: group.imbued_support.clone(),
+        // :456-460 `if node.attrib.imbuedSupport and node.attrib.slot` (pob-build keeps it only then); 07fa089bf: the escaped name,
+        // or the found gem's name
+        imbued_support: group.imbued_support.as_deref().map(|attr| {
+            let name = pob_items::lua::escape_ggg_string(attr);
+            find_imbued_support(&name).map_or(name, |gem| gem.name.clone())
+        }),
         gem_list,
         ..SocketGroup::new_empty()
     };
@@ -384,7 +388,7 @@ pub fn process_socket_group_ext(sg: &mut SocketGroup, skills: &Skills, cost_wipe
                 // :1186-1190 `gemInstance.grantedEffect.levels[gemInstance.level].cost = {}`
                 let ge = skills
                     .get(&skill_id)
-                    .ok_or_else(|| "Classes/SkillsTab.lua:1187: attempt to index field 'grantedEffect' (a nil value)".to_owned())?;
+                    .ok_or_else(|| "Classes/SkillsTab.lua:1197: attempt to index field 'grantedEffect' (a nil value)".to_owned())?;
                 if let Some(l) = gi.level.and_then(|l| ge.level(l)) {
                     let k = (ge.id.clone(), l.level);
                     if !cost_wiped.contains(&k) {
@@ -459,7 +463,7 @@ fn ascii_class_repl(f: impl Fn(u8) -> Vec<u8>) -> impl FnMut(&[u8], &pob_lua::Ca
 }
 
 fn pe(e: pob_lua::PatternError) -> LuaError {
-    format!("Classes/SkillsTab.lua:1105: {e:?}")
+    format!("Classes/SkillsTab.lua:1115: {e:?}")
 }
 
 /// SkillsTab.lua:1103-1127 `FindSkillGem(nameSpec)` -> `(errMsg, gemData)`. Walks `data.gems` in data order (R13): only the text of an
@@ -532,10 +536,10 @@ pub fn process_gem_level(
             while gem_level >= 1.0 {
                 let lv = ge
                     .level(gem_level)
-                    .ok_or_else(|| "Classes/SkillsTab.lua:1152: attempt to index a nil value".to_owned())?;
+                    .ok_or_else(|| "Classes/SkillsTab.lua:1162: attempt to index a nil value".to_owned())?;
                 let req = lv
                     .level_requirement
-                    .ok_or_else(|| "Classes/SkillsTab.lua:1152: attempt to compare nil with number".to_owned())?;
+                    .ok_or_else(|| "Classes/SkillsTab.lua:1162: attempt to compare nil with number".to_owned())?;
                 if req <= character_level {
                     return Ok(gem_level);
                 }
@@ -546,16 +550,30 @@ pub fn process_gem_level(
     })
 }
 
-/// SkillsTab.lua:1464-1475 `RebuildImbuedSupportBySlot` over the active list.
-fn rebuild_imbued_support_by_slot(tab: &mut SkillsTab) {
+/// SkillsTab.lua:1104-1110 (07fa089bf) `FindImbuedSupport(name)`: a saved name or an import name (which may end in "Support");
+/// only a support gem.
+pub fn find_imbued_support(name: &str) -> Option<&'static GemEntry> {
     let data = gems();
+    let lower = name.to_ascii_lowercase();
+    let id = data
+        .gem_for_base_name
+        .get(&format!("{lower} support"))
+        .or_else(|| data.gem_for_base_name.get(&lower))?;
+    let gem = data.gems.get(id)?;
+    pob_data::skills::skills()
+        .get(&gem.granted_effect_id)
+        .filter(|ge| ge.support)
+        .map(|_| gem)
+}
+
+/// SkillsTab.lua:1478-1490 `RebuildImbuedSupportBySlot` over the active list (07fa089bf: through `FindImbuedSupport`).
+fn rebuild_imbued_support_by_slot(tab: &mut SkillsTab) {
     let mut out = IndexMap::new();
     for sg in tab.socket_group_list() {
-        if let (Some(slot), Some(imbued)) = (&sg.slot, &sg.imbued_support) {
-            let key = format!("{} support", imbued.to_ascii_lowercase());
-            if let Some(gem) = data.gem_for_base_name.get(&key).and_then(|id| data.gems.get(id)) {
-                out.insert(slot.clone(), gem.granted_effect_id.clone());
-            }
+        if let (Some(slot), Some(imbued)) = (&sg.slot, &sg.imbued_support)
+            && let Some(gem) = find_imbued_support(imbued)
+        {
+            out.insert(slot.clone(), gem.granted_effect_id.clone());
         }
     }
     tab.imbued_support_by_slot = out;

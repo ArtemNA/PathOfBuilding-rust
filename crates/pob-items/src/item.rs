@@ -216,6 +216,8 @@ pub struct GrantedSkill {
     pub source: String,
     pub triggered: Value,
     pub trigger_chance: Value,
+    /// Item.lua:2676-2677 (07fa089bf) `itemRequirement` (ModParser.lua:3435-3441).
+    pub item_requirement: Value,
 }
 
 /// A mod of a slot mod list with `mod.sourceSlot` (Item.lua:2242), which upstream writes onto the copied mod table.
@@ -513,7 +515,7 @@ fn unique_mod_stat_order() -> &'static (std::collections::HashMap<String, f64>, 
                 let o = *m
                     .stat_order
                     .get(index)
-                    .unwrap_or_else(|| panic!("{ITEM}:1367: ItemExclusive {id}: statOrder[{}] is nil", index + 1));
+                    .unwrap_or_else(|| panic!("{ITEM}:1374: ItemExclusive {id}: statOrder[{}] is nil", index + 1));
                 let exact_line = gsub(
                     &lower(line),
                     "
@@ -639,7 +641,7 @@ impl Item {
                 if id <= saved_line_count {
                     // `list[id]` -- a non-positive or fractional id indexes nil (L18).
                     if id < 1.0 || id.fract() != 0.0 {
-                        panic!("Classes/ItemsTab.lua:1307: attempt to index a nil value (field '?')");
+                        panic!("Classes/ItemsTab.lua:1330: attempt to index a nil value (field '?')");
                     }
                     // :1306-1309 versions that could not parse "value(min-max)" lines saved them as is with a default ModRange
                     let ml = &mut list[id as usize - 1];
@@ -911,6 +913,20 @@ impl Item {
             "Flask 1".into()
         } else if ty == Some("Graft") {
             "Graft 1".into()
+        } else if ty == Some("Viscera") {
+            // Item.lua:2208-2213 (07fa089bf): the first `viscera_*` tag in `pairs(self.base.tags)` -- one per base (checked on the
+            // data: every Viscera base has exactly one such tag), so the order does not matter
+            for (tag, _) in base.tags.iter() {
+                if let Some(rest) = tag.strip_prefix("viscera_") {
+                    let mut c = rest.chars();
+                    return match c.next() {
+                        Some(f) => f.to_ascii_uppercase().to_string() + c.as_str(),
+                        None => String::new(),
+                    };
+                }
+            }
+            // no tag: the function falls off its end (nil)
+            panic!("{ITEM}:2213: GetPrimarySlot of a Viscera without a viscera_ tag returns nil")
         } else {
             self.ty.clone().expect("item.type")
         }
@@ -949,12 +965,18 @@ impl Item {
         let mut item_class: Option<String> = None;
         if let Some(first) = at(l) {
             if matches(first, "^Item Class:") {
-                // `gsub("^Item Class: %s+", "%1")` -- no captures: `%1` is the whole match, a no-op replacement.
-                item_class = Some(gsub(first, "^Item Class: %s+", "%1", None));
+                // Item.lua:443 (07fa089bf) `match("^Item Class:%s*(.*)")`: the class name alone
+                item_class = match1(first, "^Item Class:%s*(.*)");
                 l += 1;
             }
             let line = at(l).unwrap_or_else(|| panic!("{ITEM}:444: attempt to index a nil value (field '?')"));
-            if let Some(r) = match1(line, "^Rarity: (%a+)") {
+            let rarity_word = match1(line, "^Rarity: (%a+)");
+            // Item.lua:447-450 (07fa089bf): a game copy of a Viscera has no rarity line
+            if item_class.as_deref() == Some("Viscera") && rarity_word.is_none() {
+                self.rarity = "NORMAL".into();
+                mode_game = true;
+            }
+            if let Some(r) = rarity_word {
                 mode_game = true;
                 let up = pob_lua::string::upper(&r);
                 if pob_data::globals::globals().color_codes.contains_key(&up) {
@@ -1037,7 +1059,14 @@ impl Item {
             if line == "Veiled Prefix" || line == "Veiled Suffix" {
                 self.veiled = true;
             }
-            if let Some(pos) = flask_buff_lines.as_ref().and_then(|b| b.iter().position(|x| *x == line)) {
+            if item_class.as_deref() == Some("Viscera")
+                && matches!(
+                    line.as_str(),
+                    "Head" | "Torso" | "Upper Limb" | "Lower Limb" | "Take this to the Wickerman in a town or hideout to attach it."
+                )
+            {
+                // Item.lua:545-548 (07fa089bf): slot labels and instructions in the game clipboard are not modifiers
+            } else if let Some(pos) = flask_buff_lines.as_ref().and_then(|b| b.iter().position(|x| *x == line)) {
                 flask_buff_lines.as_mut().expect("some").remove(pos);
             } else if let Some(pos) = tincture_buff_lines.as_ref().and_then(|b| b.iter().position(|x| *x == line)) {
                 tincture_buff_lines.as_mut().expect("some").remove(pos);
@@ -1075,7 +1104,7 @@ impl Item {
                 // :578-580 the flags are set before the line is parsed
                 self.advanced_copy = true;
                 has_modifier_headers = true;
-                self.unimplemented.push(format!("{ITEM}:577 advanced copy line skipped: {line}"));
+                self.unimplemented.push(format!("{ITEM}:584 advanced copy line skipped: {line}"));
             } else {
                 line = format!("{line_prefix}{line}{line_postfix}");
                 if self.check_section {
@@ -1499,7 +1528,7 @@ impl Item {
                     let jewel = ty == Some("Jewel") && {
                         let base = self
                             .base
-                            .unwrap_or_else(|| panic!("{ITEM}:1487: attempt to index field 'base' (a nil value)"));
+                            .unwrap_or_else(|| panic!("{ITEM}:1494: attempt to index field 'base' (a nil value)"));
                         !(base.sub_type.as_deref() == Some("Abyss") && self.corrupted)
                     };
                     self.affix_limit = if jewel || ty == Some("Graft") { 4.0 } else { 6.0 };
@@ -1587,7 +1616,7 @@ impl Item {
             let t = self
                 .title
                 .as_deref()
-                .unwrap_or_else(|| panic!("{ITEM}:1607: attempt to concatenate field 'title' (a nil value)"));
+                .unwrap_or_else(|| panic!("{ITEM}:1614: attempt to concatenate field 'title' (a nil value)"));
             self.title = Some(format!("Foulborn {t}"));
         } else if !self.foulborn && has_foulborn_prefix {
             self.title = self.title.as_deref().map(|t| gsub(t, "[Ff]oulborn ", "", None));
@@ -1636,12 +1665,19 @@ impl Item {
                 self.enchant_mod_lines.push(ml);
             }
         }
+        // :1658-1664 (07fa089bf): anointing a Putrid Seed grows four passives
+        if self.base.is_some_and(|b| b.sub_type.as_deref() == Some("Blightcore")) {
+            self.can_be_anointed = true;
+            self.can_have_two_enchants = true;
+            self.can_have_three_enchants = true;
+            self.can_have_four_enchants = true;
+        }
         self.build_mod_list();
         if defer_jewel_radius_index_assignment {
             let jd = self
                 .jewel_data
                 .as_ref()
-                .unwrap_or_else(|| panic!("{ITEM}:1641: attempt to index field 'jewelData' (a nil value)"));
+                .unwrap_or_else(|| panic!("{ITEM}:1648: attempt to index field 'jewelData' (a nil value)"));
             self.jewel_radius_index = jd.num("radiusIndex");
         }
         self.is_unique = self.rarity == "UNIQUE" || self.rarity == "RELIC";
@@ -1864,7 +1900,7 @@ impl Item {
             _ => {
                 // An explicit with a colon in it (Fortress Covenant, Pure Talent, ...) unless it is part of the custom name.
                 // Both are Lua PATTERNS here (upstream quirk); a malformed one is the Lua error.
-                let site = "Classes/Item.lua:861";
+                let site = "Classes/Item.lua:868";
                 if !(find(&self.name, spec_name, site) && find(&self.name, spec_val, site)) {
                     *found_explicit = true;
                     *stage = Stage::Explicit;
@@ -2186,7 +2222,7 @@ impl Item {
             self.requirements.dex_mod = Some(0.0);
             self.requirements.int_mod = Some(0.0);
         } else {
-            let site = "Classes/Item.lua:2619";
+            let site = "Classes/Item.lua:2643";
             let s = self
                 .requirements
                 .str
@@ -2219,6 +2255,7 @@ impl Item {
                     source: mod_source.clone(),
                     triggered: skill.get("triggered"),
                     trigger_chance: skill.get("triggerChance"),
+                    item_requirement: skill.get("itemRequirement"),
                 });
             }
         }
@@ -2394,14 +2431,14 @@ impl Item {
         }
         let mod_source = self.mod_source.clone();
         if let Some(weapon) = &base.weapon {
-            let slot = slot_num.unwrap_or_else(|| panic!("{ITEM}:2276: table index is nil"));
+            let slot = slot_num.unwrap_or_else(|| panic!("{ITEM}:2296: table index is nil"));
             let mut wd = DataTable::default();
             wd.set("type", Value::str(&base.ty));
             wd.set("subType", base.sub_type.as_deref().map_or(Value::Nil, Value::str));
             wd.set("name", Value::str(&self.name));
             let quality = self
                 .quality
-                .unwrap_or_else(|| panic!("{ITEM}:2280: attempt to perform arithmetic on field 'quality' (a nil value)"));
+                .unwrap_or_else(|| panic!("{ITEM}:2300: attempt to perform arithmetic on field 'quality' (a nil value)"));
             let a = calc_local_slot(&mut mod_list, "Speed", ModType::Inc, mod_flag("Attack"));
             let b = calc_local_slot(&mut mod_list, "AlternateQualityLocalAttackSpeedPer8Quality", ModType::Inc, 0);
             let attack_speed_inc = a + (quality / 8.0 * b).floor();
@@ -2510,7 +2547,7 @@ impl Item {
             let ward_inc = cl("Ward", ModType::Inc);
             let armour_es_inc = cl("ArmourAndEnergyShield", ModType::Inc);
             let defences_inc = cl("Defences", ModType::Inc);
-            let mut quality_scalar = self.quality.unwrap_or_else(|| panic!("{ITEM}:2364: quality is nil"));
+            let mut quality_scalar = self.quality.unwrap_or_else(|| panic!("{ITEM}:2384: quality is nil"));
             if cl("AlternateQualityArmour", ModType::Base) > 0.0 {
                 quality_scalar = 0.0;
             }
@@ -2622,7 +2659,7 @@ impl Item {
             }
         } else if let Some(flask) = &base.flask {
             let mut fd = self.flask_data.take().unwrap_or_default();
-            let quality = || self.quality.unwrap_or_else(|| panic!("{ITEM}:2425: quality is nil"));
+            let quality = || self.quality.unwrap_or_else(|| panic!("{ITEM}:2445: quality is nil"));
             let duration_inc = calc_local_slot(&mut mod_list, "Duration", ModType::Inc, 0);
             let duration_more = calc_local_slot(&mut mod_list, "Duration", ModType::More, 0);
             if flask.life.is_some() || flask.mana.is_some() {
@@ -2760,6 +2797,15 @@ impl Item {
         for v in list_values_slot(mod_list, "JewelData") {
             set_key_value(&mut jd, &v);
         }
+        // :2515-2518 (07fa089bf): a Putrid Seed's "1 added passive skill is X" names, in order of the jewel's granted passive
+        // stats (a fresh table each rebuild: `modList:List` returns a new one).
+        if self.base.is_some_and(|b| b.sub_type.as_deref() == Some("Blightcore")) {
+            let notables = Table {
+                array: list_values_slot(mod_list, "BlightcoreNotable"),
+                ..Table::default()
+            };
+            jd.set("blightcoreNotables", Value::table(notables));
+        }
         // L4: `if modList:List(...) then` -- List always returns a table, and `{}` is truthy.
         let mut esc = Table::default();
         for v in list_values_slot(mod_list, "ImpossibleEscapeKeystones") {
@@ -2773,7 +2819,7 @@ impl Item {
                         esc.hash.insert(s.clone(), val);
                     }
                 }
-                _ => unimplemented!("{ITEM}:2485 impossibleEscapeKeystones with a non-string key"),
+                _ => unimplemented!("{ITEM}:2505 impossibleEscapeKeystones with a non-string key"),
             }
         }
         jd.set("impossibleEscapeKeystones", Value::table(esc));
@@ -2796,7 +2842,7 @@ impl Item {
             if jd.get("clusterJewelNodeCount").truthy() {
                 let n = jd
                     .num("clusterJewelNodeCount")
-                    .unwrap_or_else(|| panic!("{ITEM}:2502: clusterJewelNodeCount is not a number"));
+                    .unwrap_or_else(|| panic!("{ITEM}:2526: clusterJewelNodeCount is not a number"));
                 jd.set_num(
                     "clusterJewelNodeCount",
                     pob_lua::number::min2(pob_lua::number::max2(n, cj.min_nodes), cj.max_nodes),
@@ -2948,14 +2994,14 @@ fn calc_local_in<T>(list: &mut Vec<T>, get: impl Fn(&T) -> &Mod, name: &str, ty:
                     let v = m
                         .value
                         .as_num()
-                        .unwrap_or_else(|| panic!("{ITEM}:2207: attempt to perform arithmetic on field 'value'"));
+                        .unwrap_or_else(|| panic!("{ITEM}:2227: attempt to perform arithmetic on field 'value'"));
                     num *= (100.0 + v) / 100.0;
                 }
                 _ => {
                     let v = m
                         .value
                         .as_num()
-                        .unwrap_or_else(|| panic!("{ITEM}:2209: attempt to perform arithmetic on field 'value'"));
+                        .unwrap_or_else(|| panic!("{ITEM}:2229: attempt to perform arithmetic on field 'value'"));
                     num += v;
                 }
             }

@@ -139,6 +139,8 @@ pub struct TreeNode {
     pub is_blighted: Option<bool>,
     pub is_bloodline: Option<bool>,
     pub is_proxy: Option<bool>,
+    /// 3_30+: the Putrid Seed layout a proxy node belongs to (e.g. "BlightcoreTopRight"; PassiveTree.lua:683, 07fa089bf).
+    pub proxy_key: Option<String>,
     pub ascendancy_name: Option<String>,
     pub class_start_index: Option<f64>,
     pub granted_strength: Option<f64>,
@@ -240,7 +242,7 @@ impl TreeJson {
 }
 
 /// The trees committed under `data/tree/` (golden versions + latest); the other 37 live in `data/tree/_ondemand/`.
-pub const COMMITTED_TREE_VERSIONS: [&str; 4] = ["3_6", "3_12", "3_13", "3_29"];
+pub const COMMITTED_TREE_VERSIONS: [&str; 4] = ["3_6", "3_12", "3_13", "3_30"];
 
 /// One `treeVersions[ver]` entry of GameVersions.lua (`url` is UI only and not exported).
 #[derive(Clone, Debug, Deserialize)]

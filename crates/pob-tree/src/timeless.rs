@@ -219,7 +219,7 @@ impl ConqueredBy {
         let cid = match conq.get("id") {
             Value::Num(n) => ConquerorId::Num(n),
             Value::Str(s) => ConquerorId::Str(s.to_string()),
-            other => return Err(err(1287, format!("conqueror id {other:?}"))),
+            other => return Err(err(1288, format!("conqueror id {other:?}"))),
         };
         Ok(Some(ConqueredBy {
             id,
@@ -287,7 +287,7 @@ fn replace_helper(stat_to_fix: &str, stat_key: &str, stat_mod: &LegionStat, valu
     let mut value = value;
     if stat_mod.fmt.as_deref() == Some("g") {
         // note the only one we actually care about is "Ritual of Flesh" life regen
-        let v = value.ok_or_else(|| err(1237, "attempt to perform arithmetic on local 'value' (a nil value)"))?;
+        let v = value.ok_or_else(|| err(1238, "attempt to perform arithmetic on local 'value' (a nil value)"))?;
         value = Some(if has("per_minute") {
             round1(v / 60.0)
         } else if has("permyriad") {
@@ -299,10 +299,10 @@ fn replace_helper(stat_to_fix: &str, stat_key: &str, stat_mod: &LegionStat, valu
         });
     }
     let sub = |pat: String| -> Result<String, TreeError> {
-        let v = value.ok_or_else(|| err(1246, "bad argument #2 to 'gsub' (string/function/table expected)"))?;
+        let v = value.ok_or_else(|| err(1247, "bad argument #2 to 'gsub' (string/function/table expected)"))?;
         let repl = tostring_num(v);
         let (out, _) = gsub(stat_to_fix.as_bytes(), pat.as_bytes(), Repl::Str(repl.as_bytes()), None)
-            .map_err(|e| err(1246, format!("gsub: {}", e.0)))?;
+            .map_err(|e| err(1247, format!("gsub: {}", e.0)))?;
         Ok(String::from_utf8_lossy(&out).into_owned())
     };
     if stat_mod.min != stat_mod.max {
@@ -531,7 +531,7 @@ impl PassiveSpec {
             let Some(jewel) = self.jewel_item(item_id) else {
                 assert!(
                     self.jewel_items.is_empty(),
-                    "{SPEC}:1577: attempt to index a nil value (items[{item_id}])"
+                    "{SPEC}:1578: attempt to index a nil value (items[{item_id}])"
                 );
                 continue;
             };
@@ -588,7 +588,7 @@ impl PassiveSpec {
             let modification = cb
                 .modification
                 .clone()
-                .ok_or_else(|| err(1278, "bad argument #1 to 'ipairs' (table expected, got nil)"))?;
+                .ok_or_else(|| err(1279, "bad argument #1 to 'ipairs' (table expected, got nil)"))?;
             for component in modification.iter() {
                 self.apply_abyss_component(i, component, legion, additions_base)?;
             }
@@ -605,7 +605,7 @@ impl PassiveSpec {
                         let stat_key = ln.sorted_stats.get(k).map(String::as_str);
                         let stat_mod = stat_key
                             .and_then(|key| ln.stat_defs.get(key))
-                            .ok_or_else(|| err(1291, "attempt to index local 'statMod' (a nil value)"))?;
+                            .ok_or_else(|| err(1292, "attempt to index local 'statMod' (a nil value)"))?;
                         let value = lua_index(&tbl, stat_mod.index + 1.0);
                         let rep = replace_helper(rep_stat, stat_key.unwrap_or_default(), stat_mod, value)?;
                         self.node_addition_or_replacement(i, &rep, k == 0); // wipe mods on first run
@@ -642,7 +642,7 @@ impl PassiveSpec {
                         let addition = legion
                             .additions
                             .get(add as usize)
-                            .ok_or_else(|| err(1326, format!("attempt to index local 'addition' (legionAdditions[{}])", add + 1)))?;
+                            .ok_or_else(|| err(1327, format!("attempt to index local 'addition' (legionAdditions[{}])", add + 1)))?;
                         for add_stat in &addition.sd {
                             let mut add_stat = add_stat.clone();
                             for (k, stat_mod) in addition.stats.iter() {
@@ -667,7 +667,7 @@ impl PassiveSpec {
                         // add
                         let addition = legion.additions.get(jewel_data as usize).ok_or_else(|| {
                             err(
-                                1348,
+                                1349,
                                 format!("attempt to index local 'addition' (legionAdditions[{}])", jewel_data + 1.0),
                             )
                         })?;
@@ -697,7 +697,7 @@ impl PassiveSpec {
                             let stat_key = ln.sorted_stats.get(k).map(String::as_str);
                             let stat_mod = stat_key
                                 .and_then(|key| ln.stat_defs.get(key))
-                                .ok_or_else(|| err(1381, "attempt to index local 'statMod' (a nil value)"))?;
+                                .ok_or_else(|| err(1382, "attempt to index local 'statMod' (a nil value)"))?;
                             let rep = replace_helper(rep_stat, stat_key.unwrap_or_default(), stat_mod, lua_index(&tbl, 2.0))?;
                             self.node_addition_or_replacement(i, &rep, true);
                         }
@@ -852,7 +852,7 @@ impl PassiveSpec {
                         if node.replaced.is_none() {
                             // The node still holds the TREE's modList: NewMod would write into the shared tree node.
                             return Err(err(
-                                1726,
+                                1727,
                                 format!(
                                     "unimplemented: NewMod into the tree's own modList of node {} (conquest left it unchanged)",
                                     node.id

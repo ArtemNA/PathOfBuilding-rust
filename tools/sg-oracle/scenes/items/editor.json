@@ -225,6 +225,9 @@
 "shot": "editor-custom"
 },
 {
+"affixOrder": "editor-affixes"
+},
+{
 "cursorItem": [
 "displayItemCorrupt"
 ],

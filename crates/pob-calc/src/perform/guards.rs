@@ -47,7 +47,7 @@ pub(super) fn guard_slots(env: &mut Env, guards: &Buffs, buffs: &mut Buffs, outp
         let names: Vec<&str> = guards.keys().map(String::as_str).collect();
         if let Some(st) = env.skills.as_mut() {
             st.order_notes.push(format!(
-                "Modules/CalcPerform.lua:3320 pairs(guards) chooses the guard slots among {names:?} (LuaJIT: per-process order)"
+                "Modules/CalcPerform.lua:3328 pairs(guards) chooses the guard slots among {names:?} (LuaJIT: per-process order)"
             ));
         }
     }
@@ -70,7 +70,7 @@ pub(super) fn apply(env: &Env, buffs: &Buffs, minion_buffs: &Buffs, debuffs: &Bu
         .minion
         .as_ref()
         .map(|m| (m.borrow().mod_db.clone(), super::env_minion(env).ty.clone()));
-    let main = env.minion.as_ref().map(|_| super::player_main_skill(env, 3350));
+    let main = env.minion.as_ref().map(|_| super::player_main_skill(env, 3358));
     for list in buffs.values() {
         mod_db.borrow_mut().add_list(&list.mods);
         if !list.not_buff {
@@ -107,7 +107,7 @@ pub(super) fn apply(env: &Env, buffs: &Buffs, minion_buffs: &Buffs, debuffs: &Bu
         if let Some(l) = &slot.minion_buff_mod_list {
             let (mdb, _) = minion
                 .as_ref()
-                .unwrap_or_else(|| panic!("Modules/CalcPerform.lua:3374: attempt to index field 'minion' (a nil value)"));
+                .unwrap_or_else(|| panic!("Modules/CalcPerform.lua:3382: attempt to index field 'minion' (a nil value)"));
             mdb.borrow_mut().add_list(l);
         }
     }

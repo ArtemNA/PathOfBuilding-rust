@@ -420,8 +420,8 @@ impl PassiveSpec {
     fn init(&mut self) {
         self.unimplemented.extend(
             [
-                "PassiveSpec.lua:1520-1560 Intuitive Leap-like dependency bookkeeping (P5)",
-                "PassiveSpec.lua:1591-1617 Intuitive Leap-like path dependencies (potentialDeps / intuitiveLeaps, P5)",
+                "PassiveSpec.lua:1521-1561 Intuitive Leap-like dependency bookkeeping (P5)",
+                "PassiveSpec.lua:1592-1618 Intuitive Leap-like path dependencies (potentialDeps / intuitiveLeaps, P5)",
                 "PassiveSpec.lua:196 DecodeURL (legacy URL specs, P5)",
             ]
             .map(String::from),
@@ -1007,9 +1007,11 @@ impl PassiveSpec {
             let n = &mut self.nodes[i];
             n.depends.clear();
             n.intuitive_leap_likes_affecting.clear();
-            // :1186-1189 `isUnallocatedMastery` (an unallocated mastery without a runegraft) keeps its options.
+            // :1186-1189 `isUnallocatedMastery` (an unallocated mastery without a runegraft) keeps its options. (07fa089bf) `not
+            // treeNode.isProxy`: Putrid Seed nodes replace tree proxy nodes and keep the copy BuildBlightcoreSubgraph made.
             let unallocated_mastery = n.all_mastery_options && n.ty() == NodeType::Mastery && !self.hash_overrides.contains_key(&n.id);
-            if !unallocated_mastery {
+            let tree_proxy = self.tree.node(n.id).is_some_and(|t| t.is_proxy);
+            if !tree_proxy && !unallocated_mastery {
                 self.replace_node(i);
             }
             // :1191 `node.conqueredBy = abyssConquests[id]`, then a radius jewel over it (:1193-1213).
@@ -1061,7 +1063,7 @@ impl PassiveSpec {
                         }
                         self.allocated_mastery_count += 1;
                         let Some(type_name) = self.nodes[i].name().map(str::to_owned) else {
-                            unimplemented!("Classes/PassiveSpec.lua:1433 allocatedMasteryTypes[nil] (a Lua error)");
+                            unimplemented!("Classes/PassiveSpec.lua:1434 allocatedMasteryTypes[nil] (a Lua error)");
                         };
                         match self.allocated_mastery_types.get(&type_name).copied() {
                             None => {

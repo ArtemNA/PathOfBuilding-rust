@@ -2,6 +2,7 @@
 #   pwsh tools/sg-oracle/run.ps1 -Script config-runner.lua -ScriptArgs real-input -Inject inject-config-real.ps1 -Timeout 40
 param($Process, [string]$Out)
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'hidden-desktop.ps1') # the hidden desktop: no window on the user's monitors (SG_VISIBLE=1: visible)
 Add-Type -Namespace SgOracle -Name I -MemberDefinition @"
 [DllImport("user32.dll")] public static extern bool PostMessageW(IntPtr h, uint m, IntPtr w, IntPtr l);
 "@
@@ -9,7 +10,7 @@ Add-Type -Namespace SgOracle -Name I -MemberDefinition @"
 for ($i = 0; $i -lt 250 -and -not (Test-Path "$Out\ready"); $i++) { Start-Sleep -Milliseconds 100 }
 if (-not (Test-Path "$Out\ready")) { throw 'the original did not get ready' }
 Start-Sleep -Milliseconds 1500
-$Process.Refresh(); $h = $Process.MainWindowHandle
+$h = Get-SgWindow -Process $Process
 function P([uint32]$msg, [int64]$w, [int64]$l) { [void][SgOracle.I]::PostMessageW($h, $msg, [IntPtr]$w, [IntPtr]$l) }
 function Cursor([int]$x, [int]$y) { Set-Content "$Out\cursor.txt" "$x $y" -Encoding ascii }
 function Wait($ms = 250) { Start-Sleep -Milliseconds $ms }

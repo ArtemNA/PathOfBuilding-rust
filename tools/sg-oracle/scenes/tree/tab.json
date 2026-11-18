@@ -52,6 +52,7 @@
 {"cursor":[595,437]},
 {"hold":["LEFTBUTTON"],"events":[["KeyDown","LEFTBUTTON"]]},
 {"release":["LEFTBUTTON"],"events":[["KeyUp","LEFTBUTTON"]],"dump":true,"tab":true},
+{"treeOrder":"order-tab-late"},
 {"cursor":[640,524]},
 {"hold":["LEFTBUTTON"],"events":[["KeyDown","LEFTBUTTON"]]},
 {"release":["LEFTBUTTON"],"events":[["KeyUp","LEFTBUTTON"]],"dump":true,"tab":true,"shot":"tab-export"},

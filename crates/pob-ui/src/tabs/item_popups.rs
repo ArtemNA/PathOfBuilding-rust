@@ -184,7 +184,8 @@ impl ItemsTab {
     /// `AddModComparisonTooltip(tooltip, mod, replaceImplicits)` (:2560-2582).
     pub(crate) fn add_mod_comparison(&self, tooltip: &mut Tooltip, g: &Gfx, m: &AffixMod, replace_implicits: bool) {
         let Some(item) = self.display_item.borrow().clone() else { return };
-        let slot = item.get_primary_slot();
+        // ItemsTab.lua:2587 (07fa089bf)
+        let slot = self.get_comparison_slot_name_for_item_ex(g, &item, true);
         let mut new_item = Item::parse_with(&item.build_raw(), None, false);
         if replace_implicits {
             new_item.implicit_mod_lines.clear();
@@ -360,7 +361,8 @@ impl ItemsTab {
                 let mut lines = lines_of(cs.borrow().as_deref(), &src);
                 if let Some(stat) = sort_stat(&so) {
                     let display = t.display_item.borrow().clone().expect("displayItem");
-                    let slot_name = display.get_primary_slot();
+                    // ItemsTab.lua:2989 (07fa089bf)
+                    let slot_name = t.get_comparison_slot_name_for_item_ex(g, &display, true);
                     let mut keyed: Vec<(f64, usize, String)> = lines
                         .into_iter()
                         .enumerate()
@@ -434,7 +436,9 @@ impl ItemsTab {
             let display = t.display_item.borrow().clone();
             if let (Some(l), Some(d)) = (line, display) {
                 let it = Rc::new(enchant_with(&d, &l, t.enchant_slot.get()));
-                t.add_tooltip(tooltip, g, &it, None, true);
+                // ItemsTab.lua:3059 (07fa089bf)
+                let slot = t.get_comparison_slot_name_for_item_ex(g, &d, true);
+                t.add_tooltip_slot_name(tooltip, g, &it, &slot, true);
             }
         });
         controls.insert("enchantmentSourceLabel".into(), label(45.0, 95.0, "^7Source:"));
@@ -470,7 +474,10 @@ impl ItemsTab {
                 let d = t.display_item.borrow().clone().expect("displayItem");
                 let mut it = copy_of(&d);
                 let slot = t.enchant_slot.get();
-                if it.enchant_mod_lines.len() >= slot {
+                // ItemsTab.lua:2933-2938 (07fa089bf): one enchantment can span several lines -- without a second enchant slot all go
+                if !it.can_have_two_enchants {
+                    it.enchant_mod_lines.clear();
+                } else if it.enchant_mod_lines.len() >= slot {
                     it.enchant_mod_lines.remove(slot - 1);
                 }
                 it.build_and_parse_raw();
@@ -499,6 +506,11 @@ impl ItemsTab {
             for m in list {
                 if let Some((s, _)) = pob_items::lua::find_pattern(&m.line, "Allocates ([a-zA-Z ]+)") {
                     out.push(m.line[s + "Allocates ".len()..].to_string());
+                } else if item.base.and_then(|b| b.sub_type.as_deref()) == Some("Blightcore") {
+                    // ItemsTab.lua:3088-3093 (07fa089bf): Putrid Seed anoints grow passives instead
+                    if let Some(name) = pob_items::lua::match1(&m.line.to_ascii_lowercase(), "^1 added passive skill is (.+)$") {
+                        out.push(name);
+                    }
                 }
             }
         }
@@ -514,8 +526,14 @@ impl ItemsTab {
             it.enchant_mod_lines.remove(slot - 1);
         }
         if let Some(n) = dn {
+            // ItemsTab.lua:3125-3131 (07fa089bf): a Putrid Seed grows the passive
+            let line = if it.base.and_then(|b| b.sub_type.as_deref()) == Some("Blightcore") {
+                format!("1 Added Passive Skill is {n}")
+            } else {
+                format!("Allocates {n}")
+            };
             it.enchant_mod_lines
-                .insert((slot - 1).min(it.enchant_mod_lines.len()), crafted_line(&format!("Allocates {n}")));
+                .insert((slot - 1).min(it.enchant_mod_lines.len()), crafted_line(&line));
         }
         it.build_and_parse_raw();
         it
@@ -640,6 +658,9 @@ impl ItemsTab {
     #[allow(clippy::too_many_lines)]
     pub(crate) fn corrupt_display_item_popup(&self, g: &mut Gfx) {
         let Some(item) = self.display_item.borrow().clone() else { return };
+        // ItemsTab.lua:3382 (07fa089bf) `GetComparisonSlotNameForItem(self.displayItem, true)`: the popup is modal, so the display
+        // item and the shown slots cannot change while it is open -- taken once here
+        let cmp_slot = self.get_comparison_slot_name_for_item_ex(g, &item, true);
         let mut max_implicits = item.corrupt_implicit_count.unwrap_or(2.0);
         for ml in &item.implicit_mod_lines {
             for m in ml.mod_list.iter().flatten() {
@@ -798,7 +819,7 @@ impl ItemsTab {
         };
         // `sortModType(modType, stat, calcFunc, slotName, useFullDPS)` (:3278-3322)
         let sort_mod_type: Rc<dyn Fn(&str, Option<&PowerStat>)> = {
-            let (lists, me, cur) = (lists.clone(), self.me.clone(), current.clone());
+            let (lists, me, cur, cmp_slot) = (lists.clone(), self.me.clone(), current.clone(), cmp_slot.clone());
             Rc::new(move |mod_type: &str, stat: Option<&PowerStat>| {
                 let Some(mut list) = lists.borrow().get(mod_type).cloned() else {
                     return;
@@ -806,7 +827,7 @@ impl ItemsTab {
                 if let Some(stat) = stat {
                     let t = me.upgrade().expect("itemsTab");
                     let d = t.display_item.borrow().clone().expect("displayItem");
-                    let slot = d.get_primary_slot();
+                    let slot = cmp_slot.clone();
                     let key = stat.stat.clone().unwrap_or_default();
                     let scourge_prefix = cur.borrow().as_str() == "ScourgeUpside";
                     for e in &mut list {
@@ -1166,7 +1187,11 @@ impl ItemsTab {
         save.tip.set_tooltip_func(move |tooltip, g, ()| {
             tooltip.clear(false);
             let it = c1(first.base.shown.get(g));
-            me.upgrade().expect("itemsTab").add_tooltip(tooltip, g, &Rc::new(it), None, false);
+            // ItemsTab.lua:3620 (07fa089bf)
+            let t = me.upgrade().expect("itemsTab");
+            let d = t.display_item.borrow().clone().expect("displayItem");
+            let slot = t.get_comparison_slot_name_for_item_ex(g, &d, true);
+            t.add_tooltip_slot_name(tooltip, g, &Rc::new(it), &slot, false);
         });
         controls.insert("save".into(), save);
         controls.insert(
@@ -1347,7 +1372,11 @@ impl ItemsTab {
         let (a1, me) = (add, self.me.clone());
         save.tip.set_tooltip_func(move |tooltip, g, ()| {
             tooltip.clear(false);
-            me.upgrade().expect("itemsTab").add_tooltip(tooltip, g, &Rc::new(a1()), None, false);
+            // ItemsTab.lua:3976, :4088 (07fa089bf)
+            let t = me.upgrade().expect("itemsTab");
+            let d = t.display_item.borrow().clone().expect("displayItem");
+            let slot = t.get_comparison_slot_name_for_item_ex(g, &d, true);
+            t.add_tooltip_slot_name(tooltip, g, &Rc::new(a1()), &slot, false);
         });
         controls.insert("save".into(), save);
         controls.insert(
@@ -1529,7 +1558,8 @@ impl ItemsTab {
                 // `applySort` (:3604-3638)
                 let t = me2.upgrade().expect("itemsTab");
                 let display = t.display_item.borrow().clone().expect("displayItem");
-                let slot = display.get_primary_slot();
+                // ItemsTab.lua:3665 (07fa089bf)
+                let slot = t.get_comparison_slot_name_for_item_ex(g, &display, true);
                 let stat = v.data.as_ref().and_then(|x| x.downcast_ref::<PowerStat>()).cloned();
                 let mut rows: Vec<(f64, usize, DropItem)> = ms2
                     .list
@@ -1588,7 +1618,11 @@ impl ItemsTab {
         let (a1, me) = (add, self.me.clone());
         save.tip.set_tooltip_func(move |tooltip, g, ()| {
             tooltip.clear(false);
-            me.upgrade().expect("itemsTab").add_tooltip(tooltip, g, &Rc::new(a1()), None, false);
+            // ItemsTab.lua:3976, :4088 (07fa089bf)
+            let t = me.upgrade().expect("itemsTab");
+            let d = t.display_item.borrow().clone().expect("displayItem");
+            let slot = t.get_comparison_slot_name_for_item_ex(g, &d, true);
+            t.add_tooltip_slot_name(tooltip, g, &Rc::new(a1()), &slot, false);
         });
         controls.insert("save".into(), save);
         controls.insert(

@@ -137,6 +137,9 @@ const BASE_SLOTS: [&str; 18] = [
     "Flask 5",
 ];
 
+/// ItemsTab.lua:210 (07fa089bf) -- the Wickerman slots, in `addSlot` order.
+pub const WICKERMAN_SLOTS: [&str; 4] = ["Head", "Body", "Arm", "Leg"];
+
 /// ItemsTab.lua:188 -- the seven slots that get their own six abyssal sockets.
 const ABYSSAL_PARENTS: [&str; 7] = ["Weapon 1", "Weapon 2", "Helmet", "Gloves", "Body Armour", "Boots", "Belt"];
 
@@ -201,6 +204,11 @@ fn build_ordered_slots(spec: &PassiveSpec, set: &pob_build::ItemSetModel) -> Vec
             }
         }
     }
+    // ItemsTab.lua:204-215 (07fa089bf): the Wickerman equipment slots follow the base slots (shown only on 3_30 trees, but
+    // `addSlot` puts them in `orderedSlots` regardless)
+    for slot_name in WICKERMAN_SLOTS {
+        ordered.push(gear(slot_name.to_owned(), slot_name));
+    }
     let mut sockets: Vec<u32> = spec.tree.sockets.keys().copied().collect();
     sockets.sort_unstable();
     for node_id in sockets {
@@ -224,7 +232,7 @@ fn build_ordered_slots(spec: &PassiveSpec, set: &pob_build::ItemSetModel) -> Vec
 /// set's `selItemId` of another slot (`itemSet["Weapon 1"].selItemId`). A `nil` result is `false`.
 pub fn is_item_valid_for_slot(item: &Item, slot_name: &str, spec: &PassiveSpec, items: &ParsedItems, sel: impl Fn(&str) -> f64) -> bool {
     let item_ty = item.ty.as_deref();
-    let base = item.base.expect("itemsTab.items hold resolved bases (ItemsTab.lua:1264)");
+    let base = item.base.expect("itemsTab.items hold resolved bases (ItemsTab.lua:1287)");
     // :2562 `slotName:match("^([%a ]+) (%d+)$")`
     let (slot_type, slot_id) = match slot_name.rsplit_once(' ') {
         Some((head, digits))
@@ -253,6 +261,10 @@ pub fn is_item_valid_for_slot(item: &Item, slot_name: &str, spec: &PassiveSpec, 
         if charm_socket || charm {
             return charm_socket && charm;
         }
+        // ItemsTab.lua:2665-2667 (07fa089bf): a Putrid Seed only grows passives from Large Jewel Sockets
+        if base.sub_type.as_deref() == Some("Blightcore") {
+            return node.expansion_jewel.as_ref().is_some_and(|e| e.size == Some(2.0));
+        }
         let Some(exp) = node.expansion_jewel.as_ref() else {
             // :2578 cluster jewels only in expansion sockets; :2581 an ordinary socket fits anything else
             return item.cluster_jewel.is_none();
@@ -265,13 +277,24 @@ pub fn is_item_valid_for_slot(item: &Item, slot_name: &str, spec: &PassiveSpec, 
             Some(cj) => {
                 let size = exp
                     .size
-                    .unwrap_or_else(|| panic!("Classes/ItemsTab.lua:2586: attempt to compare number with nil (expansionJewel.size)"));
+                    .unwrap_or_else(|| panic!("Classes/ItemsTab.lua:2612: attempt to compare number with nil (expansionJewel.size)"));
                 cj.size_index <= size
             }
         };
     }
     if item_ty == Some(slot_type) {
         return true;
+    }
+    // ItemsTab.lua:2680-2683 (07fa089bf): `item.base.tags["viscera_" .. (slotName:gsub("^%u", string.lower))]`; a miss ends the
+    // elseif chain (nil)
+    if item_ty == Some("Viscera") {
+        let mut key = String::from("viscera_");
+        let mut chars = slot_name.chars();
+        if let Some(c) = chars.next() {
+            key.push(c.to_ascii_lowercase());
+            key.push_str(chars.as_str());
+        }
+        return base.tags.get(key.as_str()).copied().unwrap_or(false);
     }
     if item_ty == Some("Tincture") && slot_type == "Flask" {
         return true;
@@ -293,7 +316,7 @@ pub fn is_item_valid_for_slot(item: &Item, slot_name: &str, spec: &PassiveSpec, 
             } else if wti
                 .get(weapon1_type)
                 .unwrap_or_else(|| {
-                    panic!("Classes/ItemsTab.lua:2598: attempt to index a nil value (data.weaponTypeInfo[{weapon1_type:?}])")
+                    panic!("Classes/ItemsTab.lua:2624: attempt to index a nil value (data.weaponTypeInfo[{weapon1_type:?}])")
                 })
                 .one_hand
                 == Some(true)
@@ -391,7 +414,7 @@ pub fn cluster_jewel_of(item: &Item) -> Option<ClusterJewel> {
             Some(s) => Some(s.to_owned()),
             None if !v.truthy() => None,
             None => panic!(
-                "Classes/PassiveSpec.lua:1970: jewelData.{k} is a {} (expected a string)",
+                "Classes/PassiveSpec.lua:2031: jewelData.{k} is a {} (expected a string)",
                 v.type_name()
             ),
         }
@@ -406,7 +429,7 @@ pub fn cluster_jewel_of(item: &Item) -> Option<ClusterJewel> {
             .map(|x| {
                 x.as_str()
                     .map(str::to_owned)
-                    .unwrap_or_else(|| panic!("Classes/PassiveSpec.lua:1970: jewelData.{k} holds a {}", x.type_name()))
+                    .unwrap_or_else(|| panic!("Classes/PassiveSpec.lua:2031: jewelData.{k} holds a {}", x.type_name()))
             })
             .collect()
     };
@@ -414,6 +437,12 @@ pub fn cluster_jewel_of(item: &Item) -> Option<ClusterJewel> {
         cluster_jewel: item.cluster_jewel,
         valid: jd.get("clusterJewelValid").truthy(),
         keystone: text("clusterJewelKeystone"),
+        // Item.lua:2515-2518 (07fa089bf) `jewelData.blightcoreNotables`
+        blightcore_notables: if jd.get("blightcoreNotables").is_table() {
+            Some(list("blightcoreNotables"))
+        } else {
+            None
+        },
         notables: list("clusterJewelNotables"),
         skill: text("clusterJewelSkill"),
         socket_count_override: jd.num("clusterJewelSocketCountOverride"),
@@ -645,7 +674,7 @@ fn add_radius_jewel(env: &mut Env, item: &Rc<Item>, socket_id: u32, radius_index
             .collect(),
         Some(Value::Nil | Value::Bool(false)) | None => vec![(RadiusFunc::DefaultTally, Value::str("Self"))],
         Some(other) => panic!(
-            "Modules/CalcSetup.lua:886: bad argument #1 to 'ipairs' (table expected, got {})",
+            "Modules/CalcSetup.lua:888: bad argument #1 to 'ipairs' (table expected, got {})",
             other.type_name()
         ),
     };
@@ -661,7 +690,7 @@ fn push_radius_jewel(env: &mut Env, item: &Rc<Item>, socket_id: u32, radius_inde
     let socket = env
         .spec
         .node(socket_id)
-        .unwrap_or_else(|| panic!("Modules/CalcSetup.lua:898: attempt to index local 'node' (a nil value)"));
+        .unwrap_or_else(|| panic!("Modules/CalcSetup.lua:900: attempt to index local 'node' (a nil value)"));
     let nir = socket.nodes_in_radius();
     // `nodesInRadius[item.jewelRadiusIndex]` -- an index the tree's table does not have is nil.
     let list = nir.and_then(|l| {
@@ -672,7 +701,7 @@ fn push_radius_jewel(env: &mut Env, item: &Rc<Item>, socket_id: u32, radius_inde
     let nodes = list.cloned().unwrap_or_default();
     if !ty.is_str("Self") && nir.is_some() {
         let Some(list) = list else {
-            panic!("Modules/CalcSetup.lua:910: bad argument #1 to 'pairs' (table expected, got nil)");
+            panic!("Modules/CalcSetup.lua:912: bad argument #1 to 'pairs' (table expected, got nil)");
         };
         for &id in list {
             // `env.extraRadiusNodeList[nodeId] = env.spec.nodes[nodeId]` -- a nil value leaves no key.
@@ -1072,6 +1101,7 @@ fn init_env_core(
         granted_skills_items: Vec::new(),
         granted_skills_extra: Vec::new(),
         granted_skills_items_extra: Vec::new(),
+        config_extra_skills: Vec::new(),
         explode_sources: Vec::new(),
         item_warnings: IndexMap::new(),
         flasks: Vec::new(),
@@ -1534,6 +1564,10 @@ fn init_env_core(
         if (slot_name == "Graft 1" || slot_name == "Graft 2") && !env.spec.tree_version.contains("3_27") {
             continue;
         }
+        // CalcSetup.lua:821-822 (07fa089bf), verbatim: no slot is named "Wickerman ..." (ItemsTab.lua:210 uses Head/Body/Arm/Leg)
+        if slot_name.starts_with("Wickerman ") && !env.spec.tree_version.contains("3_30") {
+            continue;
+        }
         // :811 -- Ring 3 only exists with The Unseen Hand allocated.
         if slot_name == "Ring 3" && ok(initial.borrow().flag(None, &["AdditionalRingSlot"])) != Some(true) {
             continue;
@@ -1581,6 +1615,8 @@ fn init_env_core(
                     slot_name: Some(slot_name.clone()),
                     source_item: Some(item.clone()),
                     source_node: None,
+                    // Item.lua:2676-2677 (07fa089bf)
+                    item_requirement: skill.item_requirement.clone(),
                 });
             }
             if let Some(bml) = &item.base_mod_list
@@ -1644,7 +1680,7 @@ fn init_env_core(
                         }
                     } else {
                         env.unimplemented
-                            .push(format!("CalcSetup.lua:871 radius jewel {} (nodesInRadius, pob-ts)", item.name));
+                            .push(format!("CalcSetup.lua:873 radius jewel {} (nodesInRadius, pob-ts)", item.name));
                     }
                 }
             }
@@ -1683,7 +1719,7 @@ fn init_env_core(
                     let target = match t.get("slotName") {
                         Value::Str(x) => x.to_string(),
                         Value::Num(x) => pob_lua::tostring_num(x),
-                        other => panic!("Modules/CalcSetup.lua:975: DisablesItem tag with slotName {other:?}"),
+                        other => panic!("Modules/CalcSetup.lua:977: DisablesItem tag with slotName {other:?}"),
                     };
                     if exclude.truthy()
                         && items
@@ -1712,7 +1748,7 @@ fn init_env_core(
             };
             let src = src_list_of(&disabling, slot.slot_num).unwrap_or_else(|| {
                 panic!(
-                    "Modules/CalcSetup.lua:964: bad argument #1 to 'ipairs' (table expected, got nil) -- {} has neither modList nor slotModList[slotNum]",
+                    "Modules/CalcSetup.lua:966: bad argument #1 to 'ipairs' (table expected, got nil) -- {} has neither modList nor slotModList[slotNum]",
                     slot.slot_name
                 )
             });
@@ -1758,7 +1794,26 @@ fn init_env_core(
 
     // :1009-1022 anoint warnings -- `getMissingAnointCount` only feeds `env.itemWarnings` (UI).
     env.unimplemented
-        .push("CalcSetup.lua:1011 getMissingAnointCount / missingAnointWarning (UI only)".into());
+        .push("CalcSetup.lua:1013 getMissingAnointCount / missingAnointWarning (UI only)".into());
+
+    // CalcSetup.lua:1036-1049 (07fa089bf) `equipmentBonusModDB`: the glove/boot bonus scaling reads the tree (as parent), the
+    // Custom Modifiers and the Wickerman items' bonus mods. `item.type:match("^Wickerman ")` never matches (Wickerman bases are
+    // `type = "Viscera"`, Data/Bases/wickerman.lua) -- ported verbatim.
+    let equipment_bonus_db = ModStore::new_db(Some(initial.clone()));
+    equipment_bonus_db.borrow_mut().add_list(&config_lists.mod_list.mods);
+    for item in items.values() {
+        let ty = item
+            .ty
+            .as_deref()
+            .unwrap_or_else(|| panic!("Modules/CalcSetup.lua:1042: attempt to index field 'type' (a nil value)"));
+        if ty.starts_with("Wickerman ") {
+            for m in item.mod_list.iter().flatten() {
+                if &*m.m.name == "EffectOfBonusesFromGloves" || &*m.m.name == "EffectOfBonusesFromBoots" {
+                    equipment_bonus_db.borrow_mut().add_mod(Rc::new(m.m.clone()));
+                }
+            }
+        }
+    }
 
     // :1025-1370 -- flask bookkeeping, then every item's mods into itemModDB -----------------------------------------------
     for slot in &slots {
@@ -1794,7 +1849,7 @@ fn init_env_core(
                     .flask_data
                     .as_ref()
                     .and_then(|f| f.num("chargesMax"))
-                    .expect("Modules/CalcSetup.lua:1040: attempt to compare nil with number (flaskData.chargesMax)");
+                    .expect("Modules/CalcSetup.lua:1057: attempt to compare nil with number (flaskData.chargesMax)");
                 if charges_max > highest {
                     set_mult(&item_mod_db, "LifeFlaskCharges", charges_max);
                 }
@@ -1818,12 +1873,12 @@ fn init_env_core(
             let parent_item = player.borrow().item_list.get(&slots[parent_idx].slot_name).cloned();
             let slot_num = slot
                 .slot_num
-                .expect("Modules/CalcSetup.lua:1055: attempt to compare number with nil (slot.slotNum)");
+                .expect("Modules/CalcSetup.lua:1072: attempt to compare number with nil (slot.slotNum)");
             match parent_item {
                 Some(p) if p.abyssal_socket_count >= slot_num => {
                     scale = p
                         .socketed_jewel_effect_modifier
-                        .expect("Modules/CalcSetup.lua:1058: socketedJewelEffectModifier of a parsed item");
+                        .expect("Modules/CalcSetup.lua:1075: socketedJewelEffectModifier of a parsed item");
                 }
                 _ => item = None,
             }
@@ -1838,7 +1893,7 @@ fn init_env_core(
             if let Some(dist) = env.spec.node(node_id).and_then(|n| n.distance_to_class_start) {
                 let inc = inc
                     .as_num()
-                    .expect("Modules/CalcSetup.lua:1080: attempt to perform arithmetic on field 'jewelIncEffectFromClassStart'");
+                    .expect("Modules/CalcSetup.lua:1097: attempt to perform arithmetic on field 'jewelIncEffectFromClassStart'");
                 scale += dist * (inc / 100.0);
             }
         }
@@ -1859,7 +1914,7 @@ fn init_env_core(
 
         // :1081-1099 abyss jewel conditions / multipliers (a tree socket or an abyssal socket)
         if item.ty.as_deref() == Some("Jewel") && item.base.and_then(|b| b.sub_type.as_deref()) == Some("Abyss") {
-            let base_name = no_spaces(item.base_name.as_deref().expect("Modules/CalcSetup.lua:1083: item.baseName"));
+            let base_name = no_spaces(item.base_name.as_deref().expect("Modules/CalcSetup.lua:1100: item.baseName"));
             let cond = format!("Have{base_name}");
             let have = item_mod_db.borrow().conditions.get(cond.as_str()).copied().unwrap_or(false);
             if !have {
@@ -1885,8 +1940,9 @@ fn init_env_core(
         // --- :1100-1270 the special cases, in upstream order ---------------------------------------------------------
         let ty = item.ty.as_deref();
         let sub_type = item.base.and_then(|b| b.sub_type.as_deref());
-        let gloves_mod = || ok(calc_lib::mod_(&initial.borrow(), None, &["EffectOfBonusesFromGloves"]));
-        let boots_mod = || ok(calc_lib::mod_(&initial.borrow(), None, &["EffectOfBonusesFromBoots"]));
+        // CalcSetup.lua:1278-1279, :1291-1292 (07fa089bf): `calcLib.mod(equipmentBonusModDB, ...)`
+        let gloves_mod = || ok(calc_lib::mod_(&equipment_bonus_db.borrow(), None, &["EffectOfBonusesFromGloves"]));
+        let boots_mod = || ok(calc_lib::mod_(&equipment_bonus_db.borrow(), None, &["EffectOfBonusesFromBoots"]));
         let quiver_inc = || ok(initial.borrow().sum(ModType::Inc, None, &["EffectOfBonusesFromQuiver"]));
         let corrupted_jewel = || {
             let key = format!("Corrupted{}JewelEffect", title_case_rarity(&item.rarity));
@@ -2053,12 +2109,13 @@ fn init_env_core(
             set_cond(&item_mod_db, &key, true);
             env.item_class_restrictions.insert(key.clone(), cr.clone());
             env.unimplemented.push(format!(
-                "CalcSetup.lua:1273 itemModDB.conditions[\"{key}\"] = \"{cr}\" stored as true (ModStore.conditions is boolean)"
+                "CalcSetup.lua:1308 itemModDB.conditions[\"{key}\"] = \"{cr}\" stored as true (ModStore.conditions is boolean)"
             ));
         }
 
         // --- :1275-1345 the item counters -----------------------------------------------------------------------------
-        if !matches!(ty, Some("Jewel" | "Flask" | "Tincture" | "Graft")) {
+        // CalcSetup.lua:1310-1311 (07fa089bf): + Viscera
+        if !matches!(ty, Some("Jewel" | "Flask" | "Tincture" | "Graft" | "Viscera")) {
             let key = match item.rarity.as_str() {
                 "UNIQUE" | "RELIC" => {
                     if item.foulborn {
@@ -2116,8 +2173,13 @@ fn init_env_core(
             }
             // :1332-1343 only gems that fit in the item's sockets contribute to the colour multipliers
             let mut socketed_colours = [0.0f64; 3]; // R, G, B
+            // CalcSetup.lua:1369, :1373-1375 (07fa089bf) `socketedSkillGems`
+            let mut socketed_skill_gems = 0.0;
             for g in socketed_gems.iter().take(min2(slot_gem_sockets_count, socketed_gems_len) as usize) {
                 let tag = |t: &str| g.tags.get(t).copied().unwrap_or(false);
+                if !tag("support") {
+                    socketed_skill_gems += 1.0;
+                }
                 for (i, t) in ["strength", "dexterity", "intelligence"].iter().enumerate() {
                     if tag(t) {
                         socketed_colours[i] += 1.0;
@@ -2132,6 +2194,8 @@ fn init_env_core(
             for (i, colour) in ["Red", "Green", "Blue"].iter().enumerate() {
                 set_mult(&item_mod_db, &format!("Socketed{colour}GemsIn{slot_name}"), socketed_colours[i]);
             }
+            // CalcSetup.lua:1390 (07fa089bf)
+            set_mult(&item_mod_db, &format!("SocketedSkillGemsIn{slot_name}"), socketed_skill_gems);
             set_mult(
                 &item_mod_db,
                 &format!("EmptySocketIn{slot_name}"),
@@ -2152,7 +2216,7 @@ fn init_env_core(
     }
     if env.skills.is_none() {
         env.unimplemented
-            .push("CalcSetup.lua:1318 socketedGems needs gem.gemData (skills off): Socketed*/Empty*Socket* multipliers".into());
+            .push("CalcSetup.lua:1338 socketedGems needs gem.gemData (skills off): Socketed*/Empty*Socket* multipliers".into());
     }
 
     // :1364-1367 -- the config overrides, `or` so a 0 still wins (L4).
@@ -2166,7 +2230,7 @@ fn init_env_core(
         match env.config.input.get(key) {
             None | Some(InputValue::Bool(false)) => {}
             Some(InputValue::Num(x)) => set_mult(&item_mod_db, &name, *x),
-            Some(other) => panic!("Modules/CalcSetup.lua:1364: configInput.{key} = {other:?} is not a number"),
+            Some(other) => panic!("Modules/CalcSetup.lua:1388: configInput.{key} = {other:?} is not a number"),
         }
     }
     // :1368-1381 `override.toggleFlask` / `toggleTincture` -- `env.flasks[item]` set / cleared.
@@ -2191,7 +2255,11 @@ fn init_env_core(
     // --- (14) granted passives (:1388-1400) ----------------------------------------------------------------------------
     // `not override.removeNodes or not override.removeNodes[node.id]` -- `removeNodes` is keyed by node objects: never excluded.
     // `pairs(env.modDB:List(nil, "GrantedPassive"))` -- List returns a sequence, so `pairs` walks it in order.
-    for passive in ok(mod_db.borrow().list(None, &["GrantedPassive"])) {
+    // CalcSetup.lua:1430 (07fa089bf): `tableConcat(env.modDB:List(...), env.initialNodeModDB:List(...))` -- tree-granted
+    // passives (Putrid Seed) after the item ones
+    let mut granted = ok(mod_db.borrow().list(None, &["GrantedPassive"]));
+    granted.extend(ok(initial.borrow().list(None, &["GrantedPassive"])));
+    for passive in granted {
         let name = match &passive {
             Value::Str(x) => x.to_string(),
             other => format!("{other:?}"),
@@ -2206,7 +2274,7 @@ fn init_env_core(
         let Some(tree_idx) = tree_idx else {
             // `build.latestTree.ascendancyMap[passive]` -- a second tree version, P5.
             env.unimplemented.push(format!(
-                "CalcSetup.lua:1392 GrantedPassive \"{name}\" not in this tree (latestTree fallback, P5)"
+                "CalcSetup.lua:1417 GrantedPassive \"{name}\" not in this tree (latestTree fallback, P5)"
             ));
             continue;
         };
@@ -2214,7 +2282,7 @@ fn init_env_core(
         let spec_idx = env
             .spec
             .node_idx(id)
-            .unwrap_or_else(|| panic!("Modules/CalcSetup.lua:1391: spec.nodes[{id}] is nil"));
+            .unwrap_or_else(|| panic!("Modules/CalcSetup.lua:1416: spec.nodes[{id}] is nil"));
         alloc_nodes_set(&mut env, id, spec_idx);
         env.granted_passives.insert(id, true);
         env.extra_radius_node_list.shift_remove(&id);
@@ -2259,7 +2327,7 @@ fn init_env_core(
                 );
             }
             env.unimplemented.push(format!(
-                "CalcSetup.lua:1449 {} ExtraJewelFunc mods (no radius jewels, pob-ts)",
+                "CalcSetup.lua:1474 {} ExtraJewelFunc mods (no radius jewels, pob-ts)",
                 tab.len()
             ));
         }
@@ -2275,6 +2343,12 @@ fn init_env_core(
             env.granted_skills_nodes.push(skill);
         }
     }
+    // CalcSetup.lua:1491 (07fa089bf) `build.configTab.modList:List(nil, "ExtraSkill")`
+    env.config_extra_skills = {
+        let l = ModStore::new_list(None);
+        l.borrow_mut().add_list(&config_lists.mod_list.mods);
+        ok(l.borrow().list(None, &["ExtraSkill"]))
+    };
     concat_granted_skills(&mut env);
 
     prof.mark("(13)-(17) mergeDB, granted passives, node mods");
@@ -2290,7 +2364,7 @@ fn init_env_core(
         .map_err(InitEnvError)?;
     } else {
         env.unimplemented
-            .push("CalcSetup.lua:1453-1946 skills: socket groups, supports, createActiveSkill, buildActiveSkillModList (P5)".into());
+            .push("CalcSetup.lua:1478-1994 skills: socket groups, supports, createActiveSkill, buildActiveSkillModList (P5)".into());
     }
 
     prof.mark("(18-) granted-skill merge");
@@ -2301,7 +2375,7 @@ fn init_env_core(
     let gloves = player.borrow().item_list.contains_key("Gloves");
     let unarmed_rec = rules()
         .unarmed_weapon_data_for(class_id as f64)
-        .ok_or_else(|| InitEnvError(format!("Modules/CalcSetup.lua:1566: data.unarmedWeaponData[{class_id}] is nil")))?;
+        .ok_or_else(|| InitEnvError(format!("Modules/CalcSetup.lua:1607: data.unarmedWeaponData[{class_id}] is nil")))?;
     // `copyTable(data.unarmedWeaponData[classId])` -- the Lua record (the converter's `classId` key is not part of it).
     let unarmed = || {
         let mut d = DataTable::default();
@@ -2313,10 +2387,16 @@ fn init_env_core(
         d
     };
     let wd = |item: &Option<Rc<Item>>, k: f64| -> Option<DataTable> { item.as_ref()?.weapon_data.as_ref()?.get(&NumKey(k)).cloned() };
-    let weapon_data1 = wd(&weapon1, 1.0).unwrap_or_else(unarmed);
+    let mut weapon_data1 = wd(&weapon1, 1.0).unwrap_or_else(unarmed);
+    // CalcSetup.lua:1624-1627 (07fa089bf) Hide of the Vendigo: attack as though using a Claw while the main hand is empty
+    if weapon1.is_none() && ok(mod_db.borrow().flag(None, &["CanAttackAsClawUnarmed"])) == Some(true) {
+        let mut t = pob_mods::Table::default();
+        t.hash.insert(pob_mods::Str::from("Claw"), Value::Bool(true));
+        weapon_data1.set("asThoughUsing", Value::table(t));
+    }
     let weapon_data2 = if weapon_data1.get("countsAsDualWielding").truthy() {
         // `itemList["Weapon 1"].weaponData[2]` -- nil would make every later read fail upstream.
-        wd(&weapon1, 2.0).unwrap_or_else(|| panic!("Modules/CalcSetup.lua:1568: Weapon 1 countsAsDualWielding without weaponData[2]"))
+        wd(&weapon1, 2.0).unwrap_or_else(|| panic!("Modules/CalcSetup.lua:1609: Weapon 1 countsAsDualWielding without weaponData[2]"))
     } else if weapon2.is_none() {
         // Hollow Palm Technique (:1569-1578)
         let mut hollow = None;
@@ -2365,7 +2445,7 @@ fn init_env_core(
             Some(pob_build::InputValue::Num(x)) => *x,
             Some(v) => {
                 return Err(InitEnvError(format!(
-                    "Modules/CalcSetup.lua:1586: bad argument #2 to 'min' (number expected, got {v:?})"
+                    "Modules/CalcSetup.lua:1631: bad argument #2 to 'min' (number expected, got {v:?})"
                 )));
             }
         };
@@ -2507,7 +2587,7 @@ fn init_env_core(
         .collect();
     if env.skills.is_none() {
         env.unimplemented
-            .push("CalcSetup.lua:1972 requirementsTableGems (gem requirements need data.gems, P5)".into());
+            .push("CalcSetup.lua:2020 requirementsTableGems (gem requirements need data.gems, P5)".into());
     }
     prof.mark("(18d)-(19) rest");
 
@@ -2704,7 +2784,7 @@ fn granted_ascendancy_nodes(env: &mut Env) {
                 }
             } else {
                 env.unimplemented.push(format!(
-                    "CalcSetup.lua:1408 GrantedAscendancyNode \"{name}\" not in this tree (latestTree fallback, P5)"
+                    "CalcSetup.lua:1433 GrantedAscendancyNode \"{name}\" not in this tree (latestTree fallback, P5)"
                 ));
             }
         } else {
@@ -2734,6 +2814,55 @@ fn concat_granted_skills(env: &mut Env) {
     env.granted_skills_extra = std::iter::repeat_n(GrantedSkillExtra::default(), env.granted_skills_nodes.len())
         .chain(env.granted_skills_items_extra.iter().cloned())
         .collect();
+    // CalcSetup.lua:1491-1499 (07fa089bf): influence-gated curses entered as Custom Modifiers become granted skills too
+    // (`copyTable(skill)`, `source = "Config"`, `nameSpec = env.data.skills[skill.skillId].name`)
+    let data = pob_data::skills::skills();
+    for skill in &env.config_extra_skills {
+        let skill_id = skill.get("skillId");
+        let Some(ge) = skill_id.as_str().and_then(|id| data.get(id)) else {
+            continue;
+        };
+        if !skill.get("itemRequirement").truthy() {
+            continue;
+        }
+        env.granted_skills.push(GrantedSkill {
+            skill_id: skill_id.clone(),
+            level: skill.get("level"),
+            source: "Config".to_owned(),
+            slot_name: None,
+            source_item: None,
+            source_node: None,
+            item_requirement: skill.get("itemRequirement"),
+        });
+        env.granted_skills_extra.push(GrantedSkillExtra {
+            name_spec: Some(ge.name.clone()),
+            no_supports: skill.get("noSupports"),
+            triggered: skill.get("triggered"),
+            trigger_chance: skill.get("triggerChance"),
+        });
+    }
+    // CalcSetup.lua:1500-1506 (07fa089bf): drop the ones whose influence requirement the equipped items do not meet
+    for index in (0..env.granted_skills.len()).rev() {
+        let req = env.granted_skills[index].item_requirement.clone();
+        if !req.truthy() {
+            continue;
+        }
+        let multiplier = req.get("multiplier");
+        let name = multiplier.as_str().unwrap_or_else(|| {
+            panic!("Modules/CalcSetup.lua:1503: bad argument to GetMultiplier (requirement.multiplier is {multiplier:?})")
+        });
+        let have = ok(env.item_mod_db.borrow().get_multiplier(name, None, false));
+        let (Some(have), Some(count)) = (have.as_num(), req.get("count").as_num()) else {
+            panic!(
+                "Modules/CalcSetup.lua:1503: attempt to compare {have:?} with {:?}",
+                req.get("count")
+            );
+        };
+        if have < count {
+            env.granted_skills.remove(index);
+            env.granted_skills_extra.remove(index);
+        }
+    }
 }
 
 /// CalcSetup.lua:1946-1968 (`accelerate.skills`): every active skill's `skillData` rebuilt from the `SkillData` mods of `env.modDB` and
@@ -2749,7 +2878,7 @@ fn rebuild_skill_data(env: &mut Env) {
         let cfg = sk.skill_cfg.as_ref().map(|c| c.mod_cfg(&skills, &sk.skill_types, None));
         let list = lists.get(i).unwrap_or_else(|| {
             panic!(
-                "Modules/CalcSetup.lua:1954: activeSkill.skillModList of skill {} is not perform's list",
+                "Modules/CalcSetup.lua:2002: activeSkill.skillModList of skill {} is not perform's list",
                 i + 1
             )
         });
@@ -2758,7 +2887,7 @@ fn rebuild_skill_data(env: &mut Env) {
             let key = v.get("key");
             let key = key
                 .as_str()
-                .unwrap_or_else(|| unimplemented!("CalcSetup.lua:1952 SkillData with a non-string key"))
+                .unwrap_or_else(|| unimplemented!("CalcSetup.lua:2000 SkillData with a non-string key"))
                 .to_owned();
             match v.get("value") {
                 Value::Nil => data.shift_remove(&key),

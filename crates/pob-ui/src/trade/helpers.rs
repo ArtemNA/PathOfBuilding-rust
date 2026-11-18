@@ -190,7 +190,7 @@ fn option_map() -> Rc<OptionMap> {
     m
 }
 
-/// `M.findTradeIdOption(modLine, modType)` (:183-222).
+/// `M.findTradeIdOption(modLine, modType)` (TradeHelpers.lua:183-226, 07fa089bf).
 pub fn find_trade_id_option(mod_line: &str, mod_type: &str) -> Option<(String, Option<serde_json::Value>)> {
     let line = mod_line.replace('\n', " ").to_lowercase();
     const TIMELESS: [&str; 8] = [
@@ -205,8 +205,10 @@ pub fn find_trade_id_option(mod_line: &str, mod_type: &str) -> Option<(String, O
     ];
     for pat in TIMELESS {
         if let Some(c) = lmatch_all(&line, pat) {
+            // TradeHelpers.lua:199-202 (07fa089bf): 3.30 renamed the conqueror but kept the stat id
+            let conqueror = if c[1] == "mazcotl" { "ahuana" } else { c[1].as_str() };
             return Some((
-                format!("explicit.pseudo_timeless_jewel_{}", c[1]),
+                format!("explicit.pseudo_timeless_jewel_{conqueror}"),
                 pob_lua::tonumber(&c[0]).map(crate::trade::dkjson::n),
             ));
         }
@@ -360,12 +362,52 @@ pub struct TradeHash {
     pub ids: Vec<u32>,
     pub value: Option<f64>,
     pub should_negate: Option<bool>,
+    /// The trade stat id prefix (TradeHelpers.lua:249, 07fa089bf): `"effect_"` for granted skills, else `"stat_"`.
+    pub prefix: &'static str,
 }
 
-/// `M.findTradeHash(modLine)` (:244-344).
+/// TradeHelpers.lua:250-266 (07fa089bf): a line that parses cleanly into `ExtraSkill` mods is searched by the granted
+/// effects' hashes. `modLib.parseMod` as the other pob-ui callers read it (`ParseMode::Full`: a line the Rust parser cannot
+/// answer reads as `extra`, and is counted in `parse_mod_stats().error_lines`).
+fn find_effect_hashes(mod_line: &str) -> Option<TradeHash> {
+    let p = pob_parser::parse_mod_line(mod_line, false, pob_parser::ParseMode::Full);
+    if p.extra.is_some() {
+        return None;
+    }
+    let skills = pob_data::skills::skills();
+    let mut ids = Vec::new();
+    let mut level = None;
+    for m in p.mod_list.iter().flatten() {
+        if &*m.name != "ExtraSkill" {
+            continue;
+        }
+        let Some(ge) = m.value.get("skillId").as_str().and_then(|id| skills.get(id)) else {
+            continue;
+        };
+        let h = murmur_hash2(ge.id.as_bytes(), 0xC58F_1A7B);
+        if !ids.contains(&h) {
+            ids.push(h);
+        }
+        level = m.value.get("level").as_num();
+    }
+    (!ids.is_empty()).then_some(TradeHash {
+        ids,
+        value: level,
+        should_negate: Some(false),
+        prefix: "effect_",
+    })
+}
+
+/// `M.findTradeHash(modLine)` (TradeHelpers.lua:249-366, 07fa089bf).
 pub fn find_trade_hash(mod_line: &str) -> TradeHash {
+    if let Some(h) = find_effect_hashes(mod_line) {
+        return h;
+    }
     let mut line = mod_line.to_lowercase();
-    let mut out = TradeHash::default();
+    let mut out = TradeHash {
+        prefix: "stat_",
+        ..TradeHash::default()
+    };
     let mut extra: Option<&str> = None;
     // `pairs(timeLostJewelLines)`: the two patterns exclude each other
     for (pat, stat) in [
@@ -593,6 +635,43 @@ mod tests {
         assert_eq!(murmur_hash2(b"", 0), 0);
         // the id of "+# to maximum Life" in Data/TradeSiteStats.lua
         assert_eq!(hash_stats(&["base_maximum_life"], None), 3_299_347_043);
+    }
+
+    #[test]
+    fn effect_hash_is_the_trade_site_id() {
+        // "explicit.effect_2014162730" = "Grants Level # Anger" in Data/TradeSiteStats.lua (07fa089bf)
+        assert_eq!(murmur_hash2(b"Anger", 0xC58F_1A7B), 2_014_162_730);
+    }
+
+    #[test]
+    fn timeless_conqueror_rename() {
+        // TradeHelpers.lua:199-202 (07fa089bf)
+        let r = find_trade_id_option("Bathed in the blood of 8000 sacrificed in the name of Mazcotl", "explicit");
+        assert_eq!(
+            r,
+            Some(("explicit.pseudo_timeless_jewel_ahuana".to_string(), Some(dkjson_n(8000.0))))
+        );
+        let r = find_trade_id_option("Bathed in the blood of 8000 sacrificed in the name of Xibaqua", "explicit");
+        assert_eq!(r.map(|x| x.0).as_deref(), Some("explicit.pseudo_timeless_jewel_xibaqua"));
+    }
+
+    fn dkjson_n(n: f64) -> serde_json::Value {
+        crate::trade::dkjson::n(n)
+    }
+
+    /// Needs the parser and `data.skills` (pob-data).
+    #[test]
+    fn granted_skill_line_gives_effect_hash() {
+        let h = find_trade_hash("Grants Level 20 Anger Skill");
+        assert_eq!(
+            h,
+            TradeHash {
+                ids: vec![2_014_162_730],
+                value: Some(20.0),
+                should_negate: Some(false),
+                prefix: "effect_",
+            }
+        );
     }
 
     #[test]

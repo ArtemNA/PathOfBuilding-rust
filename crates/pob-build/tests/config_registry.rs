@@ -1,7 +1,7 @@
 //! The drift guard on `pob_build::config::apply` (pob-ts `test/config/registry.test.ts`): every ported closure carries the
 //! sha256 of the upstream `apply` body as `data/config-options.json` recorded it; a re-converted PathOfBuilding where one
-//! of the 539 bodies changed turns this red instead of letting the port drift silently (MINEFIELD D1). Since R3.5b the
-//! registry is complete: 10 hand-ported (`HAND_PORTED`: `enemyIsBoss`, `presetBossSkills` + the 8 map-affix dropdowns) + 529 generated
+//! of the 543 bodies changed (07fa089bf; LuaJIT count, tools/.scratch/count-data.ts cfgApply) turns this red instead of letting the port drift silently (MINEFIELD D1). Since R3.5b the
+//! registry is complete: 10 hand-ported (`HAND_PORTED`: `enemyIsBoss`, `presetBossSkills` + the 8 map-affix dropdowns) + 533 generated
 //! (`GENERATED`, `tools/config-apply-gen/gen.ts`); the 41 `AffixData[x].apply` of Data/ModMap.lua have their own guard.
 
 use std::collections::HashSet;
@@ -14,12 +14,12 @@ fn keys_contains(v: &str) -> bool {
 }
 
 #[test]
-fn all_539_unique_entries_each_a_var_with_apply() {
+fn all_543_unique_entries_each_a_var_with_apply() {
     assert_eq!(HAND_PORTED.len(), 10);
-    assert_eq!(GENERATED.len(), 529);
-    assert_eq!(APPLY_REGISTRY.len(), 539);
+    assert_eq!(GENERATED.len(), 533);
+    assert_eq!(APPLY_REGISTRY.len(), 543);
     let keys: HashSet<&str> = APPLY_REGISTRY.iter().map(|e| e.var).collect();
-    assert_eq!(keys.len(), 539);
+    assert_eq!(keys.len(), 543);
     let opts = config_options();
     let without: Vec<&str> = APPLY_REGISTRY
         .iter()
@@ -39,10 +39,10 @@ fn all_539_unique_entries_each_a_var_with_apply() {
 }
 
 #[test]
-fn sha_from_to_match_json_539_of_539() {
+fn sha_from_to_match_json_543_of_543() {
     let drift = registry_drift(&APPLY_REGISTRY);
     assert!(drift.is_empty(), "{drift:#?}");
-    println!("registry: {}/539 sha = config-options.json", APPLY_REGISTRY.len() - drift.len());
+    println!("registry: {}/543 sha = config-options.json", APPLY_REGISTRY.len() - drift.len());
 }
 
 #[test]
@@ -107,7 +107,7 @@ fn hand_ported_are_the_bodies_outside_the_grammar() {
     );
 }
 
-/// Every var a set can hold now has its closure: a default set with every `check` var on fires all 322 of them (plus the
+/// Every var a set can hold now has its closure: a default set with every `check` var on fires all 323 of them (LuaJIT on 07fa089bf: 543 with `apply` - 220 without `check`, tools/.scratch/count-tree-cache.ts) (plus the
 /// defaults) and reports nothing as unimplemented.
 #[test]
 fn nothing_is_unimplemented_any_more() {
@@ -118,7 +118,7 @@ fn nothing_is_unimplemented_any_more() {
         s.input.insert(v.var.clone().unwrap(), pob_build::ConfigValue::Bool(true));
         checks += 1;
     }
-    assert_eq!(checks, 322);
+    assert_eq!(checks, 323);
     let l = s.build_mod_list(90.0).unwrap();
     assert!(l.unimplemented.is_empty(), "{:?}", l.unimplemented);
 }

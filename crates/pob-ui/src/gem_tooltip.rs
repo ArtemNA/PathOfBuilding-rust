@@ -570,6 +570,10 @@ pub fn add_socket_group_tooltip(t: &mut Tooltip, g: &Gfx, e: &Engine, index: usi
         let name = n.map_or_else(String::new, |n| n.name.clone().unwrap_or_else(|| n.dn.clone()));
         t.add_line(g, 18.0, Some(&format!("^7Source: {}{name}", cc("NORMAL"))));
         t.add_separator(Some(10.0));
+    } else if group.source.as_deref() == Some("Config") {
+        // SkillsTab.lua:1334-1337 (07fa089bf): curses granted by Custom Modifiers
+        t.add_line(g, 18.0, Some(&format!("^7Source: {}Custom Modifiers", cc("NORMAL"))));
+        t.add_separator(Some(10.0));
     }
     let mut shown: Vec<(usize, usize)> = Vec::new();
     let list = group.display_skill_list.as_deref().unwrap_or(&[]);

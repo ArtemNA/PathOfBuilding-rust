@@ -307,7 +307,8 @@ fn tie_digit_positions_match_port() {
         let p = 1 + r.below(15) as u32;
         let head = 10u128.pow(p - 1) + u128::from(r.next()) % (9 * 10u128.pow(p - 1));
         let k = r.below(24) as u32;
-        let tie = (head * 10 + 5) * 10u128.pow(k);
+        // p = 15, k = 23 exceeds u128 (10^39): wrap as release always did, so debug runs the same values
+        let tie = (head * 10 + 5).wrapping_mul(10u128.pow(k));
         let d = r.below(3) as i64 - 1;
         r.signed(ulps(tie as f64, d))
     });

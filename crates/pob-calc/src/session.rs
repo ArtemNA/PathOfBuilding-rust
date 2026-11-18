@@ -504,14 +504,14 @@ impl CalcSession {
             CalcMode::Calculator if self.core.main_init_done.get() => {}
             CalcMode::Calculator => {
                 return Err(SessionError::Unimplemented(
-                    "CalcSetup.lua:1452 initEnv(\"CALCULATOR\") before any MAIN initEnv: the shared build.skillsTab without the granted-skill merge"
+                    "CalcSetup.lua:1477 initEnv(\"CALCULATOR\") before any MAIN initEnv: the shared build.skillsTab without the granted-skill merge"
                         .into(),
                 ));
             }
             CalcMode::Calcs if self.core.main_init_done.get() => {}
             CalcMode::Calcs => {
                 return Err(SessionError::Unimplemented(
-                    "CalcSetup.lua:1452 initEnv(\"CALCS\") before any MAIN initEnv: the shared build.skillsTab without the granted-skill merge"
+                    "CalcSetup.lua:1477 initEnv(\"CALCS\") before any MAIN initEnv: the shared build.skillsTab without the granted-skill merge"
                         .into(),
                 ));
             }
@@ -1033,7 +1033,7 @@ impl CalcSession {
                 }
                 // `activeSkill.infoTrigger`: calcs.triggers (R7.8, `ActiveSkill::info_trigger`) runs after CalcPerform.lua:1487-1490
                 // (The Saviour, recorded by the skill loop under this note -- perform/skills_loop.rs), so its value wins.
-                let saviour = format!("CalcPerform.lua:1488-1489 activeSkill.infoMessage/infoTrigger of skill {} (", i + 1);
+                let saviour = format!("CalcPerform.lua:1490-1491 activeSkill.infoMessage/infoTrigger of skill {} (", i + 1);
                 let trigger = sk.info_trigger.clone().or_else(|| {
                     r.env
                         .unimplemented
@@ -1478,7 +1478,7 @@ fn push_name(o: &mut crate::output::Output, key: &str, name: &str) {
 /// offence output asked for (`Speed`, `HitSpeed`, `Duration`), so it returns `Err(note)` at that boundary -- after doing the build
 /// exactly as upstream does.
 pub fn get_cached_output_value(env: &Env, skill: usize, keys: &[&str]) -> Result<Vec<Option<f64>>, String> {
-    let session = CalcSession::of(env).ok_or_else(|| "CalcPerform.lua:31 getCachedOutputValue outside a CalcSession".to_owned())?;
+    let session = CalcSession::of(env).ok_or_else(|| "CalcPerform.lua:32 getCachedOutputValue outside a CalcSession".to_owned())?;
     let mode = CalcMode::of(env);
     // :32
     let uuid = cache_skill_uuid(env, skill);
@@ -1492,11 +1492,11 @@ pub fn get_cached_output_value(env: &Env, skill: usize, keys: &[&str]) -> Result
     let cache = session.cache();
     let entry = cache
         .get(mode, &uuid)
-        .unwrap_or_else(|| panic!("Modules/CalcPerform.lua:39: attempt to index field '?' (a nil value)"));
+        .unwrap_or_else(|| panic!("Modules/CalcPerform.lua:40: attempt to index field '?' (a nil value)"));
     let run = entry.run.borrow();
     if !run.offence_ran {
         return Err(format!(
-            "CalcPerform.lua:39 getCachedOutputValue({}): the cached run stopped at a boundary of the port before or in calcs.offence",
+            "CalcPerform.lua:40 getCachedOutputValue({}): the cached run stopped at a boundary of the port before or in calcs.offence",
             keys.join(", ")
         ));
     }

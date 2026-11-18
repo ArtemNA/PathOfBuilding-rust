@@ -258,7 +258,7 @@ pub fn call_caps(f: &Value, caps: &[Value]) -> Result<Value, ParseError> {
             }
             let v = up_fn(d, "v")?;
             let inner = call_caps(&v, caps)?;
-            Ok(func_value(6564, JewelFn::OtherGuard(inner)))
+            Ok(func_value(6677, JewelFn::OtherGuard(inner)))
         }
         // :6160-6201 getSimpleConv factories, `function(num) return getSimpleConv(..., num / 100[, "BASE"]) end`
         6160 | 6163 | 6169 | 6172 | 6175 | 6178 | 6181 | 6184 | 6187 | 6190 | 6193 | 6196 | 6199 => {
@@ -346,7 +346,7 @@ pub fn call_caps(f: &Value, caps: &[Value]) -> Result<Value, ParseError> {
                     get_threshold(Value::str("Int"), "AreaOfEffect", "BASE", v, &[ramp()])?
                 }
             };
-            Ok(func_value(6457, JewelFn::Threshold(Rc::new(t))))
+            Ok(func_value(6570, JewelFn::Threshold(Rc::new(t))))
         }
         _ => Err(unrep(format!("{}: a visitor called with captures", d.id))),
     }

@@ -15,6 +15,7 @@ const STEPS: &[(&[u8], &[u8])] = &[
     (b"\xe2\x80\x93", b"-"), // U+2013 EN DASH
     (b"\xe2\x80\x94", b"-"), // U+2014 EM DASH
     (b"\xe2\x80\x95", b"-"), // U+2015 HORIZONTAL BAR
+    (b"\xe2\x80\x8b", b""),  // U+200B ZERO WIDTH SPACE (Common.lua:318, 07fa089bf)
     (b"\xe2\x88\x92", b"-"), // U+2212 MINUS SIGN
     (b"\xc3\xa4", b"a"),     // U+00E4 a with diaeresis
     (b"\xc3\xb6", b"o"),     // U+00F6 o with diaeresis

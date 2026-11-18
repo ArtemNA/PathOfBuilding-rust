@@ -303,10 +303,17 @@ fn get_weapon_flags(
     };
     let t = ty.as_str().expect("checked");
     let all1h = wd.get("countsAsAll1H").truthy();
+    let as_though = wd.get("asThoughUsing");
     for types in weapon_types {
         let has = |k: &str| types.get(k).copied().unwrap_or(false);
+        // CalcActiveSkill.lua:198-209 (07fa089bf) `checkAsThoughWeaponTypes`: any truthy `asThoughUsing` key that is a type here
+        let as_though_match = match &as_though {
+            Value::Table(tb) => tb.hash.iter().any(|(k, v)| v.truthy() && has(k)),
+            _ => false,
+        };
         if !has(t)
             && (!all1h || !(has("Claw") || has("Dagger") || has("One Handed Axe") || has("One Handed Mace") || has("One Handed Sword")))
+            && !as_though_match
         {
             return (None, Some(info));
         }
@@ -315,7 +322,7 @@ fn get_weapon_flags(
         .flag
         .as_deref()
         .map(mod_flag)
-        .unwrap_or_else(|| panic!("{CAS}:208 ModFlag[nil] for weapon type {t}"));
+        .unwrap_or_else(|| panic!("{CAS}:226 ModFlag[nil] for weapon type {t}"));
     if all1h {
         flags = mod_flag("Axe") | mod_flag("Claw") | mod_flag("Dagger") | mod_flag("Mace") | mod_flag("Sword");
     }
@@ -501,7 +508,7 @@ pub(crate) fn build_skill(
             let part = (part_no >= 1.0 && part_no.fract() == 0.0)
                 .then(|| parts.get(part_no as usize - 1))
                 .flatten()
-                .ok_or_else(|| format!("{CAS}:258: bad argument #1 to 'pairs' (table expected, got nil)"))?;
+                .ok_or_else(|| format!("{CAS}:276: bad argument #1 to 'pairs' (table expected, got nil)"))?;
             for (k, v) in part_flags(part) {
                 match v {
                     Some(true) => set_flag(&mut skill.skill_flags, k, Some(true)),
@@ -568,8 +575,8 @@ pub(crate) fn build_skill(
             let none = pob_data::rules::rules()
                 .weapon_type_info
                 .get("None")
-                .unwrap_or_else(|| panic!("{CAS}:308: data.weaponTypeInfo.None is nil"));
-            w1_flags = Some(mod_flag(none.flag.as_deref().unwrap_or_else(|| panic!("{CAS}:308: ModFlag[nil]"))));
+                .unwrap_or_else(|| panic!("{CAS}:326: data.weaponTypeInfo.None is nil"));
+            w1_flags = Some(mod_flag(none.flag.as_deref().unwrap_or_else(|| panic!("{CAS}:326: ModFlag[nil]"))));
             w1_info = Some(none);
         }
         if let Some(fl) = w1_flags {
@@ -739,7 +746,7 @@ pub(crate) fn build_skill(
         match effective_range {
             Value::Num(x) => Some(x),
             Value::Nil => None,
-            other => unimplemented!("{CAS}:474 skillDist = a {} config value", other.type_name()),
+            other => unimplemented!("{CAS}:492 skillDist = a {} config value", other.type_name()),
         }
     } else {
         None
@@ -843,7 +850,7 @@ pub(crate) fn build_skill(
         let lv = se.borrow().level.expect("validated");
         let level = ge
             .level(lv)
-            .ok_or_else(|| format!("{CAS}:523: attempt to index local 'level' (a nil value)"))?;
+            .ok_or_else(|| format!("{CAS}:541: attempt to index local 'level' (a nil value)"))?;
         if let Some(m) = level.mana_multiplier {
             add_mod(&ml, "SupportManaMultiplier", ModType::More, Value::Num(m), &ge.mod_source);
         }
@@ -906,12 +913,12 @@ pub(crate) fn build_skill(
             let key = value.get("key");
             let key = key
                 .as_str()
-                .unwrap_or_else(|| unimplemented!("{CAS}:566 SupportedGemProperty with a non-string key"))
+                .unwrap_or_else(|| unimplemented!("{CAS}:584 SupportedGemProperty with a non-string key"))
                 .to_owned();
             let v = value
                 .get("value")
                 .as_num()
-                .ok_or_else(|| format!("{CAS}:566: attempt to perform arithmetic on field 'value'"))?;
+                .ok_or_else(|| format!("{CAS}:584: attempt to perform arithmetic on field 'value'"))?;
             {
                 let mut e = ae.borrow_mut();
                 // :562-567 save level and quality increases for use in tooltips
@@ -920,7 +927,7 @@ pub(crate) fn build_skill(
                 } else if key == "level" {
                     *e.other.entry("supportLevel".to_owned()).or_insert(0.0) += v;
                 }
-                let arith = || format!("{CAS}:566: attempt to perform arithmetic on field '{key}' (a nil value)");
+                let arith = || format!("{CAS}:584: attempt to perform arithmetic on field '{key}' (a nil value)");
                 let slot = match key.as_str() {
                     "level" => &mut e.level,
                     "quality" => &mut e.quality,
@@ -959,7 +966,7 @@ pub(crate) fn build_skill(
         let key = gp.value.get("key");
         let key = key
             .as_str()
-            .unwrap_or_else(|| unimplemented!("{CAS}:574 GemProperty with a non-string key"));
+            .unwrap_or_else(|| unimplemented!("{CAS}:592 GemProperty with a non-string key"));
         ml.borrow_mut().new_mod(new_mod_tagged(
             &format!("Gem{source_type}{}", upper_first(key)),
             gp.value.get("value"),
@@ -978,7 +985,7 @@ pub(crate) fn build_skill(
     ae.borrow_mut().granted_effect_level = level.map(|_| ae_level);
 
     // :581-607 extra modifiers from the granted effect level (no level of the data has `damageMultiplier`)
-    let level = level.ok_or_else(|| format!("{CAS}:583: attempt to index local 'level' (a nil value)"))?;
+    let level = level.ok_or_else(|| format!("{CAS}:601: attempt to index local 'level' (a nil value)"))?;
     set_data(&mut skill.skill_data, "CritChance", num(level.crit_chance));
     if let Some(t) = level.attack_time {
         skill.skill_data.insert("attackTime".into(), Value::Num(t));
@@ -1009,7 +1016,7 @@ pub(crate) fn build_skill(
     let mut extra_list = Vec::new();
     for v in extra_mods {
         let Value::Mod(m) = v.get("mod") else {
-            unimplemented!("{CAS}:612 ExtraSkillMod whose value.mod is not a mod")
+            unimplemented!("{CAS}:630 ExtraSkillMod whose value.mod is not a mod")
         };
         ml.borrow_mut().add_mod(m.clone());
         extra_list.push(m);
@@ -1107,7 +1114,7 @@ pub(crate) fn build_skill(
         let key = v.get("key");
         let key = key
             .as_str()
-            .unwrap_or_else(|| unimplemented!("{CAS}:662 SkillData with a non-string key"));
+            .unwrap_or_else(|| unimplemented!("{CAS}:680 SkillData with a non-string key"));
         set_data(&mut skill.skill_data, key, v.get("value"));
     }
     guard(&malformed, &["SkillData"])?;
@@ -1115,7 +1122,7 @@ pub(crate) fn build_skill(
         let key = v.get("key");
         let key = key
             .as_str()
-            .unwrap_or_else(|| unimplemented!("{CAS}:665 SkillData with a non-string key"));
+            .unwrap_or_else(|| unimplemented!("{CAS}:683 SkillData with a non-string key"));
         set_data(&mut skill.skill_data, key, v.get("value"));
     }
 
@@ -1143,7 +1150,7 @@ pub(crate) fn build_skill(
                 if !minion_list.contains(t) {
                     let req = l
                         .and_then(|l| ge.level(l))
-                        .ok_or_else(|| format!("{CAS}:685: attempt to index a nil value (levels[skillEffect.level])"))?
+                        .ok_or_else(|| format!("{CAS}:703: attempt to index a nil value (levels[skillEffect.level])"))?
                         .level_requirement;
                     minion_support_level.insert(t.clone(), num(req));
                     minion_list.push(t.clone());
@@ -1178,7 +1185,7 @@ pub(crate) fn build_skill(
         } else if sd("minionLevelIsPlayerLevel").truthy() {
             let cap = sd("minionLevelIsPlayerLevel")
                 .as_num()
-                .ok_or_else(|| format!("{CAS}:718: bad argument #2 to 'min' (number expected)"))?;
+                .ok_or_else(|| format!("{CAS}:736: bad argument #2 to 'min' (number expected)"))?;
             Value::Num(min2(inp.character_level, cap))
         } else {
             or(
@@ -1188,10 +1195,10 @@ pub(crate) fn build_skill(
         };
         let lvl = lvl
             .as_num()
-            .ok_or_else(|| format!("{CAS}:721: bad argument #1 to 'max' (number expected)"))?;
+            .ok_or_else(|| format!("{CAS}:739: bad argument #1 to 'max' (number expected)"))?;
         let lvl = min2(max2(lvl, 1.0), 100.0);
         if data.is_nil() {
-            return Err(format!("{CAS}:724: attempt to index field 'minionData' (a nil value)"));
+            return Err(format!("{CAS}:742: attempt to index field 'minionData' (a nil value)"));
         }
         let md_num = |k: &str, line: u32| -> Result<f64, LuaError> {
             data.get(k)
@@ -1219,7 +1226,7 @@ pub(crate) fn build_skill(
             &c.monster_ally_damage_table
         };
         let mut damage = pob_data::constants::monster_table_at(damage_table, lvl)
-            .ok_or_else(|| format!("{CAS}:731: attempt to perform arithmetic on a nil value (damageTable[{lvl}])"))?
+            .ok_or_else(|| format!("{CAS}:749: attempt to perform arithmetic on a nil value (damageTable[{lvl}])"))?
             * md_num("damage", 731)?;
         if !data.get("baseDamageIgnoresAttackSpeed").truthy() {
             damage *= attack_time;
@@ -1348,7 +1355,7 @@ pub(crate) fn build_skill(
     // :804-869 separate the global effect modifiers into buffs
     if malformed.iter().any(|m| m.process_mod_error().is_some()) {
         // `for _, tag in ipairs(skillModList[i])` reaches a number
-        return Err(format!("{CAS}:809: attempt to index local 'tag' (a number value)"));
+        return Err(format!("{CAS}:827: attempt to index local 'tag' (a number value)"));
     }
     let mut i = 0;
     loop {
@@ -1372,7 +1379,7 @@ pub(crate) fn build_skill(
         if mod_cond.truthy() {
             let var = mod_cond
                 .as_str()
-                .unwrap_or_else(|| unimplemented!("{CAS}:816 GlobalEffect modCond that is not a string"));
+                .unwrap_or_else(|| unimplemented!("{CAS}:834 GlobalEffect modCond that is not a string"));
             if !lua(ml.borrow().get_condition(var, Some(&cfg), false))?.unwrap_or(false) {
                 remove(&ml, i);
                 continue;
@@ -1425,7 +1432,7 @@ pub(crate) fn build_skill(
                     (Value::Num(a), Value::Num(b)) => Value::Num(a + b),
                     (a, b) => {
                         return Err(format!(
-                            "{CAS}:856: attempt to perform arithmetic on a {} value ({})",
+                            "{CAS}:874: attempt to perform arithmetic on a {} value ({})",
                             if matches!(a, Value::Num(_)) { b.type_name() } else { a.type_name() },
                             m.name
                         ));

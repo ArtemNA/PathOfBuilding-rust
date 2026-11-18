@@ -596,6 +596,7 @@ Implicits: 0
 		</Item>
 		<ItemSet id="1" useSecondWeaponSet="false">
 			<Slot itemId="2" itemPbURL="" name="Amulet"/>
+			<Slot itemId="0" itemPbURL="" name="Arm"/>
 			<Slot itemId="4" itemPbURL="" name="Belt"/>
 			<Slot itemId="0" itemPbURL="" name="Belt Abyssal Socket 1"/>
 			<Slot itemId="0" itemPbURL="" name="Belt Abyssal Socket 2"/>
@@ -603,6 +604,7 @@ Implicits: 0
 			<Slot itemId="0" itemPbURL="" name="Belt Abyssal Socket 4"/>
 			<Slot itemId="0" itemPbURL="" name="Belt Abyssal Socket 5"/>
 			<Slot itemId="0" itemPbURL="" name="Belt Abyssal Socket 6"/>
+			<Slot itemId="0" itemPbURL="" name="Body"/>
 			<Slot itemId="10" itemPbURL="" name="Body Armour"/>
 			<Slot itemId="0" itemPbURL="" name="Body Armour Abyssal Socket 1"/>
 			<Slot itemId="0" itemPbURL="" name="Body Armour Abyssal Socket 2"/>
@@ -631,6 +633,7 @@ Implicits: 0
 			<Slot itemId="0" itemPbURL="" name="Gloves Abyssal Socket 6"/>
 			<Slot itemId="0" itemPbURL="" name="Graft 1"/>
 			<Slot itemId="0" itemPbURL="" name="Graft 2"/>
+			<Slot itemId="0" itemPbURL="" name="Head"/>
 			<Slot itemId="11" itemPbURL="" name="Helmet"/>
 			<Slot itemId="0" itemPbURL="" name="Helmet Abyssal Socket 1"/>
 			<Slot itemId="0" itemPbURL="" name="Helmet Abyssal Socket 2"/>
@@ -641,6 +644,7 @@ Implicits: 0
 			<SocketIdURL itemPbURL="" name="Jewel 36634" nodeId="36634"/>
 			<SocketIdURL itemPbURL="" name="Jewel 41263" nodeId="41263"/>
 			<SocketIdURL itemPbURL="" name="Jewel 61419" nodeId="61419"/>
+			<Slot itemId="0" itemPbURL="" name="Leg"/>
 			<Slot itemId="5" itemPbURL="" name="Ring 1"/>
 			<Slot itemId="6" itemPbURL="" name="Ring 2"/>
 			<Slot itemId="0" itemPbURL="" name="Ring 3"/>

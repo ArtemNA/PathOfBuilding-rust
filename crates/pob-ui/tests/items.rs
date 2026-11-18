@@ -336,6 +336,7 @@ fn run(name: &str) -> Run {
     pob_ui::tabs::item_popups::set_affix_order_sample(None);
     pob_ui::tabs::items::set_shared_slot_order_sample(None);
     pob_engine::items_tab::set_jewel_order_sample(None);
+    pob_ui::tabs::timeless::set_radius_order_sample(std::collections::HashMap::new());
     let tp = TestPlatform::new();
     let mut gfx = Gfx::with_platform(&scene::fonts_dir(), scene::SCREEN, 1.0, Box::new(tp.clone())).expect("fonts");
     gfx.set_dpi_scale_override_percent(100);
@@ -395,8 +396,19 @@ fn run(name: &str) -> Run {
             let build = main().build_mode.clone();
             let mut view = build.tree_view.borrow_mut();
             let view = view.as_mut().expect("view");
-            view.set_order_sample(ids, conns);
+            view.set_order_sample_any(rec["treeVersion"].as_str(), ids, conns);
             view.set_sub_graph_order_sample(subs);
+            // R13: `pairs(nodesInRadius[3])` of this process decides the order of a timeless search's node lists (as tests/tree.rs)
+            if let Some(radius) = rec["radiusOrder"].as_object() {
+                let of = |l: &Value| {
+                    l.as_array()
+                        .expect("order")
+                        .iter()
+                        .map(|v| v.as_f64().expect("id") as u32)
+                        .collect()
+                };
+                pob_ui::tabs::timeless::set_radius_order_sample(radius.iter().map(|(k, l)| (k.parse().expect("id"), of(l))).collect());
+            }
             continue;
         }
         // R13: `pairs` over the copy of `spec.jewels` in this oracle process: the winner of a node two Abyss jewels share
@@ -666,7 +678,7 @@ fn items_states_equal_original() {
         let rec = oracle_record(&name).expect("record");
         let r = run(&name);
         let dumps = rec["dumps"].as_array().expect("dumps");
-        assert_eq!(dumps.len(), r.dumps.len(), "{name}: dump count");
+        // written before the count check: a scene the original stops early in is the one worth reading
         if let Ok(dir) = std::env::var("POB_ITEMS_DUMP_OURS") {
             std::fs::create_dir_all(&dir).expect("mkdir");
             let all: Vec<Value> = r.dumps.iter().map(|(s, d, _)| json!({ "step": s, "state": d })).collect();
@@ -676,6 +688,7 @@ fn items_states_equal_original() {
             )
             .expect("write");
         }
+        assert_eq!(dumps.len(), r.dumps.len(), "{name}: dump count");
         for (o, (step, ours, st)) in dumps.iter().zip(&r.dumps) {
             assert_eq!(o["step"].as_u64(), Some(*step), "{name}: steps");
             let state = norm(&oracle_state(o, st, &name));

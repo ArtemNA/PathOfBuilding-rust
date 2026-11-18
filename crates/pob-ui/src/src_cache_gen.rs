@@ -24,8 +24,10 @@ fn products() -> [(&'static str, Maker); 4] {
 }
 
 /// The files read as whole tables, besides the trees and `Data/StatDescriptions/`.
-const DATA_TABLES: [&str; 5] = [
+const DATA_TABLES: [&str; 6] = [
     "Data/PearlSupports.lua",
+    // StatDescriber.lua:54 (07fa089bf)
+    "Data/StatDescriptionFormatters.lua",
     "Data/QueryMods.lua",
     "Data/TradeSiteStats.lua",
     "Data/CurrencyNames.lua",

@@ -182,8 +182,8 @@ pub(super) fn ally_curses(env: &Env) -> AllyCurses {
         return out;
     };
     out.limit = party.curse.limit.clone();
-    for (curse_name, curse) in super::buffs::party_entries(g, 3230) {
-        let mut mult = super::buffs::effect_mult_num(&curse.effect_mult, 3230) / 100.0;
+    for (curse_name, curse) in super::buffs::party_entries(g, 3238) {
+        let mut mult = super::buffs::effect_mult_num(&curse.effect_mult, 3238) / 100.0;
         if !curse.is_mark {
             mult *= more(&env.enemy_db, None, &["CurseEffectOnSelf"]);
         }
@@ -223,7 +223,7 @@ pub(super) fn curse_slots(
     };
     output.set_num("EnemyCurseLimit", limit);
     let st = env.skills.as_ref().expect("skills on");
-    let main_cfg = super::player_main_skill(env, 3232).cfg;
+    let main_cfg = super::player_main_skill(env, 3240).cfg;
     let curses: Vec<Rc<Curse>> = curses.iter().cloned().map(Rc::new).collect();
     let minion_curses: Vec<Rc<Curse>> = minion_curses.iter().cloned().map(Rc::new).collect();
     let mut slots: Vec<Rc<Curse>> = Vec::new();
@@ -234,7 +234,7 @@ pub(super) fn curse_slots(
     let ally_curses: Vec<Rc<Curse>> = ally.curses.iter().cloned().map(Rc::new).collect();
     let ally_limit = || match &ally.limit {
         pob_mods::Value::Num(n) => *n,
-        _ => panic!("Modules/CalcPerform.lua:3265: 'for' limit must be a number"),
+        _ => panic!("Modules/CalcPerform.lua:3273: 'for' limit must be a number"),
     };
     for (curse, limit) in curses
         .iter()

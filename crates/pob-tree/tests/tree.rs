@@ -116,7 +116,8 @@ fn unknown_version_and_every_committed_tree() {
     assert_eq!(legacy.node(44683).unwrap().class_start_index, Some(6.0));
 }
 
-/// pob-ts tree.test.ts pins: 3_13 is built in a fresh thread, so the parse counters are its own.
+/// 3_13 is built in a fresh thread, so the parse counters are its own. Pins: LuaJIT on 07fa089bf (tools/.scratch/count-tree-cache.ts:
+/// `PassiveTree("3_13")` with `modLib.parseMod` wrapped, counted over the ProcessStats calls of `tree.nodes`; cache = Data/ModCache.lua).
 #[test]
 fn parse_coverage_3_13() {
     std::thread::spawn(|| {
@@ -127,11 +128,11 @@ fn parse_coverage_3_13() {
         lines.sort_unstable();
         lines.dedup();
         assert_eq!(lines.len(), 2437);
-        assert_eq!(lines.iter().filter(|l| !cached(l)).count(), 810);
-        assert_eq!((s.hits, s.misses), (3930, 2041));
-        assert_eq!(t.nodes.iter().filter(|n| n.sd.iter().any(|l| !cached(l))).count(), 709);
-        assert_eq!(t.nodes.iter().filter(|n| n.stats.unknown).count(), 748);
-        assert_eq!(t.nodes.iter().filter(|n| n.stats.extra).count(), 32);
+        assert_eq!(lines.iter().filter(|l| !cached(l)).count(), 834);
+        assert_eq!((s.hits, s.misses), (3901, 2082));
+        assert_eq!(t.nodes.iter().filter(|n| n.sd.iter().any(|l| !cached(l))).count(), 716);
+        assert_eq!(t.nodes.iter().filter(|n| n.stats.unknown).count(), 757);
+        assert_eq!(t.nodes.iter().filter(|n| n.stats.extra).count(), 30);
     })
     .join()
     .unwrap();
@@ -150,7 +151,7 @@ fn parse_coverage_3_13_full() {
             "Full: hits {} parsed {} misses {} errors {:?}; unknown {unknown} extra {extra}",
             s.hits, s.parsed, s.misses, s.error_lines
         );
-        assert_eq!((s.hits, s.parsed, s.misses), (3930, 1184, 0));
+        assert_eq!((s.hits, s.parsed, s.misses), (3901, 1213, 0));
         assert!(s.error_lines.is_empty());
         assert_eq!((unknown, extra), (UNKNOWN_FULL, EXTRA_FULL));
     })
@@ -158,7 +159,8 @@ fn parse_coverage_3_13_full() {
     .unwrap();
 }
 
-const UNKNOWN_FULL: usize = 134;
+// LuaJIT on 07fa089bf, full parser (tools/.scratch/count-tree-cache.ts "full": unknown 133, extra 73)
+const UNKNOWN_FULL: usize = 133;
 const EXTRA_FULL: usize = 73;
 
 fn model(nodes: &[u32]) -> SpecModel {

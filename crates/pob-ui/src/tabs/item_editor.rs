@@ -497,7 +497,8 @@ impl Panel {
             "Corrupt...",
             &prev,
             100.0,
-            10.0,
+            // ItemsTab.lua:585 (07fa089bf): y 10 -> 0
+            0.0,
             Rc::new(move |g| t1().corrupt_display_item(g)),
             Rc::new(|i| i.corruptible),
         );
@@ -1396,10 +1397,16 @@ impl ItemsTab {
         self.copy_anoints_ex(it, copy_eldritch, false, None);
     }
 
-    /// `ItemsTab:GetComparisonSlotNameForItem(item)` (:2601-2614).
+    /// `ItemsTab:GetComparisonSlotNameForItem(item)` (:2627-2645).
     pub fn get_comparison_slot_name_for_item(&self, g: &Gfx, item: &Item) -> String {
+        self.get_comparison_slot_name_for_item_ex(g, item, false)
+    }
+
+    /// `ItemsTab:GetComparisonSlotNameForItem(item, activeOnly)` (:2627-2645, 07fa089bf): `activeOnly` for modifier comparisons
+    /// against the current item and weapon set.
+    pub fn get_comparison_slot_name_for_item_ex(&self, g: &Gfx, item: &Item, active_only: bool) -> String {
         if let Some(id) = item.id
-            && let Some((slot, _)) = self.equipped_slot(id)
+            && let Some((slot, _)) = self.equipped_slot_ex(id, active_only.then_some(g))
         {
             return slot.slot_name.clone();
         }
@@ -1421,7 +1428,12 @@ impl ItemsTab {
                 }
             }
         }
-        item.get_primary_slot()
+        let slot_name = item.get_primary_slot();
+        // :2641-2643
+        if active_only && self.read(|e| e.active_item_set().use_second_weapon_set) && (slot_name == "Weapon 1" || slot_name == "Weapon 2") {
+            return format!("{slot_name} Swap");
+        }
+        slot_name
     }
 
     /// `ItemsTab:CopyAnointsAndEldritchImplicits(newItem, copyEldritchImplicits, overwrite, sourceSlotName)` (:1959-1998).
@@ -1904,7 +1916,8 @@ impl ItemsTab {
         });
         if let (Some(stat), true) = (stat, p.sorting_label.base.shown.get(g)) {
             let quality = main().s.borrow().default_item_affix_quality;
-            let slot = item.get_primary_slot();
+            // ItemsTab.lua:2395 (07fa089bf) `GetComparisonSlotNameForItem(self.displayItem, true)`
+            let slot = self.get_comparison_slot_name_for_item_ex(g, &item, true);
             let mut subject = Item::parse_with(&item.build_raw(), None, false);
             if sel_affix.as_deref().is_some_and(|a| a != "None") {
                 let list = if suffix { &mut subject.suffixes } else { &mut subject.prefixes };
@@ -2012,7 +2025,7 @@ impl ItemsTab {
         let Some(mods) = item.affix_mods() else { return range };
         let min_max = |m: &AffixMod| -> Option<(f64, f64)> {
             for l in &m.lines {
-                if let Some(c) = pob_items::lua::match_(l, "%((%d[%d%.]*)%-(%d[%d%.]*)%)", "ItemsTab.lua:770") {
+                if let Some(c) = pob_items::lua::match_(l, "%((%d[%d%.]*)%-(%d[%d%.]*)%)", "ItemsTab.lua:790") {
                     return Some((c[0].parse().ok()?, c[1].parse().ok()?));
                 }
             }

@@ -241,7 +241,8 @@ fn gems_and_lookups_equal_luajit() {
     let g = gems();
     let sk = skills();
     let want = f["gems"].as_object().unwrap();
-    assert_eq!(want.len(), 871);
+    // 07fa089bf: LuaJIT "gems 874, effects 1532" (export-gemdata.ts log)
+    assert_eq!(want.len(), 874);
     assert_eq!(g.gems.len(), want.len(), "gems M");
     let mut bad = Vec::new();
     for (id, w) in want {
@@ -276,7 +277,7 @@ fn gems_and_lookups_equal_luajit() {
     assert!(bad.is_empty(), "{} gems differ: {:?}", bad.len(), &bad[..bad.len().min(5)]);
     // gemForSkill (D4) and its collisions: who wins
     let gfs = f["gemForSkill"].as_object().unwrap();
-    assert_eq!(f["nGemForSkill"], 822);
+    assert_eq!(f["nGemForSkill"], 824); // 07fa089bf: LuaJIT "gemForSkill 824" (export-gemdata.ts log)
     assert_eq!(g.gem_for_skill.len(), gfs.len());
     for (k, v) in gfs {
         assert_eq!(g.gem_for_skill.get(k).map(String::as_str), v.as_str(), "gemForSkill[{k}]");
@@ -288,7 +289,7 @@ fn gems_and_lookups_equal_luajit() {
     let coll = f["collisions"].as_object().unwrap();
     let ours: Vec<(&&str, &Vec<&str>)> = by_ge.iter().filter(|(_, v)| v.len() > 1).collect();
     assert_eq!(ours.len(), coll.len(), "collisions C");
-    assert_eq!(coll.len(), 37);
+    assert_eq!(coll.len(), 38); // 07fa089bf: LuaJIT "collisions 38" (export-gemdata.ts log)
     for (ge, ids) in ours {
         let mut ids = ids.clone();
         ids.sort_unstable();
@@ -331,7 +332,7 @@ fn granted_effects_equal_luajit() {
     want.extend(fixture("gemdata-skills-2.json")["skills"].as_object().unwrap().clone());
     // a fresh data.skills: the lazy statMap state of one process, as in the probe
     let sk = load_skills_fresh().expect("skills");
-    assert_eq!(sk.effects.len(), 1526, "granted effects N");
+    assert_eq!(sk.effects.len(), 1532, "granted effects N"); // LuaJIT, export-gemdata.ts log on 07fa089bf
     assert_eq!(want.len(), sk.effects.len());
     let (mut resolved, mut nil, mut one_of, mut malformed) = (0, 0, 0, 0);
     let mut bad: Vec<String> = Vec::new();
@@ -398,7 +399,8 @@ fn granted_effects_equal_luajit() {
     }
     assert!(bad.is_empty(), "{} differences: {:#?}", bad.len(), &bad[..bad.len().min(10)]);
     println!("statMap: resolved K = {resolved}, nil {nil}, lj-strhash $oneOf {one_of}, malformed {malformed}");
-    assert_eq!((resolved, nil), (5957, 3782), "statMap resolutions K");
+    // 07fa089bf: every entry = the LuaJIT fixture (bad is empty above), so these are its counts
+    assert_eq!((resolved, nil), (5990, 3803), "statMap resolutions K");
 }
 
 /// `#levels` / `next(levels)` come from the LuaJIT patch; sanity: within the stored levels.

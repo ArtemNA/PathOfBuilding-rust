@@ -95,6 +95,7 @@ const MUTATED_LINES_ITEMS: [(&str, usize); 9] = [
 ];
 
 #[test]
+#[ignore = "U-R6 (2.68.0, 07fa089bf): pob-ts is the 2.67.2 reference (no MaximumLifeManaDifference / MissingUnreservedLifePercent / SocketedSkillGemsIn*, the old ModCache in CacheOnly); the truth is LuaJIT (UPDATE-PROMPT.md 7.5)"]
 fn items_equal_pob_ts_and_classified_against_luajit() {
     let mut report = Vec::new();
     let mut failures = Vec::new();

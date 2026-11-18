@@ -427,13 +427,13 @@ pub fn create_active_skill_summoned(
     let mut skill_types = act
         .skill_types
         .clone()
-        .ok_or_else(|| "Modules/Common.lua:479: bad argument #1 to 'pairs' (table expected, got nil)".to_owned())?;
+        .ok_or_else(|| "Modules/Common.lua:480: bad argument #1 to 'pairs' (table expected, got nil)".to_owned())?;
     let minion_skill_types = act.minion_skill_types.clone();
     // :103-107 `copyTable(activeGrantedEffect.baseFlags)`
     let mut skill_flags: IndexMap<String, bool> = act
         .base_flags
         .as_ref()
-        .ok_or_else(|| "Modules/Common.lua:479: bad argument #1 to 'pairs' (table expected, got nil)".to_owned())?
+        .ok_or_else(|| "Modules/Common.lua:480: bad argument #1 to 'pairs' (table expected, got nil)".to_owned())?
         .iter()
         .map(|f| (f.clone(), true))
         .collect();

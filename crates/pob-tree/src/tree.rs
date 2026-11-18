@@ -129,6 +129,11 @@ pub struct TreeNode {
     pub is_multiple_choice: bool,
     pub is_multiple_choice_option: bool,
     pub is_proxy: bool,
+    /// `node.proxyKey` (3_30+, e.g. "BlightcoreTopRight"): the Putrid Seed layout of a proxy node (PassiveTree.lua:683, 07fa089bf).
+    pub proxy_key: Option<String>,
+    /// `isBlightcore = true` on the copy `BuildBlightcoreSubgraph` makes (PassiveSpec.lua:1933, 07fa089bf); the tree's own
+    /// nodes never have it. Read by the tree view only (PassiveTreeView.lua:732, :906).
+    pub is_blightcore: bool,
     pub is_blighted: bool,
     pub is_jewel_socket: bool,
     pub is_mastery: bool,
@@ -203,6 +208,9 @@ pub struct PassiveTree {
     pub cluster_node_map: IndexMap<String, usize>,
     pub class_notables: IndexMap<String, Vec<String>>,
     pub sockets: IndexMap<u32, usize>,
+    /// `self.blightcoreLayouts` (PassiveTree.lua:680-700, 07fa089bf): a jewel socket id -> the proxy nodes (indices into `nodes`) a
+    /// Putrid Seed grows from it, in the order `pairs(self.nodes)` met them ([`PassiveTree::build_blightcore_layouts`]).
+    pub blightcore_layouts: IndexMap<u32, Rc<Vec<usize>>>,
     pub mastery_effects: IndexMap<u64, MasteryEffect>,
     pub skills_per_orbit: Vec<f64>,
     pub orbit_radii: Vec<f64>,
@@ -288,6 +296,35 @@ fn legacy_groups(json: &'static TreeJson, legacy: &[String]) -> Vec<i64> {
         }
     }
     out
+}
+
+/// `pairs(self.nodes)` of a modern tree (PassiveTree.lua:136 copies the table `TreeData/<ver>/tree.lua` returns): the node ids in
+/// LuaJIT's walk of that constructor, the string key `"root"` left out. The file lists the keys sorted by `tostring`
+/// (`Modules/Utils.lua` `writeStringify`, `strSort`) as `[id] = { ... }`: no positional item, so the constructor preallocates
+/// `hsize2hbits(nhash)` nodes and stores the number keys at run time in that order ([`crate::lj_table::LjTable::with_constructor_size`]).
+/// The template's `"root"` (a seeded string hash, R13) is not modelled -- see [`PassiveTree::build_blightcore_layouts`].
+pub fn tree_nodes_pairs_order(json: &TreeJson) -> Result<Vec<u32>, String> {
+    let mut keys: Vec<&str> = json.nodes.keys().map(String::as_str).collect();
+    // `ipairs` keys would be written as positional items (Utils.lua:35-40): a tree with node 1 is not this model.
+    if keys.contains(&"1") {
+        return Err("Classes/PassiveTree.lua:682 pairs(self.nodes): a tree with node id 1 (positional constructor items) is not modelled; ascending id used".into());
+    }
+    keys.sort_unstable();
+    let mut t = crate::lj_table::LjTable::with_constructor_size(keys.len());
+    let mut ids = Vec::with_capacity(keys.len());
+    for k in keys {
+        if let Ok(id) = k.parse::<u32>() {
+            t.set(f64::from(id));
+            ids.push(id);
+        } else if k != "root" {
+            return Err(format!(
+                "Classes/PassiveTree.lua:682 pairs(self.nodes): node key '{k}' is not modelled; ascending id used"
+            ));
+        }
+    }
+    let order: Vec<u32> = t.pairs_keys().into_iter().map(|k| k as u32).collect();
+    debug_assert_eq!(order.len(), ids.len());
+    Ok(order)
 }
 
 /// The ids of the `Socket` nodes of tree `version` (`self.sockets`, :556-571: the type ladder up to `isJewelSocket`) without building
@@ -411,7 +448,7 @@ pub(crate) fn process_stats(holder: &StatHolder<'_>, sd: &mut Vec<String>, stats
                 sd.insert(il - 1, String::from_utf8_lossy(part).into_owned());
             }
             if i > sd.len() {
-                unimplemented!("Classes/PassiveTree.lua:815 parseMod(nil) after splitting an all-newline stat (a Lua error)");
+                unimplemented!("Classes/PassiveTree.lua:862 parseMod(nil) after splitting an all-newline stat (a Lua error)");
             }
         }
         let line = sd[i - 1].clone();
@@ -577,6 +614,7 @@ impl PassiveTree {
             cluster_node_map: IndexMap::new(),
             class_notables: IndexMap::new(),
             sockets: IndexMap::new(),
+            blightcore_layouts: IndexMap::new(),
             mastery_effects: IndexMap::new(),
             orbit_angles_by_orbit: skills_per_orbit.iter().map(|&n| calc_orbit_angles(n)).collect(),
             skills_per_orbit,
@@ -590,16 +628,17 @@ impl PassiveTree {
             secondary_ascend_name_map,
             legacy_ascendancies,
             unimplemented: vec![
-                "PassiveTree.lua:79-80 legion and tattoo passives are built on first use (crate::timeless, crate::tattoo)".into(),
-                "PassiveTree.lua:232-500 assets, sprites, node overlays (display only)".into(),
-                "PassiveTree.lua:623-640 connector polygons (display only)".into(),
-                "PassiveTree.lua:746-751, :771-783 legion/tattoo sprites and the tattoo idMap are display only".into(),
-                "PassiveTree.lua:790 buildTreeDependentUniques (P5)".into(),
+                "PassiveTree.lua:95-96 legion and tattoo passives are built on first use (crate::timeless, crate::tattoo)".into(),
+                "PassiveTree.lua:257-525 assets, sprites, node overlays (display only)".into(),
+                "PassiveTree.lua:648-665 connector polygons (display only)".into(),
+                "PassiveTree.lua:793-798, :771-783 legion/tattoo sprites and the tattoo idMap are display only".into(),
+                "PassiveTree.lua:837 buildTreeDependentUniques (P5)".into(),
             ],
         };
         t.build_classes()?;
         t.build_nodes()?;
         t.build_links()?;
+        t.build_blightcore_layouts();
         t.build_nodes_in_radius();
         t.add_class_start_conditions();
         Ok(t)
@@ -774,6 +813,8 @@ impl PassiveTree {
             is_multiple_choice: raw.is_multiple_choice == Some(true),
             is_multiple_choice_option: raw.is_multiple_choice_option == Some(true),
             is_proxy: raw.is_proxy == Some(true),
+            proxy_key: raw.proxy_key.clone(),
+            is_blightcore: false,
             is_blighted: raw.is_blighted == Some(true),
             is_jewel_socket: raw.is_jewel_socket == Some(true),
             is_mastery: raw.is_mastery == Some(true),
@@ -822,7 +863,7 @@ impl PassiveTree {
             node.ty = NodeType::Mastery;
             for effect in raw.mastery_effects.iter().flatten() {
                 let Some(key) = as_id(effect.effect).map(u64::from) else {
-                    unimplemented!("Classes/PassiveTree.lua:561 non-integral mastery effect id {}", effect.effect);
+                    unimplemented!("Classes/PassiveTree.lua:586 non-integral mastery effect id {}", effect.effect);
                 };
                 if !self.mastery_effects.contains_key(&key) {
                     let mut entry = MasteryEffect {
@@ -936,14 +977,14 @@ impl PassiveTree {
                 .copied()
                 .ok_or_else(|| {
                     TreeError(format!(
-                        "Classes/PassiveTree.lua:899: node {}: no orbit angle for o={:?} oidx={:?}",
+                        "Classes/PassiveTree.lua:946: node {}: no orbit angle for o={:?} oidx={:?}",
                         node.id, node.o, node.oidx
                     ))
                 })?;
             let radius = as_index(node.o)
                 .and_then(|o| self.orbit_radii.get(o))
                 .copied()
-                .ok_or_else(|| TreeError(format!("Classes/PassiveTree.lua:900: node {}: no orbit radius", node.id)))?;
+                .ok_or_else(|| TreeError(format!("Classes/PassiveTree.lua:947: node {}: no orbit radius", node.id)))?;
             node.angle = Some(angle);
             // MINEFIELD-RUST R2: `f64::sin/cos` = desktop UCRT.
             node.x = Some(grp.x + angle.sin() * radius);
@@ -977,6 +1018,60 @@ impl PassiveTree {
             }
         }
         Ok(())
+    }
+
+    /// :680-700 (07fa089bf) -- map each Large Jewel Socket to the proxy passives a Putrid Seed grows from it.
+    ///
+    /// Order (R11/R13): `blightcoreNodes[proxyKey]` lists its nodes in the `pairs(self.nodes)` order -- the order
+    /// `BuildBlightcoreSubgraph` links them in, so it decides `linked` (paths) and `subGraph.nodes`. `self.nodes` is the
+    /// constructor table of `TreeData/<ver>/tree.lua` ([`tree_nodes_pairs_order`]); its string key `"root"` sits in the template
+    /// at a per-process (seeded) hash slot, so LuaJIT itself is not deterministic here: a Python port of `lj_tab_newkey` over
+    /// all 4096 slots of "root" on 3_30 gives this order for 78-100% of the slots per layout (BlightcoreBottomRight 100%,
+    /// BlightcoreTopRight 78%). This port takes the order without the "root" collision (fixed, D13).
+    /// `pairs(blightcoreNodes)` (string keys, R13) only matters when two layouts link the same socket -- reported, not resolved.
+    pub(crate) fn build_blightcore_layouts(&mut self) {
+        let is_blightcore = |n: &TreeNode| n.proxy_key.as_deref().is_some_and(|k| k.starts_with("Blightcore"));
+        if !self.nodes.iter().any(is_blightcore) {
+            return;
+        }
+        // :681-688 -- group by proxy key (e.g. "BlightcoreTopRight")
+        let mut blightcore_nodes: IndexMap<String, Vec<usize>> = IndexMap::new();
+        let order = match tree_nodes_pairs_order(self.json) {
+            Ok(order) => order,
+            Err(e) => {
+                self.unimplemented.push(e);
+                let mut ids: Vec<u32> = self.node_index.keys().copied().collect();
+                ids.sort_unstable();
+                ids
+            }
+        };
+        for id in order {
+            let Some(i) = self.node_idx(id) else { continue };
+            let node = &self.nodes[i];
+            if is_blightcore(node) {
+                let key = node.proxy_key.clone().expect("is_blightcore");
+                blightcore_nodes.entry(key).or_default().push(i);
+            }
+        }
+        // :690-699 -- a table describing what putrid seed proxy nodes are attached to each socket
+        let mut layouts: IndexMap<u32, Rc<Vec<usize>>> = IndexMap::new();
+        for (key, layout) in blightcore_nodes {
+            let layout = Rc::new(layout);
+            for &i in layout.iter() {
+                for &other in &self.nodes[i].linked_id {
+                    // link the proxy nodes to the large jewel socket node
+                    if self.sockets.contains_key(&other)
+                        && let Some(prev) = layouts.insert(other, layout.clone())
+                        && !Rc::ptr_eq(&prev, &layout)
+                    {
+                        self.unimplemented.push(format!(
+                            "Classes/PassiveTree.lua:696 D13: socket {other} is linked by two Blightcore layouts ({key} and another) -- which one wins depends on the per-process pairs(blightcoreNodes) order"
+                        ));
+                    }
+                }
+            }
+        }
+        self.blightcore_layouts = layouts;
     }
 
     /// :713-721 -- every Normal node next to a class start gets a Condition flag naming that class.

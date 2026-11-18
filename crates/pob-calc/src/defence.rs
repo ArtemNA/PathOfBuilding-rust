@@ -269,7 +269,7 @@ fn get_converted_mod_tags(m: &Mod, multiplier: f64) -> Vec<Tag> {
         .map(|t| {
             if t.get("limitTotal").truthy() {
                 let mut tbl: Table = (*t.table()).clone();
-                let limit = num_val(tbl.get("limit"), 266);
+                let limit = num_val(tbl.get("limit"), 268);
                 tbl.hash.insert(Rc::from("limit"), n(limit * multiplier));
                 Tag::new(tbl)
             } else {
@@ -296,7 +296,7 @@ pub fn resistances(db: &StoreRef, out: &mut Output, mut bd: Option<&mut Breakdow
                     let entries = ok(db.borrow().tabulate(Some(Base), None, &[&format!("{res_from}ResistMax")]));
                     for e in entries {
                         if e.mod_.source.as_deref() != Some("Base") {
-                            m += num_val(&e.value, 538);
+                            m += num_val(&e.value, 540);
                         }
                     }
                     max_res = Some(m);
@@ -327,7 +327,7 @@ pub fn resistances(db: &StoreRef, out: &mut Output, mut bd: Option<&mut Breakdow
                     let mut r = 0.0;
                     for e in ok(db.borrow().tabulate(Some(Base), None, &[&from_name])) {
                         if e.mod_.source.as_deref() != Some("Base") {
-                            r += num_val(&e.value, 558);
+                            r += num_val(&e.value, 560);
                         }
                     }
                     res = Some(r);
@@ -347,7 +347,7 @@ pub fn resistances(db: &StoreRef, out: &mut Output, mut bd: Option<&mut Breakdow
                         db,
                         &to_name,
                         Inc,
-                        num_val(&e.value, 566) * conversion_rate,
+                        num_val(&e.value, 568) * conversion_rate,
                         e.mod_.source.as_deref(),
                     );
                 }
@@ -356,7 +356,7 @@ pub fn resistances(db: &StoreRef, out: &mut Output, mut bd: Option<&mut Breakdow
                         db,
                         &to_name,
                         More,
-                        num_val(&e.value, 569) * conversion_rate,
+                        num_val(&e.value, 571) * conversion_rate,
                         e.mod_.source.as_deref(),
                     );
                 }
@@ -372,7 +372,7 @@ pub fn resistances(db: &StoreRef, out: &mut Output, mut bd: Option<&mut Breakdow
             let name = format!("{elem}ResistMax");
             let ov = override_(db, &name);
             let resist_max = match ov {
-                Some(v) if v.truthy() => num_val(&v, 580),
+                Some(v) if v.truthy() => num_val(&v, 582),
                 _ => min2(misc("MaxResistCap"), base(db, &with_elem(&name, elem, "ElementalResistMax"))),
             };
             if resist_max > highest_resist_max && is_elemental(elem) {
@@ -402,22 +402,22 @@ pub fn resistances(db: &StoreRef, out: &mut Output, mut bd: Option<&mut Breakdow
         // :595-599
         let mut min = misc("ResistFloor");
         let mut max = match override_(db, &resist_max) {
-            Some(v) if v.truthy() => num_val(&v, 596),
+            Some(v) if v.truthy() => num_val(&v, 598),
             _ => min2(misc("MaxResistCap"), base(db, &with_elem(&resist_max, elem, "ElementalResistMax"))),
         };
         let mut total = match override_(db, &resist) {
-            Some(v) if v.truthy() => Some(num_val(&v, 597)),
+            Some(v) if v.truthy() => Some(num_val(&v, 599)),
             _ => None,
         };
         let mut totem_max = match override_(db, &totem_resist_max) {
-            Some(v) if v.truthy() => num_val(&v, 598),
+            Some(v) if v.truthy() => num_val(&v, 600),
             _ => min2(
                 misc("MaxResistCap"),
                 base(db, &with_elem(&totem_resist_max, elem, "TotemElementalResistMax")),
             ),
         };
         let mut totem_total = match override_(db, &totem_resist) {
-            Some(v) if v.truthy() => Some(num_val(&v, 599)),
+            Some(v) if v.truthy() => Some(num_val(&v, 601)),
             _ => None,
         };
         // :600-607
@@ -527,7 +527,7 @@ pub fn defence(env: &mut Env, state: &mut PerformState, who: Who) {
                 let v = row
                     .value
                     .as_num()
-                    .unwrap_or_else(|| panic!("Modules/CalcDefence.lua:670: attempt to perform arithmetic on field 'value'"));
+                    .unwrap_or_else(|| panic!("Modules/CalcDefence.lua:672: attempt to perform arithmetic on field 'value'"));
                 for elem in ["Fire", "Cold", "Lightning", "Chaos"] {
                     let fin = actor_state.output.num(&format!("{elem}Resist"));
                     mdb.borrow_mut().new_mod(pob_mods::create_mod(
@@ -554,41 +554,41 @@ pub fn defence(env: &mut Env, state: &mut PerformState, who: Who) {
     // --- :678-790 block -----------------------------------------------------------------------------------------------
     out.set_num("BlockChanceMax", min2(base(&db, &["BlockChanceMax"]), misc("BlockChanceCap")));
     if fl(&["MaximumBlockAttackChanceIsEqualToParent"]) {
-        from_parent(out, parent, "BlockChanceMax", 681);
+        from_parent(out, parent, "BlockChanceMax", 683);
     } else if fl(&["MaximumBlockAttackChanceIsEqualToPartyMember"]) {
-        set_from_party(out, party, "BlockChanceMax", 685); // not covered by goldens
+        set_from_party(out, party, "BlockChanceMax", 687); // not covered by goldens
     }
     out.set_num("BlockChanceOverCap", 0.0);
     out.set_num("SpellBlockChanceOverCap", 0.0);
     let mut base_block_chance = 0.0;
     // :688-694
     if let Some(ad) = item_list.get("Weapon 2").and_then(|i| i.armour_data.as_ref()) {
-        base_block_chance += num_val(&ad.get("BlockChance"), 689);
+        base_block_chance += num_val(&ad.get("BlockChance"), 691);
     }
     if let Some(ad) = item_list.get("Weapon 3").and_then(|i| i.armour_data.as_ref()) {
-        base_block_chance += num_val(&ad.get("BlockChance"), 693);
+        base_block_chance += num_val(&ad.get("BlockChance"), 695);
     }
     out.set_num("ShieldBlockChance", base_block_chance);
     // :696 `not keystonesAdded["Necromantic Aegis"] and Override(...) or baseBlockChance`
     if !env.keystones_added.get("Necromantic Aegis").copied().unwrap_or(false) {
-        base_block_chance = or_override(override_(&db, "ReplaceShieldBlock"), base_block_chance, 696);
+        base_block_chance = or_override(override_(&db, "ReplaceShieldBlock"), base_block_chance, 698);
     }
     // :699 `actor == env.minion and env.keystonesAdded["Necromantic Aegis"] and env.player.modDB:Override(nil, "ReplaceShieldBlock") or baseBlockChance`
     if who == Who::Minion && env.keystones_added.get("Necromantic Aegis").copied().unwrap_or(false) {
-        base_block_chance = or_override(override_(&env.mod_db, "ReplaceShieldBlock"), base_block_chance, 699);
+        base_block_chance = or_override(override_(&env.mod_db, "ReplaceShieldBlock"), base_block_chance, 701);
     }
 
     if fl(&["BlockAttackChanceIsEqualToParent"]) {
-        let p = parent.unwrap_or_else(|| parent_output(702));
+        let p = parent.unwrap_or_else(|| parent_output(704));
         let v = p
             .opt_num("BlockChance")
-            .unwrap_or_else(|| panic!("{}: bad argument #1 to 'min' (number expected, got nil)", site(702)));
+            .unwrap_or_else(|| panic!("{}: bad argument #1 to 'min' (number expected, got nil)", site(704)));
         let m = out.num("BlockChanceMax");
         out.set_num("BlockChance", min2(v, m));
     } else if fl(&["BlockAttackChanceIsEqualToPartyMember"]) {
         // :706 `m_min(actor.partyMembers.output.BlockChance, ...)` -- not covered by goldens
-        let v = party_output(party, "BlockChance", 706)
-            .unwrap_or_else(|| panic!("{}: bad argument #1 to 'min' (number expected, got nil)", site(706)));
+        let v = party_output(party, "BlockChance", 708)
+            .unwrap_or_else(|| panic!("{}: bad argument #1 to 'min' (number expected, got nil)", site(708)));
         let m = out.num("BlockChanceMax");
         out.set_num("BlockChance", min2(v, m));
     } else if fl(&["MaxBlockIfNotBlockedRecently"]) {
@@ -700,7 +700,7 @@ pub fn defence(env: &mut Env, state: &mut PerformState, who: Who) {
                 block_rolls *= 2.0; // not covered by goldens
             }
         }
-        if let Some(r) = ehp_unlucky_rolls(env, 771) {
+        if let Some(r) = ehp_unlucky_rolls(env, 773) {
             block_rolls = r;
         }
         if block_rolls != 0.0 {
@@ -721,6 +721,33 @@ pub fn defence(env: &mut Env, state: &mut PerformState, who: Who) {
         out.set_num("DamageTakenOnBlock", v);
     }
 
+    // --- CalcDefence.lua:796-806 (07fa089bf) `regenerationConversions` (:9): Light Radius -> Life Regeneration, Mana
+    // Regeneration -> Energy Shield Recharge, at the stated percentage ---------------------------------------------------
+    for (from, to, by) in [
+        ("LightRadius", "LifeRegen", "LightRadiusAppliesToLifeRegen"),
+        ("ManaRegen", "EnergyShieldRecharge", "ManaRegenAppliesToEnergyShieldRecharge"),
+    ] {
+        let multiplier = max_(&db, by).unwrap_or(0.0) / 100.0;
+        if multiplier != 0.0 {
+            let entries = ok(db.borrow().tabulate(Some(Inc), None, &[from]));
+            for e in entries {
+                let m = &e.mod_;
+                let modifiers = get_converted_mod_tags(m, multiplier);
+                // :803 the RAW `mod.value` is scaled, not the evaluated one
+                new_mod(
+                    &db,
+                    to,
+                    Inc,
+                    n((num_val(&m.value, 803) * multiplier).floor()),
+                    m.source.as_deref(),
+                    m.flags,
+                    m.keyword_flags,
+                    modifiers,
+                );
+            }
+        }
+    }
+
     // --- :792-800 Armour and Energy Shield Mastery (not covered by goldens) ------------------------------------------
     if fl(&["ArmourAppliesToEnergyShieldRecharge"]) {
         let multiplier = max_(&db, "ImprovedArmourAppliesToEnergyShieldRecharge").unwrap_or(100.0) / 100.0;
@@ -733,7 +760,7 @@ pub fn defence(env: &mut Env, state: &mut PerformState, who: Who) {
                 &db,
                 "EnergyShieldRecharge",
                 Inc,
-                n((num_val(&m.value, 798) * multiplier).floor()),
+                n((num_val(&m.value, 812) * multiplier).floor()),
                 m.source.as_deref(),
                 m.flags,
                 m.keyword_flags,
@@ -1076,9 +1103,11 @@ pub fn defence(env: &mut Env, state: &mut PerformState, who: Who) {
             }
         }
         // :1064-1074
-        let es = or_override(override_(&db, "EnergyShield"), max2(round(energy_shield, None), 0.0), 1064);
+        let es = or_override(override_(&db, "EnergyShield"), max2(round(energy_shield, None), 0.0), 1078);
         out.set_num("EnergyShield", es);
-        out.set_num("Armour", max2(round(armour, None), 0.0));
+        // CalcDefence.lua:1081 (07fa089bf): `modDB:Override(nil, "Armour") or ...`
+        let ar = or_override(override_(&db, "Armour"), max2(round(armour, None), 0.0), 1081);
+        out.set_num("Armour", ar);
         out.set_num("Evasion", max2(round(evasion, None), 0.0));
         out.set_num("MeleeEvasion", max2(round(evasion * cmod(&db, &["MeleeEvasion"]), None), 0.0));
         out.set_num(
@@ -1143,7 +1172,7 @@ pub fn defence(env: &mut Env, state: &mut PerformState, who: Who) {
             if fl(&["EvadeChanceBasedOnWard"]) {
                 // :1100 the Override is divided straight away -- a miss is a nil arithmetic error (not covered by goldens)
                 let ov = override_(&db, "EvadeChanceBasedOnWardPercent").unwrap_or(Value::Nil);
-                let multiplier = num_val(&ov, 1100) / 100.0;
+                let multiplier = num_val(&ov, 1114) / 100.0;
                 evade_stat = out.num("Ward") * multiplier;
                 melee_evade_stat = evade_stat;
                 projectile_evade_stat = evade_stat;
@@ -1217,7 +1246,7 @@ pub fn defence(env: &mut Env, state: &mut PerformState, who: Who) {
 
     // --- :1137-1178 spell suppression ---------------------------------------------------------------------------------
     let spell_suppression_chance = base(&db, &["SpellSuppressionChance"]);
-    let total_spell_suppression_chance = or_override(override_(&db, "SpellSuppressionChance"), spell_suppression_chance, 1138);
+    let total_spell_suppression_chance = or_override(override_(&db, "SpellSuppressionChance"), spell_suppression_chance, 1152);
     // :1142-1144 Acrobatics converts the UNCAPPED base (not covered by goldens)
     if fl(&["ConvertSpellSuppressionToSpellDodge"]) {
         nm(&db, "SpellDodgeChance", Base, spell_suppression_chance / 2.0, Some("Acrobatics"));
@@ -1246,7 +1275,7 @@ pub fn defence(env: &mut Env, state: &mut PerformState, who: Who) {
             suppress_rolls *= 2.0; // not covered by goldens
         }
     }
-    if let Some(r) = ehp_unlucky_rolls(env, 1164) {
+    if let Some(r) = ehp_unlucky_rolls(env, 1178) {
         suppress_rolls = r;
     }
     if suppress_rolls != 0.0 {
@@ -1259,7 +1288,7 @@ pub fn defence(env: &mut Env, state: &mut PerformState, who: Who) {
     let total_attack_dodge_chance = base(&db, &["AttackDodgeChance"]);
     let total_spell_dodge_chance = base(&db, &["SpellDodgeChance"]);
     let attack_dodge_chance_max = misc("DodgeChanceCap");
-    let spell_dodge_chance_max = or_override(override_(&db, "SpellDodgeChanceMax"), base(&db, &["SpellDodgeChanceMax"]), 1184);
+    let spell_dodge_chance_max = or_override(override_(&db, "SpellDodgeChanceMax"), base(&db, &["SpellDodgeChanceMax"]), 1198);
     // :1185 `Sum(...) or 0` -- Sum always answers a number: the `or 0` is dead (D21)
     let enemy_reduce_dodge_chance = base(&enemy_db, &["reduceEnemyDodge"]);
     out.set_num("AttackDodgeChance", min2(total_attack_dodge_chance, attack_dodge_chance_max));
@@ -1323,6 +1352,16 @@ pub fn defence(env: &mut Env, state: &mut PerformState, who: Who) {
         );
     }
 
+    // --- CalcDefence.lua:1227-1233 (07fa089bf): the non-flask Petrified Blood recovery ceiling as the default ------------
+    let mut missing_life = 0.0;
+    if ok(db.borrow().get_condition("AffectedByPetrifiedBlood", None, false)) == Some(true) && out.num("LifeUnreserved") > 0.0 {
+        let unreserved = out.num("LifeUnreserved");
+        let current_life = min2(unreserved, out.num("Life") * out.num("LowLifePercentage") / 100.0);
+        missing_life = 100.0 * (unreserved - current_life) / unreserved;
+    }
+    let missing = or_override(override_(&db, "MissingUnreservedLifePercent"), missing_life, 1233);
+    out.set_num("MissingUnreservedLifePercent", missing);
+
     // --- :1211-1217 recovery-rate modifiers ----------------------------------------------------------------------------
     out.set_num("LifeRecoveryRateMod", 1.0);
     if !fl(&["CannotRecoverLifeOutsideLeech"]) {
@@ -1336,9 +1375,9 @@ pub fn defence(env: &mut Env, state: &mut PerformState, who: Who) {
     out.set_num("MaxLifeLeechInstance", life * cval(&db, "MaxLifeLeechInstance") / 100.0);
     out.set_num("MaxLifeLeechRatePercent", cval(&db, "MaxLifeLeechRate"));
     if fl(&["MaximumLifeLeechIsEqualToParent"]) {
-        from_parent(out, parent, "MaxLifeLeechRatePercent", 1223);
+        from_parent(out, parent, "MaxLifeLeechRatePercent", 1245);
     } else if fl(&["MaximumLifeLeechIsEqualToPartyMember"]) {
-        set_from_party(out, party, "MaxLifeLeechRatePercent", 1227); // not covered by goldens
+        set_from_party(out, party, "MaxLifeLeechRatePercent", 1249); // not covered by goldens
     }
     let v = out.num("Life") * out.num("MaxLifeLeechRatePercent") / 100.0;
     out.set_num("MaxLifeLeechRate", v);
@@ -1396,12 +1435,12 @@ pub fn defence(env: &mut Env, state: &mut PerformState, who: Who) {
         let resource = resource_name.replace(' ', "");
         let r = resource.as_str();
         // :1258 `output[resource] or 0`
-        let pool = out_or(out, r, 0.0, 1258);
+        let pool = out_or(out, r, 0.0, 1280);
         let mut i_ = inc(&db, &[&format!("{r}Regen")]);
         let m = more(&db, &[&format!("{r}Regen")]);
         let mut regen_rate = 0.0;
         // :1264 `output[resource.."RecoveryRateMod"] or 1` -- Rage has none
-        let recovery_rate_mod = out_or(out, &format!("{r}RecoveryRateMod"), 1.0, 1264);
+        let recovery_rate_mod = out_or(out, &format!("{r}RecoveryRateMod"), 1.0, 1286);
         // :1259 `local baseRegen = 0`
         let mut base_regen_v = 0.0;
         if fl(&[&format!("No{r}Regen")]) || fl(&[&format!("CannotGain{r}")]) {
@@ -1557,7 +1596,7 @@ pub fn defence(env: &mut Env, state: &mut PerformState, who: Who) {
     if applies_to_life || applies_to_es {
         let i = inc(&db, &["EnergyShieldRecharge"]);
         let m = more(&db, &["EnergyShieldRecharge"]);
-        let b = or_override(override_(&db, "EnergyShieldRecharge"), misc("EnergyShieldRechargeBase"), 1349);
+        let b = or_override(override_(&db, "EnergyShieldRecharge"), misc("EnergyShieldRechargeBase"), 1371);
         // :1353-1368 / :1372-1387
         let recharge_chain = |pool: &str, recharge: f64, rate_mod: &str, out: &Output| {
             let mut t = BTable::new();
@@ -1653,7 +1692,10 @@ pub fn defence(env: &mut Env, state: &mut PerformState, who: Who) {
         }
         // :1422-1448
         for recoup_type in RECOUP_TYPES {
-            if recoup_type == "Life" && fl(&["EnergyShieldRecoupInsteadOfLife"]) {
+            if recoup_type == "Life" && fl(&["CannotRecoupLife"]) {
+                // CalcDefence.lua:1447-1448 (07fa089bf)
+                out.set_num("LifeRecoup", 0.0);
+            } else if recoup_type == "Life" && fl(&["EnergyShieldRecoupInsteadOfLife"]) {
                 // not covered by goldens
                 out.set_num("LifeRecoup", 0.0);
                 let life_recoup = base(&db, &["LifeRecoup"]);
@@ -1710,7 +1752,10 @@ pub fn defence(env: &mut Env, state: &mut PerformState, who: Who) {
             for damage_type in DMG_TYPE_LIST {
                 let recoup_name = format!("{damage_type}{recoup_type}Recoup");
                 let recoup = base(&db, &[&recoup_name]);
-                if recoup_type == "Life" && fl(&["EnergyShieldRecoupInsteadOfLife"]) {
+                if recoup_type == "Life" && fl(&["CannotRecoupLife"]) {
+                    // CalcDefence.lua:1486-1487 (07fa089bf)
+                    out.set_num(&recoup_name, 0.0);
+                } else if recoup_type == "Life" && fl(&["EnergyShieldRecoupInsteadOfLife"]) {
                     // not covered by goldens
                     out.set_num(&recoup_name, 0.0);
                     nm(
@@ -1827,7 +1872,7 @@ pub fn defence(env: &mut Env, state: &mut PerformState, who: Who) {
     // --- :1534-1540 damage reduction ------------------------------------------------------------------------------------
     out.set_num(
         "DamageReductionMax",
-        or_override(override_(&db, "DamageReductionMax"), misc("DamageReductionCap"), 1535),
+        or_override(override_(&db, "DamageReductionMax"), misc("DamageReductionCap"), 1561),
     );
     // :1536 a source-less mod
     nm(&db, "ArmourAppliesToPhysicalDamageTaken", Base, 100.0, None);
@@ -1835,7 +1880,7 @@ pub fn defence(env: &mut Env, state: &mut PerformState, who: Who) {
         let dr = format!("{damage_type}DamageReduction");
         let dr_max = out.num("DamageReductionMax");
         let v = match override_(&db, &dr) {
-            Some(v) if v.truthy() => num_val(&v, 1538),
+            Some(v) if v.truthy() => num_val(&v, 1564),
             _ => min2(
                 max2(0.0, base(&db, &with_elem(&dr, damage_type, "ElementalDamageReduction"))),
                 dr_max,
@@ -1843,7 +1888,7 @@ pub fn defence(env: &mut Env, state: &mut PerformState, who: Who) {
         };
         out.set_num(&format!("Base{dr}"), v);
         let v = match override_(&db, &dr) {
-            Some(v) if v.truthy() => num_val(&v, 1539),
+            Some(v) if v.truthy() => num_val(&v, 1565),
             _ => min2(
                 max2(0.0, out.num(&format!("Base{dr}")) + base(&db, &[&format!("{dr}WhenHit")])),
                 dr_max,
@@ -1854,10 +1899,10 @@ pub fn defence(env: &mut Env, state: &mut PerformState, who: Who) {
 
     // --- :1542-1559 movement speed, blind -------------------------------------------------------------------------------
     let msm = match override_(&db, "MovementSpeed") {
-        Some(v) if v.truthy() => num_val(&v, 1543),
+        Some(v) if v.truthy() => num_val(&v, 1569),
         // `Flag and actor.partyMembers.output.MovementSpeedMod or calcLib.mod(...)` (PartyMemberStats `MovementSpeedMod`)
         _ => match fl(&["MovementSpeedEqualHighestLinkedPlayers"])
-            .then(|| party_output(party, "MovementSpeedMod", 1545))
+            .then(|| party_output(party, "MovementSpeedMod", 1571))
             .flatten()
         {
             Some(v) => v,

@@ -3,6 +3,7 @@
 #   pwsh tools/sg-oracle/run.ps1 -Script input-probe.lua -ScriptArgs 'bisect 1080,320' -Inject inject-bisect.ps1
 param($Process, [string]$Out)
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'hidden-desktop.ps1') # the hidden desktop: no window on the user's monitors (SG_VISIBLE=1: visible)
 Add-Type -Namespace SgOracle -Name B -MemberDefinition @"
 [DllImport("user32.dll")] public static extern bool PostMessageW(IntPtr h, uint m, IntPtr w, IntPtr l);
 "@
@@ -10,7 +11,7 @@ $log = [System.Collections.Generic.List[object]]::new()
 $sw = [Diagnostics.Stopwatch]::StartNew()
 function L($what) { $log.Add(@($sw.ElapsedMilliseconds, $what)) }
 for ($i = 0; $i -lt 100 -and -not (Test-Path "$Out\ready"); $i++) { Start-Sleep -Milliseconds 100 }
-$Process.Refresh(); $h = $Process.MainWindowHandle
+$h = Get-SgWindow -Process $Process
 function P([uint32]$msg, [int64]$w, [int64]$l) { [void][SgOracle.B]::PostMessageW($h, $msg, [IntPtr]$w, [IntPtr]$l) }
 function KL([int]$sc, [bool]$up, [bool]$alt) { $l = 1 -bor (($sc -band 0xFF) -shl 16); if ($sc -band 0x100) { $l = $l -bor 0x01000000 }; if ($alt) { $l = $l -bor 0x20000000 }; if ($up) { $l = $l -bor 0xC0000000 }; $l }
 function Key([int]$vk, [int]$sc) { P 0x0100 $vk (KL $sc $false $false); Start-Sleep -Milliseconds 40; P 0x0101 $vk (KL $sc $true $false); Start-Sleep -Milliseconds 80 }

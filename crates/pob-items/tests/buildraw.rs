@@ -276,8 +276,8 @@ fn build_raw_equals_luajit_on_uniques() {
     assert!(bad.is_empty(), "{} differ:\n{}", bad.len(), bad.join("\n"));
     assert_eq!(
         (seq.items, seq.r13, var1.items, var1.r13),
-        // 3dbca4463: 271 uniques with variants (LuaJIT `uniquesWithVariant1`, export-buildraw.ts)
-        (450, 20, 271, 20),
+        // 07fa089bf: 456 uniques, 274 with variants (LuaJIT `uniques` / `uniquesWithVariant1`, export-buildraw.ts)
+        (456, 20, 274, 20),
         "corpus size / R13 items"
     );
 }

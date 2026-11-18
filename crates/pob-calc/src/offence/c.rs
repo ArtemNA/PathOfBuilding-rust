@@ -970,6 +970,10 @@ fn crits(off: &mut Off<'_>, pi: usize) {
                 if q.flag(Some(&off.cfg), &["Every5UseCrit"]) {
                     cc = (4.0 * cc + 100.0) / 5.0;
                 }
+                // CalcOffence.lua:3174-3176 (07fa089bf)
+                if q.flag(Some(&off.cfg), &["Every6UseCrit"]) {
+                    cc = (5.0 * cc + 100.0) / 6.0;
+                }
                 pre_hit_check = cc;
                 ahc = num_at(off.pval(pi, "AccuracyHitChance"), "AccuracyHitChance", 3146);
                 cc = cc * ahc / 100.0;
@@ -1036,7 +1040,14 @@ fn crits(off: &mut Off<'_>, pi: usize) {
                             (4.0 * pre_skill_use + 100.0) / 5.0 - pre_skill_use
                         ));
                     }
-                    if e3 || q.flag(Some(&off.cfg), &["Every5UseCrit"]) {
+                    // CalcOffence.lua:3222-3224 (07fa089bf)
+                    if q.flag(Some(&off.cfg), &["Every6UseCrit"]) {
+                        t.push(sf!(
+                            "+ %.2f%% ^8(crit every 6th use)",
+                            (5.0 * pre_skill_use + 100.0) / 6.0 - pre_skill_use
+                        ));
+                    }
+                    if e3 || q.flag(Some(&off.cfg), &["Every5UseCrit"]) || q.flag(Some(&off.cfg), &["Every6UseCrit"]) {
                         t.push(sf!("= %.2f%%", pre_hit_check));
                     }
                 }
@@ -1062,7 +1073,7 @@ fn crits(off: &mut Off<'_>, pi: usize) {
             off.pset_num(pi, "CritMultiplier", 1.0);
         } else {
             let mut extra = q.base(Some(off.pcfg(pi)), &["CritMultiplier"]) / 100.0;
-            if let Some(m) = q.override_num(Some(&off.cfg), &["CritMultiplier"], "Modules/CalcOffence.lua:3210") {
+            if let Some(m) = q.override_num(Some(&off.cfg), &["CritMultiplier"], "Modules/CalcOffence.lua:3213") {
                 extra = (m - 100.0) / 100.0;
             }
             if eff {
@@ -1090,15 +1101,19 @@ fn crits(off: &mut Off<'_>, pi: usize) {
                 && !matches!(off.pval(pi, "PreBifurcateCritChance"), None | Some(OutValue::Bool(false)))
                 && crit_override.as_ref().and_then(Value::as_num) != Some(100.0)
             {
-                let pct = num_at(off.pval(pi, "PreBifurcateCritChance"), "PreBifurcateCritChance", 3229);
+                let pct = num_at(off.pval(pi, "PreBifurcateCritChance"), "PreBifurcateCritChance", 3235);
                 let mut bifurcate_multi_chance = pct.powf(2.0) / 100.0;
-                let effective = num_at(off.pval(pi, "CritChance"), "CritChance", 3240);
+                let effective = num_at(off.pval(pi, "CritChance"), "CritChance", 3246);
                 let mut use_chance = 1.0;
                 if q.flag(Some(&off.cfg), &["Every3UseCrit"]) {
                     use_chance = use_chance * 2.0 / 3.0;
                 }
                 if q.flag(Some(&off.cfg), &["Every5UseCrit"]) {
                     use_chance = use_chance * 4.0 / 5.0;
+                }
+                // CalcOffence.lua:3274-3276 (07fa089bf)
+                if q.flag(Some(&off.cfg), &["Every6UseCrit"]) {
+                    use_chance = use_chance * 5.0 / 6.0;
                 }
                 bifurcate_multi_chance *= use_chance;
                 let conditional = if effective > 0.0 { bifurcate_multi_chance / effective } else { 0.0 };
@@ -1128,8 +1143,8 @@ fn crits(off: &mut Off<'_>, pi: usize) {
             }
             off.pset_num(pi, "CritMultiplier", 1.0 + max2(0.0, extra));
         }
-        let pct = num_at(off.pval(pi, "CritChance"), "CritChance", 3262) / 100.0;
-        let mult = num_at(off.pval(pi, "CritMultiplier"), "CritMultiplier", 3263);
+        let pct = num_at(off.pval(pi, "CritChance"), "CritChance", 3268) / 100.0;
+        let mult = num_at(off.pval(pi, "CritMultiplier"), "CritMultiplier", 3269);
         let effect = 1.0 - pct + pct * mult;
         off.pset_num(pi, "CritEffect", effect);
         // :3266-3272
@@ -1155,7 +1170,7 @@ fn double_triple_cull(off: &mut Off<'_>, pi: usize) -> f64 {
     let q = off.q.clone();
     let eff = off.env.mode_effective;
     off.pset_num(pi, "ScaledDamageEffect", 1.0);
-    let cc = num_at(off.pval(pi, "CritChance"), "CritChance", 3281);
+    let cc = num_at(off.pval(pi, "CritChance"), "CritChance", 3290);
     let c = Some(off.pcfg(pi));
     let triple_on_crit = min2(q.base(c, &["TripleDamageChanceOnCrit"]), 100.0);
     // `Sum(...) or 0 + (...)`: `or` binds loosest and a Sum is never nil -- the right-hand side is never evaluated (L4)
@@ -1176,7 +1191,7 @@ fn double_triple_cull(off: &mut Off<'_>, pi: usize) -> f64 {
         double = 100.0;
     } else if off.gtruthy("IntimidatingUpTimeRatio") {
         double = min2(
-            double + num_at(off.gval("IntimidatingUpTimeRatio"), "IntimidatingUpTimeRatio", 3290),
+            double + num_at(off.gval("IntimidatingUpTimeRatio"), "IntimidatingUpTimeRatio", 3299),
             100.0,
         );
     }
@@ -1188,11 +1203,11 @@ fn double_triple_cull(off: &mut Off<'_>, pi: usize) -> f64 {
     off.pset_num(pi, "DoubleDamageEffect", double_effect);
     off.pset_num(pi, "ScaledDamageEffect", 1.0 * (1.0 + double_effect + triple_effect));
 
-    let hit_chance = num_at(off.pval(pi, "HitChance"), "HitChance", 3300);
+    let hit_chance = num_at(off.pval(pi, "HitChance"), "HitChance", 3309);
     let dps_mult = off
-        .sd_num("dpsMultiplier", 3300)
-        .unwrap_or_else(|| panic!("{LUA}:3300: attempt to perform arithmetic on field 'dpsMultiplier' (a nil value)"));
-    let hit_rate = hit_chance / 100.0 * off.g_hit_speed(3300) * dps_mult;
+        .sd_num("dpsMultiplier", 3309)
+        .unwrap_or_else(|| panic!("{LUA}:3309: attempt to perform arithmetic on field 'dpsMultiplier' (a nil value)"));
+    let hit_rate = hit_chance / 100.0 * off.g_hit_speed(3309) * dps_mult;
 
     let c = Some(off.pcfg(pi));
     let mut critical_cull = q.max(c, &["CriticalCullPercent"]).unwrap_or(0.0);
@@ -1230,7 +1245,7 @@ fn added_damage_redirect(off: &mut Off<'_>, pi: usize) {
                 let src = m
                     .source
                     .as_deref()
-                    .unwrap_or_else(|| panic!("{LUA}:3331: attempt to index field 'source' (a nil value)"));
+                    .unwrap_or_else(|| panic!("{LUA}:3340: attempt to index field 'source' (a nil value)"));
                 if src.contains("ElementalHit") {
                     continue;
                 }

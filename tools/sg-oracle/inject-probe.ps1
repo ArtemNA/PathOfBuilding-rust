@@ -5,6 +5,7 @@
 # Keys are posted as WM_KEYDOWN/WM_KEYUP with the set-1 scancode in lParam (GLFW maps keys by scancode; 0x1xx = extended).
 param($Process, [string]$Out)
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'hidden-desktop.ps1') # the hidden desktop: no window on the user's monitors (SG_VISIBLE=1: visible)
 Add-Type -Namespace SgOracle -Name P -MemberDefinition @'
 [DllImport("user32.dll")] public static extern bool PostMessageW(IntPtr h, uint m, IntPtr w, IntPtr l);
 [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid);
@@ -17,7 +18,7 @@ $sw = [Diagnostics.Stopwatch]::StartNew()
 function L($what) { $log.Add(@($sw.ElapsedMilliseconds, $what)) }
 for ($i = 0; $i -lt 100 -and -not (Test-Path "$Out\ready"); $i++) { Start-Sleep -Milliseconds 100 }
 L 'ready seen'
-$Process.Refresh(); $h = $Process.MainWindowHandle
+$h = Get-SgWindow -Process $Process
 if ($h -eq [IntPtr]::Zero) { throw 'no main window' }
 $pidOut = 0; $tid = [SgOracle.P]::GetWindowThreadProcessId($h, [ref]$pidOut)
 $hkl = '{0:X8}' -f ([SgOracle.P]::GetKeyboardLayout($tid).ToInt64() -band 0xFFFFFFFF)

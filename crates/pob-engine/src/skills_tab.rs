@@ -142,12 +142,11 @@ fn moved_index(cur: f64, from: f64, to: f64) -> f64 {
 
 /// SkillsTab.lua:1464-1475 over the live list.
 pub(crate) fn rebuild_imbued(tab: &mut SkillsTab) {
-    let data = pob_data::gems::gems();
     let mut out = indexmap::IndexMap::new();
     for sg in tab.socket_group_list() {
         if let (Some(slot), Some(imbued)) = (&sg.slot, &sg.imbued_support) {
-            let key = format!("{} support", imbued.to_ascii_lowercase());
-            if let Some(gem) = data.gem_for_base_name.get(&key).and_then(|id| data.gems.get(id)) {
+            // 07fa089bf: through `FindImbuedSupport` (SkillsTab.lua:1482)
+            if let Some(gem) = pob_calc::skills_tab::find_imbued_support(imbued) {
                 out.insert(slot.clone(), gem.granted_effect_id.clone());
             }
         }
@@ -408,8 +407,8 @@ impl Engine {
                 "%s %d/%d %s %d\r\n",
                 &[
                     Arg::Str(&name),
-                    Arg::Num(gi.level.ok_or("Classes/SkillsTab.lua:703: bad argument #3 to 'format'")?),
-                    Arg::Num(gi.quality.ok_or("Classes/SkillsTab.lua:703: bad argument #4 to 'format'")?),
+                    Arg::Num(gi.level.ok_or("Classes/SkillsTab.lua:704: bad argument #3 to 'format'")?),
+                    Arg::Num(gi.quality.ok_or("Classes/SkillsTab.lua:704: bad argument #4 to 'format'")?),
                     Arg::Str(if gi.enabled { "" } else { "DISABLED" }),
                     Arg::Num(gi.count.unwrap_or(1.0)),
                 ],
@@ -478,7 +477,7 @@ impl Engine {
                 .gem_data
                 .as_ref()
                 .and_then(|id| pob_data::gems::gems().gems.0.get(id))
-                .ok_or("Classes/SkillsTab.lua:1130: attempt to index local 'gemData' (a nil value)")?;
+                .ok_or("Classes/SkillsTab.lua:1140: attempt to index local 'gemData' (a nil value)")?;
             let level = process_gem_level(gd, false, &default_level, Some(character_level), s).map_err(lua_err)?;
             gi.level = Some(level);
             gi.natural_max_level = Some(level);
@@ -510,7 +509,7 @@ impl Engine {
                         .gem_data
                         .as_ref()
                         .and_then(|id| pob_data::gems::gems().gems.0.get(id))
-                        .ok_or("Classes/SkillsTab.lua:1130: attempt to index local 'gemData' (a nil value)")?;
+                        .ok_or("Classes/SkillsTab.lua:1140: attempt to index local 'gemData' (a nil value)")?;
                     process_gem_level(gd, false, &default_level, Some(character_level), s).map_err(lua_err)?
                 }
             };
@@ -536,7 +535,7 @@ impl Engine {
                 .gem_data
                 .as_ref()
                 .and_then(|id| pob_data::gems::gems().gems.0.get(id))
-                .ok_or("Classes/SkillsTab.lua:964: attempt to index field 'gemData' (a nil value)")?
+                .ok_or("Classes/SkillsTab.lua:965: attempt to index field 'gemData' (a nil value)")?
                 .vaal_gem
                 == Some(true);
             if !vaal {

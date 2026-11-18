@@ -599,11 +599,11 @@ fn cross_linked_support_groups(mod_db: &StoreRef, inp: &SetupInputs<'_>) -> Resu
             .position(|c| c.0 == e.mod_.source)
             .and_then(|i| carriers.remove(i).1)
             // `crossLinkedSupportGroups[nil] = ...`: a LinkedSupport from outside the items has no `sourceSlot`
-            .ok_or_else(|| "Modules/CalcSetup.lua:1612: table index is nil".to_owned())?;
+            .ok_or_else(|| "Modules/CalcSetup.lua:1657: table index is nil".to_owned())?;
         let target = e.value.get("targetSlotName");
         let target = target
             .as_str()
-            .ok_or_else(|| "Modules/CalcSetup.lua:1613: LinkedSupport without a targetSlotName".to_owned())?;
+            .ok_or_else(|| "Modules/CalcSetup.lua:1658: LinkedSupport without a targetSlotName".to_owned())?;
         groups.entry(source_slot.to_string()).or_default().push(target.to_owned());
     }
     Ok(groups)
@@ -718,7 +718,7 @@ pub fn setup_skills(st: &mut SkillsState, inp: &SetupInputs<'_>) -> Result<Setup
                     Value::Num(x) => pob_lua::format::tostring_num(x),
                     other => {
                         return Err(format!(
-                            "Modules/CalcSetup.lua:1632: attempt to concatenate a {} value",
+                            "Modules/CalcSetup.lua:1677: attempt to concatenate a {} value",
                             other.type_name()
                         ));
                     }
@@ -780,6 +780,8 @@ pub fn setup_skills(st: &mut SkillsState, inp: &SetupInputs<'_>) -> Result<Setup
             }
         }
 
+        // CalcSetup.lua:1741 (07fa089bf) `socketedSupportsDisabled = env.modDB:Flag(groupCfg, "SocketedSupportGemsHaveNoEffect")`
+        let socketed_supports_disabled = ok(mod_db.borrow().flag(Some(&cfg), &["SocketedSupportGemsHaveNoEffect"])) == Some(true);
         // :1669-1730 the group's gems
         let n_gems = st.tab.socket_group_list()[index].gem_list.len();
         for gem_index in 0..n_gems {
@@ -817,7 +819,7 @@ pub fn setup_skills(st: &mut SkillsState, inp: &SetupInputs<'_>) -> Result<Setup
                     socket_index_by_gem[index].get(gem_index).copied().flatten(),
                 );
                 let quality = gi.quality.ok_or_else(|| {
-                    "Modules/CalcSetup.lua:1708: attempt to perform arithmetic on field 'quality' (a nil value)".to_owned()
+                    "Modules/CalcSetup.lua:1754: attempt to perform arithmetic on field 'quality' (a nil value)".to_owned()
                 })? + socket_quality;
                 let se = EffectRef::new(SkillEffect {
                     granted_effect: ge_idx,
@@ -874,8 +876,11 @@ pub fn setup_skills(st: &mut SkillsState, inp: &SetupInputs<'_>) -> Result<Setup
                         e.level,
                     )?);
                 }
-                for t in &targets {
-                    add_best_support(&sk, &se, support_lists.get_mut(t))?;
+                // CalcSetup.lua:1792-1796 (07fa089bf)
+                if !socketed_supports_disabled {
+                    for t in &targets {
+                        add_best_support(&sk, &se, support_lists.get_mut(t))?;
+                    }
                 }
             }
         }
@@ -943,7 +948,7 @@ pub fn setup_skills(st: &mut SkillsState, inp: &SetupInputs<'_>) -> Result<Setup
                     socket_index_by_gem[index].get(gem_index).copied().flatten(),
                 );
                 let quality = gi_snapshot.quality.ok_or_else(|| {
-                    "Modules/CalcSetup.lua:1786: attempt to perform arithmetic on field 'quality' (a nil value)".to_owned()
+                    "Modules/CalcSetup.lua:1834: attempt to perform arithmetic on field 'quality' (a nil value)".to_owned()
                 })? + socket_quality;
                 let ae = EffectRef::new(SkillEffect {
                     granted_effect: ge_idx,
@@ -994,7 +999,7 @@ pub fn setup_skills(st: &mut SkillsState, inp: &SetupInputs<'_>) -> Result<Setup
                             .and_then(|s| support_lists.by_slot.get(s))
                             .and_then(|m| m.get(&index))
                             .cloned()
-                            .ok_or_else(|| "Modules/CalcSetup.lua:1790: attempt to index a nil value".to_owned())?,
+                            .ok_or_else(|| "Modules/CalcSetup.lua:1838: attempt to index a nil value".to_owned())?,
                     };
                     let (own_slot, own_source, n_own) = {
                         let sg = &st.tab.socket_group_list()[index];
@@ -1020,7 +1025,7 @@ pub fn setup_skills(st: &mut SkillsState, inp: &SetupInputs<'_>) -> Result<Setup
                         let non_empty = slot_lists.values().filter(|l| !l.is_empty()).count();
                         if non_empty > 1 {
                             st.order_notes.push(format!(
-                                "CalcSetup.lua:1806 pairs(supportLists[\"{}\"]) over {non_empty} non-empty groups (group {})",
+                                "CalcSetup.lua:1854 pairs(supportLists[\"{}\"]) over {non_empty} non-empty groups (group {})",
                                 slot_name.as_deref().unwrap_or(""),
                                 index + 1
                             ));

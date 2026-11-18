@@ -3,26 +3,26 @@
 	<Build ascendClassName="Deadeye" bandit="None" characterLevelAutoMode="false" className="Ranger" level="100" mainSocketGroup="1" pantheonMajorGod="None" pantheonMinorGod="None" targetVersion="3_0" viewMode="TREE">
 		<PlayerStat stat="AverageDamage" value="2990.5289577117"/>
 		<PlayerStat stat="AverageBurstDamage" value="2990.5289577117"/>
-		<PlayerStat stat="Speed" value="6.16704"/>
+		<PlayerStat stat="Speed" value="6.1248"/>
 		<PlayerStat stat="PreEffectiveCritChance" value="5"/>
 		<PlayerStat stat="CritChance" value="4.35"/>
 		<PlayerStat stat="CritMultiplier" value="1.5"/>
 		<PlayerStat stat="HitChance" value="87"/>
-		<PlayerStat stat="TotalDPS" value="92213.558516831"/>
-		<PlayerStat stat="TotalDot" value="13846400.233402"/>
-		<PlayerStat stat="WithDotDPS" value="13938613.791919"/>
-		<PlayerStat stat="WithBleedDPS" value="92213.558516831"/>
-		<PlayerStat stat="WithIgniteDPS" value="92213.558516831"/>
-		<PlayerStat stat="WithPoisonDPS" value="92213.558516831"/>
-		<PlayerStat stat="TotalDotDPS" value="13846400.233402"/>
-		<PlayerStat stat="MirageDPS" value="8118968.3483295"/>
+		<PlayerStat stat="TotalDPS" value="91581.958800962"/>
+		<PlayerStat stat="TotalDot" value="13751561.875639"/>
+		<PlayerStat stat="WithDotDPS" value="13843143.83444"/>
+		<PlayerStat stat="WithBleedDPS" value="91581.958800962"/>
+		<PlayerStat stat="WithIgniteDPS" value="91581.958800962"/>
+		<PlayerStat stat="WithPoisonDPS" value="91581.958800962"/>
+		<PlayerStat stat="TotalDotDPS" value="13751561.875639"/>
+		<PlayerStat stat="MirageDPS" value="8049575.4564635"/>
 		<PlayerStat stat="CullingDPS" value="0"/>
 		<PlayerStat stat="ReservationDPS" value="0"/>
-		<PlayerStat stat="CombinedDPS" value="22057582.140248"/>
+		<PlayerStat stat="CombinedDPS" value="21892719.290903"/>
 		<PlayerStat stat="AreaOfEffectRadiusMetres" value="2.1"/>
 		<PlayerStat stat="ManaCost" value="40"/>
 		<PlayerStat stat="ManaPercentCost" value="0"/>
-		<PlayerStat stat="ManaPerSecondCost" value="246.6816"/>
+		<PlayerStat stat="ManaPerSecondCost" value="244.992"/>
 		<PlayerStat stat="ManaPercentPerSecondCost" value="0"/>
 		<PlayerStat stat="LifeCost" value="0"/>
 		<PlayerStat stat="LifePercentCost" value="0"/>
@@ -53,13 +53,13 @@
 		<PlayerStat stat="LifeRecoverable" value="3974"/>
 		<PlayerStat stat="LifeUnreservedPercent" value="100"/>
 		<PlayerStat stat="LifeRegenRecovery" value="373.6"/>
-		<PlayerStat stat="LifeLeechGainRate" value="2008.6375490337"/>
+		<PlayerStat stat="LifeLeechGainRate" value="1994.8797576019"/>
 		<PlayerStat stat="Mana" value="741"/>
 		<PlayerStat stat="Spec:ManaInc" value="8"/>
 		<PlayerStat stat="ManaUnreserved" value="143"/>
 		<PlayerStat stat="ManaUnreservedPercent" value="19.298245614035"/>
 		<PlayerStat stat="ManaRegenRecovery" value="94.4"/>
-		<PlayerStat stat="ManaLeechGainRate" value="885.278592"/>
+		<PlayerStat stat="ManaLeechGainRate" value="879.21504"/>
 		<PlayerStat stat="EnergyShield" value="5"/>
 		<PlayerStat stat="EnergyShieldRecoveryCap" value="5"/>
 		<PlayerStat stat="Spec:EnergyShieldInc" value="0"/>
@@ -795,6 +795,7 @@ Implicits: 0
 		</Item>
 		<ItemSet id="1" useSecondWeaponSet="false">
 			<Slot itemId="1" itemPbURL="" name="Amulet"/>
+			<Slot itemId="0" itemPbURL="" name="Arm"/>
 			<Slot itemId="35" itemPbURL="" name="Belt"/>
 			<Slot itemId="0" itemPbURL="" name="Belt Abyssal Socket 1"/>
 			<Slot itemId="0" itemPbURL="" name="Belt Abyssal Socket 2"/>
@@ -802,6 +803,7 @@ Implicits: 0
 			<Slot itemId="0" itemPbURL="" name="Belt Abyssal Socket 4"/>
 			<Slot itemId="0" itemPbURL="" name="Belt Abyssal Socket 5"/>
 			<Slot itemId="0" itemPbURL="" name="Belt Abyssal Socket 6"/>
+			<Slot itemId="0" itemPbURL="" name="Body"/>
 			<Slot itemId="34" itemPbURL="" name="Body Armour"/>
 			<Slot itemId="0" itemPbURL="" name="Body Armour Abyssal Socket 1"/>
 			<Slot itemId="0" itemPbURL="" name="Body Armour Abyssal Socket 2"/>
@@ -830,6 +832,7 @@ Implicits: 0
 			<Slot itemId="0" itemPbURL="" name="Gloves Abyssal Socket 6"/>
 			<Slot itemId="0" itemPbURL="" name="Graft 1"/>
 			<Slot itemId="0" itemPbURL="" name="Graft 2"/>
+			<Slot itemId="0" itemPbURL="" name="Head"/>
 			<Slot itemId="33" itemPbURL="" name="Helmet"/>
 			<Slot itemId="0" itemPbURL="" name="Helmet Abyssal Socket 1"/>
 			<Slot itemId="0" itemPbURL="" name="Helmet Abyssal Socket 2"/>
@@ -844,6 +847,7 @@ Implicits: 0
 			<SocketIdURL itemPbURL="" name="Jewel 34483" nodeId="34483"/>
 			<SocketIdURL itemPbURL="" name="Jewel 64583" nodeId="64583"/>
 			<SocketIdURL itemPbURL="" name="Jewel 6910" nodeId="6910"/>
+			<Slot itemId="0" itemPbURL="" name="Leg"/>
 			<Slot itemId="24" itemPbURL="" name="Ring 1"/>
 			<Slot itemId="30" itemPbURL="" name="Ring 2"/>
 			<Slot itemId="0" itemPbURL="" name="Ring 3"/>

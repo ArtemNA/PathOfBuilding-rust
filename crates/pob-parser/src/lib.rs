@@ -222,12 +222,54 @@ pub fn parse_mod_raw(line: &str, order: u8) -> Result<RawParse, ParseError> {
     r
 }
 
-/// The wrapper's parse (ModParser.lua:7000-7005) without the cache: `parseMod(line, 1)`, and when it gave both a `modList`
-/// and an `extra`, `parseMod(line, 2)`.
-pub fn parse_mod_uncached(line: &str) -> Result<RawParse, ParseError> {
+/// ModParser.lua:7122-7128 (07fa089bf) `parseModOrdered(line)`: `parseMod(line, 1)`, and when it gave both a `modList` and an
+/// `extra`, `parseMod(line, 2)`.
+fn parse_mod_ordered(line: &str) -> Result<RawParse, ParseError> {
     let r = parse_mod_raw(line, 1)?;
     if r.mod_list.is_some() && r.extra.is_some() {
         return parse_mod_raw(line, 2);
+    }
+    Ok(r)
+}
+
+/// ModParser.lua:7130-7140 (07fa089bf) `nearbyRewrites`: 3.30 replaced "nearby" with explicit distances; in order.
+const NEARBY_REWRITES: [(&[u8], &[u8]); 7] = [
+    (b"^enemy monsters within [%d%.]+ metres? have ", b"nearby enemy monsters' "),
+    (
+        b"while at least (%d+) enemies within [%d%.]+ metres?",
+        b"while at least %1 enemies are nearby",
+    ),
+    (
+        b"while you have an ally within [%d%.]+ metres?",
+        b"while you have at least 1 nearby ally",
+    ),
+    (b"when you or allies within [%d%.]+ metres?", b"when you or a nearby ally"),
+    (b"(rare or unique enem%a+) within [%d%.]+ metres?", b"%1 nearby"),
+    (b"(applies .- to enemies) within [%d%.]+ metres?", b"%1 near it"),
+    (b"(%a+) within [%d%.]+ metres?", b"nearby %1"),
+];
+
+/// The wrapper's parse (ModParser.lua:7148-7160, 07fa089bf) without the cache: `parseModOrdered(line)`; a line that did not
+/// parse cleanly and says "within N metre" is lowered, rewritten by `nearbyRewrites` and parsed again -- a clean answer of
+/// the rewrite (a `modList` and no `extra`) replaces the original one.
+pub fn parse_mod_uncached(line: &str) -> Result<RawParse, ParseError> {
+    let r = parse_mod_ordered(line)?;
+    // `local nearbyLine = (not modList or extra) and line:lower()`
+    if r.mod_list.is_some() && r.extra.is_none() {
+        return Ok(r);
+    }
+    let mut nearby = line.as_bytes().to_ascii_lowercase();
+    let lua = |e: pob_lua::PatternError| ParseError::Lua(LuaError(e.0));
+    if pob_lua::find(&nearby, b"within [%d%.]+ metre", None, false).map_err(lua)?.is_none() {
+        return Ok(r);
+    }
+    for (pat, repl) in NEARBY_REWRITES {
+        nearby = pob_lua::gsub(&nearby, pat, pob_lua::Repl::Str(repl), None).map_err(lua)?.0;
+    }
+    let nearby = String::from_utf8_lossy(&nearby).into_owned();
+    let n = parse_mod_ordered(&nearby)?;
+    if n.mod_list.is_some() && n.extra.is_none() {
+        return Ok(n);
     }
     Ok(r)
 }

@@ -384,9 +384,9 @@ pub fn taken_hit_from_damage<A: PoolActor + ?Sized>(
 ) -> Result<(f64, DamageTable), PoolError> {
     // :154-163 resistance x (armour + flat DR - overwhelm) for the part taken as `t`
     let mitigation_multiplier_for_type = |damage: f64, t: usize| -> Result<f64, PoolError> {
-        let total_resist_mult = need(actor.output(RESIST_TAKEN_HIT_MULTI[t]), 157, RESIST_TAKEN_HIT_MULTI[t])?;
+        let total_resist_mult = need(actor.output(RESIST_TAKEN_HIT_MULTI[t]), 159, RESIST_TAKEN_HIT_MULTI[t])?;
         // :157 -> :71 a nil armour fails inside `armourReductionF` (`nil == 0` is false, then the division)
-        let effective_applied_armour = need(actor.output(EFFECTIVE_APPLIED_ARMOUR[t]), 71, EFFECTIVE_APPLIED_ARMOUR[t])?;
+        let effective_applied_armour = need(actor.output(EFFECTIVE_APPLIED_ARMOUR[t]), 73, EFFECTIVE_APPLIED_ARMOUR[t])?;
         let armour_dr_percent = armour_reduction_f(effective_applied_armour, damage * total_resist_mult);
         // :158 `Flag and 0 or WhenHit or Base`
         let flat_dr_percent = if actor.flag(SELF_IGNORE_BASE_DR[t]) {
@@ -394,18 +394,18 @@ pub fn taken_hit_from_damage<A: PoolActor + ?Sized>(
         } else {
             actor.output(BASE_DR_WHEN_HIT[t]).or_else(|| actor.output(BASE_DR[t]))
         };
-        let flat_dr_percent = need(flat_dr_percent, 159, BASE_DR[t])?;
+        let flat_dr_percent = need(flat_dr_percent, 161, BASE_DR[t])?;
         let total_dr_percent = min2(
-            need(actor.output("DamageReductionMax"), 159, "DamageReductionMax")?,
+            need(actor.output("DamageReductionMax"), 161, "DamageReductionMax")?,
             armour_dr_percent + flat_dr_percent,
         );
         // :160
         let enemy_overwhelm_percent = if actor.flag(SELF_IGNORE_DR[t]) {
             0.0
         } else {
-            need(actor.output(ENEMY_OVERWHELM[t]), 161, ENEMY_OVERWHELM[t])?
+            need(actor.output(ENEMY_OVERWHELM[t]), 163, ENEMY_OVERWHELM[t])?
         };
-        let dr_max = need(actor.output("DamageReductionMax"), 161, "DamageReductionMax")?;
+        let dr_max = need(actor.output("DamageReductionMax"), 163, "DamageReductionMax")?;
         let total_dr_multi = 1.0 - max2(min2(dr_max, total_dr_percent - enemy_overwhelm_percent), 0.0) / 100.0;
         Ok(total_resist_mult * total_dr_multi)
     };
@@ -427,10 +427,10 @@ pub fn taken_hit_from_damage<A: PoolActor + ?Sized>(
             // :170 `-Sum("MORE")` without mods is -0, so `1 - vaalArctic` is exactly 1 (O9).
             let vaal_arctic = min2(-actor.sum_more("VaalArcticArmourMitigation") / 100.0, 1.0);
             let mitigation = mitigation_multiplier_for_type(converted_damage, t)?;
-            let taken_flat = need(taken_flat, 171, TAKEN_FLAT[t])?;
+            let taken_flat = need(taken_flat, 173, TAKEN_FLAT[t])?;
             let after = need(
                 actor.output(AFTER_REDUCTION_TAKEN_HIT_MULTI[t]),
-                171,
+                173,
                 AFTER_REDUCTION_TAKEN_HIT_MULTI[t],
             )?;
             let reduced_damage = round(max2(converted_damage * mitigation + taken_flat, 0.0) * after, None) * (1.0 - vaal_arctic);
@@ -461,8 +461,8 @@ pub fn calc_life_hit_pool_with_loss_prevention(
 
 /// `calcLifeHitPoolWithLossPrevention(life, output.Life, output.preventedLifeLoss, ...)` -- the nils fail inside, :180/:182.
 fn life_hit_pool<A: PoolActor + ?Sized>(actor: &A, life: f64, life_loss_below_half_prevented: f64) -> Result<f64, PoolError> {
-    let max_life = need(actor.output("Life"), 180, "Life")?;
-    let prevented = need(actor.output("preventedLifeLoss"), 182, "preventedLifeLoss")?;
+    let max_life = need(actor.output("Life"), 182, "Life")?;
+    let prevented = need(actor.output("preventedLifeLoss"), 184, "preventedLifeLoss")?;
     Ok(calc_life_hit_pool_with_loss_prevention(
         life,
         max_life,
@@ -545,7 +545,7 @@ pub fn reduce_pools_by_damage<A: PoolActor + ?Sized>(
     // :231 no `or 0` on the energy shield: a nil fails the comparison at :241.
     let mut energy_shield = need(
         pool_tbl.energy_shield.or_else(|| actor.output("EnergyShieldRecoveryCap")),
-        241,
+        243,
         "energyShield",
     )?;
     let mut mana = pool_tbl.mana.or_else(|| actor.output("ManaUnreserved")).unwrap_or(0.0);
@@ -570,8 +570,8 @@ pub fn reduce_pools_by_damage<A: PoolActor + ?Sized>(
     let mut es_pools_remaining = [0.0f64; 5];
     for t in (0..5).filter(|&t| present[t]) {
         let mom_effect = min2(
-            need(actor.output("sharedMindOverMatter"), 251, "sharedMindOverMatter")?
-                + need(actor.output(MIND_OVER_MATTER[t]), 251, MIND_OVER_MATTER[t])?,
+            need(actor.output("sharedMindOverMatter"), 253, "sharedMindOverMatter")?
+                + need(actor.output(MIND_OVER_MATTER[t]), 253, MIND_OVER_MATTER[t])?,
             100.0,
         ) / 100.0;
         // MoMEffect == 1 -> `x / 0 - x` = inf (or NaN for a 0 pool), exactly as in Lua.
@@ -579,7 +579,7 @@ pub fn reduce_pools_by_damage<A: PoolActor + ?Sized>(
         let mom_pool = if mom_effect < 1.0 { min2(max_mom, mana) } else { mana };
         let life_plus_mom_hit_pool = life_hit_pool_initial + mom_pool;
         // :255 `output[...] / 100 or 0` -- the quotient is a number, the `or 0` is dead (a nil errors first).
-        let es_bypass = need(actor.output(ENERGY_SHIELD_BYPASS[t]), 255, ENERGY_SHIELD_BYPASS[t])? / 100.0;
+        let es_bypass = need(actor.output(ENERGY_SHIELD_BYPASS[t]), 257, ENERGY_SHIELD_BYPASS[t])? / 100.0;
         let es_pool = if es_bypass > 0.0 {
             min2(life_plus_mom_hit_pool / es_bypass - life_plus_mom_hit_pool, energy_shield)
         } else {
@@ -619,7 +619,7 @@ pub fn reduce_pools_by_damage<A: PoolActor + ?Sized>(
         // :280-281 what allies took before you does not count as you taking damage
         recouped[t] = Some(recouped[t].unwrap_or(0.0) + damage_remainder);
         // :282-299 aegis: typed, shared elemental (elements only), shared
-        let typed_aegis = need(aegis.typed[t], 282, "aegis[damageType]")?;
+        let typed_aegis = need(aegis.typed[t], 284, "aegis[damageType]")?;
         if typed_aegis > 0.0 {
             let temp_damage = min2(damage_remainder, typed_aegis);
             aegis.typed[t] = Some(typed_aegis - temp_damage);
@@ -627,7 +627,7 @@ pub fn reduce_pools_by_damage<A: PoolActor + ?Sized>(
             lost[t].aegis = ge1(temp_damage);
         }
         if damage_type.is_elemental() {
-            let shared_elemental = need(aegis.shared_elemental, 288, "aegis.sharedElemental")?;
+            let shared_elemental = need(aegis.shared_elemental, 290, "aegis.sharedElemental")?;
             if shared_elemental > 0.0 {
                 let temp_damage = min2(damage_remainder, shared_elemental);
                 aegis.shared_elemental = Some(shared_elemental - temp_damage);
@@ -635,7 +635,7 @@ pub fn reduce_pools_by_damage<A: PoolActor + ?Sized>(
                 lost[t].shared_elemental_aegis = ge1(temp_damage);
             }
         }
-        let shared_aegis = need(aegis.shared, 294, "aegis.shared")?;
+        let shared_aegis = need(aegis.shared, 296, "aegis.shared")?;
         if shared_aegis > 0.0 {
             let temp_damage = min2(damage_remainder, shared_aegis);
             aegis.shared = Some(shared_aegis - temp_damage);
@@ -643,17 +643,17 @@ pub fn reduce_pools_by_damage<A: PoolActor + ?Sized>(
             lost[t].shared_aegis = ge1(temp_damage);
         }
         // :300-311 guard: typed, then shared
-        let typed_guard = need(guard.typed[t], 300, "guard[damageType]")?;
+        let typed_guard = need(guard.typed[t], 302, "guard[damageType]")?;
         if typed_guard > 0.0 {
-            let rate = need(actor.output(GUARD_ABSORB_RATE[t]), 301, GUARD_ABSORB_RATE[t])?;
+            let rate = need(actor.output(GUARD_ABSORB_RATE[t]), 303, GUARD_ABSORB_RATE[t])?;
             let temp_damage = min2(damage_remainder * rate / 100.0, typed_guard);
             guard.typed[t] = Some((typed_guard - temp_damage).floor());
             damage_remainder -= temp_damage;
             lost[t].guard = ge1(temp_damage);
         }
-        let shared_guard = need(guard.shared, 306, "guard.shared")?;
+        let shared_guard = need(guard.shared, 308, "guard.shared")?;
         if shared_guard > 0.0 {
-            let rate = need(actor.output("sharedGuardAbsorbRate"), 307, "sharedGuardAbsorbRate")?;
+            let rate = need(actor.output("sharedGuardAbsorbRate"), 309, "sharedGuardAbsorbRate")?;
             let temp_damage = min2(damage_remainder * rate / 100.0, shared_guard);
             guard.shared = Some((shared_guard - temp_damage).floor());
             damage_remainder -= temp_damage;
@@ -669,11 +669,11 @@ pub fn reduce_pools_by_damage<A: PoolActor + ?Sized>(
         }
         // :319-321 -- `es_pool` is this type's pool as it stood BEFORE the energy shield takes its part below.
         let mom_effect = min2(
-            need(actor.output("sharedMindOverMatter"), 319, "sharedMindOverMatter")?
-                + need(actor.output(MIND_OVER_MATTER[t]), 319, MIND_OVER_MATTER[t])?,
+            need(actor.output("sharedMindOverMatter"), 321, "sharedMindOverMatter")?
+                + need(actor.output(MIND_OVER_MATTER[t]), 321, MIND_OVER_MATTER[t])?,
             100.0,
         ) / 100.0;
-        let es_bypass = need(actor.output(ENERGY_SHIELD_BYPASS[t]), 320, ENERGY_SHIELD_BYPASS[t])? / 100.0;
+        let es_bypass = need(actor.output(ENERGY_SHIELD_BYPASS[t]), 322, ENERGY_SHIELD_BYPASS[t])? / 100.0;
         let es_pool = es_pools_remaining[t];
         // :322-330 energy shield; every type's pool shrinks with it (independently per key)
         if energy_shield > 0.0 && !actor.flag("EnergyShieldProtectsMana") && es_bypass < 1.0 {
@@ -707,16 +707,16 @@ pub fn reduce_pools_by_damage<A: PoolActor + ?Sized>(
             lost[t].mana = ge1(temp_damage);
         }
         // :351-387 prevented life loss (Progenesis, Petrified Blood)
-        if need(actor.output("preventedLifeLossTotal"), 351, "preventedLifeLossTotal")? > 0.0 {
-            let half_life = need(actor.output("Life"), 352, "Life")? * 0.5;
+        if need(actor.output("preventedLifeLossTotal"), 353, "preventedLifeLossTotal")? > 0.0 {
+            let half_life = need(actor.output("Life"), 354, "Life")? * 0.5;
             let life_over_half_life = max2(life - half_life, 0.0);
-            let prevent_percent = need(actor.output("preventedLifeLoss"), 354, "preventedLifeLoss")? / 100.0;
+            let prevent_percent = need(actor.output("preventedLifeLoss"), 356, "preventedLifeLoss")? / 100.0;
             let pool_above_low = life_over_half_life / (1.0 - prevent_percent);
             let prevent_below_half_percent = life_loss_below_half_prevented / 100.0;
             let damage_that_life_can_still_take = pool_above_low
                 + max2(min2(life, half_life), 0.0)
                     / (1.0 - prevent_below_half_percent)
-                    / (1.0 - need(actor.output("preventedLifeLoss"), 357, "preventedLifeLoss")? / 100.0);
+                    / (1.0 - need(actor.output("preventedLifeLoss"), 359, "preventedLifeLoss")? / 100.0);
             if damage_that_life_can_still_take < damage_remainder {
                 overkill_damage = overkill_damage + damage_remainder - damage_that_life_can_still_take;
                 damage_remainder = damage_that_life_can_still_take;
@@ -742,7 +742,7 @@ pub fn reduce_pools_by_damage<A: PoolActor + ?Sized>(
                 }
                 lost[t].life_loss_prevented = ge1(prevented);
             } else {
-                let temp_damage = damage_remainder * need(actor.output("preventedLifeLoss"), 382, "preventedLifeLoss")? / 100.0;
+                let temp_damage = damage_remainder * need(actor.output("preventedLifeLoss"), 384, "preventedLifeLoss")? / 100.0;
                 life_loss_lost_over_time += temp_damage;
                 damage_remainder -= temp_damage;
                 lost[t].life_loss_prevented = ge1(temp_damage);

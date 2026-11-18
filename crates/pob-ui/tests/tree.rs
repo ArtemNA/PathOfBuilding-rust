@@ -519,7 +519,7 @@ fn run(name: &str) -> Run {
                 .borrow_mut()
                 .as_mut()
                 .expect("view")
-                .set_order_sample(ids.clone(), conns);
+                .set_order_sample_any(rec["treeVersion"].as_str(), ids.clone(), conns);
             if let Some(radius) = rec["radiusOrder"].as_object() {
                 let of = |l: &Value| {
                     l.as_array()
@@ -1077,6 +1077,31 @@ fn jpeg_decoder_measure() {
             sum as f64 / n as f64
         );
     }
+    // R-UP2 (07fa089bf): the 3_30 skills sheet is a new file; both halves of it (scenes/u3a-jpg-330.json), x 0..998, rows 0..779
+    let Ok(shot) = image::open(scene::oracle_dir().join("fixtures/scenes/u3a-jpg-330.png")) else {
+        eprintln!("SKIPPED 3_30: no fixtures/scenes/u3a-jpg-330.png");
+        return;
+    };
+    let shot = shot.to_rgb8();
+    let sheet = image::open(format!("{root}/src/TreeData/3_30/skills-3.jpg"))
+        .expect("sheet")
+        .to_rgb8();
+    let (mut n, mut bad, mut max, mut worst) = (0u64, 0u64, 0u8, (0u32, 0u32));
+    let mut hist = [0u64; 12];
+    for y in 0..780 {
+        for x in 0..999 {
+            let (a, b) = (shot.get_pixel(x, y).0, sheet.get_pixel(x, y).0);
+            let d = (0..3).map(|i| a[i].abs_diff(b[i])).max().expect("3");
+            n += 1;
+            bad += u64::from(d > 2);
+            if d > max {
+                max = d;
+                worst = (x, y);
+            }
+            hist[usize::from(d.min(11))] += 1;
+        }
+    }
+    eprintln!("3_30/skills-3.jpg: {n} px, Δ>2: {bad}, max Δ {max} at {worst:?}, hist Δ0..11+ {hist:?}");
 }
 
 /// The bare quads of `scenes/<name>.json` (no tree, no port code) in `pob-gfx` vs the original: `POB_BARE=<scene>`.

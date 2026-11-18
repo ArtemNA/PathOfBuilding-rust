@@ -188,6 +188,11 @@ end
 
 function runner:Step()
 	self.frames = self.frames + 1
+	-- heartbeat: where a run that never finishes is stuck (out/abyss/heartbeat.json, overwritten every 60 frames)
+	if self.frames % 60 == 0 then
+		writeAll(OUT .. "heartbeat.json", json.encode({ frames = self.frames, mode = tostring(main.mode), idx = self.idx, current = self.current,
+			wait = self.wait, buildFlag = main.modes.BUILD and main.modes.BUILD.buildFlag or nil, popups = main.popups and #main.popups or nil }))
+	end
 	if launch.promptMsg then error("prompt: " .. launch.promptMsg) end
 	if self.wait then
 		L:OnFrame()

@@ -13,7 +13,7 @@ use pob_items::Item;
 
 use super::gem_select::gem_of;
 use crate::colors::color_code;
-use crate::control::{Control, ControlBase, ControlRef, Rect, anchor, rect};
+use crate::control::{Control, ControlBase, ControlRef, Rect, anchor, anchor_collapse, rect};
 use crate::controls::basic::{ButtonControl, CheckBoxControl, LabelControl};
 use crate::controls::drop_down::{DropDownControl, DropItem};
 use crate::controls::edit::{EditArgs, EditControl};
@@ -474,6 +474,8 @@ pub struct ItemsTab {
     pub sockets: RefCell<IndexMap<u32, Rc<ItemSlotControl>>>,
     pub last_slot: RefCell<Option<Rc<ItemSlotControl>>>,
     pub spec_select: RefCell<Option<Rc<DropDownControl>>>,
+    /// `controls.wickermanHeader` (ItemsTab.lua:205, 07fa089bf).
+    pub wickerman_header: RefCell<Option<Rc<LabelControl>>>,
     pub item_list: RefCell<Option<Rc<ListControl<ItemRow>>>>,
     pub loadout_filter: RefCell<Option<Rc<DropDownControl>>>,
     loadout_list_key: RefCell<Option<String>>,
@@ -483,6 +485,8 @@ pub struct ItemsTab {
     pub select_db: RefCell<Option<Rc<DropDownControl>>>,
     pub unique_db: RefCell<Option<Rc<ItemDb>>>,
     pub rare_db: RefCell<Option<Rc<ItemDb>>>,
+    /// `controls.visceraDB` (ItemsTab.lua:322, 07fa089bf).
+    pub viscera_db: RefCell<Option<Rc<ItemDb>>>,
     pub anchor_display_item: RefCell<Option<Rc<BareControl>>>,
     pub set_manage: RefCell<Option<Rc<ButtonControl>>>,
     pub craft_display_item: RefCell<Option<Rc<ButtonControl>>>,
@@ -543,7 +547,7 @@ impl ItemsTab {
         let is = |l: &RefCell<Option<Rc<ListControl<ItemRow>>>>| l.borrow().as_ref().is_some_and(|x| crate::control::same(&**x, &**c));
         is(&self.item_list)
             || is(&self.shared_list)
-            || [&self.unique_db, &self.rare_db]
+            || [&self.unique_db, &self.rare_db, &self.viscera_db]
                 .iter()
                 .any(|d| d.borrow().as_ref().is_some_and(|x| crate::control::same(&*x.list, &**c)))
     }
@@ -553,6 +557,14 @@ impl ItemsTab {
         self.add_tooltip_width(tooltip, g, item, slot, db_mode, None);
     }
 
+    /// `AddItemTooltip(tooltip, item, slotName, dbMode)` with a slot NAME (07fa089bf: ItemsTab.lua:3059, :3620, :3976, :4088). A string
+    /// `slot` reads `slot.slotNum` / `slot.nodeId` as nil (string library fields), and `AddItemStatDifferences` (:5064-5067) turns it
+    /// into `self.slots[slot]` -- which may be nil.
+    pub fn add_tooltip_slot_name(&self, tooltip: &mut Tooltip, g: &Gfx, item: &Rc<Item>, slot_name: &str, db_mode: bool) {
+        let by_name = self.slots.borrow().get(slot_name).map(|s| s.compare_info());
+        self.add_tooltip_impl(tooltip, g, item, None, Some(by_name), db_mode, None);
+    }
+
     /// `AddItemTooltip(tooltip, item, slot, dbMode, maxWidth)`.
     pub fn add_tooltip_width(
         &self,
@@ -560,6 +572,20 @@ impl ItemsTab {
         g: &Gfx,
         item: &Rc<Item>,
         slot: Option<&CompareSlot>,
+        db_mode: bool,
+        max_width: Option<f64>,
+    ) {
+        self.add_tooltip_impl(tooltip, g, item, slot, None, db_mode, max_width);
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn add_tooltip_impl(
+        &self,
+        tooltip: &mut Tooltip,
+        g: &Gfx,
+        item: &Rc<Item>,
+        slot: Option<&CompareSlot>,
+        slot_by_name: Option<Option<CompareSlot>>,
         db_mode: bool,
         max_width: Option<f64>,
     ) {
@@ -576,6 +602,7 @@ impl ItemsTab {
             .count() as f64;
         let args = ItemTooltipArgs {
             slot,
+            slot_by_name,
             db_mode,
             max_width,
             compare_slots,
@@ -611,6 +638,7 @@ impl ItemsTab {
         let slot = node_id.and_then(|n| self.sockets.borrow().get(&n).map(|s| s.compare_info()));
         let args = ItemTooltipArgs {
             slot: slot.as_ref(),
+            slot_by_name: None,
             db_mode: false,
             max_width: None,
             compare_slots: self.compare_slots(g, item),
@@ -652,7 +680,7 @@ impl ItemsTab {
     }
 
     /// `ItemsTab:UpdateSockets()` (:1712-1731).
-    pub fn update_sockets(&self, _g: &Gfx) {
+    pub fn update_sockets(&self, g: &Gfx) {
         let spec = self.read(Engine::spec_rc);
         let mut active: Vec<u32> = Vec::new();
         for (id, slot) in self.sockets.borrow().iter() {
@@ -665,6 +693,10 @@ impl ItemsTab {
         }
         active.sort_unstable();
         let mut last = self.slot(BASE_SLOTS[BASE_SLOTS.len() - 1]);
+        // ItemsTab.lua:1750-1752 (07fa089bf)
+        if self.wickerman_header.borrow().as_ref().is_some_and(|h| h.is_shown(g)) {
+            last = self.slot("Leg");
+        }
         for (i, id) in active.iter().enumerate() {
             let s = self.sockets.borrow()[id].clone();
             *s.label.borrow_mut() = format!("Socket #{}", i + 1);
@@ -888,15 +920,21 @@ impl ItemsTab {
 
     /// `ItemsTab:GetEquippedSlotForItem(item)` (:2585-2599): the slot and the set when it is another's.
     pub fn equipped_slot(&self, id: f64) -> Option<(Rc<ItemSlotControl>, Option<f64>)> {
+        self.equipped_slot_ex(id, None)
+    }
+
+    /// `GetEquippedSlotForItem(item, activeOnly)` (ItemsTab.lua:2611-2625, 07fa089bf): `active_only` = `Some(g)` keeps shown slots of
+    /// the active set only.
+    pub fn equipped_slot_ex(&self, id: f64, active_only: Option<&Gfx>) -> Option<(Rc<ItemSlotControl>, Option<f64>)> {
         let active = self.read(Engine::active_item_set_id);
         let sets: Vec<_> = self.read(|e| e.item_sets().to_vec());
         for s in self.slots.borrow().values() {
-            if !s.inactive.get() {
+            if !s.inactive.get() && active_only.is_none_or(|g| crate::control::Control::is_shown(&**s, g)) {
                 if s.sel_item_id.get() == id {
                     return Some((s.clone(), None));
                 }
                 for set in &sets {
-                    if set.id != active && set.slots.get(&s.slot_name).is_some_and(|x| x.item_id == id) {
+                    if active_only.is_none() && set.id != active && set.slots.get(&s.slot_name).is_some_and(|x| x.item_id == id) {
                         return Some((s.clone(), Some(set.id)));
                     }
                 }
@@ -997,7 +1035,11 @@ impl ItemsTab {
         self.edit(|e| e.restore_items_undo_state(st));
         self.sync_gear_slots();
         self.populate_slots(g);
-        self.update_item_list(g);
+        // no UpdateList here: :5098-5115 ends with PopulateSlots; the item list catches up in its Draw when the output
+        // revision changes (ItemListControl.lua:196-203), so until then it keeps its selection (u10b-* step 58). But with the
+        // "Any Loadout" filter its `self.list` IS `itemOrderList` (ItemListControl.lua:128), which :5100-5103 refill in place:
+        // the rows change now, the selection does not
+        self.sync_item_rows();
     }
 
     /// `self.socketViewer` for its tooltip parts.
@@ -1447,7 +1489,7 @@ impl ItemsTab {
             self.last_output_revision.set(Some(rev));
             self.update_item_list(f);
         }
-        for d in [&self.unique_db, &self.rare_db] {
+        for d in [&self.unique_db, &self.rare_db, &self.viscera_db] {
             d.borrow().as_ref().expect("db").before_draw(f);
         }
         let sel = self.host.sel();
@@ -2235,6 +2277,8 @@ thread_local! {
     static RARE_DB: std::cell::OnceCell<Vec<Rc<Item>>> = const { std::cell::OnceCell::new() };
     static UNIQUE_LOAD: RefCell<Option<DbLoad>> = const { RefCell::new(None) };
     static RARE_LOAD: RefCell<Option<DbLoad>> = const { RefCell::new(None) };
+    static VISCERA_DB: std::cell::OnceCell<Vec<Rc<Item>>> = const { std::cell::OnceCell::new() };
+    static VISCERA_LOAD: RefCell<Option<DbLoad>> = const { RefCell::new(None) };
 }
 
 /// A database on its way: what `loadItemDBs` has yet to parse and the list so far.
@@ -2252,6 +2296,20 @@ fn unique_raws() -> Vec<String> {
         }
     }
     out
+}
+
+/// `data.viscera` (Data.lua:1307, 07fa089bf).
+fn viscera_raws() -> Vec<String> {
+    pob_data::read_json("viscera.json").unwrap_or_else(|e| panic!("{e}"))
+}
+
+/// Main.lua:204-212 (07fa089bf): `Item(raw, "RARE", true)`, then `BuildAndParseRaw`; one item per name.
+fn parse_viscera(raw: &str, list: &mut IndexMap<String, Rc<Item>>) {
+    let mut it = Item::parse_with(&crate::common::sanitise_text(raw), Some("RARE"), true);
+    if it.base.is_some() {
+        it.build_and_parse_raw();
+        list.insert(it.name.clone(), Rc::new(it));
+    }
 }
 
 fn rare_raws() -> Vec<String> {
@@ -2330,6 +2388,8 @@ pub fn load_item_dbs_step(budget: Option<std::time::Duration>) -> bool {
     let deadline = budget.map(|b| std::time::Instant::now() + b);
     advance_db(&UNIQUE_DB, &UNIQUE_LOAD, unique_raws, parse_unique, deadline)
         && advance_db(&RARE_DB, &RARE_LOAD, rare_raws, parse_rare, deadline)
+        // Main.lua:204-215 (07fa089bf), after the rares
+        && advance_db(&VISCERA_DB, &VISCERA_LOAD, viscera_raws, parse_viscera, deadline)
 }
 
 /// `main.uniqueDB.list` (Main.lua:164-176): one item per name.
@@ -2342,6 +2402,12 @@ pub fn unique_db_items() -> Vec<Rc<Item>> {
 pub fn rare_db_items() -> Vec<Rc<Item>> {
     advance_db(&RARE_DB, &RARE_LOAD, rare_raws, parse_rare, None);
     RARE_DB.with(|d| d.get().expect("the rare database").clone())
+}
+
+/// `main.visceraDB.list` (Main.lua:204-215, 07fa089bf).
+pub fn viscera_db_items() -> Vec<Rc<Item>> {
+    advance_db(&VISCERA_DB, &VISCERA_LOAD, viscera_raws, parse_viscera, None);
+    VISCERA_DB.with(|d| d.get().expect("the viscera database").clone())
 }
 
 /// `ItemDBControl`: the list and the controls of its filters.
@@ -2365,9 +2431,12 @@ pub struct ItemDb {
     type_list: RefCell<Vec<String>>,
     /// `item.measuredPower`.
     power: RefCell<std::collections::HashMap<usize, f64>>,
+    /// The control's `db` is `main.visceraDB` (ItemsTab.lua:322, 07fa089bf; its `dbType` is "RARE").
+    pub viscera: Cell<bool>,
 }
 
-const SLOT_LIST: [&str; 14] = [
+/// ItemDBControl.lua:42-45 (07fa089bf: + the Wickerman slots).
+const SLOT_LIST: [&str; 18] = [
     "Any slot",
     "Weapon 1",
     "Weapon 2",
@@ -2382,6 +2451,11 @@ const SLOT_LIST: [&str; 14] = [
     "Flask",
     "Graft 1",
     "Graft 2",
+    // Wickerman (3.30)
+    "Head",
+    "Body",
+    "Arm",
+    "Leg",
 ];
 
 fn db_sort_items() -> Vec<DropItem> {
@@ -2636,12 +2710,15 @@ impl ItemDb {
                     .collect(),
             ),
             power: RefCell::new(std::collections::HashMap::new()),
+            viscera: Cell::new(false),
         })
     }
 
     fn items(&self) -> Vec<Rc<Item>> {
         if self.db_type == "UNIQUE" {
             unique_db_items()
+        } else if self.viscera.get() {
+            viscera_db_items()
         } else {
             rare_db_items()
         }
@@ -2937,6 +3014,7 @@ impl ItemsTab {
                 sockets: RefCell::new(IndexMap::new()),
                 last_slot: RefCell::new(None),
                 spec_select: RefCell::new(None),
+                wickerman_header: RefCell::new(None),
                 item_list: RefCell::new(None),
                 loadout_filter: RefCell::new(None),
                 loadout_list_key: RefCell::new(None),
@@ -2946,6 +3024,7 @@ impl ItemsTab {
                 select_db: RefCell::new(None),
                 unique_db: RefCell::new(None),
                 rare_db: RefCell::new(None),
+                viscera_db: RefCell::new(None),
                 anchor_display_item: RefCell::new(None),
                 set_manage: RefCell::new(None),
                 craft_display_item: RefCell::new(None),
@@ -3101,11 +3180,28 @@ impl ItemsTab {
                 }
             }
         }
-        // :204-218 the tree dropdown
+        // ItemsTab.lua:204-215 (07fa089bf): the Wickerman equipment, after the existing slots, shown on 3_30 trees
+        let t1 = t.clone();
+        let wickerman_shown = move |_: &Gfx| t1().read(|e| e.spec_rc().tree_version.contains("3_30"));
+        let header = LabelControl::new(
+            anchor("TOPLEFT", &prev, "BOTTOMLEFT"),
+            rect(0.0, 8.0, 0.0, 16.0),
+            "^7Wickerman:".to_string(),
+        );
+        header.base.shown.set_fn(wickerman_shown.clone());
+        self.host.add("wickermanHeader", header.clone());
+        *self.wickerman_header.borrow_mut() = Some(header.clone());
+        prev = header;
+        for name in pob_calc::init_env::WICKERMAN_SLOTS {
+            let slot = ItemSlotControl::new(g, &prev, me.clone(), name.to_string(), None, None);
+            slot.drop.base.shown.set_fn(wickerman_shown.clone());
+            add(self, &slot, &mut prev, &mut names);
+        }
+        // :217-218 the tree dropdown (07fa089bf: a collapsing anchor -- the hidden Wickerman slots take no room)
         let t1 = t.clone();
         let spec_select = DropDownControl::new(
             g,
-            anchor("TOPLEFT", &prev, "BOTTOMLEFT"),
+            anchor_collapse("TOPLEFT", &prev, "BOTTOMLEFT"),
             rect(0.0, 8.0, 216.0, 20.0),
             Vec::new(),
             Some(Rc::new(move |g: &mut Gfx, index: usize, _v: &DropItem| {
@@ -3358,7 +3454,8 @@ impl ItemsTab {
             g,
             anchor("LEFT", &lr, "RIGHT"),
             rect(4.0, 0.0, 150.0, 18.0),
-            vec![DropItem::str("Uniques"), DropItem::str("Rare Templates")],
+            // ItemsTab.lua:302 (07fa089bf): + "Viscera"
+            vec![DropItem::str("Uniques"), DropItem::str("Rare Templates"), DropItem::str("Viscera")],
             None,
             None,
             false,
@@ -3371,7 +3468,10 @@ impl ItemsTab {
         };
         let unique_db = ItemDb::new(g, anchor("TOPLEFT", &ilr, "BOTTOMLEFT"), db_rect(244.0, &t), me.clone(), "UNIQUE");
         let rare_db = ItemDb::new(g, anchor("TOPLEFT", &ilr, "BOTTOMLEFT"), db_rect(260.0, &t), me.clone(), "RARE");
-        for (db, limit) in [(&unique_db, 244.0), (&rare_db, 260.0)] {
+        // ItemsTab.lua:321-328 (07fa089bf)
+        let viscera_db = ItemDb::new(g, anchor("TOPLEFT", &ilr, "BOTTOMLEFT"), db_rect(260.0, &t), me.clone(), "RARE");
+        viscera_db.viscera.set(true);
+        for (db, limit) in [(&unique_db, 244.0), (&rare_db, 260.0), (&viscera_db, 260.0)] {
             let t1 = t.clone();
             let w = Rc::downgrade(&db.list);
             db.list.base.height.set_fn(move |g| {
@@ -3392,13 +3492,23 @@ impl ItemsTab {
             let l1 = l1.clone();
             move |g| if l1.upgrade().expect("label").is_shown(g) { 78.0 } else { 396.0 }
         });
-        rare_db
+        rare_db.list.base.shown.set_fn({
+            let (l1, d1) = (l1.clone(), d1.clone());
+            move |g| !l1.upgrade().expect("label").is_shown(g) || d1.upgrade().expect("db").sel_index.get() == 2
+        });
+        viscera_db.list.base.y.set_fn({
+            let l1 = l1.clone();
+            move |g| if l1.upgrade().expect("label").is_shown(g) { 78.0 } else { 396.0 }
+        });
+        viscera_db
             .list
             .base
             .shown
-            .set_fn(move |g| !l1.upgrade().expect("label").is_shown(g) || d1.upgrade().expect("db").sel_index.get() == 2);
+            .set_fn(move |g| !l1.upgrade().expect("label").is_shown(g) || d1.upgrade().expect("db").sel_index.get() == 3);
         self.host.add("uniqueDB", unique_db.list.clone());
         self.host.add("rareDB", rare_db.list.clone());
+        self.host.add("visceraDB", viscera_db.list.clone());
+        *self.viscera_db.borrow_mut() = Some(viscera_db.clone());
         *self.select_db_label.borrow_mut() = Some(label);
         *self.select_db.borrow_mut() = Some(select_db);
         *self.unique_db.borrow_mut() = Some(unique_db.clone());
@@ -3513,6 +3623,11 @@ impl ItemsTab {
             targets.extend(slot_targets());
             db.list.set_drag_target_list(targets);
         }
+        // ItemsTab.lua:1245-1246, :1256 (07fa089bf): the item lists and the slots, not the minion
+        let viscera_db = self.viscera_db.borrow().clone().expect("visceraDB");
+        let mut targets = vec![list_target(&item_list), list_target(&shared)];
+        targets.extend(slot_targets());
+        viscera_db.list.set_drag_target_list(targets);
         let mut targets = vec![list_target(&item_list), minion_target()];
         targets.extend(slot_targets());
         shared.set_drag_target_list(targets);
@@ -3555,6 +3670,7 @@ impl ItemsTab {
             "sharedItemList" => self.shared_list.borrow().as_ref()?.host.get(child),
             "uniqueDB" => self.unique_db.borrow().as_ref()?.list.host.get(child),
             "rareDB" => self.rare_db.borrow().as_ref()?.list.host.get(child),
+            "visceraDB" => self.viscera_db.borrow().as_ref()?.list.host.get(child),
             _ => None,
         }
     }
@@ -3632,7 +3748,11 @@ impl ItemsTab {
             "scrollV": self.scroll_bar_v.borrow().as_ref().expect("v").offset.get(),
             "selectDB": self.select_db.borrow().as_ref().expect("db").sel_index.get(),
         });
-        for (key, db) in [("uniqueDB", &self.unique_db), ("rareDB", &self.rare_db)] {
+        for (key, db) in [
+            ("uniqueDB", &self.unique_db),
+            ("rareDB", &self.rare_db),
+            ("visceraDB", &self.viscera_db),
+        ] {
             let db = db.borrow().clone().expect("db");
             if db.list.is_shown(g) {
                 let names: Vec<String> = db

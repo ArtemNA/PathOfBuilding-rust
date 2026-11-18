@@ -1,0 +1,172 @@
+diff --git a/tools/convert/extract/actors.ts b/tools/convert/extract/actors.ts
+index ffa5027..36ee8a4 100644
+--- a/tools/convert/extract/actors.ts
++++ b/tools/convert/extract/actors.ts
+@@ -250,6 +250,8 @@ const ClusterJewelsFileSchema = z
+     // stays an object even though every value here is itself a small dense integer-keyed map.
+     orbitOffsets: z.record(z.string(), z.record(z.string(), z.number())),
+     infoForNotable: z.record(z.string(), InfoForNotableSchema),
++    // pob-rust patch (07fa089bf, ClusterJewels.lua:1053, read by PassiveSpec.lua:1929): Putrid Seed (Blightcore) node -> enchant index.
++    blightcoreNotableIndex: z.record(z.string(), z.number()).optional(),
+   })
+   .strict()
+ export type ClusterJewelsFile = z.infer<typeof ClusterJewelsFileSchema>
+diff --git a/tools/convert/extract/closures.ts b/tools/convert/extract/closures.ts
+index 07231ee..56921dc 100644
+--- a/tools/convert/extract/closures.ts
++++ b/tools/convert/extract/closures.ts
+@@ -47,7 +47,7 @@ export const closures = defineExtractor({
+   allowMarkers: { fn: false },
+   extract(ctx) {
+     const records: ClosureRecord[] = []
+-    for (const key of listWireCategories()) {
++    for (const key of listWireCategories(ctx.wireDir)) {
+       records.push(...collectClosures(ctx.pobRoot, ctx.wire(key), key))
+     }
+     records.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0))
+diff --git a/tools/convert/extract/constants.ts b/tools/convert/extract/constants.ts
+index 9c1513b..f8b9b57 100644
+--- a/tools/convert/extract/constants.ts
++++ b/tools/convert/extract/constants.ts
+@@ -206,7 +206,7 @@ export const constants = defineExtractor({
+     const raw = {
+       misc: numberRecord(ctx.wire('misc'), 'misc', 60) as MiscConstants,
+       characterConstants: numberRecord(ctx.wire('characterConstants'), 'characterConstants', 89),
+-      monsterConstants: numberRecord(ctx.wire('monsterConstants'), 'monsterConstants', 57),
++      monsterConstants: numberRecord(ctx.wire('monsterConstants'), 'monsterConstants', 58),
+       gameConstants: numberRecord(ctx.wire('gameConstants'), 'gameConstants', 42),
+       monsterAccuracyTable: numberArray(ctx.wire('monsterAccuracyTable'), 'monsterAccuracyTable', 100),
+       monsterAilmentThresholdTable: numberArray(ctx.wire('monsterAilmentThresholdTable'), 'monsterAilmentThresholdTable', 100),
+@@ -223,8 +223,8 @@ export const constants = defineExtractor({
+       mapLevelBossAilmentMult: numberArray(ctx.wire('mapLevelBossAilmentMult'), 'mapLevelBossAilmentMult', 90),
+       mapLevelBossLifeMult: numberArray(ctx.wire('mapLevelBossLifeMult'), 'mapLevelBossLifeMult', 90),
+       mapLevelLifeMult: numberRecord(ctx.wire('mapLevelLifeMult'), 'mapLevelLifeMult', 25),
+-      monsterVarietyLifeMult: numberRecord(ctx.wire('monsterVarietyLifeMult'), 'monsterVarietyLifeMult', 252),
+-      totemLifeMult: numberRecord(ctx.wire('totemLifeMult'), 'totemLifeMult', 20),
++      monsterVarietyLifeMult: numberRecord(ctx.wire('monsterVarietyLifeMult'), 'monsterVarietyLifeMult', 253),
++      totemLifeMult: numberRecord(ctx.wire('totemLifeMult'), 'totemLifeMult', 22),
+       goldRespecPrices: numberArray(ctx.wire('goldRespecPrices'), 'goldRespecPrices', 100),
+     }
+     return raw as ConstantsData
+diff --git a/tools/convert/extract/index.ts b/tools/convert/extract/index.ts
+index 4292996..05bbd2b 100644
+--- a/tools/convert/extract/index.ts
++++ b/tools/convert/extract/index.ts
+@@ -17,7 +17,7 @@ import { modParser } from './mod-parser.ts'
+ import { modTableExtractors } from './mod-tables.ts'
+ import { rules } from './rules.ts'
+ import { skills, skillStatMap } from './skills.ts'
+-import { rareLikeUniques, rares, uniques } from './uniques.ts'
++import { rareLikeUniques, rares, uniques, viscera } from './uniques.ts'
+ 
+ export const EXTRACTORS: Extractor[] = [
+   globals as Extractor,
+@@ -33,6 +33,7 @@ export const EXTRACTORS: Extractor[] = [
+   gems as Extractor,
+   uniques as Extractor,
+   rares as Extractor,
++  viscera as Extractor,
+   rareLikeUniques as Extractor,
+   ...ACTOR_EXTRACTORS,
+   modCache as Extractor,
+diff --git a/tools/convert/extract/rules.ts b/tools/convert/extract/rules.ts
+index a601434..9008674 100644
+--- a/tools/convert/extract/rules.ts
++++ b/tools/convert/extract/rules.ts
+@@ -277,7 +277,7 @@ export const rules = defineExtractor({
+       casterTagCrucibleUniques: trueMapToSortedArray(ctx.wire('casterTagCrucibleUniques'), 'casterTagCrucibleUniques'),
+       minionTagCrucibleUniques: trueMapToSortedArray(ctx.wire('minionTagCrucibleUniques'), 'minionTagCrucibleUniques'),
+       vestigialUniqueBaseTypes: trueMapToSortedArray(ctx.wire('vestigialUniqueBaseTypes'), 'vestigialUniqueBaseTypes'),
+-      vestigialModMappings: expectRecordCount(ctx.wire('vestigialModMappings'), 'vestigialModMappings', 472) as Rules['vestigialModMappings'],
++      vestigialModMappings: expectRecordCount(ctx.wire('vestigialModMappings'), 'vestigialModMappings', 474) as Rules['vestigialModMappings'],
+       bossStats: expectRecordCount(ctx.wire('bossStats'), 'bossStats', 4) as Rules['bossStats'],
+       enemyIsBossTooltip: expectString(ctx.wire('enemyIsBossTooltip'), 'enemyIsBossTooltip'),
+       powerStatList: extractPowerStatList(ctx),
+diff --git a/tools/convert/extract/run.ts b/tools/convert/extract/run.ts
+index 161d5fb..240f9db 100644
+--- a/tools/convert/extract/run.ts
++++ b/tools/convert/extract/run.ts
+@@ -17,6 +17,7 @@ export function makeContext(wireDir: string, pobRoot: string): ExtractContext {
+   const results = JSON.parse(readFileSync(join(wireDir, '_results.json'), 'utf8')) as WireResultsFile
+   return {
+     pobRoot,
++    wireDir,
+     treeVersionList: results.treeVersionList,
+     latestTreeVersion: results.latestTreeVersion,
+     wire(key: string, which: Snapshot = 'data') {
+diff --git a/tools/convert/extract/trees.ts b/tools/convert/extract/trees.ts
+index 162917e..593e306 100644
+--- a/tools/convert/extract/trees.ts
++++ b/tools/convert/extract/trees.ts
+@@ -90,6 +90,8 @@ const ModernNode = z
+     isBlighted: z.boolean(),
+     isBloodline: z.boolean(),
+     isProxy: z.boolean(),
++    // pob-rust patch (07fa089bf, tree 3_30): Putrid Seed proxy group, read by PassiveTree.lua:683, PassiveSpec.lua:1949.
++    proxyKey: z.string(),
+     ascendancyName: z.string(),
+     classStartIndex: z.number(),
+     grantedStrength: z.number(),
+diff --git a/tools/convert/extract/types.ts b/tools/convert/extract/types.ts
+index 848548c..a6fafa8 100644
+--- a/tools/convert/extract/types.ts
++++ b/tools/convert/extract/types.ts
+@@ -13,6 +13,8 @@ export interface ExtractContext {
+   pobRoot: string
+   treeVersionList: string[]
+   latestTreeVersion: string
++  /** pob-rust patch: the --wire-dir this run reads (closures.ts listed the default out/wire instead). */
++  wireDir?: string
+ }
+ 
+ export interface Extractor<T = unknown> {
+diff --git a/tools/convert/extract/uniques.ts b/tools/convert/extract/uniques.ts
+index 026721b..ba63639 100644
+--- a/tools/convert/extract/uniques.ts
++++ b/tools/convert/extract/uniques.ts
+@@ -131,8 +131,26 @@ export const rares = defineExtractor({
+ })
+ 
+ // ---------------------------------------------------------------------------
+-// rareLikeUniques -> data/rare-like-uniques.json
+-//
++// viscera -> data/viscera.json (pob-rust patch, 07fa089bf: Data.lua:1307 `data.viscera = LoadModule("Data/Viscera")`,
++// read by Main.lua:204 into visceraDB). Same shape as rares: an array of raw item texts.
++
++export const viscera = defineExtractor({
++  id: 'viscera',
++  sources: ['viscera'],
++  schema: RaresSchema,
++  extract(ctx) {
++    const w = ctx.wire('viscera')
++    if (!Array.isArray(w)) throw new ExtractError('viscera', 'viscera', 'expected a wire array')
++    w.forEach((e, i) => {
++      if (typeof e !== 'string') throw new ExtractError('viscera', `viscera[${i}]`, `expected string, got ${typeof e}`)
++      if (e.length === 0) throw new ExtractError('viscera', `viscera[${i}]`, 'empty text')
++    })
++    return w as string[]
++  },
++})
++
++// ---------------------------------------------------------------------------
++// rareLikeUniques -> data/rare-like-uniques.json//
+ // `affixes` is normally a dict `{ id: $ref }` (MINEFIELD D5: shared mod
+ // entries). Two of the eight descriptions instead alias a WHOLE upstream
+ // category table (Data.lua:1416 `affixes = data.itemMods.Explicit`, :1432
+diff --git a/tools/convert/lua/modparser-dump.lua b/tools/convert/lua/modparser-dump.lua
+index 4a85303..39733e2 100644
+--- a/tools/convert/lua/modparser-dump.lua
++++ b/tools/convert/lua/modparser-dump.lua
+@@ -24,6 +24,12 @@ if type(modLib) ~= "table" or type(modLib.parseMod) ~= "function" then
+ 	error("modparser-dump: global modLib.parseMod not found (sandbox not booted?)")
+ end
+ local innerParseMod = upvalueByName(modLib.parseMod, "parseMod")
++if innerParseMod == nil then
++	-- pob-rust convert patch (upstream 07fa089bf, ModParser.lua:7122-7128): the cached wrapper now calls
++	-- parseModOrdered(line), which holds the real parser as its upvalue "parseMod".
++	local ordered = upvalueByName(modLib.parseMod, "parseModOrdered")
++	if type(ordered) == "function" then innerParseMod = upvalueByName(ordered, "parseMod") end
++end
+ if type(innerParseMod) ~= "function" then
+ 	error("modparser-dump: upvalue 'parseMod' not found on modLib.parseMod (upstream changed the wrapper -- STOP)")
+ end

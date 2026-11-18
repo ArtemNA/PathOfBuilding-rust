@@ -202,7 +202,7 @@ fn has_full_dps(o: Out<'_>) -> bool {
 }
 
 /// `data.misc.maxStatIncrease` (Data.lua:297).
-const MAX_STAT_INCREASE: f64 = 2.0;
+pub(crate) const MAX_STAT_INCREASE: f64 = 2.0;
 
 /// `TradeQueryGeneratorClass.WeightedRatioOutputs(baseOutput, newOutput, statWeights)` (:164-199).
 pub fn weighted_ratio_outputs(base: Out<'_>, new: Out<'_>, weights: &[TradeStat]) -> f64 {

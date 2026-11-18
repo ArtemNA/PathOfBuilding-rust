@@ -9,6 +9,8 @@ param(
     [int]$Timeout = 120,
     [string]$Inject,
     [switch]$Deep,
+    [switch]$Foreground,
+    [switch]$OtherMonitor,
     [string]$ScriptArgs = ''
 )
 $ErrorActionPreference = 'Stop'
@@ -75,9 +77,51 @@ if (Test-Path $shots) { Remove-Item -Recurse -Force $shots }
 $before = Snap
 $sbBefore = SnapSandbox
 $t0 = Get-Date
-$p = Start-Process -FilePath $exe -ArgumentList "`"$sg\$Script`" $ScriptArgs" -WorkingDirectory $rt -PassThru
-"launched pid $($p.Id) at $($t0.ToString('HH:mm:ss.fff'))"
-if ($Inject) { & (Join-Path $here $Inject) -Process $p -Out $sg }
+# Never show on the user's monitors or take the focus: by default the exe runs on a hidden Win32 desktop (hidden-desktop.ps1).
+# -Foreground (or env SG_VISIBLE=1) restores the visible launch; -OtherMonitor shows it, unactivated, on a non-primary monitor.
+. (Join-Path $here 'hidden-desktop.ps1')
+if ($Foreground) { $env:SG_VISIBLE = '1' }
+$p = if (Test-SgVisible) {
+    Start-Process -FilePath $exe -ArgumentList "`"$sg\$Script`" $ScriptArgs" -WorkingDirectory $rt -PassThru
+} elseif ($OtherMonitor) {
+    Start-Process -FilePath $exe -ArgumentList "`"$sg\$Script`" $ScriptArgs" -WorkingDirectory $rt -PassThru -WindowStyle Minimized
+} else {
+    Start-SgHidden -Exe $exe -Arguments "`"$sg\$Script`" $ScriptArgs" -WorkingDirectory $rt
+}
+$null = $p.Handle # keep a handle, so ExitCode stays readable after the exit
+"launched pid $($p.Id) at $($t0.ToString('HH:mm:ss.fff'))$(if (-not (Test-SgVisible) -and -not $OtherMonitor) { ' on the hidden desktop' })"
+if (-not (Test-SgVisible) -and -not $OtherMonitor) {
+    # a window on the hidden desktop gets a small default size; the scenes and the real-input drivers expect the 1280x800 client
+    # area of the visible runs (fixtures/scenes/manifest.json "screen")
+    $deadline = (Get-Date).AddSeconds(20)
+    $h = [IntPtr]::Zero
+    while ($h -eq [IntPtr]::Zero -and -not $p.HasExited -and (Get-Date) -lt $deadline) { Start-Sleep -Milliseconds 50; $h = Get-SgWindow -Process $p }
+    if ($h -ne [IntPtr]::Zero) { "client area $([SgHiddenDesktop]::SizeClient($h, 1280, 800))" }
+}
+if ($OtherMonitor -and -not (Test-SgVisible)) {
+    if (-not ('SgOracleWin' -as [type])) {
+        Add-Type -Namespace '' -Name SgOracleWin -MemberDefinition @'
+[DllImport("user32.dll")] public static extern bool SetWindowPos(IntPtr h, IntPtr after, int x, int y, int cx, int cy, uint flags);
+[DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr h, int cmd);
+'@
+    }
+    Add-Type -AssemblyName System.Windows.Forms
+    $other = [System.Windows.Forms.Screen]::AllScreens | Where-Object { -not $_.Primary } | Select-Object -First 1
+    $deadline = (Get-Date).AddSeconds(20)
+    while ($p.MainWindowHandle -eq [IntPtr]::Zero -and -not $p.HasExited -and (Get-Date) -lt $deadline) { Start-Sleep -Milliseconds 100; $p.Refresh() }
+    if ($p.MainWindowHandle -ne [IntPtr]::Zero) {
+        $h = $p.MainWindowHandle
+        # SW_SHOWNOACTIVATE = 4; SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE = 0x1 | 0x4 | 0x10
+        [SgOracleWin]::ShowWindow($h, 4) | Out-Null
+        if ($other) { [SgOracleWin]::SetWindowPos($h, [IntPtr]::Zero, $other.WorkingArea.X + 20, $other.WorkingArea.Y + 20, 0, 0, 0x15) | Out-Null }
+        "window shown without activation$(if ($other) { " on $($other.DeviceName)" } else { ' (single monitor)' })"
+    }
+}
+if ($Inject) {
+    # an injector that throws must not leave the exe running (the next run refuses "a sandbox exe is already running")
+    try { & (Join-Path $here $Inject) -Process $p -Out $sg }
+    catch { Write-Warning "inject $Inject failed: $_"; if (-not $p.HasExited) { Stop-Process -Id $p.Id -Force } ; throw }
+}
 if (-not $p.WaitForExit($Timeout * 1000)) {
     Write-Warning "timeout ${Timeout}s: killing own pid $($p.Id)"
     Stop-Process -Id $p.Id -Force; $p.WaitForExit(10000) | Out-Null

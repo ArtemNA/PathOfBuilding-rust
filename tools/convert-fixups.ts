@@ -39,6 +39,39 @@ const FIXUPS: Fixup[] = [
       return n
     },
   },
+  {
+    id: 'itemBases.baseId',
+    files: ['itemBases.json'],
+    upstream: 'Data/Bases/*.lua (07fa089bf, 0895c14ca #10455 "Add Wickerman item data and character import support")',
+    why:
+      'Metadata id of the base (`baseId = "Metadata/Items/..."`); no Lua in src/ reads it (grep `baseId` over src/Modules, ' +
+      'src/Classes, src/*.lua: 0 hits) and the item-bases extractor rejects unknown keys -- dropping it changes nothing pob-rust consumes.',
+    apply(v) {
+      if (!isObj(v)) throw new Error('itemBases: expected an object')
+      let n = 0
+      for (const e of Object.values(v)) if (isObj(e) && 'baseId' in e) { delete e['baseId']; n++ }
+      return n
+    },
+  },
+  {
+    id: 'itemMods.tradeHashes.empty',
+    files: ['itemMods.json'],
+    upstream: 'Data/ModItemExclusive.lua (07fa089bf: UniqueAnimateWeapon, GrantsCreateGrimBonfireSkillUnique__1, ... `tradeHashes = { }`)',
+    why:
+      'An empty Lua table has no array/record distinction; the wire serializer writes it as `[]`, the item-mods schema expects a ' +
+      'record. Rewriting `[]` -> `{}` is the same Lua value (pairs over it yields nothing either way).',
+    apply(v) {
+      if (!isObj(v)) throw new Error('itemMods: expected an object')
+      let n = 0
+      for (const cat of Object.values(v)) {
+        if (!isObj(cat)) continue
+        for (const m of Object.values(cat)) {
+          if (isObj(m) && Array.isArray(m['tradeHashes']) && (m['tradeHashes'] as unknown[]).length === 0) { m['tradeHashes'] = {}; n++ }
+        }
+      }
+      return n
+    },
+  },
 ]
 
 const wireDir = process.argv[2]

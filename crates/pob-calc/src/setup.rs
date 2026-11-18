@@ -472,6 +472,7 @@ pub(crate) fn build_mod_list_for_node(env: &mut Env, node_idx: usize) -> (StoreR
                     slot_name: None,
                     source_item: None,
                     source_node: None,
+                    item_requirement: Value::Nil,
                 });
             }
         }
@@ -531,7 +532,7 @@ fn default_tally(has_node: bool, out: &StoreRef, data: &mut Table) {
             Value::Nil | Value::Bool(false) => 0.0,
             Value::Num(n) => *n,
             other => panic!(
-                "Modules/CalcSetup.lua:881: attempt to perform arithmetic on a {} value",
+                "Modules/CalcSetup.lua:883: attempt to perform arithmetic on a {} value",
                 other.type_name()
             ),
         };

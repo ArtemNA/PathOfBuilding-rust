@@ -63,7 +63,7 @@ impl ItemAffixes {
         let more = hits.count();
         if more > 0 {
             unimplemented.push(format!(
-                "{ITEM}:1506 R13: affix name '{affix}' matches {} mods of {} (pairs order); took '{first}'",
+                "{ITEM}:1513 R13: affix name '{affix}' matches {} mods of {} (pairs order); took '{first}'",
                 more + 1,
                 self.name
             ));
@@ -391,7 +391,7 @@ impl Item {
     pub fn build_raw(&self) -> String {
         let mut raw: Vec<String> = Vec::new();
         raw.push(format!("Rarity: {}", self.rarity));
-        let base_name = || self.base_name.as_deref().unwrap_or_else(|| nil_concat(1776, "baseName"));
+        let base_name = || self.base_name.as_deref().unwrap_or_else(|| nil_concat(1790, "baseName"));
         if let Some(title) = &self.title {
             raw.push(title.clone());
             raw.push(base_name().to_owned());
@@ -407,7 +407,7 @@ impl Item {
                     raw.push(format!("{label}: {}", tostring(v)));
                     let pkey = format!("{ty}BasePercentile");
                     if !ad.get(&pkey).is_nil() {
-                        let p = ad.num(&pkey).unwrap_or_else(|| nil_concat(1786, &pkey));
+                        let p = ad.num(&pkey).unwrap_or_else(|| nil_concat(1800, &pkey));
                         raw.push(format!("{pkey}: {}", tostring(p)));
                     }
                 }
@@ -447,7 +447,7 @@ impl Item {
             && c > 0.0
         {
             if c.fract() != 0.0 || c > CATALYST_LIST.len() as f64 {
-                panic!("{ITEM}:1820: attempt to concatenate a nil value");
+                panic!("{ITEM}:1834: attempt to concatenate a nil value");
             }
             let name = CATALYST_LIST[c as usize - 1];
             raw.push(format!("Catalyst: {name}"));
@@ -509,7 +509,7 @@ impl Item {
                     }
                 }
             } else {
-                let v = self.variant.unwrap_or_else(|| nil_concat(1946, "variant"));
+                let v = self.variant.unwrap_or_else(|| nil_concat(1960, "variant"));
                 raw.push(format!("Selected Variant: {}", tostring(v)));
             }
             write_base_lines(&mut raw, true);

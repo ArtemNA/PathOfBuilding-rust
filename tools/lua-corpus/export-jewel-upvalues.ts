@@ -28,10 +28,11 @@ if (!dockerAvailable()) throw new Error('docker is not available (infrastructure
 const roots = resolveRoots()
 
 const LUA = String.raw`
-local PATCH_LINES = { [19] = true, [6472] = true } -- getSimpleConv / getThreshold visitors; @ ed354c2f8 :6457 (re-derive with grep -n on update)
+local PATCH_LINES = { [19] = true, [6585] = true } -- getSimpleConv / getThreshold visitors; @ 07fa089bf (3dbca4463 :6472, ed354c2f8 :6457; re-derive with grep -n on update)
 local AUX_NAMES = { gemIdLookup = true, conquerorList = true }
 local function up(fn, name) local i = 1 while true do local n, v = debug.getupvalue(fn, i) if not n then return nil end if n == name then return v end i = i + 1 end end
-local inner = assert(up(modLib.parseMod, "parseMod"), "inner parseMod upvalue not found")
+-- 07fa089bf: ModParser.lua:7148 the cached wrapper calls parseModOrdered (:7122), which holds the inner parseMod
+local inner = assert(up(modLib.parseMod, "parseMod") or (up(modLib.parseMod, "parseModOrdered") and up(up(modLib.parseMod, "parseModOrdered"), "parseMod")), "inner parseMod upvalue not found")
 local function hex(s) return (s:gsub(".", function(c) return string.format("%02x", c:byte()) end)) end
 local function key(s) if s:find("[\128-\255]") then return { x = hex(s) } end return s end
 local TABLES = { "formList", "modNameList", "modFlagList", "preFlagList", "modTagList", "specialModList", "jewelFuncList",

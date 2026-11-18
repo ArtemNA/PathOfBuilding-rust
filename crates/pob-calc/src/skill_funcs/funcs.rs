@@ -1173,7 +1173,7 @@ fn explode_field(v: &Value, k: &str) -> Value {
     match v {
         Value::Table(t) => t.get(k).clone(),
         other => panic!(
-            "Data/Skills/other.lua:6209: attempt to index local 'explodeMod' (a {} value)",
+            "Data/Skills/other.lua:6372: attempt to index local 'explodeMod' (a {} value)",
             other.type_name()
         ),
     }
@@ -1207,17 +1207,17 @@ fn explode_source_name(off: &Off<'_>) -> String {
         .active_effect
         .borrow()
         .src_instance
-        .unwrap_or_else(|| panic!("Data/Skills/other.lua:6209: attempt to index field 'srcInstance' (a nil value)"));
+        .unwrap_or_else(|| panic!("Data/Skills/other.lua:6372: attempt to index field 'srcInstance' (a nil value)"));
     let src = st.tab.socket_group_list()[g].gem_list[k]
         .explode_source
         .clone()
-        .unwrap_or_else(|| panic!("Data/Skills/other.lua:6209: attempt to index field 'explodeSource' (a nil value)"));
+        .unwrap_or_else(|| panic!("Data/Skills/other.lua:6372: attempt to index field 'explodeSource' (a nil value)"));
     match src {
         crate::skills_tab::ExplodeSource::Node(id) => format!("Tree:{id}"),
         crate::skills_tab::ExplodeSource::Item(it) => match (&it.0.mod_source, it.0.id) {
             (Some(s), _) => s.clone(),
             (None, Some(id)) => format!("Tree:{}", pob_lua::tostring_num(id)),
-            (None, None) => panic!("Data/Skills/other.lua:6209: attempt to concatenate field 'id' (a nil value)"),
+            (None, None) => panic!("Data/Skills/other.lua:6372: attempt to concatenate field 'id' (a nil value)"),
         },
     }
 }
@@ -1237,8 +1237,8 @@ pub(super) fn enemy_explode(off: &mut Off<'_>) {
             let active_effect_source = explode_source_name(off);
             if e.mod_.source.as_deref() == Some(active_effect_source.as_str()) {
                 let em = &e.value;
-                let ty = explode_type(em, 6212);
-                let amount = explode_num(em, "amount", 6213);
+                let ty = explode_type(em, 6375);
+                let amount = explode_num(em, "amount", 6376);
                 if ty == "RandomElement" {
                     for t in ["Fire", "Cold", "Lightning"] {
                         set(off, &format!("{t}EffectiveExplodePercentage"), amount / 3.0);
@@ -1246,7 +1246,7 @@ pub(super) fn enemy_explode(off: &mut Off<'_>) {
                 } else {
                     set(off, &format!("{ty}EffectiveExplodePercentage"), amount);
                 }
-                let chance = if part == Some(2.0) { 1.0 } else { explode_num(em, "chance", 6219) };
+                let chance = if part == Some(2.0) { 1.0 } else { explode_num(em, "chance", 6382) };
                 off.out().set_num("ExplodeChance", chance);
             }
         }
@@ -1255,9 +1255,9 @@ pub(super) fn enemy_explode(off: &mut Off<'_>) {
         let list = off.q.list(Some(&off.cfg), &["ExplodeMod"]);
         let mut by_type: Vec<(String, Vec<(f64, f64)>)> = Vec::new();
         for em in &list {
-            let ty = explode_type(em, 6226);
-            let amount = explode_num(em, "amount", 6227);
-            let chance = explode_num(em, "chance", 6227);
+            let ty = explode_type(em, 6389);
+            let amount = explode_num(em, "amount", 6390);
+            let chance = explode_num(em, "chance", 6390);
             let i = match by_type.iter().position(|(t, _)| *t == ty) {
                 Some(i) => i,
                 None => {
@@ -1273,7 +1273,7 @@ pub(super) fn enemy_explode(off: &mut Off<'_>) {
         }
         if by_type.len() > 1 {
             off.note(
-                "Data/Skills/other.lua:6230 skills.EnemyExplode.preDamageFunc: pairs(typeAmountChances) over more than one ExplodeMod type (string keys, R13: the LuaJIT order varies by process; insertion order used)"
+                "Data/Skills/other.lua:6393 skills.EnemyExplode.preDamageFunc: pairs(typeAmountChances) over more than one ExplodeMod type (string keys, R13: the LuaJIT order varies by process; insertion order used)"
                     .into(),
             );
         }
@@ -1868,12 +1868,12 @@ fn forbidden_rite_with(off: &mut Off<'_>, with_life: bool, src: &str) {
 
 /// act_int.lua:7390 ForbiddenRite.
 pub(super) fn forbidden_rite(off: &mut Off<'_>) {
-    forbidden_rite_with(off, true, "Data/Skills/act_int.lua:7390");
+    forbidden_rite_with(off, true, "Data/Skills/act_int.lua:7469");
 }
 
 /// act_int.lua:7549 ForbiddenRiteAltX.
 pub(super) fn forbidden_rite_alt_x(off: &mut Off<'_>) {
-    forbidden_rite_with(off, false, "Data/Skills/act_int.lua:7549");
+    forbidden_rite_with(off, false, "Data/Skills/act_int.lua:7628");
 }
 
 /// sup_str.lua:2540 AvengingFlame (preDamageFunc, R7.10b): `TotemLife` of the trigger source's cached MAIN / CALCS run (`GlobalCache.cachedData

@@ -639,7 +639,7 @@ pub(crate) fn triggers_of(env: &mut Env, st: &mut PerformState, who: Who, m: usi
             let actor = c.actor.unwrap_or(who);
             if actor != who {
                 return Err(format!(
-                    "CalcTriggers.lua:1618 config.actor = env.minion for calcs.triggers(env, {who:?}) (the handler would write the other actor's output)"
+                    "CalcTriggers.lua:1627 config.actor = env.minion for calcs.triggers(env, {who:?}) (the handler would write the other actor's output)"
                 ));
             }
             // :1619-1621
@@ -652,7 +652,7 @@ pub(crate) fn triggers_of(env: &mut Env, st: &mut PerformState, who: Who, m: usi
             match c.custom_handler {
                 // the custom handlers work on `env.player` (:136-392)
                 Some(_) if who != Who::Player => Err(format!(
-                    "CalcTriggers.lua:1622 a custom trigger handler for calcs.triggers(env, {who:?}) (the handler writes env.player.output)"
+                    "CalcTriggers.lua:1631 a custom trigger handler for calcs.triggers(env, {who:?}) (the handler writes env.player.output)"
                 )),
                 Some(config::Custom::Cwc) => handler::cwc_handler(env, st),
                 Some(config::Custom::Focus) => handler::helmet_focus_handler(env, st),

@@ -423,6 +423,7 @@
     "MaxOffensiveWarcryEffect": "i",
     "MaximumBrittle": "i",
     "MaximumChill": "i",
+    "MaximumLifeManaDifference": "i",
     "MaximumSap": "i",
     "MaximumScorch": "i",
     "MaximumShock": "i",
@@ -439,6 +440,7 @@
     "MissingTotemColdResist": "i",
     "MissingTotemFireResist": "i",
     "MissingTotemLightningResist": "i",
+    "MissingUnreservedLifePercent": "i",
     "MovementSpeedMod": "f",
     "NumberOfDamagingHits": "f",
     "NumberOfMitigatedDamagingHits": "f",
@@ -637,7 +639,7 @@
   "producer": {
     "engine": "pob-engine-wasm boot.lua sha256:d9ca9d7726c8",
     "kind": "wasm",
-    "pobSha": "3dbca4463c0a59079d9f7f032d8240cf868e09da"
+    "pobSha": "07fa089bf08f6a089004c5c39192d12d210a13ac"
   },
   "stats": {
     "AbsorptionCharges": 0,
@@ -1055,6 +1057,7 @@
     "MaxOffensiveWarcryEffect": 1,
     "MaximumBrittle": 6,
     "MaximumChill": 30,
+    "MaximumLifeManaDifference": 45,
     "MaximumSap": 20,
     "MaximumScorch": 30,
     "MaximumShock": 50,
@@ -1071,6 +1074,7 @@
     "MissingTotemColdResist": 35,
     "MissingTotemFireResist": 35,
     "MissingTotemLightningResist": 35,
+    "MissingUnreservedLifePercent": 0,
     "MovementSpeedMod": 1,
     "NumberOfDamagingHits": 0.006031700330764167,
     "NumberOfMitigatedDamagingHits": 0.006757350229293579,
@@ -1689,6 +1693,7 @@
     "MaxOffensiveWarcryEffect": 1,
     "MaximumBrittle": 6,
     "MaximumChill": 30,
+    "MaximumLifeManaDifference": 45,
     "MaximumSap": 20,
     "MaximumScorch": 30,
     "MaximumShock": 50,
@@ -1705,6 +1710,7 @@
     "MissingTotemColdResist": 35,
     "MissingTotemFireResist": 35,
     "MissingTotemLightningResist": 35,
+    "MissingUnreservedLifePercent": 0,
     "MovementSpeedMod": 1,
     "NumberOfDamagingHits": 0.0060317003307642,
     "NumberOfMitigatedDamagingHits": 0.0067573502292936,

@@ -290,7 +290,7 @@
     },
     "eternal_notable_bleed_damage_1":{
       "bleeding_damage_+%":"100% increased Damage with Bleeding",
-      "faster_bleed_%":"Bleeding you inflict deals Damage 100% faster"
+      "faster_bleed_%":"Bleeding you inflict deals Damage 100% Faster"
     },
     "kalguur_notable_1":{
       "flask_duration_+%":"100% increased Flask Effect Duration",
@@ -349,7 +349,7 @@
     },
     "kalguur_notable_25":{
       "flask_duration_+%":"100% increased Flask Effect Duration",
-      "iron_flasks_gain_x_charge_when_ward_breaks":"Iron Flasks gain 100 charges when your Ward Breaks"
+      "iron_flask_effect_+%":"Iron Flasks applied to you have 100% increased Effect"
     },
     "kalguur_notable_3":{
       "endurance_charge_duration_+%":"100% increased Endurance Charge Duration",
@@ -500,7 +500,7 @@
       "physical_damage_+%":"100% increased Global Physical Damage"
     },
     "vaal_notable_physical_damage_3":{
-      "faster_bleed_%":"Bleeding you inflict deals Damage 100% faster",
+      "faster_bleed_%":"Bleeding you inflict deals Damage 100% Faster",
       "physical_damage_+%":"100% increased Global Physical Damage"
     },
     "vaal_notable_spell_damage_1":{
@@ -508,5 +508,5 @@
       "spell_damage_+%":"100% increased Spell Damage"
     }
   },
-  "pobSha":"3dbca4463c0a59079d9f7f032d8240cf868e09da"
+  "pobSha":"07fa089bf08f6a089004c5c39192d12d210a13ac"
 }

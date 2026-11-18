@@ -5,15 +5,15 @@
 		<ExportedBuffs name="Aura">
 			Anger
 103
+109|Skill:Anger|FireMin|BASE|-|Spell|type=GlobalEffect/effectType=Aura
 155|Skill:Anger|FireMax|BASE|-|Spell|type=GlobalEffect/effectType=Aura
 109|Skill:Anger|FireMin|BASE|-|Attack|type=GlobalEffect/effectType=Aura
 155|Skill:Anger|FireMax|BASE|-|Attack|type=GlobalEffect/effectType=Aura
-109|Skill:Anger|FireMin|BASE|-|Spell|type=GlobalEffect/effectType=Aura
 ---
 Hatred
 100
-16|Spectre:Hatred - Perfect Hydra|ColdDamage|MORE|-|-|type=GlobalEffect/effectType=Aura
 20|Spectre:Hatred - Perfect Hydra|PhysicalDamageGainAsCold|BASE|-|-|type=GlobalEffect/effectType=Aura
+16|Spectre:Hatred - Perfect Hydra|ColdDamage|MORE|-|-|type=GlobalEffect/effectType=Aura
 ---
 Lightning Golem Wrath
 100

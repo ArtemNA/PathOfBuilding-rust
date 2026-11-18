@@ -18,14 +18,15 @@ fn helpers_match_the_cache() {
     assert_eq!(first_to_upper("cold damage"), "Cold damage");
     assert_eq!(first_to_upper("1st"), "1st");
     // `function(_, skill, num) return grantedExtraSkill(skill, num) end`-style call
-    let g = granted_extra_skill(&d, &s("aspect of the spider"), &s("20"), &Value::Nil).unwrap();
-    assert!(value_eq(&g, &cache_mods("Grants Level 20 Aspect of the Spider Skill")));
+    // (07fa089bf: the ModCache.lua of 2.68.0 no longer holds "...Level 20 Aspect of the Spider Skill" / "...Level 20 Added Fire Damage")
+    let g = granted_extra_skill(&d, &s("hatred"), &s("20"), &Value::Nil).unwrap();
+    assert!(value_eq(&g, &cache_mods("Grants Level 20 Hatred Skill")));
     assert!(granted_extra_skill(&d, &s("no such skill"), &s("1"), &Value::Nil).unwrap().is_nil());
     // ModParser.lua:3325 `function(num, _, skill) return triggerExtraSkill(skill, num) end` (options nil)
     let t = trigger_extra_skill(&d, &s("storm cascade"), &Value::Num(20.0), &Value::Nil).unwrap();
     assert!(value_eq(&t, &cache_mods("Trigger Level 20 Storm Cascade when you Attack")), "{t:?}");
     for (support, line) in [
-        ("added fire damage", "Socketed Gems are Supported by Level 20 Added Fire Damage"),
+        ("added fire damage", "Socketed Gems are Supported by Level 10 Added Fire Damage"),
         ("brutality", "Socketed Gems are Supported by Level 10 Brutality"),
     ] {
         let lvl = if line.contains("Level 20") { "20" } else { "10" };

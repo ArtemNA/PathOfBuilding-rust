@@ -41,6 +41,7 @@ pub(crate) struct Scope {
 thread_local! {
     static SCOPES: RefCell<HashMap<String, Arc<Scope>>> = RefCell::new(HashMap::new());
     static PEARL: RefCell<Option<Rc<LuaVal>>> = const { RefCell::new(None) };
+    static FORMATTERS: RefCell<Option<Rc<LuaVal>>> = const { RefCell::new(None) };
 }
 
 fn limit_of(v: Option<&LuaVal>) -> Limit {
@@ -319,9 +320,37 @@ fn apply_special(val: &mut [Val], k: &str, v: usize) {
             val[i].min = VVal::Str(text.clone());
             val[i].max = VVal::Str(text);
         }
+        // StatDescriber.lua:203-207 (07fa089bf): a value that names something (`Data/StatDescriptionFormatters.lua`); ranges
+        // describe the lowest value
+        _ if let Some(names) = formatter_names(k) => {
+            let name = match &val[i].min {
+                VVal::Num(n) => names
+                    .as_tab()
+                    .and_then(|t| t.get_num(*n))
+                    .and_then(|x| x.as_str().map(str::to_owned)),
+                VVal::Str(_) => None,
+            };
+            if let Some(name) = name {
+                val[i].min = VVal::Str(name);
+            }
+            val[i].max = val[i].min.clone();
+            val[i].fmt = "s";
+        }
         // `ConPrintf("Unknown description function: %s", spec.k)`: the console only
         _ => {}
     }
+}
+
+/// `formatterNames[k]` (StatDescriber.lua:54, 07fa089bf: `require("Data.StatDescriptionFormatters")`).
+fn formatter_names(k: &str) -> Option<LuaVal> {
+    let v = FORMATTERS.with_borrow_mut(|p| {
+        p.get_or_insert_with(|| {
+            let root = crate::launch::launch().cfg.script_path.clone();
+            Rc::new(src_cache::read_lua(&root, "Data/StatDescriptionFormatters.lua").expect("Data/StatDescriptionFormatters.lua"))
+        })
+        .clone()
+    });
+    v.as_tab().and_then(|t| t.get(k)).cloned()
 }
 
 /// `indexableNonActiveSupports[n].baseItemName:gsub(" Support", "")` (`Data/PearlSupports.lua`).

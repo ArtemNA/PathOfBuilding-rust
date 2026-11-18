@@ -42,12 +42,21 @@ pub struct ClusterJewels {
     pub notable_sort_order: OrderedMap<f64>,
     pub orbit_offsets: Json,
     pub info_for_notable: Json,
+    /// ClusterJewels.lua:1053 (07fa089bf): Putrid Seed proxy node id -> the index (1..4) of the jewel's "1 added passive skill
+    /// is X" line that node allocates (PassiveSpec.lua:1929). Keyed by the node id as a string (JSON); see
+    /// [`ClusterJewels::blightcore_notable_index`].
+    pub blightcore_notable_index: Option<OrderedMap<f64>>,
 }
 
 impl ClusterJewels {
     /// `data.clusterJewels.jewels[baseName]`.
     pub fn jewel(&self, base_name: &str) -> Option<&ClusterJewelInfo> {
         self.jewels.get(base_name)
+    }
+
+    /// `notableIndex and notableIndex[treeNode.id]` (PassiveSpec.lua:1929-1934, 07fa089bf).
+    pub fn blightcore_notable_index(&self, node_id: u32) -> Option<f64> {
+        self.blightcore_notable_index.as_ref()?.get(node_id.to_string().as_str()).copied()
     }
 }
 

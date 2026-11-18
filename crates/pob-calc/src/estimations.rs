@@ -362,23 +362,23 @@ fn number_of_hits_to_die(d: &mut DamageIn, out: &mut Output, db: &StoreRef, shif
     }
 
     // :2633-2637
-    let mut ward = or0(out, "Ward", 2633);
+    let mut ward = or0(out, "Ward", 2661);
     if ward_avoid_break_chance < 1.0 && cycles > 1.0 {
         ward = 0.0;
     }
     // :2638-2647
     let mut aegis = Aegis {
-        shared: Some(or0(out, "sharedAegis", 2639)),
-        shared_elemental: Some(or0(out, "sharedElementalAegis", 2640)),
+        shared: Some(or0(out, "sharedAegis", 2667)),
+        shared_elemental: Some(or0(out, "sharedElementalAegis", 2668)),
         typed: [None; 5],
     };
     let mut guard = Guard {
-        shared: Some(or0(out, "sharedGuardAbsorb", 2642)),
+        shared: Some(or0(out, "sharedGuardAbsorb", 2670)),
         typed: [None; 5],
     };
     for (t, name) in DMG.iter().enumerate() {
-        aegis.typed[t] = Some(or0(out, &format!("{name}Aegis"), 2644));
-        guard.typed[t] = Some(or0(out, &format!("{name}GuardAbsorb"), 2645));
+        aegis.typed[t] = Some(or0(out, &format!("{name}Aegis"), 2672));
+        guard.typed[t] = Some(or0(out, &format!("{name}GuardAbsorb"), 2673));
     }
     let allies = build_ally_life_pools(&view(out, db, shift));
 
@@ -386,7 +386,7 @@ fn number_of_hits_to_die(d: &mut DamageIn, out: &mut Output, db: &StoreRef, shif
     let energy_shield = match out.get("EnergyShieldRecoveryCap") {
         None => None,
         Some(OutValue::Num(v)) => Some(*v),
-        Some(other) => panic!("{}: EnergyShieldRecoveryCap is {other:?}", site(2654)),
+        Some(other) => panic!("{}: EnergyShieldRecoveryCap is {other:?}", site(2682)),
     };
     let mut pool = PoolTable {
         allies_taken_before_you: Some(allies),
@@ -395,10 +395,10 @@ fn number_of_hits_to_die(d: &mut DamageIn, out: &mut Output, db: &StoreRef, shif
         ward: Some(ward),
         ward_active_chance: None,
         energy_shield,
-        mana: Some(or0(out, "ManaUnreserved", 2655)),
-        life: Some(or0(out, "LifeRecoverable", 2656)),
-        life_loss_lost_over_time: Some(or0(out, "LifeLossLostOverTime", 2657)),
-        life_below_half_loss_lost_over_time: Some(or0(out, "LifeBelowHalfLossLostOverTime", 2658)),
+        mana: Some(or0(out, "ManaUnreserved", 2683)),
+        life: Some(or0(out, "LifeRecoverable", 2684)),
+        life_loss_lost_over_time: Some(or0(out, "LifeLossLostOverTime", 2685)),
+        life_below_half_loss_lost_over_time: Some(or0(out, "LifeBelowHalfLossLostOverTime", 2686)),
         damage_taken_that_can_be_recouped: Some([None; 5]),
     };
     // `poolTable.OverkillDamage` -- only a returned table has it.
@@ -450,31 +450,31 @@ fn number_of_hits_to_die(d: &mut DamageIn, out: &mut Output, db: &StoreRef, shif
                 // :2694 `gainMult * output.LifeRecoverable or 0` -- the `or 0` binds to the product: dead.
                 let l = life(&pool);
                 pool.life = Some(min2(
-                    l + m * (or0(out, "LifeUnreserved", 2694) - l) * (gain_mult - 1.0) / 100.0,
+                    l + m * (or0(out, "LifeUnreserved", 2722) - l) * (gain_mult - 1.0) / 100.0,
                     gain_mult * on(out, "LifeRecoverable"),
                 ));
             }
             if let Some(m) = d.missing_mana_before_enemy_hit {
-                let mana = need(pool.mana, 2697, "poolTable.Mana");
+                let mana = need(pool.mana, 2725, "poolTable.Mana");
                 pool.mana = Some(min2(
-                    mana + m * (or0(out, "ManaUnreserved", 2697) - mana) * (gain_mult - 1.0) / 100.0,
-                    gain_mult * or0(out, "ManaUnreserved", 2697),
+                    mana + m * (or0(out, "ManaUnreserved", 2725) - mana) * (gain_mult - 1.0) / 100.0,
+                    gain_mult * or0(out, "ManaUnreserved", 2725),
                 ));
             }
             if d.gain_when_hit {
                 let l = life(&pool);
                 pool.life = Some(min2(
-                    l + need(d.life_when_hit, 2700, "LifeWhenHit") * (gain_mult - 1.0),
-                    gain_mult * or0(out, "LifeRecoverable", 2700),
+                    l + need(d.life_when_hit, 2728, "LifeWhenHit") * (gain_mult - 1.0),
+                    gain_mult * or0(out, "LifeRecoverable", 2728),
                 ));
-                let mana = need(pool.mana, 2701, "poolTable.Mana");
+                let mana = need(pool.mana, 2729, "poolTable.Mana");
                 pool.mana = Some(min2(
-                    mana + need(d.mana_when_hit, 2701, "ManaWhenHit") * (gain_mult - 1.0),
-                    gain_mult * or0(out, "ManaUnreserved", 2701),
+                    mana + need(d.mana_when_hit, 2729, "ManaWhenHit") * (gain_mult - 1.0),
+                    gain_mult * or0(out, "ManaUnreserved", 2729),
                 ));
-                let es = need(pool.energy_shield, 2702, "poolTable.EnergyShield");
+                let es = need(pool.energy_shield, 2730, "poolTable.EnergyShield");
                 pool.energy_shield = Some(min2(
-                    es + need(d.energy_shield_when_hit, 2702, "EnergyShieldWhenHit") * (gain_mult - 1.0),
+                    es + need(d.energy_shield_when_hit, 2730, "EnergyShieldWhenHit") * (gain_mult - 1.0),
                     gain_mult * on(out, "EnergyShieldRecoveryCap"),
                 ));
             }
@@ -486,16 +486,16 @@ fn number_of_hits_to_die(d: &mut DamageIn, out: &mut Output, db: &StoreRef, shif
         {
             let l = life(&pool);
             pool.life = Some(min2(
-                l + m * (or0(out, "LifeUnreserved", 2708) - l) / 100.0,
-                or0(out, "LifeRecoverable", 2708),
+                l + m * (or0(out, "LifeUnreserved", 2736) - l) / 100.0,
+                or0(out, "LifeRecoverable", 2736),
             ));
         }
         if let Some(m) = d.missing_mana_before_enemy_hit.filter(|&m| m != 0.0) {
-            let mana = need(pool.mana, 2710, "poolTable.Mana");
+            let mana = need(pool.mana, 2738, "poolTable.Mana");
             if mana > 0.0 {
                 pool.mana = Some(min2(
-                    mana + m * (or0(out, "ManaUnreserved", 2711) - mana) / 100.0,
-                    or0(out, "ManaUnreserved", 2711),
+                    mana + m * (or0(out, "ManaUnreserved", 2739) - mana) / 100.0,
+                    or0(out, "ManaUnreserved", 2739),
                 ));
             }
         }
@@ -512,17 +512,17 @@ fn number_of_hits_to_die(d: &mut DamageIn, out: &mut Output, db: &StoreRef, shif
         if d.gain_when_hit && life(&pool) > 0.0 {
             let l = life(&pool);
             pool.life = Some(min2(
-                l + need(d.life_when_hit, 2718, "LifeWhenHit"),
-                or0(out, "LifeRecoverable", 2718),
+                l + need(d.life_when_hit, 2746, "LifeWhenHit"),
+                or0(out, "LifeRecoverable", 2746),
             ));
-            let mana = need(pool.mana, 2719, "poolTable.Mana");
+            let mana = need(pool.mana, 2747, "poolTable.Mana");
             pool.mana = Some(min2(
-                mana + need(d.mana_when_hit, 2719, "ManaWhenHit"),
-                or0(out, "ManaUnreserved", 2719),
+                mana + need(d.mana_when_hit, 2747, "ManaWhenHit"),
+                or0(out, "ManaUnreserved", 2747),
             ));
-            let es = need(pool.energy_shield, 2720, "poolTable.EnergyShield");
+            let es = need(pool.energy_shield, 2748, "poolTable.EnergyShield");
             pool.energy_shield = Some(min2(
-                es + need(d.energy_shield_when_hit, 2720, "EnergyShieldWhenHit"),
+                es + need(d.energy_shield_when_hit, 2748, "EnergyShieldWhenHit"),
                 on(out, "EnergyShieldRecoveryCap"),
             ));
         }
@@ -567,15 +567,15 @@ fn number_of_hits_to_die(d: &mut DamageIn, out: &mut Output, db: &StoreRef, shif
     }
     // :2757-2760
     if d.track_life_loss_over_time {
-        let v = on(out, "LifeLossLostOverTime") + need(pool.life_loss_lost_over_time, 2758, "LifeLossLostOverTime");
+        let v = on(out, "LifeLossLostOverTime") + need(pool.life_loss_lost_over_time, 2786, "LifeLossLostOverTime");
         out.set_num("LifeLossLostOverTime", v);
         let v = on(out, "LifeBelowHalfLossLostOverTime")
-            + need(pool.life_below_half_loss_lost_over_time, 2759, "LifeBelowHalfLossLostOverTime");
+            + need(pool.life_below_half_loss_lost_over_time, 2787, "LifeBelowHalfLossLostOverTime");
         out.set_num("LifeBelowHalfLossLostOverTime", v);
     }
     // :2762-2764
     if life(&pool) == 0.0 && cycles == 1.0 {
-        num_hits -= need(overkill, 2763, "OverkillDamage") / damage_total;
+        num_hits -= need(overkill, 2791, "OverkillDamage") / damage_total;
     }
     // :2765-2772
     damage_total = 0.0;
@@ -619,7 +619,7 @@ fn split_degen(out: &Output, db: &StoreRef, degen: f64, t: usize) -> (f64, f64, 
 
 /// `:2351-2363` local `calcMoMEBPool` -- `(pool, maxManaUsable, manaUsed, maxESUsable)`; the last three feed the breakdown.
 fn calc_mom_eb_pool(out: &Output, db: &StoreRef, life_pool: f64, mom_effect: f64, es_bypass: f64) -> (f64, f64, f64, f64) {
-    let mana = max2(or0(out, "ManaUnreserved", 2352), 0.0);
+    let mana = max2(or0(out, "ManaUnreserved", 2380), 0.0);
     // :2353 `MoMEffect < 1 and <number> or m_huge`
     let max_mom_pool = if mom_effect < 1.0 {
         life_pool / (1.0 - mom_effect) - life_pool
@@ -744,7 +744,7 @@ pub fn estimations(env: &mut Env, state: &mut PerformState, who: Who) {
     if !dot {
         let wo = worst_of(1699);
         // :1690/:1692 `specificTypeAvoidance and 0 or AvoidProjectilesChance`
-        let projectile_avoid = |out: &Output| first_num(out, truthy(out, "specificTypeAvoidance"), &["AvoidProjectilesChance"], 1690);
+        let projectile_avoid = |out: &Output| first_num(out, truthy(out, "specificTypeAvoidance"), &["AvoidProjectilesChance"], 1716);
         let v = 100.0
             - (1.0 - on(out, "MeleeEvadeChance") / 100.0)
                 * (1.0 - on(out, "EffectiveAttackDodgeChance") / 100.0)
@@ -779,7 +779,7 @@ pub fn estimations(env: &mut Env, state: &mut PerformState, who: Who) {
         let v = (on(out, "MeleeEvadeChance") + on(out, "ProjectileEvadeChance")) / 4.0;
         out.set_num("AverageEvadeChance", v);
         // :1696-1697
-        let k = concat_key(&dcc, 1696);
+        let k = concat_key(&dcc, 1722);
         copy(out, "ConfiguredNotHitChance", &format!("{k}NotHitChance"));
         let ev = out.get(&format!("{k}EvadeChance")).cloned();
         if truthy_val(ev.as_ref()) {
@@ -789,7 +789,7 @@ pub fn estimations(env: &mut Env, state: &mut PerformState, who: Who) {
         }
         // :1699-1706
         if wo > 1.0 {
-            let c = first_num(out, false, &["ConfiguredNotHitChance"], 1700);
+            let c = first_num(out, false, &["ConfiguredNotHitChance"], 1726);
             out.set_num("ConfiguredNotHitChance", c / 100.0 * c);
             let c = on(out, "ConfiguredEvadeChance");
             out.set_num("ConfiguredEvadeChance", c / 100.0 * c);
@@ -847,8 +847,8 @@ pub fn estimations(env: &mut Env, state: &mut PerformState, who: Who) {
             100.0
         } else {
             let b = match override_(&db, "enemyCritChance") {
-                Some(v) if v.truthy() => num_val(&v, 1735),
-                _ => cfg_or(&[input.get("enemyCritChance"), placeholder.get("enemyCritChance")], 0.0, 1735),
+                Some(v) if v.truthy() => num_val(&v, 1761),
+                _ => cfg_or(&[input.get("enemyCritChance"), placeholder.get("enemyCritChance")], 0.0, 1761),
             };
             max2(
                 min2(
@@ -861,7 +861,7 @@ pub fn estimations(env: &mut Env, state: &mut PerformState, who: Who) {
         };
         out.set_num("EnemyCritChance", enemy_crit_chance);
         let enemy_crit_damage = max2(
-            cfg_or(&[input.get("enemyCritDamage"), placeholder.get("enemyCritDamage")], 0.0, 1737) + base(&enemy_db, &["CritMultiplier"]),
+            cfg_or(&[input.get("enemyCritDamage"), placeholder.get("enemyCritDamage")], 0.0, 1763) + base(&enemy_db, &["CritMultiplier"]),
             0.0,
         );
         let v = 1.0 + enemy_crit_chance / 100.0 * (enemy_crit_damage / 100.0) * (1.0 - on(out, "CritExtraDamageReduction") / 100.0);
@@ -946,7 +946,7 @@ pub fn estimations(env: &mut Env, state: &mut PerformState, who: Who) {
                                 &pob_data::constants::constants().monster_phys_conversion_multi_table,
                                 env.enemy_level,
                             )
-                            .unwrap_or_else(|| panic!("{}: attempt to perform arithmetic on a nil value", site(1795)));
+                            .unwrap_or_else(|| panic!("{}: attempt to perform arithmetic on a nil value", site(1821)));
                             skill_conversion_percent *= 1.0 + phys_multi / 100.0;
                         }
                         conversion_percent += skill_conversion_percent;
@@ -1035,13 +1035,18 @@ pub fn estimations(env: &mut Env, state: &mut PerformState, who: Who) {
                 let a = format!("{name}DamageTakenAs{dest_name}");
                 let b = format!("ElementalDamageTakenAs{dest_name}");
                 let names: Vec<&str> = if is_elemental(t) { vec![&a, &b] } else { vec![&a] };
-                let d = base(&db, &names);
+                let taken_as = base(&db, &names);
+                // CalcDefence.lua:1886-1888 (07fa089bf): DoT-only "taken over time as" adds to the DoT shift, not to hits
+                let a = format!("{name}DamageTakenOverTimeAs{dest_name}");
+                let b = format!("ElementalDamageTakenOverTimeAs{dest_name}");
+                let names: Vec<&str> = if is_elemental(t) { vec![&a, &b] } else { vec![&a] };
+                let d = taken_as + base(&db, &names);
                 dot_shift[t][dest] = Some(d);
                 dot_destination_total += d;
                 let a = format!("{name}DamageFromHitsTakenAs{dest_name}");
                 let b = format!("ElementalDamageFromHitsTakenAs{dest_name}");
                 let names: Vec<&str> = if is_elemental(t) { vec![&a, &b] } else { vec![&a] };
-                let h = d + base(&db, &names);
+                let h = taken_as + base(&db, &names);
                 shift[t][dest] = Some(h);
                 dest_total += h;
             }
@@ -1158,13 +1163,13 @@ pub fn estimations(env: &mut Env, state: &mut PerformState, who: Who) {
                 out,
                 fl(&[&format!("SelfIgnore{name}Resistance")]),
                 &[&format!("{name}ResistOverTime"), &format!("{name}Resist")],
-                1971,
+                1999,
             );
             let reduction = first_num(
                 out,
                 fl(&[&format!("SelfIgnoreBase{name}DamageReduction")]),
                 &[&format!("Base{name}DamageReduction")],
-                1971,
+                1999,
             );
             let v = max2(
                 (1.0 - resist / 100.0) * (1.0 - reduction / 100.0) * (1.0 + taken_inc / 100.0) * taken_more,
@@ -1219,7 +1224,7 @@ pub fn estimations(env: &mut Env, state: &mut PerformState, who: Who) {
     let impale_avoid = match out.get("ImpaleAvoidChance") {
         None | Some(OutValue::Bool(false)) => 0.0,
         Some(OutValue::Num(v)) => *v,
-        Some(other) => panic!("{}: ImpaleAvoidChance is {other:?}", site(2000)),
+        Some(other) => panic!("{}: ImpaleAvoidChance is {other:?}", site(2028)),
     };
     let enemy_impale_chance =
         sum(&enemy_db, Base, Some(&impale_cfg), &["ImpaleChance"]) * (if is(&dcc, "Average") { 0.5 } else { 1.0 }) * (1.0 - impale_avoid);
@@ -1229,25 +1234,25 @@ pub fn estimations(env: &mut Env, state: &mut PerformState, who: Who) {
             out,
             fl(&[&format!("SelfIgnore{name}Resistance")]),
             &[&format!("{name}ResistWhenHit"), &format!("{name}Resist")],
-            2018,
+            2046,
         );
         let reduction = first_num(
             out,
             fl(&[&format!("SelfIgnoreBase{name}DamageReduction")]),
             &[&format!("Base{name}DamageReductionWhenHit"), &format!("Base{name}DamageReduction")],
-            2036,
+            2064,
         );
         let enemy_pen = first_num(
             out,
             fl(&[&format!("SelfIgnore{name}Resistance"), &format!("EnemyCannotPen{name}Resistance")]),
             &[&format!("{name}EnemyPen")],
-            2018,
+            2046,
         );
         let enemy_overwhelm = first_num(
             out,
             fl(&[&format!("SelfIgnore{name}DamageReduction")]),
             &[&format!("{name}EnemyOverwhelm")],
-            2037,
+            2065,
         );
         let damage = on(out, &format!("{name}TakenDamage"));
         let mut impale_damage = if enemy_impale_chance > 0.0 {
@@ -1275,8 +1280,8 @@ pub fn estimations(env: &mut Env, state: &mut PerformState, who: Who) {
         if physical_reduction_based_on_ward {
             // :2015 the Override is divided straight away -- a miss is a nil-arithmetic error upstream.
             let o = override_(&db, "PhysicalReductionBasedOnWardPercent")
-                .unwrap_or_else(|| panic!("{}: attempt to perform arithmetic on a nil value", site(2015)));
-            let multiplier = num_val(&o, 2015) / 100.0;
+                .unwrap_or_else(|| panic!("{}: attempt to perform arithmetic on a nil value", site(2043)));
+            let multiplier = num_val(&o, 2043) / 100.0;
             effective_applied_armour = on(out, "Ward") * multiplier;
         }
         let res_mult = 1.0 - (resist - enemy_pen) / 100.0;
@@ -1285,7 +1290,7 @@ pub fn estimations(env: &mut Env, state: &mut PerformState, who: Who) {
         let dtwh = format!("{name}DamageTakenWhenHit");
         let mut taken_flat = base(&db, &["DamageTaken", &dt, "DamageTakenWhenHit", &dtwh]);
         if is(&dcc, "Melee") || is(&dcc, "Projectile") {
-            let k = concat_key(&dcc, 2022);
+            let k = concat_key(&dcc, 2050);
             taken_flat += base(
                 &db,
                 &[
@@ -1615,7 +1620,7 @@ pub fn estimations(env: &mut Env, state: &mut PerformState, who: Who) {
         let low = match out.get("LowLifePercentage") {
             None | Some(OutValue::Bool(false)) => misc("LowPoolThreshold"),
             Some(OutValue::Num(v)) => *v,
-            Some(other) => panic!("{}: LowLifePercentage is {other:?}", site(2261)),
+            Some(other) => panic!("{}: LowLifePercentage is {other:?}", site(2289)),
         };
         let v = min2(on(out, "Life") * low / 100.0, on(out, "LifeUnreserved"));
         out.set_num("LifeRecoverable", v);
@@ -1628,7 +1633,7 @@ pub fn estimations(env: &mut Env, state: &mut PerformState, who: Who) {
         let v = (on(out, "LifeCancellableReservation") / 100.0) * on(out, "Life");
         out.set_num("LifeRecoverable", v);
     }
-    let v = max2(first_num(out, false, &["LifeRecoverable"], 2272), 1.0);
+    let v = max2(first_num(out, false, &["LifeRecoverable"], 2300), 1.0);
     out.set_num("LifeRecoverable", v);
 
     // --- :2274-2320 prevented life loss ---------------------------------------------------------------------------
@@ -1708,7 +1713,7 @@ pub fn estimations(env: &mut Env, state: &mut PerformState, who: Who) {
             out.set_bool("AnyBypass", true);
         } else {
             // :2330 `Override or Sum or 0` -- the `or 0` is dead.
-            out.set_num(&key, or_override(override_(&db, &key), base(&db, &[&key]), 2330));
+            out.set_num(&key, or_override(override_(&db, &key), base(&db, &[&key]), 2358));
             if on(out, &key) != 0.0 {
                 out.set_bool("AnyBypass", true);
             }
@@ -1878,7 +1883,7 @@ pub fn estimations(env: &mut Env, state: &mut PerformState, who: Who) {
                     {
                         life = base(&db, &[fallback]);
                     }
-                    out.set_num(ally.life, or_override(override_(&db, ally.life), life, 2514));
+                    out.set_num(ally.life, or_override(override_(&db, ally.life), life, 2542));
                 }
             }
         }
@@ -1892,12 +1897,12 @@ pub fn estimations(env: &mut Env, state: &mut PerformState, who: Who) {
                 if !total_override.as_ref().is_some_and(Value::truthy)
                     && let Some(so) = specific_override
                 {
-                    put(out, "TotalMinionLife", Some(OutValue::Num(num_val(&so, 2526))));
+                    put(out, "TotalMinionLife", Some(OutValue::Num(num_val(&so, 2554))));
                     shared_minion_life_override = true;
                 } else if !truthy(out, "TotalMinionLife") || out.opt_num("TotalMinionLife") == Some(0.0) {
                     copy(out, "TotalMinionLife", ally.life);
                 }
-                let v = on(out, "MinionAllyDamageMitigation") + or0(out, ally.mitigation, 2531);
+                let v = on(out, "MinionAllyDamageMitigation") + or0(out, ally.mitigation, 2559);
                 out.set_num("MinionAllyDamageMitigation", v);
                 out.set_num(ally.mitigation, 0.0);
                 // :2533 `output[ally.life] = nil`
@@ -1911,9 +1916,9 @@ pub fn estimations(env: &mut Env, state: &mut PerformState, who: Who) {
             Some(OutValue::Num(v)) => *v == 0.0,
             _ => false,
         };
-        if or0(out, "TotemAllyDamageMitigation", 2538) > 0.0
+        if or0(out, "TotemAllyDamageMitigation", 2566) > 0.0
             && total_totem_life_zero
-            && or0(out, "TotalVaalRejuvenationTotemLife", 2538) > 0.0
+            && or0(out, "TotalVaalRejuvenationTotemLife", 2566) > 0.0
         {
             let v = on(out, "VaalRejuvenationTotemAllyDamageMitigation") + on(out, "TotemAllyDamageMitigation");
             out.set_num("VaalRejuvenationTotemAllyDamageMitigation", v);
@@ -1948,7 +1953,7 @@ pub fn estimations(env: &mut Env, state: &mut PerformState, who: Who) {
         // :2561-2570 allied energy shield. The player has no parent; `partyMembers` is the party tab's actor (R-party).
         out.set_num("SoulLinkMitigation", base(&db, &["TakenFromParentESBeforeYou"]));
         if on(out, "SoulLinkMitigation") != 0.0 {
-            let p = parent.unwrap_or_else(|| panic!("{}: attempt to index field 'parent' (a nil value)", site(2564)));
+            let p = parent.unwrap_or_else(|| panic!("{}: attempt to index field 'parent' (a nil value)", site(2592)));
             // `actor.parent.output.EnergyShieldRecoveryCap or 0`
             let v = p.opt_num("EnergyShieldRecoveryCap").unwrap_or(0.0);
             out.set_num("AlliedEnergyShield", v);
@@ -1956,7 +1961,7 @@ pub fn estimations(env: &mut Env, state: &mut PerformState, who: Who) {
             out.set_num("SoulLinkMitigation", base(&db, &["TakenFromPartyMemberESBeforeYou"]));
             if on(out, "SoulLinkMitigation") != 0.0 {
                 if !is_player {
-                    panic!("{}: attempt to index field 'partyMembers' (a nil value)", site(2568));
+                    panic!("{}: attempt to index field 'partyMembers' (a nil value)", site(2596));
                 }
                 // `actor.partyMembers.output.EnergyShieldRecoveryCap or 0` (R-party)
                 out.set_num("AlliedEnergyShield", env.party.out_num("EnergyShieldRecoveryCap").unwrap_or(0.0));
@@ -2037,8 +2042,8 @@ pub fn estimations(env: &mut Env, state: &mut PerformState, who: Who) {
             let mut d = DamageIn::default();
             let mut block_chance = on(out, "EffectiveBlockChance") / 100.0;
             if !is(&dcc, "Melee") && !is(&dcc, "Untyped") {
-                let k = concat_key(&dcc, 2794);
-                block_chance = first_num(out, false, &[&format!("Effective{k}BlockChance")], 2794) / 100.0;
+                let k = concat_key(&dcc, 2822);
+                block_chance = first_num(out, false, &[&format!("Effective{k}BlockChance")], 2822) / 100.0;
             }
             if flag(&enemy_db, &["CannotBeBlocked"]) {
                 block_chance = 0.0;
@@ -2166,7 +2171,7 @@ pub fn estimations(env: &mut Env, state: &mut PerformState, who: Who) {
                 t.push(sf!(
                     "= %.1f%% ^8(of damage taken from a%s hit)",
                     on(out, "ConfiguredDamageChance"),
-                    a_hit(&dcc, 2898)
+                    a_hit(&dcc, 2926)
                 ));
                 bd.put("ConfiguredDamageChance", t);
             }
@@ -2178,7 +2183,7 @@ pub fn estimations(env: &mut Env, state: &mut PerformState, who: Who) {
         if let Some(bd) = bd.as_deref_mut() {
             let mut t = BTable::new();
             if is(&dcc, "Melee") || is(&dcc, "Projectile") {
-                let k = concat_key(&dcc, 2908);
+                let k = concat_key(&dcc, 2936);
                 if on(out, &format!("{k}EvadeChance")) > 0.0 {
                     t.push(sf!(
                         "%.2f ^8(chance for evasion to fail)",
@@ -2240,7 +2245,7 @@ pub fn estimations(env: &mut Env, state: &mut PerformState, who: Who) {
             t.push(sf!(
                 "= %d%% ^8(chance to be hit by a%s hit)",
                 100.0 - on(out, "ConfiguredNotHitChance"),
-                a_hit(&dcc, 2942)
+                a_hit(&dcc, 2970)
             ));
             bd.put("ConfiguredNotHitChance", t);
             bd.put(
@@ -2267,7 +2272,7 @@ pub fn estimations(env: &mut Env, state: &mut PerformState, who: Who) {
         }
         // :2961-2974
         {
-            let speed = cfg_or(&[input.get("enemySpeed"), placeholder.get("enemySpeed")], 700.0, 2963);
+            let speed = cfg_or(&[input.get("enemySpeed"), placeholder.get("enemySpeed")], 700.0, 2991);
             out.set_num("enemySkillTime", speed / (1.0 + inc(&enemy_db, &["Speed"]) / 100.0));
             let enemy_action_speed = action_speed_mod(&enemy_db);
             let v = on(out, "enemySkillTime") / 1000.0 / enemy_action_speed;
@@ -2309,29 +2314,29 @@ pub fn estimations(env: &mut Env, state: &mut PerformState, who: Who) {
                 4.0
             };
             let total_key = format!("Total{recoup_type}RecoupRecovery");
-            out.set_num(&total_key, or0(out, &format!("{recoup_type}Recoup"), 2992) / 100.0 * total_damage);
+            out.set_num(&total_key, or0(out, &format!("{recoup_type}Recoup"), 3020) / 100.0 * total_damage);
             // :2993-2995 `Elemental<R>Recoup` is written nowhere upstream.
             let el_key = format!("Elemental{recoup_type}Recoup");
-            if or0(out, &el_key, 2993) > 0.0 && total_elemental_damage > 0.0 {
+            if or0(out, &el_key, 3021) > 0.0 && total_elemental_damage > 0.0 {
                 let v = on(out, &total_key) + on(out, &el_key) / 100.0 * total_elemental_damage;
                 out.set_num(&total_key, v);
             }
             for name in DMG {
                 let rk = format!("{name}{recoup_type}Recoup");
                 let dk = format!("{name}RecoupableDamageTaken");
-                if or0(out, &rk, 2997) > 0.0 && on(out, &dk) > 0.0 {
+                if or0(out, &rk, 3025) > 0.0 && on(out, &dk) > 0.0 {
                     let v = on(out, &total_key) + on(out, &rk) / 100.0 * on(out, &dk);
                     out.set_num(&total_key, v);
                 }
             }
             let pseudo_key = format!("Total{recoup_type}PseudoRecoup");
-            let v = or0(out, &format!("PhysicalDamageMitigated{recoup_type}PseudoRecoup"), 3001) / 100.0 * total_physical_damage_mitigated;
+            let v = or0(out, &format!("PhysicalDamageMitigated{recoup_type}PseudoRecoup"), 3029) / 100.0 * total_physical_damage_mitigated;
             out.set_num(&pseudo_key, v);
             let dur_key = format!("PhysicalDamageMitigated{recoup_type}PseudoRecoupDuration");
             let pseudo_recoup_duration = match out.get(&dur_key) {
                 None | Some(OutValue::Bool(false)) => 4.0,
                 Some(OutValue::Num(v)) => *v,
-                Some(other) => panic!("{}: {dur_key} is {other:?}", site(3012)),
+                Some(other) => panic!("{}: {dur_key} is {other:?}", site(3040)),
             };
             // :3003-3010 Pious Path
             if on(out, &pseudo_key) != 0.0 {
@@ -2368,7 +2373,7 @@ pub fn estimations(env: &mut Env, state: &mut PerformState, who: Who) {
                 let mut multiple_types = 0;
                 let mut mx = BTable::new();
                 let plus = |n: i32| if n > 0 { "+" } else { "" };
-                if or0(out, &format!("{recoup_type}Recoup"), 3017) > 0.0 {
+                if or0(out, &format!("{recoup_type}Recoup"), 3045) > 0.0 {
                     mx.push(sf!("%d ^8(total damage taken during ehp calcs)", total_damage));
                     mx.push(sf!(
                         "* %.2f ^8(percent of damage recouped)",
@@ -2376,7 +2381,7 @@ pub fn estimations(env: &mut Env, state: &mut PerformState, who: Who) {
                     ));
                     multiple_types += 1;
                 }
-                if or0(out, &el_key, 3022) > 0.0 && total_elemental_damage > 0.0 {
+                if or0(out, &el_key, 3050) > 0.0 && total_elemental_damage > 0.0 {
                     if multiple_types > 0 {
                         mx.push(sf!(""));
                     }
@@ -2390,7 +2395,7 @@ pub fn estimations(env: &mut Env, state: &mut PerformState, who: Who) {
                 }
                 for name in DMG {
                     let rk = format!("{name}{recoup_type}Recoup");
-                    if or0(out, &rk, 3031) > 0.0 && on(out, &format!("{name}RecoupableDamageTaken")) > 0.0 {
+                    if or0(out, &rk, 3059) > 0.0 && on(out, &format!("{name}RecoupableDamageTaken")) > 0.0 {
                         if multiple_types > 0 {
                             mx.push(sf!(""));
                         }
@@ -2477,12 +2482,12 @@ pub fn estimations(env: &mut Env, state: &mut PerformState, who: Who) {
     }
 
     // --- :3095-3114 net recovery over time from enemy hits -------------------------------------------------------
-    if or0(out, "LifeRecoupRecoveryAvg", 3096) > 0.0 || on(out, "preventedLifeLossTotal") > 0.0 {
-        let v = or0(out, "LifeRecoupRecoveryMax", 3097) - or0(out, "LifeLossLostMax", 3097);
+    if or0(out, "LifeRecoupRecoveryAvg", 3124) > 0.0 || on(out, "preventedLifeLossTotal") > 0.0 {
+        let v = or0(out, "LifeRecoupRecoveryMax", 3125) - or0(out, "LifeLossLostMax", 3125);
         out.set_num("netLifeRecoupAndLossLostOverTimeMax", v);
-        let v = or0(out, "LifeRecoupRecoveryAvg", 3098) - or0(out, "LifeLossLostAvg", 3098);
+        let v = or0(out, "LifeRecoupRecoveryAvg", 3126) - or0(out, "LifeLossLostAvg", 3126);
         out.set_num("netLifeRecoupAndLossLostOverTimeAvg", v);
-        if or0(out, "LifeRecoupRecoveryAvg", 3099) > 0.0 && on(out, "preventedLifeLossTotal") > 0.0 {
+        if or0(out, "LifeRecoupRecoveryAvg", 3127) > 0.0 && on(out, "preventedLifeLossTotal") > 0.0 {
             out.set_bool("showNetRecoup", true);
             // :3101-3112
             if let Some(bd) = bd.as_deref_mut() {
@@ -2511,9 +2516,9 @@ pub fn estimations(env: &mut Env, state: &mut PerformState, who: Who) {
         let pvp_t_value = match out.get("enemySkillTime") {
             None | Some(OutValue::Bool(false)) => 1.0,
             Some(OutValue::Num(v)) => *v,
-            Some(other) => panic!("{}: enemySkillTime is {other:?}", site(3128)),
+            Some(other) => panic!("{}: enemySkillTime is {other:?}", site(3156)),
         };
-        let pvp_multiplier = cfg_or(&[input.get("enemyMultiplierPvpDamage")], 100.0, 3119) / 100.0;
+        let pvp_multiplier = cfg_or(&[input.get("enemyMultiplierPvpDamage")], 100.0, 3147) / 100.0;
         let ne1 = misc("PvpNonElemental1");
         let ne2 = misc("PvpNonElemental2");
         let e1 = misc("PvpElemental1");
@@ -2644,7 +2649,7 @@ pub fn estimations(env: &mut Env, state: &mut PerformState, who: Who) {
             }
             // :3178-3179 aegis -- `isElemental and AegisDisplay or 0` (L4)
             let aegis_display = if is_elemental(t) {
-                or0(out, &format!("{name}AegisDisplay"), 3179)
+                or0(out, &format!("{name}AegisDisplay"), 3207)
             } else {
                 0.0
             };
@@ -2653,14 +2658,14 @@ pub fn estimations(env: &mut Env, state: &mut PerformState, who: Who) {
             // :3180-3190 `shared or 0 + typed or 0` = `shared or ((0 + typed) or 0)`: the shared rate is always a number.
             let guard_absorb_rate = match out.get("sharedGuardAbsorbRate") {
                 Some(OutValue::Num(v)) => *v,
-                None | Some(OutValue::Bool(false)) => 0.0 + first_num(out, false, &[&format!("{name}GuardAbsorbRate")], 3181),
-                Some(other) => panic!("{}: sharedGuardAbsorbRate is {other:?}", site(3181)),
+                None | Some(OutValue::Bool(false)) => 0.0 + first_num(out, false, &[&format!("{name}GuardAbsorbRate")], 3209),
+                Some(other) => panic!("{}: sharedGuardAbsorbRate is {other:?}", site(3209)),
             };
             if guard_absorb_rate > 0.0 {
                 let guard_absorb = match out.get("sharedGuardAbsorb") {
                     Some(OutValue::Num(v)) => *v,
-                    None | Some(OutValue::Bool(false)) => 0.0 + first_num(out, false, &[&format!("{name}GuardAbsorb")], 3183),
-                    Some(other) => panic!("{}: sharedGuardAbsorb is {other:?}", site(3183)),
+                    None | Some(OutValue::Bool(false)) => 0.0 + first_num(out, false, &[&format!("{name}GuardAbsorb")], 3211),
+                    Some(other) => panic!("{}: sharedGuardAbsorb is {other:?}", site(3211)),
                 };
                 if guard_absorb_rate >= 100.0 {
                     let v = on(out, &hit_pool) + guard_absorb;
@@ -2682,7 +2687,7 @@ pub fn estimations(env: &mut Env, state: &mut PerformState, who: Who) {
                 let life = match life {
                     OutValue::Num(v) => v,
                     OutValue::Bool(false) => continue,
-                    other => panic!("{}: attempt to compare {other:?} with number", site(3196)),
+                    other => panic!("{}: attempt to compare {other:?} with number", site(3224)),
                 };
                 if life <= 0.0 || life.is_nan() {
                     continue;
@@ -2690,7 +2695,7 @@ pub fn estimations(env: &mut Env, state: &mut PerformState, who: Who) {
                 let mitigation = match mitigation {
                     OutValue::Num(v) => v,
                     OutValue::Bool(false) => continue,
-                    other => panic!("{}: attempt to compare {other:?} with number", site(3196)),
+                    other => panic!("{}: attempt to compare {other:?} with number", site(3224)),
                 };
                 // `mitigation > 0` is false for NaN too.
                 if mitigation.partial_cmp(&0.0) != Some(std::cmp::Ordering::Greater) {
@@ -2716,7 +2721,7 @@ pub fn estimations(env: &mut Env, state: &mut PerformState, who: Who) {
             let mut part_min = f64::INFINITY;
             let mut use_conversion_smoothing = false;
             for (c, c_name) in DMG.iter().enumerate() {
-                let convert_percent = need(shift[t][c], 3214, "damageShiftTable");
+                let convert_percent = need(shift[t][c], 3242, "damageShiftTable");
                 let taken_flat = on(out, &format!("{c_name}takenFlat"));
                 if convert_percent > 0.0 || taken_flat != 0.0 {
                     let hit_taken;
@@ -2749,14 +2754,14 @@ pub fn estimations(env: &mut Env, state: &mut PerformState, who: Who) {
                                 &format!("Base{c_name}DamageReductionWhenHit"),
                                 &format!("Base{c_name}DamageReduction"),
                             ],
-                            3232,
+                            3260,
                         );
                         let flat_dr = reduction_percent / 100.0;
                         let enemy_overwhelm_percent = first_num(
                             out,
                             fl(&[&format!("SelfIgnore{c_name}DamageReduction")]),
                             &[&format!("{c_name}EnemyOverwhelm")],
-                            3252,
+                            3280,
                         );
                         let resist_x_convert = total_resist_mult * damage_converted_multi;
                         let a = 5.0
@@ -2806,7 +2811,7 @@ pub fn estimations(env: &mut Env, state: &mut PerformState, who: Who) {
                         if pass_damages[p].is_none() {
                             continue;
                         }
-                        let part_pool = or0(out, &format!("{p_name}TotalHitPool"), 3283);
+                        let part_pool = or0(out, &format!("{p_name}TotalHitPool"), 3311);
                         if part_pool > 0.0 {
                             pass_ratio = max2(pass_ratio, (pass_overkill + part_pool) / part_pool);
                         }
@@ -2862,7 +2867,7 @@ pub fn estimations(env: &mut Env, state: &mut PerformState, who: Who) {
                 // :3326 `pairs(takenDamages)` -- a string-keyed hash order (R13): dmgTypeList order here, the gate sorts the rows.
                 for (c, c_name) in DMG.iter().enumerate() {
                     let Some(taken_amt) = taken_damages[c] else { continue };
-                    let conversion = need(shift[t][c], 3327, "damageShiftTable");
+                    let conversion = need(shift[t][c], 3355, "damageShiftTable");
                     let incoming = final_max_hit * enemy_damage_mult * conversion / 100.0;
                     let nan_to_zero = if taken_amt.is_nan() { 0.0 } else { taken_amt };
                     taken_damages[c] = Some(nan_to_zero);
@@ -2936,7 +2941,7 @@ pub fn estimations(env: &mut Env, state: &mut PerformState, who: Who) {
                 if convert_percent > 0.0 {
                     let total = base_val * (convert_percent / 100.0) * on(out, &format!("{c_name}TakenDotMult"));
                     let key = format!("{c_name}BuildDegen");
-                    let v = or0(out, &key, 3392) + total;
+                    let v = or0(out, &key, 3420) + total;
                     out.set_num(&key, v);
                     let v = on(out, "TotalBuildDegen") + total;
                     out.set_num("TotalBuildDegen", v);
@@ -3062,7 +3067,7 @@ pub fn estimations(env: &mut Env, state: &mut PerformState, who: Who) {
     }
     // :3531-3544 the enemy's ailments on you
     let enemy_crit_ailment_effect =
-        1.0 + or0(out, "EnemyCritChance", 3531) / 100.0 * 0.5 * (1.0 - on(out, "CritExtraDamageReduction") / 100.0);
+        1.0 + or0(out, "EnemyCritChance", 3559) / 100.0 * 0.5 * (1.0 - on(out, "CritExtraDamageReduction") / 100.0);
     let enemy_crit_threshold = 10.1;
     let enemy_bleed_chance = 0.0;
     let mut enemy_ignite_chance = 0.0;
@@ -3087,7 +3092,7 @@ pub fn estimations(env: &mut Env, state: &mut PerformState, who: Who) {
         enemy_poison_chance = base(&enemy_db, &["PoisonChance"]) * (1.0 - on(out, "PoisonAvoidChance") / 100.0);
     }
     if dot || (enemy_ignite_chance + enemy_poison_chance + enemy_bleed_chance) > 0.0 {
-        out.set_num("TotalDegen", or0(out, "TotalBuildDegen", 3546));
+        out.set_num("TotalDegen", or0(out, "TotalBuildDegen", 3574));
         // `bd` / `source` / `ty` feed the rows of :3561-3602 / :3630-3671.
         let add_degen = |out: &mut Output,
                          mut bd: Option<&mut Breakdown>,
@@ -3211,7 +3216,7 @@ pub fn estimations(env: &mut Env, state: &mut PerformState, who: Who) {
                 }
             }
         }
-        if out.opt_num("TotalDegen") == Some(or0(out, "TotalBuildDegen", 3677)) {
+        if out.opt_num("TotalDegen") == Some(or0(out, "TotalBuildDegen", 3705)) {
             // :3678 `= nil`
             out.remove("TotalDegen");
         } else {
@@ -3232,7 +3237,7 @@ pub fn estimations(env: &mut Env, state: &mut PerformState, who: Who) {
                 }
             }
             for (t, name) in DMG.iter().enumerate() {
-                let type_degen = or0(out, &format!("{name}BuildDegen"), 3713) + or0(out, &format!("{name}EnemyDegen"), 3713);
+                let type_degen = or0(out, &format!("{name}BuildDegen"), 3741) + or0(out, &format!("{name}EnemyDegen"), 3741);
                 if type_degen != 0.0 {
                     let (l, m, e) = split_degen(out, &db, type_degen, t);
                     tl += l;
@@ -3247,11 +3252,11 @@ pub fn estimations(env: &mut Env, state: &mut PerformState, who: Who) {
                     }
                 }
             }
-            let v = on(out, "ComprehensiveNetLifeRegen") + or0(out, "LifeRecoupRecoveryAvg", 3751) - tl - or0(out, "LifeLossLostAvg", 3751);
+            let v = on(out, "ComprehensiveNetLifeRegen") + or0(out, "LifeRecoupRecoveryAvg", 3779) - tl - or0(out, "LifeLossLostAvg", 3779);
             out.set_num("ComprehensiveNetLifeRegen", v);
-            let v = on(out, "ComprehensiveNetManaRegen") + or0(out, "ManaRecoupRecoveryAvg", 3752) - tm;
+            let v = on(out, "ComprehensiveNetManaRegen") + or0(out, "ManaRecoupRecoveryAvg", 3780) - tm;
             out.set_num("ComprehensiveNetManaRegen", v);
-            let v = on(out, "ComprehensiveNetEnergyShieldRegen") + or0(out, "EnergyShieldRecoupRecoveryAvg", 3753) - te;
+            let v = on(out, "ComprehensiveNetEnergyShieldRegen") + or0(out, "EnergyShieldRecoupRecoveryAvg", 3781) - te;
             out.set_num("ComprehensiveNetEnergyShieldRegen", v);
             let v =
                 on(out, "ComprehensiveNetLifeRegen") + on(out, "ComprehensiveNetManaRegen") + on(out, "ComprehensiveNetEnergyShieldRegen");
@@ -3260,27 +3265,27 @@ pub fn estimations(env: &mut Env, state: &mut PerformState, who: Who) {
             if let Some(bd) = bd.as_deref_mut() {
                 let t = bd.table_mut("ComprehensiveNetLifeRegen");
                 t.push(sf!("%.1f ^8(total life regen)", on(out, "LifeRegenRecovery")));
-                if or0(out, "LifeRecoupRecoveryAvg", 3757) != 0.0 {
-                    t.push(sf!("+ %.1f ^8(average life recoup)", or0(out, "LifeRecoupRecoveryAvg", 3758)));
+                if or0(out, "LifeRecoupRecoveryAvg", 3785) != 0.0 {
+                    t.push(sf!("+ %.1f ^8(average life recoup)", or0(out, "LifeRecoupRecoveryAvg", 3786)));
                 }
                 t.push(sf!("- %.1f ^8(total life degen)", tl));
-                if or0(out, "LifeLossLostAvg", 3761) != 0.0 {
-                    t.push(sf!("- %.1f ^8(average life lost over time)", or0(out, "LifeLossLostAvg", 3762)));
+                if or0(out, "LifeLossLostAvg", 3789) != 0.0 {
+                    t.push(sf!("- %.1f ^8(average life lost over time)", or0(out, "LifeLossLostAvg", 3790)));
                 }
                 t.push(sf!("= %.1f", on(out, "ComprehensiveNetLifeRegen")));
                 let t = bd.table_mut("ComprehensiveNetManaRegen");
                 t.push(sf!("%.1f ^8(total mana regen)", on(out, "ManaRegenRecovery")));
-                if or0(out, "ManaRecoupRecoveryAvg", 3766) != 0.0 {
-                    t.push(sf!("+ %.1f ^8(average mana recoup)", or0(out, "ManaRecoupRecoveryAvg", 3767)));
+                if or0(out, "ManaRecoupRecoveryAvg", 3794) != 0.0 {
+                    t.push(sf!("+ %.1f ^8(average mana recoup)", or0(out, "ManaRecoupRecoveryAvg", 3795)));
                 }
                 t.push(sf!("- %.1f ^8(total mana degen)", tm));
                 t.push(sf!("= %.1f", on(out, "ComprehensiveNetManaRegen")));
                 let t = bd.table_mut("ComprehensiveNetEnergyShieldRegen");
                 t.push(sf!("%.1f ^8(total energy shield regen)", on(out, "EnergyShieldRegenRecovery")));
-                if or0(out, "EnergyShieldRecoupRecoveryAvg", 3772) != 0.0 {
+                if or0(out, "EnergyShieldRecoupRecoveryAvg", 3800) != 0.0 {
                     t.push(sf!(
                         "+ %.1f ^8(average energy shield recoup)",
-                        or0(out, "EnergyShieldRecoupRecoveryAvg", 3773)
+                        or0(out, "EnergyShieldRecoupRecoveryAvg", 3801)
                     ));
                 }
                 t.push(sf!("- %.1f ^8(total energy shield degen)", te));
@@ -3394,34 +3399,34 @@ fn incoming_damage_breakdown(t: &mut BTable, pools: &crate::pools::PoolsResult, 
     }
     for (d, name) in DMG.iter().enumerate() {
         if let Some(a) = pools.resources_lost[d].aegis {
-            let rem = need(pools.aegis.typed[d], 442, "Aegis[damageType]");
+            let rem = need(pools.aegis.typed[d], 444, "Aegis[damageType]");
             t.push(sf!(&format!("\t%d {gem}%s Aegis charge ^7(%d remaining)"), a, *name, rem));
         }
     }
     if let Some(sea) = out.opt_num("sharedElementalAegis") {
         let rem = pools.aegis.shared_elemental;
         if Some(sea) != rem {
-            let rem = need(rem, 446, "Aegis.sharedElemental");
+            let rem = need(rem, 448, "Aegis.sharedElemental");
             t.push(sf!(&format!("\t%d {gem}Elemental Aegis charge ^7(%d remaining)"), sea - rem, rem));
         }
     }
     if let Some(sa) = out.opt_num("sharedAegis")
         && sa > 0.0
     {
-        let rem = need(pools.aegis.shared, 449, "Aegis.shared");
+        let rem = need(pools.aegis.shared, 451, "Aegis.shared");
         t.push(sf!(&format!("\t%d {gem}Shared Aegis charge ^7(%d remaining)"), sa - rem, rem));
     }
     let scourge = color_code("SCOURGE");
     for (d, name) in DMG.iter().enumerate() {
         if let Some(g) = pools.resources_lost[d].guard {
-            let rem = need(pools.guard.typed[d], 453, "Guard[damageType]");
+            let rem = need(pools.guard.typed[d], 455, "Guard[damageType]");
             t.push(sf!(&format!("\n\t%d {scourge}%s Guard charge ^7(%d remaining)"), g, *name, rem));
         }
     }
     if let Some(sg) = out.opt_num("sharedGuardAbsorb")
         && sg > 0.0
     {
-        let rem = need(pools.guard.shared, 457, "Guard.shared");
+        let rem = need(pools.guard.shared, 459, "Guard.shared");
         t.push(sf!(&format!("\t%d {scourge}Shared Guard charge ^7(%d remaining)"), sg - rem, rem));
     }
     if let Some(w) = out.opt_num("Ward")

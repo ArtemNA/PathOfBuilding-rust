@@ -43,8 +43,29 @@ if ($Convert -and -not $Check) {
     $mirror = if ($env:POB_WASM_ROOT) { $env:POB_WASM_ROOT } else { Join-Path $root $upstreamCfg.wasmMirror }
     if (Test-Path -LiteralPath $work) { Remove-Item -LiteralPath $work -Recurse -Force }
     New-Item -ItemType Directory -Force -Path $Source | Out-Null
-    $cli = Join-Path $pobTsRoot 'tools\convert\cli.ts'
-    Push-Location $pobTsRoot
+    # Converter patches (tools/convert-patches/*.patch): pob-ts is READ-ONLY, so a patched converter runs from a local
+    # `git clone --shared` of pob-ts at its HEAD in tools/.scratch/pob-ts-convert (node_modules = junction to pob-ts').
+    $convertRoot = $pobTsRoot
+    $patches = @(Get-ChildItem -LiteralPath (Join-Path $PSScriptRoot 'convert-patches') -Filter '*.patch' -ErrorAction SilentlyContinue | Sort-Object Name)
+    if ($patches.Count -gt 0) {
+        $tsSha = (& git -C $pobTsRoot rev-parse HEAD).Trim()
+        $convertRoot = Join-Path $root 'tools\.scratch\pob-ts-convert'
+        $nm = Join-Path $convertRoot 'node_modules'
+        # Unlink the junction first (non-recursive), never recurse into pob-ts' node_modules.
+        if (Test-Path -LiteralPath $nm) { [System.IO.Directory]::Delete($nm, $false) }
+        if (Test-Path -LiteralPath $convertRoot) { Remove-Item -LiteralPath $convertRoot -Recurse -Force }
+        & git clone -q --shared --no-checkout $pobTsRoot $convertRoot
+        if ($LASTEXITCODE -ne 0) { throw 'pob-ts clone failed' }
+        & git -C $convertRoot checkout -q --detach $tsSha
+        if ($LASTEXITCODE -ne 0) { throw 'pob-ts clone checkout failed' }
+        foreach ($p in $patches) {
+            & git -C $convertRoot apply --whitespace=nowarn $p.FullName
+            if ($LASTEXITCODE -ne 0) { throw "convert patch does not apply: $($p.Name)" }
+        }
+        New-Item -ItemType Junction -Path (Join-Path $convertRoot 'node_modules') -Target (Join-Path $pobTsRoot 'node_modules') | Out-Null
+    }
+    $cli = Join-Path $convertRoot 'tools\convert\cli.ts'
+    Push-Location $convertRoot
     try {
         & node $cli --wire-only --pob-root $mirror --wire-dir $wire --data-dir $Source | Out-File -LiteralPath (Join-Path $work 'wire.txt')
         if ($LASTEXITCODE -ne 0) { throw "converter --wire-only failed (log: $work\wire.txt)" }
@@ -55,7 +76,8 @@ if ($Convert -and -not $Check) {
         if ($LASTEXITCODE -ne 0) { throw "converter --extract-only failed (log: $work\extract.txt)" }
     } finally { Pop-Location }
     $pobTsSha = (& git -C $pobTsRoot rev-parse --short HEAD).Trim()
-    $sourceLabel = "pob-ts converter @ $pobTsSha (tools/sync-data.ps1 -Convert) on tools/upstream.json pobRoot"
+    $patchNote = if ($patches.Count -gt 0) { " + tools/convert-patches ($(($patches | ForEach-Object Name) -join ', '))" } else { '' }
+    $sourceLabel = "pob-ts converter @ $pobTsSha$patchNote (tools/sync-data.ps1 -Convert) on tools/upstream.json pobRoot"
 }
 if (-not $Source) { $Source = Join-Path $pobTsRoot 'data' }
 $lutSrc = Join-Path $PobRoot 'src\Data\TimelessJewelData'

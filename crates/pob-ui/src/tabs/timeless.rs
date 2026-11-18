@@ -82,7 +82,8 @@ fn conqueror_types(jewel: usize) -> Vec<&'static str> {
             "Any",
             "Doryani (Corrupted Soul)",
             "Xibaqua (Divine Flesh)",
-            "Ahuana (Immortal Ambition)",
+            // TreeTab.lua:1224 (07fa089bf)
+            "Mazcotl (Immortal Ambition)",
         ],
         2 => vec![
             "Any",
@@ -860,8 +861,8 @@ fn jewel_item_text(data: &ResultRow, shared: &Shared) -> String {
     match shared.jewel {
         1 => three(
             "Glorious Vanity",
-            ["Doryani (Corrupted Soul)", "Xibaqua (Divine Flesh)", "Ahuana (Immortal Ambition)"],
-            ["Doryani", "Xibaqua", "Ahuana"].map(|n| format!("Bathed in the blood of {seed} sacrificed in the name of {n}")),
+            ["Doryani (Corrupted Soul)", "Xibaqua (Divine Flesh)", "Mazcotl (Immortal Ambition)"],
+            ["Doryani", "Xibaqua", "Mazcotl"].map(|n| format!("Bathed in the blood of {seed} sacrificed in the name of {n}")),
             "Vaal",
         ),
         2 => three(
@@ -1095,7 +1096,9 @@ fn search_single_socket(g: &mut Gfx, socket_id: f64) -> Option<SearchResult> {
     let mut target_nodes: Vec<u32> = Vec::new();
     let (mut attribute_smalls, mut other_smalls) = (0.0, 0.0);
     for &id in radius_nodes.iter().filter(|_| !is_abyss) {
-        let n = tree.node(id).expect("radius node");
+        let n = tree
+            .node(id)
+            .unwrap_or_else(|| panic!("radius node {id} of socket {} not in tree {}", tn.id, tree.tree_version));
         if !root_nodes.contains(&id)
             && !n.is_jewel_socket
             && n.ty != pob_tree::NodeType::Keystone

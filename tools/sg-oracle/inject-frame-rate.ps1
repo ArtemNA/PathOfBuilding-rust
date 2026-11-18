@@ -2,12 +2,13 @@
 #   pwsh tools/sg-oracle/run.ps1 -Script frame-rate-probe.lua -Inject inject-frame-rate.ps1
 param($Process, [string]$Out)
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'hidden-desktop.ps1') # the hidden desktop: no window on the user's monitors (SG_VISIBLE=1: visible)
 Add-Type -Namespace SgOracle -Name R -MemberDefinition @"
 [DllImport("user32.dll")] public static extern bool PostMessageW(IntPtr h, uint m, IntPtr w, IntPtr l);
 "@
 for ($i = 0; $i -lt 100 -and -not (Test-Path "$Out\ready"); $i++) { Start-Sleep -Milliseconds 100 }
 Start-Sleep -Milliseconds 500
-$Process.Refresh(); $h = $Process.MainWindowHandle
+$h = Get-SgWindow -Process $Process
 function P([uint32]$msg, [int64]$w, [int64]$l) { [void][SgOracle.R]::PostMessageW($h, $msg, [IntPtr]$w, [IntPtr]$l) }
 function Mark([int]$n) { P 0x0102 (64 + $n) 1 }
 # Posts moves every $periodMs for $ms, spinning: Start-Sleep cannot wait 1 ms.

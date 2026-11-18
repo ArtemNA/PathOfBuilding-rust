@@ -88,18 +88,18 @@ pub(super) fn hit_damage(off: &mut Off<'_>, pi: usize, hit_rate: f64, quantity_m
         let lvl = e
             .granted_effect_level
             .and_then(|l| ge.level(l))
-            .unwrap_or_else(|| panic!("{LUA}:3350: attempt to index field 'grantedEffectLevel' (a nil value)"));
+            .unwrap_or_else(|| panic!("{LUA}:3359: attempt to index field 'grantedEffectLevel' (a nil value)"));
         (lvl.base_multiplier, lvl.damage_effectiveness)
     };
     for dt in DMG_TYPE_LIST {
         let (dmin, dmax) = (format!("{dt}Min"), format!("{dt}Max"));
-        let base_multiplier = lvl_base_mult.or_else(|| off.sd_num("baseMultiplier", 3350)).unwrap_or(1.0);
-        let damage_effectiveness = lvl_dmg_eff.or_else(|| off.sd_num("damageEffectiveness", 3351)).unwrap_or(1.0);
+        let base_multiplier = lvl_base_mult.or_else(|| off.sd_num("baseMultiplier", 3359)).unwrap_or(1.0);
+        let damage_effectiveness = lvl_dmg_eff.or_else(|| off.sd_num("damageEffectiveness", 3360)).unwrap_or(1.0);
         let c = Some(off.pcfg(pi));
         let added_min = q.base(c, &[&dmin]) + dsum(&off.enemy_db, ModType::Base, c, &[&format!("Self{dmin}")]);
         let added_max = q.base(c, &[&dmax]) + dsum(&off.enemy_db, ModType::Base, c, &[&format!("Self{dmax}")]);
         let added_mult = q.calc_mod(c, &[&format!("Added{dt}Damage"), "AddedDamage"]);
-        let src = |k: &str| off.source_num(pi, k, 3355).unwrap_or(0.0);
+        let src = |k: &str| off.source_num(pi, k, 3364).unwrap_or(0.0);
         let base_min = (src(&dmin) + src(&format!("{dt}BonusMin"))) * base_multiplier + added_min * damage_effectiveness * added_mult;
         let base_max = (src(&dmax) + src(&format!("{dt}BonusMax"))) * base_multiplier + added_max * damage_effectiveness * added_mult;
         off.pset_num(pi, &format!("{dmin}Base"), base_min);
@@ -193,10 +193,10 @@ pub(super) fn hit_damage(off: &mut Off<'_>, pi: usize, hit_rate: f64, quantity_m
                     .pass_conversion(pi)
                     .get(dt)
                     .map(|e| e.mult)
-                    .unwrap_or_else(|| panic!("{LUA}:3411: attempt to index a nil value"));
+                    .unwrap_or_else(|| panic!("{LUA}:3420: attempt to index a nil value"));
                 // :3412-3439
                 if pass == 2 && off.breakdown {
-                    let pn = |off: &Off<'_>, k: &str| num_at(off.pval(pi, k), k, 3418);
+                    let pn = |off: &Off<'_>, k: &str| num_at(off.pval(pi, k), k, 3427);
                     let mut lines = vec!["Hit damage:".to_owned(), sf!("%d to %d ^8(total damage)", hit_min, hit_max)];
                     if conv_mult != 1.0 {
                         lines.push(sf!(
@@ -238,11 +238,11 @@ pub(super) fn hit_damage(off: &mut Off<'_>, pi: usize, hit_rate: f64, quantity_m
                     if fow != 1.0 {
                         lines.push(sf!("x %.2f ^8(fist of war effect modifier)", fow));
                     }
-                    let owe = num_at(off.gval("OffensiveWarcryEffect"), "OffensiveWarcryEffect", 3433);
+                    let owe = num_at(off.gval("OffensiveWarcryEffect"), "OffensiveWarcryEffect", 3442);
                     if owe != 1.0 && !q.flag(None, &["Condition:WarcryMaxHit"]) {
                         lines.push(sf!("x %.2f ^8(aggregated warcry exerted effect modifier)", owe));
                     }
-                    let mowe = num_at(off.gval("MaxOffensiveWarcryEffect"), "MaxOffensiveWarcryEffect", 3436);
+                    let mowe = num_at(off.gval("MaxOffensiveWarcryEffect"), "MaxOffensiveWarcryEffect", 3445);
                     if mowe != 1.0 && q.flag(None, &["Condition:WarcryMaxHit"]) {
                         lines.push(sf!("x %.2f ^8(aggregated max warcry exerted effect modifier)", mowe));
                     }
@@ -255,19 +255,19 @@ pub(super) fn hit_damage(off: &mut Off<'_>, pi: usize, hit_rate: f64, quantity_m
                 }
                 let warcry_max_hit = q.flag(None, &["Condition:WarcryMaxHit"]);
                 let warcry = if warcry_max_hit {
-                    num_at(off.gval("MaxOffensiveWarcryEffect"), "MaxOffensiveWarcryEffect", 3441)
+                    num_at(off.gval("MaxOffensiveWarcryEffect"), "MaxOffensiveWarcryEffect", 3450)
                 } else {
-                    num_at(off.gval("OffensiveWarcryEffect"), "OffensiveWarcryEffect", 3443)
+                    num_at(off.gval("OffensiveWarcryEffect"), "OffensiveWarcryEffect", 3452)
                 };
                 let all_mult = conv_mult
-                    * num_at(off.pval(pi, "ScaledDamageEffect"), "ScaledDamageEffect", 3441)
-                    * num_at(off.pval(pi, "RuthlessBlowHitEffect"), "RuthlessBlowHitEffect", 3441)
-                    * num_at(off.pval(pi, "FistOfWarDamageEffect"), "FistOfWarDamageEffect", 3441)
+                    * num_at(off.pval(pi, "ScaledDamageEffect"), "ScaledDamageEffect", 3450)
+                    * num_at(off.pval(pi, "RuthlessBlowHitEffect"), "RuthlessBlowHitEffect", 3450)
+                    * num_at(off.pval(pi, "FistOfWarDamageEffect"), "FistOfWarDamageEffect", 3450)
                     * warcry;
                 off.pset_num(pi, "allMult", all_mult);
                 let mut all_mult = all_mult;
                 if pass == 1 {
-                    all_mult *= num_at(off.pval(pi, "CritMultiplier"), "CritMultiplier", 3448);
+                    all_mult *= num_at(off.pval(pi, "CritMultiplier"), "CritMultiplier", 3457);
                 }
                 hit_min *= all_mult;
                 hit_max *= all_mult;
@@ -290,20 +290,24 @@ pub(super) fn hit_damage(off: &mut Off<'_>, pi: usize, hit_rate: f64, quantity_m
                     lucky_chance -= 1.0;
                 }
                 let mut rolls = lucky_chance;
+                // CalcOffence.lua:3506-3523 (07fa089bf): `luckRolls`, the extra rolls when lucky, apart from the chance
+                let mut luck_rolls = 1.0;
                 if q.flag(sc, &["ExtremeLuck"]) {
                     rolls *= 2.0;
+                    luck_rolls = 2.0;
                 }
                 if q.flag(sc, &["Unexciting"]) {
                     rolls = 0.0;
+                    luck_rolls = 0.0;
                 }
                 off.pset_num(pi, "DamageRolls", rolls);
                 if pass == 1 {
                     off.pset_num(pi, "CritDamageRolls", rolls);
                 }
-                let rolls = rolls.abs() + 2.0;
-                let avg_not_lucky = hit_min / rolls + hit_max / rolls;
-                let avg_lucky = hit_min / rolls + (rolls - 1.0) * hit_max / rolls;
-                let avg_unlucky = (rolls - 1.0) * hit_min / rolls + hit_max / rolls;
+                let luck_rolls = luck_rolls + 2.0;
+                let avg_not_lucky = (hit_min + hit_max) / 2.0;
+                let avg_lucky = (hit_min + (luck_rolls - 1.0) * hit_max) / luck_rolls;
+                let avg_unlucky = ((luck_rolls - 1.0) * hit_min + hit_max) / luck_rolls;
                 hit_avg = if lucky_chance >= 0.0 {
                     avg_not_lucky * (1.0 - lucky_chance) + avg_lucky * lucky_chance
                 } else {
@@ -420,16 +424,16 @@ pub(super) fn hit_damage(off: &mut Off<'_>, pi: usize, hit_rate: f64, quantity_m
                 total_hit_max += hit_max;
             }
         }
-        if let Some(v) = off.sd_num("lifeLeechPerUse", 3664)
+        if let Some(v) = off.sd_num("lifeLeechPerUse", 3678)
             && !no_life_leech
         {
             life_leech_total += v;
         }
-        if let Some(v) = off.sd_num("manaLeechPerUse", 3667) {
+        if let Some(v) = off.sd_num("manaLeechPerUse", 3681) {
             mana_leech_total += v;
         }
         // :3670-3680 leech caps per instance
-        let g = |off: &Off<'_>, k: &str| num_at(off.gval(k), k, 3672);
+        let g = |off: &Off<'_>, k: &str| num_at(off.gval(k), k, 3686);
         life_leech_total = if ghost_reaver {
             min2(life_leech_total, g(off, "MaxEnergyShieldLeechInstance"))
         } else {
@@ -440,24 +444,24 @@ pub(super) fn hit_damage(off: &mut Off<'_>, pi: usize, hit_rate: f64, quantity_m
         if ghost_reaver && no_es_leech {
             life_leech_total = 0.0;
         }
-        let cc = num_at(off.pval(pi, "CritChance"), "CritChance", 3682);
+        let cc = num_at(off.pval(pi, "CritChance"), "CritChance", 3696);
         let portion = if pass == 1 { cc / 100.0 } else { 1.0 - cc / 100.0 };
         if ghost_reaver {
             ghost_reaver_life_leech += life_leech_total * portion;
         } else {
-            let v = num_at(off.pval(pi, "LifeLeech"), "LifeLeech", 3686) + life_leech_total * portion;
+            let v = num_at(off.pval(pi, "LifeLeech"), "LifeLeech", 3700) + life_leech_total * portion;
             off.pset_num(pi, "LifeLeech", v);
         }
-        let v = num_at(off.pval(pi, "EnergyShieldLeech"), "EnergyShieldLeech", 3688) + es_leech_total * portion;
+        let v = num_at(off.pval(pi, "EnergyShieldLeech"), "EnergyShieldLeech", 3702) + es_leech_total * portion;
         off.pset_num(pi, "EnergyShieldLeech", v);
-        let v = num_at(off.pval(pi, "ManaLeech"), "ManaLeech", 3689) + mana_leech_total * portion;
+        let v = num_at(off.pval(pi, "ManaLeech"), "ManaLeech", 3703) + mana_leech_total * portion;
         off.pset_num(pi, "ManaLeech", v);
     }
     off.pset_num(pi, "TotalMin", total_hit_min);
     off.pset_num(pi, "TotalMax", total_hit_max);
 
     // :3694-3699 Elemental Equilibrium
-    let hit_avg_of = |off: &Off<'_>, dt: &str| num_at(off.pval(pi, &format!("{dt}HitAverage")), "HitAverage", 3694);
+    let hit_avg_of = |off: &Off<'_>, dt: &str| num_at(off.pval(pi, &format!("{dt}HitAverage")), "HitAverage", 3708);
     if q.flag(Some(&off.cfg), &["ElementalEquilibrium"])
         && !config_truthy(off, "EEIgnoreHitDamage")
         && (hit_avg_of(off, "Fire") + hit_avg_of(off, "Cold") + hit_avg_of(off, "Lightning") > 0.0)
@@ -639,7 +643,7 @@ pub(super) fn hit_damage(off: &mut Off<'_>, pi: usize, hit_rate: f64, quantity_m
     }
     let average_damage = average_hit * pnum(off, "HitChance", 3796) / 100.0;
     off.pset_num(pi, "AverageDamage", average_damage);
-    let burst_hits = or_num(off.pval(pi, "AverageBurstHits"), 1.0, "AverageBurstHits", 3797);
+    let burst_hits = or_num(off.pval(pi, "AverageBurstHits"), 1.0, "AverageBurstHits", 3811);
     off.gset("AverageBurstHits", burst_hits);
     let repeat_penalty = if q.flag(None, &["HasSeals"]) && off.has_type("CanRapidFire") && !q.flag(None, &["NoRepeatBonuses"]) {
         q.calc_mod(Some(&off.cfg), &["SealRepeatPenalty"])
@@ -652,15 +656,15 @@ pub(super) fn hit_damage(off: &mut Off<'_>, pi: usize, hit_rate: f64, quantity_m
     );
     off.out().set_bool("ShowBurst", burst_hits > 1.0);
     let dps_mult = off
-        .sd_num("dpsMultiplier", 3801)
-        .unwrap_or_else(|| panic!("{LUA}:3801: attempt to perform arithmetic on field 'dpsMultiplier' (a nil value)"));
-    let total_dps = average_damage * off.g_hit_speed(3801) * dps_mult * quantity_multiplier;
+        .sd_num("dpsMultiplier", 3815)
+        .unwrap_or_else(|| panic!("{LUA}:3815: attempt to perform arithmetic on field 'dpsMultiplier' (a nil value)"));
+    let total_dps = average_damage * off.g_hit_speed(3815) * dps_mult * quantity_multiplier;
     off.pset_num(pi, "TotalDPS", total_dps);
     // :3802-3834
     if off.breakdown {
         if pnum(off, "CritEffect", 3803) != 1.0 {
-            let dr = or_num(off.pval(pi, "DamageRolls"), 0.0, "DamageRolls", 3805);
-            let cr = or_num(off.pval(pi, "CritDamageRolls"), 0.0, "CritDamageRolls", 3806);
+            let dr = or_num(off.pval(pi, "DamageRolls"), 0.0, "DamageRolls", 3819);
+            let cr = or_num(off.pval(pi, "CritDamageRolls"), 0.0, "CritDamageRolls", 3820);
             let (rolls, rolls_crit) = (dr.abs() + 2.0, cr.abs() + 2.0);
             let mut t = BTable::new();
             if dr > 0.0 {
@@ -726,7 +730,7 @@ pub(super) fn hit_damage(off: &mut Off<'_>, pi: usize, hit_rate: f64, quantity_m
         }
     }
     // :3835-3854
-    let burst = num_at(off.gval("AverageBurstDamage"), "AverageBurstDamage", 3835);
+    let burst = num_at(off.gval("AverageBurstDamage"), "AverageBurstDamage", 3849);
     if off.breakdown && burst > 0.0 {
         let hc = pnum(off, "HitChance", 3838);
         let mut t = BTable::lines([sf!("%.1f ^8(average hit)", average_hit)]);
@@ -796,8 +800,8 @@ fn enemy_eff_mult(off: &mut Off<'_>, q: &super::Q, pi: usize, pass: u8, dt: &'st
         1.0 - chance / 100.0
     };
     if dt == "Physical" {
-        let cc = num_at(off.pval(pi, "CritChance"), "CritChance", 3506);
-        let stored = num_at(off.pval(pi, "impaleStoredHitAvg"), "impaleStoredHitAvg", 3506)
+        let cc = num_at(off.pval(pi, "CritChance"), "CritChance", 3519);
+        let stored = num_at(off.pval(pi, "impaleStoredHitAvg"), "impaleStoredHitAvg", 3519)
             + if pass == 1 {
                 hit_avg * (cc / 100.0)
             } else {
@@ -870,7 +874,14 @@ fn enemy_eff_mult(off: &mut Off<'_>, q: &super::Q, pi: usize, pass: u8, dt: &'st
         }
     }
     let c = Some(off.pcfg(pi));
-    let invert_ele = max2(min2(q.sum(ModType::Chance, c, &["HitsInvertEleResChance"]), 1.0), 0.0);
+    // CalcOffence.lua:3609-3610 (07fa089bf): plus the element-specific inversion chance
+    let invert_ele = max2(
+        min2(
+            q.sum(ModType::Chance, c, &["HitsInvertEleResChance", &format!("HitsInvert{dt}ResChance")]),
+            1.0,
+        ),
+        0.0,
+    );
     let invert_chaos = max2(min2(q.sum(ModType::Chance, c, &["HitsInvertChaosResChance"]), 1.0), 0.0);
     let invert = if is_elemental(dt) {
         invert_ele
@@ -956,18 +967,18 @@ fn pvp(off: &mut Off<'_>, pi: usize, total_hit_min: f64, total_hit_max: f64) {
     let mut t = match off.env.config.input.get("multiplierPvpTvalueOverride") {
         None | Some(pob_build::ConfigValue::Bool(false)) => None,
         Some(pob_build::ConfigValue::Num(x)) => Some(*x / 1000.0),
-        Some(o) => panic!("{LUA}:3876: attempt to perform arithmetic on local 'PvpTvalue' ({o:?})"),
+        Some(o) => panic!("{LUA}:3890: attempt to perform arithmetic on local 'PvpTvalue' ({o:?})"),
     };
     if t.is_none() {
-        let asm = || num_at(off.gval("ActionSpeedMod"), "ActionSpeedMod", 3881);
-        let mut v = if let Some(cd) = off.sd_num("cooldown", 3879) {
+        let asm = || num_at(off.gval("ActionSpeedMod"), "ActionSpeedMod", 3895);
+        let mut v = if let Some(cd) = off.sd_num("cooldown", 3893) {
             cd
         } else if off.flag("mine") {
-            or_num(off.pval(pi, "MineLayingTime"), 1.0, "MineLayingTime", 3881) / asm()
+            or_num(off.pval(pi, "MineLayingTime"), 1.0, "MineLayingTime", 3895) / asm()
         } else if off.flag("trap") {
-            or_num(off.pval(pi, "TrapThrowingTime"), 1.0, "TrapThrowingTime", 3883) / asm()
+            or_num(off.pval(pi, "TrapThrowingTime"), 1.0, "TrapThrowingTime", 3897) / asm()
         } else {
-            1.0 / (off.g_hit_speed(3885) / asm()) * q.more(Some(off.pcfg(pi)), &["PvpTvalueMultiplier"])
+            1.0 / (off.g_hit_speed(3899) / asm()) * q.more(Some(off.pcfg(pi)), &["PvpTvalueMultiplier"])
         };
         if v > 2_147_483_647.0 {
             v = 1.0;
@@ -982,7 +993,7 @@ fn pvp(off: &mut Off<'_>, pi: usize, total_hit_min: f64, total_hit_max: f64) {
         misc("PvpElemental1"),
         misc("PvpElemental2"),
     );
-    let pn = |off: &Off<'_>, k: &str| num_at(off.pval(pi, k), k, 3898);
+    let pn = |off: &Off<'_>, k: &str| num_at(off.pval(pi, k), k, 3912);
     let pct_non_ele = (pn(off, "PhysicalHitAverage") + pn(off, "ChaosHitAverage")) / (total_hit_min + total_hit_max) * 2.0;
     let pct_ele = 1.0 - pct_non_ele;
     let avg_hit = pn(off, "AverageHit");
@@ -991,9 +1002,9 @@ fn pvp(off: &mut Off<'_>, pi: usize, total_hit_min: f64, total_hit_max: f64) {
     let mut pvp_hit = (portion_non_ele + portion_ele) * mult;
     let mut pvp_dmg = pvp_hit * pn(off, "HitChance") / 100.0;
     let dps_mult = off
-        .sd_num("dpsMultiplier", 3904)
-        .unwrap_or_else(|| panic!("{LUA}:3904: attempt to perform arithmetic on field 'dpsMultiplier' (a nil value)"));
-    let mut pvp_dps = pvp_dmg * off.g_hit_speed(3904) * dps_mult;
+        .sd_num("dpsMultiplier", 3918)
+        .unwrap_or_else(|| panic!("{LUA}:3918: attempt to perform arithmetic on field 'dpsMultiplier' (a nil value)"));
+    let mut pvp_dps = pvp_dmg * off.g_hit_speed(3918) * dps_mult;
     if pvp_hit.is_nan() {
         pvp_hit = 0.0;
     }
@@ -1160,17 +1171,17 @@ pub(super) fn after_passes(off: &mut Off<'_>, quantity_multiplier: f64) {
                         let lines = match off.pbd(pi).and_then(|b| b.get(crit_stat)) {
                             Some(BVal::Table(t)) => Some(t.list.clone()),
                             Some(BVal::Bool(false)) | None => None,
-                            Some(other) => panic!("{LUA}:3998: bad argument #1 to 'ipairs' (table expected, got {other:?})"),
+                            Some(other) => panic!("{LUA}:4012: bad argument #1 to 'ipairs' (table expected, got {other:?})"),
                         };
                         match lines {
                             Some(l) => combined.list.extend(l),
                             None => {
-                                let v = num_at(off.pval(pi, crit_stat), crit_stat, 4002);
+                                let v = num_at(off.pval(pi, crit_stat), crit_stat, 4016);
                                 combined.push(sf!("%.2f%%", v));
                             }
                         }
                     }
-                    combined.push(sf!("= %.2f%% ^8(average)", num_at(off.gval(crit_stat), crit_stat, 4005)));
+                    combined.push(sf!("= %.2f%% ^8(average)", num_at(off.gval(crit_stat), crit_stat, 4019)));
                     off.bd_put(crit_stat, combined);
                 }
             } else {
@@ -1195,7 +1206,7 @@ pub(super) fn after_passes(off: &mut Off<'_>, quantity_multiplier: f64) {
                         }
                     }
                     None | Some(BVal::Bool(false)) => {}
-                    Some(other) => panic!("{LUA}:4015: attempt to index field '{k}' ({other:?})"),
+                    Some(other) => panic!("{LUA}:4029: attempt to index field '{k}' ({other:?})"),
                 }
             }
         }
@@ -1204,26 +1215,26 @@ pub(super) fn after_passes(off: &mut Off<'_>, quantity_multiplier: f64) {
             use super::b::hand_num;
             let double = off.sd_truthy("doubleHitsWhenDualWielding");
             let mut t = BTable::lines(["Both weapons:".to_owned()]);
-            let (m, o) = (hand_num(off, 0, "AverageDamage", 4026), hand_num(off, 1, "AverageDamage", 4026));
+            let (m, o) = (hand_num(off, 0, "AverageDamage", 4040), hand_num(off, 1, "AverageDamage", 4040));
             if double {
                 t.push(sf!("%.1f + %.1f ^8(skill hits with both weapons at once)", m, o));
             } else {
                 t.push(sf!("(%.1f + %.1f) / 2 ^8(skill alternates weapons)", m, o));
             }
-            t.push(sf!("= %.1f", num_at(off.gval("AverageDamage"), "AverageDamage", 4030)));
+            t.push(sf!("= %.1f", num_at(off.gval("AverageDamage"), "AverageDamage", 4044)));
             off.bd_put("AverageDamage", t);
             if off.flag("isPvP") {
                 let mut t = BTable::lines(["Both weapons:".to_owned()]);
                 let (m, o) = (
-                    hand_num(off, 0, "PvpAverageDamage", 4035),
-                    hand_num(off, 1, "PvpAverageDamage", 4035),
+                    hand_num(off, 0, "PvpAverageDamage", 4049),
+                    hand_num(off, 1, "PvpAverageDamage", 4049),
                 );
                 if double {
                     t.push(sf!("%.1f + %.1f ^8(skill hits with both weapons at once)", m, o));
                 } else {
                     t.push(sf!("(%.1f + %.1f) / 2 ^8(skill alternates weapons)", m, o));
                 }
-                t.push(sf!("= %.1f", num_at(off.gval("PvpAverageDamage"), "PvpAverageDamage", 4039)));
+                t.push(sf!("= %.1f", num_at(off.gval("PvpAverageDamage"), "PvpAverageDamage", 4053)));
                 off.bd_put("PvpAverageDamage", t);
             }
         }
@@ -1232,24 +1243,24 @@ pub(super) fn after_passes(off: &mut Off<'_>, quantity_multiplier: f64) {
     if off.env.mode == "CALCS" {
         let nf = crate::power::NumberFormat::default();
         let text = if off.sd_truthy("showAverage") {
-            let v = num_at(off.gval("AverageDamage"), "AverageDamage", 4046);
+            let v = num_at(off.gval("AverageDamage"), "AverageDamage", 4060);
             format!("{} average damage", crate::power::format_num_sep(&sf!("%.1f", v), &nf))
         } else {
-            let v = num_at(off.gval("TotalDPS"), "TotalDPS", 4048);
+            let v = num_at(off.gval("TotalDPS"), "TotalDPS", 4062);
             format!("{} DPS", crate::power::format_num_sep(&sf!("%.1f", v), &nf))
         };
         off.out().set_str("DisplayDamage", &text);
     }
     // :4051-4094
     if off.breakdown {
-        let g = |off: &Off<'_>, k: &str| num_at(off.gval(k), k, 4053);
+        let g = |off: &Off<'_>, k: &str| num_at(off.gval(k), k, 4067);
         let rate = |off: &Off<'_>, what: &str| match off.gval("HitSpeed") {
             Some(OutValue::Num(h)) => sf!("x %.2f ^8(hit rate)", *h),
             None | Some(OutValue::Bool(false)) => crate::breakdown::format(
                 &format!("x %.2f ^8({what} rate)"),
-                &[pob_lua::Arg::Num(num_at(off.gval("Speed"), "Speed", 4055))],
+                &[pob_lua::Arg::Num(num_at(off.gval("Speed"), "Speed", 4069))],
             ),
-            Some(o) => panic!("{LUA}:4055: bad argument #2 to 'format' ({o:?})"),
+            Some(o) => panic!("{LUA}:4069: bad argument #2 to 'format' ({o:?})"),
         };
         let avg = g(off, "AverageDamage");
         let mut t = if off.is_attack {
@@ -1260,8 +1271,8 @@ pub(super) fn after_passes(off: &mut Off<'_>, quantity_multiplier: f64) {
             BTable::lines([sf!("%.1f ^8(average hit)", avg), rate(off, "cast")])
         };
         let dps_mult = off
-            .sd_num("dpsMultiplier", 4068)
-            .unwrap_or_else(|| panic!("{LUA}:4068: attempt to compare number with nil"));
+            .sd_num("dpsMultiplier", 4082)
+            .unwrap_or_else(|| panic!("{LUA}:4082: attempt to compare number with nil"));
         if dps_mult != 1.0 {
             t.push(sf!("x %g ^8(DPS multiplier for this skill)", dps_mult));
         }
@@ -1294,14 +1305,14 @@ pub(super) fn after_passes(off: &mut Off<'_>, quantity_multiplier: f64) {
         match off.gval("SummonedMinionsPerCast") {
             Some(OutValue::Num(n)) => {
                 let n = *n;
-                let dps_mult = off.sd_num("dpsMultiplier", 4097).unwrap_or_else(|| {
-                    panic!("{LUA}:4097: attempt to perform arithmetic on field 'dpsMultiplier' (a nil value)")
+                let dps_mult = off.sd_num("dpsMultiplier", 4111).unwrap_or_else(|| {
+                    panic!("{LUA}:4111: attempt to perform arithmetic on field 'dpsMultiplier' (a nil value)")
                 });
-                let v = n * off.g_hit_speed(4097) * dps_mult;
+                let v = n * off.g_hit_speed(4111) * dps_mult;
                 off.set_sd("summonSpeed", Value::Num(v));
             }
             _ => off.note(format!(
-                "{LUA}:4097 skillData.summonSpeed: output.SummonedMinionsPerCast is not computed (:1057-1065, activeSkill.minion.minionData, R7.10)"
+                "{LUA}:4111 skillData.summonSpeed: output.SummonedMinionsPerCast is not computed (:1057-1065, activeSkill.minion.minionData, R7.10)"
             )),
         }
     }
@@ -1371,9 +1382,9 @@ pub(super) fn after_passes(off: &mut Off<'_>, quantity_multiplier: f64) {
     // :4142-4153
     if off.breakdown {
         let dps_mult = off
-            .sd_num("dpsMultiplier", 4143)
-            .unwrap_or_else(|| panic!("{LUA}:4143: attempt to perform arithmetic on field 'dpsMultiplier' (a nil value)"));
-        let hit_rate = g(off, "HitChance", 4143) / 100.0 * off.g_hit_speed(4143) * dps_mult;
+            .sd_num("dpsMultiplier", 4157)
+            .unwrap_or_else(|| panic!("{LUA}:4157: attempt to perform arithmetic on field 'dpsMultiplier' (a nil value)"));
+        let hit_rate = g(off, "HitChance", 4143) / 100.0 * off.g_hit_speed(4157) * dps_mult;
         let show_average = off.sd_truthy("showAverage");
         for (flag, pool, key, line) in [
             ("leechLife", "Life", "LifeLeech", 4145),

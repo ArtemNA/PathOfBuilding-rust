@@ -60,9 +60,9 @@ fn every_cache_line_hits_with_an_equal_copy() {
         }
     }
     let s = parse_mod_stats();
-    // 3dbca4463 (R-UP): 23 201 records, 23 334 mods (data/mod-cache.json counted by node; pob-data tests/loaders.rs)
-    assert_eq!((s.hits, s.misses), (23_201, 0));
-    assert_eq!(mods, 23_334);
+    // 07fa089bf (R-UP2): 23 277 records, 23 400 mods (data/mod-cache.json counted by node; pob-data tests/loaders.rs)
+    assert_eq!((s.hits, s.misses), (23_277, 0));
+    assert_eq!(mods, 23_400);
 }
 
 #[test]

@@ -855,6 +855,7 @@ Trigger a Socketed Cold Spell on Melee Critical Strike, with a 0.25 second Coold
 		</Item>
 		<ItemSet id="1" useSecondWeaponSet="false">
 			<Slot itemId="28" itemPbURL="" name="Amulet"/>
+			<Slot itemId="0" itemPbURL="" name="Arm"/>
 			<Slot itemId="18" itemPbURL="" name="Belt"/>
 			<Slot itemId="0" itemPbURL="" name="Belt Abyssal Socket 1"/>
 			<Slot itemId="0" itemPbURL="" name="Belt Abyssal Socket 2"/>
@@ -862,6 +863,7 @@ Trigger a Socketed Cold Spell on Melee Critical Strike, with a 0.25 second Coold
 			<Slot itemId="0" itemPbURL="" name="Belt Abyssal Socket 4"/>
 			<Slot itemId="0" itemPbURL="" name="Belt Abyssal Socket 5"/>
 			<Slot itemId="0" itemPbURL="" name="Belt Abyssal Socket 6"/>
+			<Slot itemId="0" itemPbURL="" name="Body"/>
 			<Slot itemId="24" itemPbURL="" name="Body Armour"/>
 			<Slot itemId="0" itemPbURL="" name="Body Armour Abyssal Socket 1"/>
 			<Slot itemId="0" itemPbURL="" name="Body Armour Abyssal Socket 2"/>
@@ -890,6 +892,7 @@ Trigger a Socketed Cold Spell on Melee Critical Strike, with a 0.25 second Coold
 			<Slot itemId="0" itemPbURL="" name="Gloves Abyssal Socket 6"/>
 			<Slot itemId="0" itemPbURL="" name="Graft 1"/>
 			<Slot itemId="0" itemPbURL="" name="Graft 2"/>
+			<Slot itemId="0" itemPbURL="" name="Head"/>
 			<Slot itemId="16" itemPbURL="" name="Helmet"/>
 			<Slot itemId="0" itemPbURL="" name="Helmet Abyssal Socket 1"/>
 			<Slot itemId="0" itemPbURL="" name="Helmet Abyssal Socket 2"/>
@@ -909,6 +912,7 @@ Trigger a Socketed Cold Spell on Melee Critical Strike, with a 0.25 second Coold
 			<SocketIdURL itemPbURL="" name="Jewel 7960" nodeId="7960"/>
 			<SocketIdURL itemPbURL="" name="Jewel 9408" nodeId="9408"/>
 			<SocketIdURL itemPbURL="" name="Jewel 9797" nodeId="9797"/>
+			<Slot itemId="0" itemPbURL="" name="Leg"/>
 			<Slot itemId="14" itemPbURL="" name="Ring 1"/>
 			<Slot itemId="19" itemPbURL="" name="Ring 2"/>
 			<Slot itemId="0" itemPbURL="" name="Ring 3"/>

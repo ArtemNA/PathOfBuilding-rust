@@ -390,8 +390,10 @@ end
 function runner:Step()
 	self.frames = self.frames + 1
 	if not self.sc then
+		-- the wait for the build list is bounded in time, not frames (frames are not vsync-bound on the hidden desktop)
+		self.idleSince = self.idleSince or realGetTime()
 		local ok, bg = pcall(function() return main.tree[latestTreeVersion].assets.Background2.handle end)
-		if not ok or launch.promptMsg or self.frames > 900 + 2000 * self.idx then
+		if not ok or launch.promptMsg or realGetTime() - self.idleSince > 120000 then
 			writeAll(OUT .. "startup-error.json", json.encode({ err = tostring(bg), prompt = launch.promptMsg or "nil" }, { indent = true }))
 			return self:Finish()
 		end
@@ -404,6 +406,10 @@ function runner:Step()
 		foregroundCalled = false
 		writeBuilds(name)
 		self.sc = { name = name, def = json.decode(readAll(base .. "/scenes/import/" .. name .. ".json"), 1, json.null), step = 0, dumps = { }, shots = { }, perf = { } }
+		self.idleSince = nil
+		-- every scenario starts without the popups the previous one left open (the Rust side starts each scenario in a new process)
+		while main.popups[1] do main:ClosePopup() end
+		for k in pairs(opened) do opened[k] = nil end -- and without the URLs it opened (tradeUrl dumps the last one)
 		if not self.uriScene then
 		netReplies, netQueue, netLog, osTimeFixed = { }, { }, { }, nil
 		main.api = new("PoEAPI"):PoEAPI(nil, nil, nil)

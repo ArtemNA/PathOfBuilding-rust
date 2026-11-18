@@ -233,22 +233,17 @@ impl Engine {
         Some((ge.name.clone(), ge.support))
     }
 
-    /// `getImbuedGem` (:4066-4070): `imbuedSupportBySlot[group.slot]`, else `data.gemForBaseName`; `None` without `group.imbuedSupport`. The name and `color` of the effect.
+    /// `getImbuedGem` (CompareTab.lua:4061-4080, 07fa089bf): `imbuedSupportBySlot[group.slot]`, else
+    /// `skillsTab:FindImbuedSupport(group.imbuedSupport)` (the skills tab is always given here); `None` without
+    /// `group.imbuedSupport`. The name and `color` of the effect.
     pub fn compare_imbued_effect(&self, group: &pob_calc::skills_tab::SocketGroup) -> Option<(Option<String>, Option<f64>)> {
         let imbued = group.imbued_support.as_ref()?;
         let skills = self.skill_data();
-        let data = pob_data::gems::gems();
         let id = group
             .slot
             .as_ref()
             .and_then(|s| self.skills_tab().imbued_support_by_slot.get(s).cloned())
-            .or_else(|| {
-                let key = format!("{} support", imbued.to_ascii_lowercase());
-                data.gem_for_base_name
-                    .get(&key)
-                    .and_then(|g| data.gems.get(g))
-                    .map(|g| g.granted_effect_id.clone())
-            });
+            .or_else(|| pob_calc::skills_tab::find_imbued_support(imbued).map(|g| g.granted_effect_id.clone()));
         let ge = id.as_ref().and_then(|i| skills.get(i));
         Some((ge.map(|g| g.name.clone()), ge.and_then(|g| g.color)))
     }

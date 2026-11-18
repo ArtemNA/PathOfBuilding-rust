@@ -847,6 +847,7 @@ Gain 50 Life when you Stun an Enemy
 		</Item>
 		<ItemSet id="1" useSecondWeaponSet="false">
 			<Slot itemId="15" itemPbURL="" name="Amulet"/>
+			<Slot itemId="0" itemPbURL="" name="Arm"/>
 			<Slot itemId="29" itemPbURL="" name="Belt"/>
 			<Slot itemId="0" itemPbURL="" name="Belt Abyssal Socket 1"/>
 			<Slot itemId="0" itemPbURL="" name="Belt Abyssal Socket 2"/>
@@ -854,6 +855,7 @@ Gain 50 Life when you Stun an Enemy
 			<Slot itemId="0" itemPbURL="" name="Belt Abyssal Socket 4"/>
 			<Slot itemId="0" itemPbURL="" name="Belt Abyssal Socket 5"/>
 			<Slot itemId="0" itemPbURL="" name="Belt Abyssal Socket 6"/>
+			<Slot itemId="0" itemPbURL="" name="Body"/>
 			<Slot itemId="16" itemPbURL="" name="Body Armour"/>
 			<Slot itemId="0" itemPbURL="" name="Body Armour Abyssal Socket 1"/>
 			<Slot itemId="0" itemPbURL="" name="Body Armour Abyssal Socket 2"/>
@@ -882,6 +884,7 @@ Gain 50 Life when you Stun an Enemy
 			<Slot itemId="0" itemPbURL="" name="Gloves Abyssal Socket 6"/>
 			<Slot itemId="0" itemPbURL="" name="Graft 1"/>
 			<Slot itemId="0" itemPbURL="" name="Graft 2"/>
+			<Slot itemId="0" itemPbURL="" name="Head"/>
 			<Slot itemId="20" itemPbURL="" name="Helmet"/>
 			<Slot itemId="0" itemPbURL="" name="Helmet Abyssal Socket 1"/>
 			<Slot itemId="0" itemPbURL="" name="Helmet Abyssal Socket 2"/>
@@ -901,6 +904,7 @@ Gain 50 Life when you Stun an Enemy
 			<SocketIdURL itemPbURL="" name="Jewel 49080" nodeId="49080"/>
 			<SocketIdURL itemPbURL="" name="Jewel 55190" nodeId="55190"/>
 			<SocketIdURL itemPbURL="" name="Jewel 61666" nodeId="61666"/>
+			<Slot itemId="0" itemPbURL="" name="Leg"/>
 			<Slot itemId="27" itemPbURL="" name="Ring 1"/>
 			<Slot itemId="26" itemPbURL="" name="Ring 2"/>
 			<Slot itemId="0" itemPbURL="" name="Ring 3"/>

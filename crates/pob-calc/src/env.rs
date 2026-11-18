@@ -120,6 +120,9 @@ pub struct GrantedSkill {
     pub source_item: Option<Rc<Item>>,
     /// `sourceNode` as a node id.
     pub source_node: Option<u32>,
+    /// `itemRequirement` (07fa089bf: ModParser.lua:3435-3441 via Item.lua:2676-2677, or a Custom Modifier, CalcSetup.lua:1491-1499):
+    /// `{ multiplier = "<Influence>Item", count = n }`, nil for every other granted skill.
+    pub item_requirement: pob_mods::Value,
 }
 
 /// The function of a `radiusJewelList` entry.
@@ -223,6 +226,9 @@ pub struct Env {
     /// aligned with `granted_skills` / `granted_skills_items`.
     pub granted_skills_extra: Vec<crate::skills::GrantedSkillExtra>,
     pub granted_skills_items_extra: Vec<crate::skills::GrantedSkillExtra>,
+    /// `build.configTab.modList:List(nil, "ExtraSkill")` (CalcSetup.lua:1491, 07fa089bf) -- the config's lists are fixed for an env, so the
+    /// accelerated re-init (`concat_granted_skills`) reads them from here.
+    pub config_extra_skills: Vec<pob_mods::Value>,
     /// `env.explodeSources`: the nodes' (`buildModListForNodeList`), then the items' (:1423 `tableConcat`).
     pub explode_sources: Vec<crate::skills_tab::ExplodeSource>,
     pub item_warnings: IndexMap<String, Vec<String>>,

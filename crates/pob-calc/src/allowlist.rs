@@ -96,6 +96,8 @@
 //! mirage now emit (bleed / impale / poison / brittle / sap / scorch / shock, `HitSpeed`, `HitTime`, `MirageDPS`, `QuantityMultiplier`,
 //! `StrikeTargets`, `WeaponRange`, `Pvp*`, ...); none left ALLOWLIST; EXCLUDED 0 (`ReqIntString` -- the synthetic evidence of R6.6 --
 //! re-measured on `tests/defence_synth.rs`).
+//! R-UP2 (2.68.0, 07fa089bf) re-measured: 2 keys newly emitted and ok on every golden -- `MaximumLifeManaDifference` (CalcPerform) and
+//! `MissingUnreservedLifePercent` (CalcDefence) -- newly ALLOWLIST; none left ALLOWLIST.
 
 use indexmap::IndexMap;
 
@@ -722,6 +724,7 @@ pub const ALLOWLIST: &[&str] = &[
     "MaximumBrittle",
     "MaximumChill",
     "MaximumFortification",
+    "MaximumLifeManaDifference",
     "MaximumRage",
     "MaximumSap",
     "MaximumScorch",
@@ -741,6 +744,7 @@ pub const ALLOWLIST: &[&str] = &[
     "MissingTotemColdResist",
     "MissingTotemFireResist",
     "MissingTotemLightningResist",
+    "MissingUnreservedLifePercent",
     "MovementSpeedMod",
     "NumberOfDamagingHits",
     "NumberOfMitigatedDamagingHits",

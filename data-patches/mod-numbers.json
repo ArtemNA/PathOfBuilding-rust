@@ -1,4 +1,4 @@
-{"format":1,"producer":{"tool":"tools/lua-corpus/export-data-patch.ts","luajit":"LuaJIT 2.1.1784580905","pobSha":"3dbca4463c0a59079d9f7f032d8240cf868e09da"},"manifestSha256":"c81bb4388fd5c4ea2ab9332f035e8af94e49e44055e95b3171913c8ee94136a5","patches":[
+{"format":1,"producer":{"tool":"tools/lua-corpus/export-data-patch.ts","luajit":"LuaJIT 2.1.1784580905","pobSha":"07fa089bf08f6a089004c5c39192d12d210a13ac"},"manifestSha256":"dff139b79d9b600a5b9d4ac1a90c5da324a66e3082be8740c9cf95e62f3835ef","patches":[
 {"file":"mod-cache.json","path":["0% reduced Area of Effect for Attacks","mods",0,"value"],"value":"-0"},
 {"file":"mod-cache.json","path":["0% reduced Attack Speed","mods",0,"value"],"value":"-0"},
 {"file":"mod-cache.json","path":["0% reduced Charges per use","mods",0,"value"],"value":"-0"},
@@ -8,7 +8,6 @@
 {"file":"mod-cache.json","path":["0% reduced Mana Reservation Efficiency of Skills","mods",0,"value"],"value":"-0"},
 {"file":"mod-cache.json","path":["0% reduced Projectile Speed","mods",0,"value"],"value":"-0"},
 {"file":"mod-cache.json","path":["0% reduced Quantity of Items found","mods",0,"value"],"value":"-0"},
-{"file":"mod-cache.json","path":["0% reduced Rarity of Items found","mods",0,"value"],"value":"-0"},
 {"file":"mod-cache.json","path":["0% reduced Skill Effect Duration","mods",0,"value"],"value":"-0"},
 {"file":"mod-cache.json","path":["0% reduced maximum Life","mods",0,"value"],"value":"-0"},
 {"file":"mod-cache.json","path":["Curse Skills have 0% reduced Skill Effect Duration","mods",0,"value"],"value":"-0"},

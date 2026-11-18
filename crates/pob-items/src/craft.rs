@@ -313,7 +313,7 @@ impl Item {
             ml.set_flag_pub("mutated");
         }
         self.explicit_mod_lines
-            .insert(insert_idx.expect("Item.lua:1683: table.insert at nil"), ml);
+            .insert(insert_idx.expect("Item.lua:1697: table.insert at nil"), ml);
         self.build_and_parse_raw();
     }
 }
