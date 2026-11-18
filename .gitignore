@@ -8,6 +8,7 @@
 /tools/.scratch/
 *.log
 /tools/luajit-win/target/
+/tools/data-convert/target/
 
 # agent worktrees
 /.claude/worktrees/

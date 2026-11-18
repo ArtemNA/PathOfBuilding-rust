@@ -1,0 +1,17 @@
+# Prototype (R-INDEPENDENT-UPDATE, approach C): PoB's data straight from upstream's own LuaJIT into data/*.json, no pob-ts.
+#   1. lua/dump.lua runs in <pobRoot>/runtime/lua51.dll (tools/luajit-win), boots PoB headless and writes a generic,
+#      lossless dump of `data`, the post-boot globals and Data/ModCache.lua (closures with their upvalues included).
+#   2. this crate reads the dump and writes the data files; every pob-rust-specific shape decision lives here.
+# Not a workspace member (keeps the product workspace unchanged while this is a probe).
+#   cargo run --release --manifest-path tools/data-convert/Cargo.toml -- all --out <dir>
+[package]
+name = "data-convert"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+pob-data = { path = "../../crates/pob-data" }
+serde_json = { version = "1", features = ["float_roundtrip", "preserve_order"] }
+
+[workspace]
