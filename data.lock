@@ -5,24 +5,7 @@
   "manifestSha256": "58aa494499204f5257ddc916eceaab734123d84dbb446badf9c7187a819b9a70",
   "files": 93,
   "bytes": 133111581,
-  "source": "pob-ts converter @ 70911c1 + tools/convert-patches (0001-pob-ts-upstream-07fa089bf.patch) (tools/sync-data.ps1 -Convert) on tools/upstream.json pobRoot",
-  "wireFixups": [
-    {
-      "id": "itemBaseLists.searchFilter",
-      "upstream": "Modules/Data.lua:1261-1279 (3dbca4463, #10318 \"Search for items by modifier in craft item menu\")",
-      "why": "UI-only search string (name + implicit + enchant + flask/tincture buff lines, all already in itemBases); the item-bases extractor emits only {label,name} per entry and rejects unknown keys -- dropping it leaves its output identical."
-    },
-    {
-      "id": "itemBases.baseId",
-      "upstream": "Data/Bases/*.lua (07fa089bf, 0895c14ca #10455 \"Add Wickerman item data and character import support\")",
-      "why": "Metadata id of the base (`baseId = \"Metadata/Items/...\"`); no Lua in src/ reads it (grep `baseId` over src/Modules, src/Classes, src/*.lua: 0 hits) and the item-bases extractor rejects unknown keys -- dropping it changes nothing pob-rust consumes."
-    },
-    {
-      "id": "itemMods.tradeHashes.empty",
-      "upstream": "Data/ModItemExclusive.lua (07fa089bf: UniqueAnimateWeapon, GrantsCreateGrimBonfireSkillUnique__1, ... `tradeHashes = { }`)",
-      "why": "An empty Lua table has no array/record distinction; the wire serializer writes it as `[]`, the item-mods schema expects a record. Rewriting `[]` -> `{}` is the same Lua value (pairs over it yields nothing either way)."
-    }
-  ],
+  "source": "tools/data-convert @ dd80cb48 (tools/sync-data.ps1 -Convert, upstream runtime/lua51.dll) on tools/upstream.json pobRoot",
   "timelessLuts": {
     "source": "PathOfBuilding/src/Data/TimelessJewelData",
     "bytes": 177487738,

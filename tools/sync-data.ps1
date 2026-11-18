@@ -1,17 +1,16 @@
 #requires -Version 7
-# Mirror pob-ts/data into <repo>/data (manifest.files + manifest.json), verify sha256, write data.lock.
+# Convert the upstream PoB of tools/upstream.json into <repo>/data (manifest.files + manifest.json), verify sha256, write data.lock.
+# R-INDEPENDENT-UPDATE (2026-11-18): `-Convert` runs our own converter, no pob-ts, no WASM, no mirror:
+#   tools/data-convert (Rust) boots PoB headless in the upstream's own LuaJIT (runtime/lua51.dll through tools/luajit-win),
+#   dumps `data` and the other tables losslessly (lua/dump.lua, lua/dump-extra.lua) and writes data/*.json. A key the converters
+#   do not read is DRIFT (reported, dropped), a count is reported, never pinned; only a changed shape the port reads fails.
+#   Its report (drift, counts, `data.*` keys no converter read) goes to tools/.scratch/convert-<sha9>/report.txt: read it on an update.
 # R5.5c: also copy the timeless-jewel LUTs (PathOfBuilding/src/Data/TimelessJewelData/*.zip, *.zip.partN -- binary RFC1950
 # zlib streams, W6) verbatim into <repo>/data/timeless-luts/; the PoB checkout must be at the manifest's pobSha; the sha256 of
 # every LUT file goes into data.lock (`timelessLuts`). pob-data inflates them lazily (flate2); the PoB checkout is never read
 # at run time.
-# R-UP: `-Convert` runs the pob-ts converter (READ-ONLY: only executed) against the upstream of tools/upstream.json
-# instead of copying pob-ts/data (which stays at the sha pob-ts was converted for):
-#   1. tools/upstream-mirror.ps1 -- Lua-5.4-loadable mirror (`..=` desugared, see that script);
-#   2. `node <pob-ts>/tools/convert/cli.ts --wire-only` into tools/.scratch/convert-<sha9>/wire;
-#   3. tools/convert-fixups.ts -- drop wire fields the strict pob-ts extractors reject but pob-rust does not consume;
-#   4. `--extract-only` into tools/.scratch/convert-<sha9>/data, which then becomes -Source of the normal sync.
-# Defaults (PoB root, pob-ts root) come from tools/upstream.json; env POB_ROOT / POB_TS_ROOT override.
-# Usage: tools/sync-data.ps1 [-Convert] [-Source <path>] [-PobRoot <path>] [-Check]
+# The PoB root comes from tools/upstream.json; env POB_ROOT overrides.
+# Usage: tools/sync-data.ps1 -Convert | -Source <dir of a converted data/> [-PobRoot <path>] | -Check
 param(
     [string]$Source,
     [string]$PobRoot,
@@ -26,60 +25,30 @@ $lockPath = Join-Path $root 'data.lock'
 $lutRel = 'timeless-luts'
 $lutDest = Join-Path $dest $lutRel
 $upstreamCfg = Get-Content -LiteralPath (Join-Path $root 'tools\upstream.json') -Raw | ConvertFrom-Json
-$pobTsRoot = if ($env:POB_TS_ROOT) { $env:POB_TS_ROOT } else { $upstreamCfg.pobTsRoot }
 if (-not $PobRoot) {
     $PobRoot = if ($env:POB_ROOT) { $env:POB_ROOT } else { $upstreamCfg.pobRoot }
 }
-$sourceLabel = 'pob-ts/data'
-$wireFixups = @()
+$PobRoot = [IO.Path]::GetFullPath($PobRoot, $root)
+$sourceLabel = "-Source $Source"
 if ($Convert -and -not $Check) {
     $sha9 = $upstreamCfg.pobSha.Substring(0, 9)
     $work = Join-Path $root "tools\.scratch\convert-$sha9"
-    $wire = Join-Path $work 'wire'
     $Source = Join-Path $work 'data'
-    $mirrorOut = & pwsh -NoProfile -File (Join-Path $PSScriptRoot 'upstream-mirror.ps1')
-    if ($LASTEXITCODE -ne 0) { throw 'upstream-mirror.ps1 failed' }
-    Write-Output $mirrorOut
-    $mirror = if ($env:POB_WASM_ROOT) { $env:POB_WASM_ROOT } else { Join-Path $root $upstreamCfg.wasmMirror }
     if (Test-Path -LiteralPath $work) { Remove-Item -LiteralPath $work -Recurse -Force }
     New-Item -ItemType Directory -Force -Path $Source | Out-Null
-    # Converter patches (tools/convert-patches/*.patch): pob-ts is READ-ONLY, so a patched converter runs from a local
-    # `git clone --shared` of pob-ts at its HEAD in tools/.scratch/pob-ts-convert (node_modules = junction to pob-ts').
-    $convertRoot = $pobTsRoot
-    $patches = @(Get-ChildItem -LiteralPath (Join-Path $PSScriptRoot 'convert-patches') -Filter '*.patch' -ErrorAction SilentlyContinue | Sort-Object Name)
-    if ($patches.Count -gt 0) {
-        $tsSha = (& git -C $pobTsRoot rev-parse HEAD).Trim()
-        $convertRoot = Join-Path $root 'tools\.scratch\pob-ts-convert'
-        $nm = Join-Path $convertRoot 'node_modules'
-        # Unlink the junction first (non-recursive), never recurse into pob-ts' node_modules.
-        if (Test-Path -LiteralPath $nm) { [System.IO.Directory]::Delete($nm, $false) }
-        if (Test-Path -LiteralPath $convertRoot) { Remove-Item -LiteralPath $convertRoot -Recurse -Force }
-        & git clone -q --shared --no-checkout $pobTsRoot $convertRoot
-        if ($LASTEXITCODE -ne 0) { throw 'pob-ts clone failed' }
-        & git -C $convertRoot checkout -q --detach $tsSha
-        if ($LASTEXITCODE -ne 0) { throw 'pob-ts clone checkout failed' }
-        foreach ($p in $patches) {
-            & git -C $convertRoot apply --whitespace=nowarn $p.FullName
-            if ($LASTEXITCODE -ne 0) { throw "convert patch does not apply: $($p.Name)" }
-        }
-        New-Item -ItemType Junction -Path (Join-Path $convertRoot 'node_modules') -Target (Join-Path $pobTsRoot 'node_modules') | Out-Null
-    }
-    $cli = Join-Path $convertRoot 'tools\convert\cli.ts'
-    Push-Location $convertRoot
-    try {
-        & node $cli --wire-only --pob-root $mirror --wire-dir $wire --data-dir $Source | Out-File -LiteralPath (Join-Path $work 'wire.txt')
-        if ($LASTEXITCODE -ne 0) { throw "converter --wire-only failed (log: $work\wire.txt)" }
-        $fix = & node (Join-Path $PSScriptRoot 'convert-fixups.ts') $wire
-        if ($LASTEXITCODE -ne 0) { throw 'convert-fixups.ts failed' }
-        $wireFixups = @($fix | ConvertFrom-Json)
-        & node $cli --extract-only --pob-root $mirror --wire-dir $wire --data-dir $Source | Out-File -LiteralPath (Join-Path $work 'extract.txt')
-        if ($LASTEXITCODE -ne 0) { throw "converter --extract-only failed (log: $work\extract.txt)" }
-    } finally { Pop-Location }
-    $pobTsSha = (& git -C $pobTsRoot rev-parse --short HEAD).Trim()
-    $patchNote = if ($patches.Count -gt 0) { " + tools/convert-patches ($(($patches | ForEach-Object Name) -join ', '))" } else { '' }
-    $sourceLabel = "pob-ts converter @ $pobTsSha$patchNote (tools/sync-data.ps1 -Convert) on tools/upstream.json pobRoot"
+    & cargo build -q --release --manifest-path (Join-Path $root 'tools\luajit-win\Cargo.toml')
+    if ($LASTEXITCODE -ne 0) { throw 'tools/luajit-win build failed' }
+    $report = Join-Path $work 'report.txt'
+    & cargo run -q --release --manifest-path (Join-Path $root 'tools\data-convert\Cargo.toml') -- all --pob $PobRoot --dump (Join-Path $work 'pob.dump') --out $Source *> $report
+    if ($LASTEXITCODE -ne 0) { Get-Content -LiteralPath $report -Tail 20 | Write-Output; throw "data-convert failed (log: $report)" }
+    $drift = @(Select-String -LiteralPath $report -Pattern '^drift ' | ForEach-Object Line)
+    $coverage = @(Select-String -LiteralPath $report -Pattern '^coverage ' | ForEach-Object Line)
+    Write-Output "converter: $($drift.Count) drift lines, report $report"
+    $drift + $coverage | ForEach-Object { Write-Output "  $_" }
+    $convSha = (& git -C $root rev-parse --short HEAD).Trim()
+    $sourceLabel = "tools/data-convert @ $convSha (tools/sync-data.ps1 -Convert, upstream runtime/lua51.dll) on tools/upstream.json pobRoot"
 }
-if (-not $Source) { $Source = Join-Path $pobTsRoot 'data' }
+if (-not $Source -and -not $Check) { throw 'nothing to sync: -Convert, or -Source <dir of a converted data/>' }
 $lutSrc = Join-Path $PobRoot 'src\Data\TimelessJewelData'
 # `<stem>.zip` or `<stem>.zip.part<N>` -- what DataJewelFileLoader.lua reads.
 function Test-LutName([string]$n) { $n -match '^[A-Za-z]+\.zip(\.part\d+)?$' }
@@ -217,7 +186,6 @@ if ($problems.Count -eq 0 -and -not $Check) {
         files             = $entries.Count
         bytes             = $totalBytes
         source            = $sourceLabel
-        wireFixups        = @($wireFixups | ForEach-Object { [ordered]@{ id = $_.id; upstream = $_.upstream; why = $_.why } })
         timelessLuts      = [ordered]@{
             source = 'PathOfBuilding/src/Data/TimelessJewelData'
             bytes  = $lutBytes
