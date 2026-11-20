@@ -2431,8 +2431,21 @@ pub struct ItemDb {
     type_list: RefCell<Vec<String>>,
     /// `item.measuredPower`.
     power: RefCell<std::collections::HashMap<usize, f64>>,
+    /// `self.listBuilder`: the list being built over the frames.
+    list_job: RefCell<Option<ListJob>>,
     /// The control's `db` is `main.visceraDB` (ItemsTab.lua:322, 07fa089bf; its `dbType` is "RARE").
     pub viscera: Cell<bool>,
+}
+
+/// The state of `ListBuilder` between its yields.
+struct ListJob {
+    list: Vec<Rc<Item>>,
+    /// The next item to measure (0-based `itemIndex - 1`).
+    next: usize,
+    /// `self.sortDetail` when it has a `stat`.
+    stat: Option<pob_calc::power::PowerStat>,
+    /// `start` of the loop: set by the first resume, then at each yield.
+    start: Option<u64>,
 }
 
 /// ItemDBControl.lua:42-45 (07fa089bf: + the Wickerman slots).
@@ -2710,6 +2723,7 @@ impl ItemDb {
                     .collect(),
             ),
             power: RefCell::new(std::collections::HashMap::new()),
+            list_job: RefCell::new(None),
             viscera: Cell::new(false),
         })
     }
@@ -2889,25 +2903,43 @@ impl ItemDb {
         true
     }
 
-    /// `ListBuilder` (:247-301) in one frame.
-    fn build_list(&self, g: &Gfx) {
+    /// `self.listBuilder = coroutine.create(self.ListBuilder)` (:313): the items that match the filters, the stat to measure them by.
+    fn start_list(&self) -> ListJob {
         let t = self.tab.upgrade().expect("itemsTab");
-        let mut list: Vec<Rc<Item>> = t.read(|e| self.items().into_iter().filter(|i| self.matches(e, i)).collect());
+        let list: Vec<Rc<Item>> = t.read(|e| self.items().into_iter().filter(|i| self.matches(e, i)).collect());
         let mode = self.sort_mode.borrow().clone();
         let stat = pob_calc::power::power_stat_list()
             .into_iter()
-            .find(|p| p.stat.as_deref() == Some(mode.as_str()));
+            .find(|p| p.stat.as_deref() == Some(mode.as_str()))
+            .filter(|_| mode != "NAME");
+        ListJob {
+            list,
+            next: 0,
+            stat,
+            start: None,
+        }
+    }
+
+    /// `coroutine.resume(self.listBuilder, self)` (:316-323) of `ListBuilder` (:250-301): measures the items until 50 ms have passed since
+    /// the last yield (`Sorting... (n%)`), then gives the frame back; `true` when the list is built.
+    fn resume_list(&self, g: &Gfx, job: &mut ListJob) -> bool {
+        let t = self.tab.upgrade().expect("itemsTab");
         let name_key = |s: &str| s.strip_prefix("The ").unwrap_or(s).to_string();
-        if let Some(stat) = stat.filter(|_| mode != "NAME") {
-            let mut power = self.power.borrow_mut();
-            power.clear();
+        if let Some(stat) = &job.stat {
+            let start = *job.start.get_or_insert_with(|| {
+                self.power.borrow_mut().clear();
+                g.get_time()
+            });
+            let mut start = start;
             let second = t.read(|e| e.active_item_set().use_second_weapon_set);
             let weapon_set = if second { 2.0 } else { 1.0 };
             let slots = t.slots.borrow().clone();
-            for item in &list {
+            while job.next < job.list.len() {
+                let item = job.list[job.next].clone();
+                job.next += 1;
                 let mut best = f64::NEG_INFINITY;
                 for (name, slot) in &slots {
-                    let ok = t.read(|e| e.is_item_valid_for_slot(item, name));
+                    let ok = t.read(|e| e.is_item_valid_for_slot(&item, name));
                     if ok && !slot.inactive.get() && slot.weapon_set.get().is_none_or(|w| w == weapon_set) && slot.drop.base.shown.get(g) {
                         let base = item.base.expect("base");
                         let ov = pob_calc::env::CalcOverride {
@@ -2917,14 +2949,23 @@ impl ItemDb {
                             rep_item: (base.flask.is_none() && base.tincture.is_none()).then(|| item.clone()),
                             ..Default::default()
                         };
-                        let v = t.read(|e| e.item_override_power(ov, &stat)).unwrap_or_else(|er| panic!("{er}"));
+                        let v = t.read(|e| e.item_override_power(ov, stat)).unwrap_or_else(|er| panic!("{er}"));
                         best = best.max(v);
                     }
                 }
-                power.insert(Rc::as_ptr(item) as usize, best);
+                self.power.borrow_mut().insert(Rc::as_ptr(&item) as usize, best);
+                let now = g.get_time();
+                if now.saturating_sub(start) > 50 {
+                    #[allow(clippy::cast_precision_loss)]
+                    let pct = (job.next as f64 / job.list.len() as f64 * 100.0).floor();
+                    *self.list.default_text.borrow_mut() = Some(format!("^7Sorting... ({pct}%)"));
+                    start = now;
+                    job.start = Some(start);
+                    return false;
+                }
             }
-            let p = &*power;
-            pob_engine::lua::lua_sort(&mut list, &mut |a, b| {
+            let p = self.power.borrow();
+            pob_engine::lua::lua_sort(&mut job.list, &mut |a, b| {
                 let (x, y) = (p[&(Rc::as_ptr(a) as usize)], p[&(Rc::as_ptr(b) as usize)]);
                 if x != y {
                     return y < x;
@@ -2932,10 +2973,18 @@ impl ItemDb {
                 name_key(&a.name).as_bytes() < name_key(&b.name).as_bytes()
             });
         } else {
-            pob_engine::lua::lua_sort(&mut list, &mut |a, b| name_key(&a.name).as_bytes() < name_key(&b.name).as_bytes());
+            pob_engine::lua::lua_sort(&mut job.list, &mut |a, b| {
+                name_key(&a.name).as_bytes() < name_key(&b.name).as_bytes()
+            });
         }
-        *self.list.list.borrow_mut() = list.into_iter().map(ItemRow::Obj).collect();
+        *self.list.list.borrow_mut() = std::mem::take(&mut job.list).into_iter().map(ItemRow::Obj).collect();
         *self.list.default_text.borrow_mut() = Some("^7No items found that match those filters.".to_string());
+        true
+    }
+
+    /// The list is still being built (`self.listBuilder ~= nil`).
+    pub fn is_building(&self) -> bool {
+        self.list_job.borrow().is_some()
     }
 
     /// `ItemDBClass:Draw` before `ListControl.Draw` (:303-328): a hidden list is not drawn upstream, nor built.
@@ -2953,8 +3002,16 @@ impl ItemDb {
         }
         if self.list_build_flag.get() {
             self.list_build_flag.set(false);
+            // `wipeTable(self.list)`: the rows go while the new list is built
+            self.list.list.borrow_mut().clear();
+            *self.list_job.borrow_mut() = Some(self.start_list());
             self.list_output_revision.set(Some(rev));
-            self.build_list(g);
+        }
+        let job = self.list_job.borrow_mut().take();
+        if let Some(mut job) = job
+            && !self.resume_list(g, &mut job)
+        {
+            *self.list_job.borrow_mut() = Some(job);
         }
     }
 }
