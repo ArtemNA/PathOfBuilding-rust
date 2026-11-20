@@ -2,8 +2,8 @@
 //!
 //! * A table is a [`LuaVal`] in binary form: positional items and keyed fields in source order, every number bit for bit. The order decides `pairs` (`LuaTab`, MINEFIELD D13), so
 //!   it is kept as the parser saw it. The container is the one of `data.cache` (`pob_data::bincache`): the sha of `data.lock` in the header, a checksum per table.
-//! * Keys: `<rel>` is the file's table (`Data/QueryMods.lua`), `<rel>#<what>` is what a reader that scans the raw text gets out of it, and [`COPIES`] is "path -> canonical path" of
-//!   the tree's files. The makers of those live next to their readers: a reader in a checkout goes through the same maker, so the two paths cannot read differently.
+//! * Keys: `<rel>` is the file's table (`Data/QueryMods.lua`), `<rel>#<what>` is what a reader that scans the raw text gets out of it, [`COPIES`] is "path -> canonical path" of
+//!   the tree's files and [`SIZES`] the sizes of their images. The makers of those live next to their readers: a reader in a checkout goes through the same maker, so the two paths cannot read differently.
 //! * A checkout has no such file: everything reads the text, and [`resolve`] changes nothing. A package has no text: a missing, stale or damaged cache is an error, never less data.
 //!   The cache beside the text is ignored when it is stale, as `data.cache` is, and an error when it is damaged.
 
@@ -22,6 +22,9 @@ pub const FILE: &str = "src.cache";
 pub const MAGIC: &[u8; 8] = b"POBSRC1\n";
 /// The table of the copies: `<lowercase path under src/>` -> `{ <canonical path>, <size> }`.
 pub const COPIES: &str = "@copies";
+/// The sizes of the tree's images: `<lowercase path under src/ of a file that is there>` -> `{ <width>, <height> }`. The art takes them from here and
+/// reads no file until it draws one: on the web every file read is a download (R3).
+pub const SIZES: &str = "@sizes";
 
 const T_NIL: u8 = 0;
 const T_FALSE: u8 = 1;
@@ -230,8 +233,12 @@ pub enum Package {
     Open {
         cache: CacheFile,
         copies: OnceLock<Result<Copies, String>>,
+        sizes: OnceLock<Result<Sizes, String>>,
     },
 }
+
+/// `<lowercase path under src/>` -> (width, height).
+pub type Sizes = HashMap<String, (u32, u32)>;
 
 /// `<lowercase path under src/>` -> (canonical path, its size).
 pub type Copies = HashMap<String, (String, u64)>;
@@ -247,6 +254,7 @@ impl Package {
             Some(cache) => Package::Open {
                 cache,
                 copies: OnceLock::new(),
+                sizes: OnceLock::new(),
             },
             None => Package::Stale,
         }
@@ -263,7 +271,9 @@ impl Package {
     }
 
     pub fn copies(&self) -> Result<Option<&Copies>, String> {
-        let Package::Open { cache, copies } = self else { return Ok(None) };
+        let Package::Open { cache, copies, .. } = self else {
+            return Ok(None);
+        };
         let c = copies.get_or_init(|| {
             let Some(raw) = cache.raw(COPIES) else {
                 return Err(format!("{FILE}: no table {COPIES}"));
@@ -282,6 +292,29 @@ impl Package {
             Ok(out)
         });
         c.as_ref().map(Some).map_err(Clone::clone)
+    }
+
+    /// The table [`SIZES`]: `None` in a checkout, and in a package made before it (the images' headers are read then).
+    pub fn sizes(&self) -> Result<Option<&Sizes>, String> {
+        let Package::Open { cache, sizes, .. } = self else {
+            return Ok(None);
+        };
+        let Some(raw) = cache.raw(SIZES) else { return Ok(None) };
+        let s = sizes.get_or_init(|| {
+            let v = decode(&raw?)?;
+            let mut out = HashMap::new();
+            for (k, v) in &v.as_tab().ok_or("the sizes are not a table")?.fields {
+                let (LuaKey::Str(k), Some(rec)) = (k, v.as_tab()) else {
+                    return Err(format!("{FILE}: a bad record in {SIZES}"));
+                };
+                let (Some(w), Some(h)) = (rec.get_num(1.0).and_then(LuaVal::as_num), rec.get_num(2.0).and_then(LuaVal::as_num)) else {
+                    return Err(format!("{FILE}: a bad record of '{k}' in {SIZES}"));
+                };
+                out.insert(k.to_string(), (w as u32, h as u32));
+            }
+            Ok(out)
+        });
+        s.as_ref().map(Some).map_err(Clone::clone)
     }
 
     /// The canonical file of `rel` under `root`. A record that names a file of another size stops here: without this a wrong record would only be an image of the wrong size, or none.
@@ -388,6 +421,21 @@ pub fn resolve(root: &str, rel: &str) -> String {
         Ok(None) => format!("{root}{rel}"),
         Err(e) => panic!("{e}"),
     }
+}
+
+/// The size of the image `path` (as [`resolve`] gives it) from [`SIZES`], without reading the file: `None` when the package does not know it.
+pub fn image_size(root: &str, path: &str) -> Option<(u32, u32)> {
+    let rel = path.strip_prefix(root)?;
+    match package(root).sizes() {
+        Ok(Some(s)) => s.get(&rel.to_ascii_lowercase()).copied(),
+        Ok(None) => None,
+        Err(e) => panic!("{e}"),
+    }
+}
+
+/// The package has [`SIZES`]: every image of its `TreeData/` is there, and a path that is not is no file.
+pub fn has_sizes(root: &str) -> bool {
+    matches!(package(root).sizes(), Ok(Some(_)))
 }
 
 /// `<root><rel>` is a file, or was before its copies were dropped.

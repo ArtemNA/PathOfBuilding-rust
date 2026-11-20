@@ -185,6 +185,42 @@ fn lazy_load_is_the_same_image() {
     assert!(bad.texture().is_none());
 }
 
+/// A size given ahead (`src.cache` of a package) opens no file until the pixels are asked for, and pixels of another size fail the image.
+#[test]
+fn a_known_size_reads_nothing_until_drawn() {
+    let want = {
+        let h = ImageHandle::new();
+        h.load(test_png(), &[]).unwrap();
+        h.texture().unwrap()
+    };
+    // no file at all: the size is all there is, and nothing has been opened
+    let unread = ImageHandle::new();
+    unread.load_lazy_sized("no/such/file.png", &[], Some((8, 8))).unwrap();
+    assert_eq!(unread.image_size(), (8, 8));
+    assert!(format!("{unread:?}").contains("lazy"));
+
+    for prefetch in [false, true] {
+        let right = ImageHandle::new();
+        right.load_lazy_sized(test_png(), &[LoadFlag::Clamp], Some((8, 8))).unwrap();
+        if prefetch {
+            right.prefetch();
+        }
+        assert_eq!(&*right.texture().unwrap().pixels().unwrap(), &*want.pixels().unwrap());
+
+        let wrong = ImageHandle::new();
+        wrong.load_lazy_sized(test_png(), &[], Some((8, 9))).unwrap();
+        if prefetch {
+            wrong.prefetch();
+        }
+        assert_eq!(wrong.image_size(), (8, 9), "what the caller was told, until the pixels");
+        assert!(
+            wrong.texture().is_none(),
+            "pixels of another size fail the image (prefetch {prefetch})"
+        );
+        assert_eq!(wrong.image_size(), (0, 0));
+    }
+}
+
 /// A renderer that lets the pixels go draws the same frame, again and again.
 #[test]
 fn released_pixels_draw_the_same() {

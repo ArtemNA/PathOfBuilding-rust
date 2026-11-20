@@ -8,7 +8,7 @@ use std::rc::Rc;
 use pob_data::bincache::write_tables;
 
 use crate::lua_data::{LuaKey, LuaTab, LuaVal, parse_return};
-use crate::src_cache::{COPIES, FILE, MAGIC, Package, encode, same};
+use crate::src_cache::{COPIES, FILE, MAGIC, Package, SIZES, encode, same};
 use crate::tabs::item_popups::{POPUP_TABLES, json_to_lua, popup_key, popup_table};
 
 type Maker = fn(&str) -> Result<LuaVal, String>;
@@ -176,6 +176,7 @@ pub struct Stats {
     pub unique: usize,
     pub unique_bytes: u64,
     pub copies: usize,
+    pub sizes: usize,
     pub tables: usize,
     pub cache_bytes: u64,
     pub tree_lua_text: u64,
@@ -202,11 +203,21 @@ pub fn generate(root: &str, out: &Path, manifest_sha256: &str) -> Result<Stats, 
             .push(rel);
     }
     let mut copies = Vec::new();
+    let mut sizes = Vec::new();
     for ((len, _), paths) in &groups {
         let keep = &paths[canonical(paths)];
         let to = out.join("TreeData").join(keep);
         std::fs::create_dir_all(to.parent().expect("a file has a folder")).map_err(|e| format!("{}: {e}", to.display()))?;
         std::fs::copy(tree_data.join(keep), &to).map_err(|e| format!("{keep}: {e}"))?;
+        // every file of TreeData but the Lua is an image: its size by the reader of the application's own images
+        let (w, h) = pob_gfx::image::read_size(&to).map_err(|e| e.to_string())?;
+        sizes.push((
+            LuaKey::Str(format!("treedata/{}", keep.to_ascii_lowercase()).into()),
+            LuaVal::Table(Rc::new(LuaTab {
+                arr: vec![LuaVal::Num(f64::from(w)), LuaVal::Num(f64::from(h))],
+                fields: Vec::new(),
+            })),
+        ));
         st.unique += 1;
         st.unique_bytes += len;
         for p in paths {
@@ -223,13 +234,23 @@ pub fn generate(root: &str, out: &Path, manifest_sha256: &str) -> Result<Stats, 
         }
     }
     st.copies = copies.len();
-    let mut encoded = vec![(
-        COPIES.to_string(),
-        encode(&LuaVal::Table(Rc::new(LuaTab {
-            arr: Vec::new(),
-            fields: copies,
-        }))),
-    )];
+    st.sizes = sizes.len();
+    let mut encoded = vec![
+        (
+            COPIES.to_string(),
+            encode(&LuaVal::Table(Rc::new(LuaTab {
+                arr: Vec::new(),
+                fields: copies,
+            }))),
+        ),
+        (
+            SIZES.to_string(),
+            encode(&LuaVal::Table(Rc::new(LuaTab {
+                arr: Vec::new(),
+                fields: sizes,
+            }))),
+        ),
+    ];
     for (key, v) in tables(root)? {
         if key.ends_with("/tree.lua") {
             let path = Path::new(root).join(&key);
@@ -281,11 +302,22 @@ pub fn verify(root: &str, out: &Path, manifest_sha256: &str) -> Result<(usize, u
         read.insert(path);
         n_files += 1;
     }
-    // no file beyond those: the copies are gone
+    // no file beyond those: the copies are gone; and each file's size in the table is its image's
+    let sizes = p.sizes()?.ok_or_else(|| format!("{FILE}: no table {SIZES}"))?;
+    let mut sized = 0;
     for rel in walk(&out.join("TreeData"))? {
-        if !read.contains(&format!("{out_root}TreeData/{rel}")) {
+        let path = format!("{out_root}TreeData/{rel}");
+        if !read.contains(&path) {
             return Err(format!("TreeData/{rel}: no reader gets to this file"));
         }
+        let want = pob_gfx::image::read_size(Path::new(&path)).map_err(|e| e.to_string())?;
+        match sizes.get(&format!("treedata/{}", rel.to_ascii_lowercase())) {
+            Some(got) if *got == want => sized += 1,
+            got => return Err(format!("{SIZES}: TreeData/{rel} is {}x{}, the table has {got:?}", want.0, want.1)),
+        }
+    }
+    if sized != sizes.len() {
+        return Err(format!("{SIZES}: {} records, {sized} files", sizes.len()));
     }
     // the tables: the value through the cache = the value of the text, order and bits
     let mut n_tables = 0;

@@ -5,6 +5,7 @@
 use std::cell::Cell;
 use std::collections::HashMap;
 use std::rc::Rc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use pob_gfx::{ImageHandle, LoadFlag};
 use pob_tree::lj_table::LjTable;
@@ -24,17 +25,34 @@ pub struct Asset {
 
 pub type AssetRef = Rc<Asset>;
 
+/// The sheets of the tree are decoded on threads while the tree is built, before anything draws them ([`ImageHandle::prefetch`]): the first frame
+/// of the tree waits for less. Off (`Launch::set_prefetch`, the web application) a sheet is read when it is first drawn: a file read is a download there.
+pub static PREFETCH: AtomicBool = AtomicBool::new(true);
+
 /// `PassiveTree:LoadImage` (:909-933), without the download branch (`main.allowTreeDownload` is never set).
 fn load_image(root: &str, version: &str, img_name: &str, flags: &[LoadFlag]) -> AssetRef {
-    let direct = format!("TreeData/{img_name}");
-    let path = if src_cache::is_file(root, &direct) {
-        src_cache::resolve(root, &direct)
+    let direct = src_cache::resolve(root, &format!("TreeData/{img_name}"));
+    // a package with the table of sizes knows which files are there and how big: no file is opened to know it
+    let known = src_cache::image_size(root, &direct);
+    let there = if src_cache::has_sizes(root) {
+        known.is_some()
     } else {
-        src_cache::resolve(root, &format!("TreeData/{version}/{img_name}"))
+        std::path::Path::new(&direct).is_file()
+    };
+    let (path, known) = if there {
+        (direct, known)
+    } else {
+        let p = src_cache::resolve(root, &format!("TreeData/{version}/{img_name}"));
+        let k = src_cache::image_size(root, &p);
+        (p, k)
     };
     let handle = ImageHandle::new();
-    // `handle:Load` of a missing file leaves an image without size: `DrawAsset` skips it.
-    let _ = handle.load_lazy(path, flags);
+    // `handle:Load` of a missing file leaves an image without size: `DrawAsset` skips it. A package with the table of sizes knows it is missing.
+    if known.is_none() && src_cache::has_sizes(root) {
+        handle.load_missing();
+    } else {
+        let _ = handle.load_lazy_sized(path, flags, known);
+    }
     // an ASYNC image has no size yet (`DrawAsset` asks when it draws), and asking now would decode one that may never be drawn
     let (w, h) = if flags.contains(&LoadFlag::Async) {
         (0, 0)
@@ -330,7 +348,7 @@ impl TreeArt {
                         no_query
                     };
                     let a = load_image(root, version, name, &[LoadFlag::Clamp]);
-                    if !name.contains("jewel-radius") && !name.contains("tattoo") {
+                    if PREFETCH.load(Ordering::Relaxed) && !name.contains("jewel-radius") && !name.contains("tattoo") {
                         // the sheets of the first frame decode side by side; these two wait for the first thing that draws them
                         a.handle.prefetch();
                     }
@@ -406,7 +424,9 @@ impl TreeArt {
                 .entry(file.to_string())
                 .or_insert_with(|| {
                     let h = ImageHandle::new();
-                    let _ = h.load_lazy(src_cache::resolve(root, &format!("TreeData/legion/{file}")), &[]);
+                    let path = src_cache::resolve(root, &format!("TreeData/legion/{file}"));
+                    let known = src_cache::image_size(root, &path);
+                    let _ = h.load_lazy_sized(path, &[], known);
                     let (w, ht) = h.image_size();
                     (h, f64::from(w), f64::from(ht))
                 })

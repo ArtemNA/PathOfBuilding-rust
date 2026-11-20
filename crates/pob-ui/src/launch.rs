@@ -244,6 +244,13 @@ impl Launch {
         self.update_check.set(on);
     }
 
+    /// Off: the sheets of the passive tree are not decoded ahead of the first frame that draws them (`tree_art::PREFETCH`); the first tree waits for
+    /// what it draws, and a sheet nothing draws (the effects of a mastery, the jewel radii) is never read. The web application turns it off: every file
+    /// read is a download there. Called before the first frame.
+    pub fn set_prefetch(&self, on: bool) {
+        crate::tree_art::PREFETCH.store(on, std::sync::atomic::Ordering::Relaxed);
+    }
+
     /// `launch = { }` + `SetMainObject(launch)` (Launch.lua:16-17): registers the global.
     pub fn new(cfg: LaunchConfig) -> Rc<Self> {
         install_panic_hook();

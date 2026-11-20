@@ -7,7 +7,7 @@ use std::rc::Rc;
 
 use pob_data::bincache::write_tables;
 use pob_ui::lua_data::{LuaKey, LuaTab, LuaVal, parse_return};
-use pob_ui::src_cache::{self, COPIES, FILE, MAGIC, Package, decode, encode, same};
+use pob_ui::src_cache::{self, COPIES, FILE, MAGIC, Package, SIZES, decode, encode, same};
 use pob_ui::src_cache_gen::{generate, project_tree, tables, verify};
 use pob_ui::tree_art::TreeArt;
 
@@ -170,6 +170,27 @@ fn a_spoiled_value_fails() {
         copy_tree(&pkg.join("TreeData"), &file.join("TreeData"));
         let e = verify(&upstream(), &file, &sha).expect_err("the check of the package");
         assert!(e.contains(key), "{key}: {e}");
+    }
+    // the sizes of the images: one a pixel taller, one record gone
+    let taller = |t: &LuaTab| {
+        let mut x = t.clone();
+        let (_, v) = &mut x.fields[0];
+        let rec = v.as_tab().expect("a record");
+        let h = rec.arr[1].as_num().expect("h");
+        *v = LuaVal::Table(Rc::new(LuaTab {
+            arr: vec![rec.arr[0].clone(), LuaVal::Num(h + 1.0)],
+            fields: Vec::new(),
+        }));
+        x
+    };
+    for f in [&taller as &dyn Fn(&LuaTab) -> LuaTab, &dropped_last] {
+        let mut spoiled = t.clone();
+        spoil(SIZES, &mut spoiled, f);
+        let file = sandbox("value-sizes");
+        write_tables(MAGIC, &spoiled, &sha, &file.join(FILE)).expect("write");
+        copy_tree(&pkg.join("TreeData"), &file.join("TreeData"));
+        let e = verify(&upstream(), &file, &sha).expect_err("the check of the package");
+        assert!(e.contains(SIZES), "{e}");
     }
     t.clear();
 }
@@ -462,4 +483,60 @@ fn the_tree_tables_are_projections() {
         }
     }
     assert_eq!(n, 43); // GameVersions.lua:11-13 `treeVersionList` @ 07fa089bf
+}
+
+/// The art of a package with the table of sizes opens no image: with every image of `TreeData/` turned into zeros of its length (the copies still
+/// match their records) the art is the checkout's, sizes and all. Without the table each size is read from a header, and zeros have none.
+#[test]
+#[ignore = "makes a whole package: the gate of U12"]
+fn the_art_of_a_package_reads_no_image() {
+    let dir = sandbox("no-image");
+    copy_tree(&package(), &dir);
+    fn zero(d: &Path, n: &mut usize) {
+        for e in std::fs::read_dir(d).expect("the folder").flatten() {
+            let p = e.path();
+            if p.is_dir() {
+                zero(&p, n);
+            } else if p.file_name().is_some_and(|f| f != FILE) {
+                let len = std::fs::metadata(&p).expect("the file").len() as usize;
+                std::fs::write(&p, vec![0u8; len]).expect("write");
+                *n += 1;
+            }
+        }
+    }
+    let mut n = 0;
+    zero(&dir.join("TreeData"), &mut n);
+    assert!(n >= 360, "{n} images");
+    pob_ui::tree_art::PREFETCH.store(false, std::sync::atomic::Ordering::Relaxed);
+    for v in ["3_29", "3_13"] {
+        let tree = pob_tree::tree::load_passive_tree(v).expect("tree");
+        let want = art_digest(&TreeArt::load(&upstream(), &tree).expect("art"));
+        let got = art_digest(&TreeArt::load(&root_of(&dir), &tree).expect("art"));
+        assert!(want == got, "{v}: {:?}", want.lines().zip(got.lines()).find(|(p, q)| p != q));
+    }
+    pob_ui::tree_art::PREFETCH.store(true, std::sync::atomic::Ordering::Relaxed);
+}
+
+/// `Launch::set_prefetch(false)`: building the art starts no decode of a sheet; on (the default) the sheets of the first frame go to threads.
+#[test]
+fn without_prefetch_no_sheet_is_read_ahead() {
+    let tree = pob_tree::tree::load_passive_tree("3_29").expect("tree");
+    let states = |on: bool| -> (usize, usize) {
+        pob_ui::tree_art::PREFETCH.store(on, std::sync::atomic::Ordering::Relaxed);
+        let a = TreeArt::load(&upstream(), &tree).expect("art");
+        pob_ui::tree_art::PREFETCH.store(true, std::sync::atomic::Ordering::Relaxed);
+        // the sprites of the sheets: a sheet not asked for is lazy, a prefetched one is loading
+        let (mut lazy, mut loading) = (0, 0);
+        for s in a.sprite_map.values().flat_map(|m| m.values()) {
+            let d = format!("{:?}", s.handle);
+            lazy += usize::from(d.contains("lazy"));
+            loading += usize::from(d.contains("loading"));
+        }
+        (lazy, loading)
+    };
+    let (_, ahead) = states(true);
+    assert!(ahead > 0, "prefetch on reads sheets ahead");
+    let (lazy, ahead) = states(false);
+    assert_eq!(ahead, 0, "prefetch off: no sheet is read before it is drawn");
+    assert!(lazy > 0);
 }

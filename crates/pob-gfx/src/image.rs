@@ -117,8 +117,20 @@ fn decode(path: &Path) -> Decoded {
     Ok((rgba.width(), rgba.height(), rgba.into_raw()))
 }
 
+/// `decode` of an image whose size was given before its file was read: other pixels than that size are an error, not an image whose sprites are cut wrong.
+fn decode_as(path: &Path, want: (u32, u32)) -> Decoded {
+    let d = decode(path)?;
+    if (d.0, d.1) != want {
+        return Err(ImageError::Decode(
+            path.to_path_buf(),
+            format!("the image is {}x{}, it was said to be {}x{}", d.0, d.1, want.0, want.1),
+        ));
+    }
+    Ok(d)
+}
+
 /// The image's size from its header, nothing decoded.
-fn read_size(path: &Path) -> Result<(u32, u32), ImageError> {
+pub fn read_size(path: &Path) -> Result<(u32, u32), ImageError> {
     image::ImageReader::open(path)
         .map_err(|e| ImageError::Io(path.to_path_buf(), e))?
         .with_guessed_format()
@@ -219,10 +231,18 @@ impl ImageHandle {
     /// caller can see. Without `ASYNC` the size comes from the file's header now, and the first draw decodes (waiting for [`Self::prefetch`] if there was one).
     /// With `ASYNC` the size stays `(0, 0)` until a background decode has finished, and the first question starts that decode.
     pub fn load_lazy(&self, path: impl AsRef<Path>, flags: &[LoadFlag]) -> Result<(), ImageError> {
+        self.load_lazy_sized(path, flags, None)
+    }
+
+    /// [`Self::load_lazy`] of an image whose size is known without its file (`src.cache` of a package): nothing is read until the pixels are asked for,
+    /// and pixels of another size then fail the image. `ASYNC` ignores `size`: its size is `(0, 0)` until decoded either way.
+    pub fn load_lazy_sized(&self, path: impl AsRef<Path>, flags: &[LoadFlag], known: Option<(u32, u32)>) -> Result<(), ImageError> {
         let path = path.as_ref().to_path_buf();
         let clamp = flags.contains(&LoadFlag::Clamp);
         let size = if flags.contains(&LoadFlag::Async) {
             None
+        } else if let Some(s) = known {
+            Some(s)
         } else {
             match read_size(&path) {
                 Ok(s) => Some(s),
@@ -234,6 +254,11 @@ impl ImageHandle {
         };
         *self.0.borrow_mut() = State::Lazy { path, size, clamp };
         Ok(())
+    }
+
+    /// `Load` of a file known not to be there without asking for it (a package's table of its files): the handle a failed `Load` leaves.
+    pub fn load_missing(&self) {
+        *self.0.borrow_mut() = State::Failed;
     }
 
     /// Starts decoding a synchronous lazy image on a thread: the frame that draws it waits for less.
@@ -250,7 +275,7 @@ impl ImageHandle {
         let (path, size, clamp) = (path.clone(), *size, *clamp);
         let (tx, rx) = mpsc::channel();
         std::thread::spawn(move || {
-            let _ = tx.send(decode(&path));
+            let _ = tx.send(decode_as(&path, size));
         });
         *st = State::Prefetching { rx, size, clamp };
     }
@@ -278,9 +303,9 @@ impl ImageHandle {
             }
             State::Lazy {
                 path,
-                size: Some(_),
+                size: Some(size),
                 clamp,
-            } => finished(decode(path), *clamp, false),
+            } => finished(decode_as(path, *size), *clamp, false),
             State::Prefetching { rx, clamp, .. } => finished(rx.recv().unwrap_or(Err(ImageError::Lost)), *clamp, false),
             _ => return,
         };
