@@ -151,6 +151,8 @@ pub struct Launch {
     pub diag: RefCell<crate::diag::DiagLog>,
     /// The platform has an OAuth sign-in: a local server the sign-in returns to. The desktop has one; the web application turns it off.
     pub sign_in: Cell<bool>,
+    /// The application checks for its own updates. The desktop does; the web application turns it off (a page does not update itself).
+    pub update_check: Cell<bool>,
 }
 
 thread_local! {
@@ -237,6 +239,11 @@ impl Launch {
         self.sign_in.set(on);
     }
 
+    /// Off: no "Check for Update" button, no check at the start, Ctrl+U does nothing. The footer keeps `app_version`. Called before the first frame.
+    pub fn set_update_check(&self, on: bool) {
+        self.update_check.set(on);
+    }
+
     /// `launch = { }` + `SetMainObject(launch)` (Launch.lua:16-17): registers the global.
     pub fn new(cfg: LaunchConfig) -> Rc<Self> {
         install_panic_hook();
@@ -273,6 +280,7 @@ impl Launch {
             err_prompt_link: RefCell::new(None),
             diag: RefCell::new(crate::diag::DiagLog::default()),
             sign_in: Cell::new(true),
+            update_check: Cell::new(true),
         });
         LAUNCH.with(|g| *g.borrow_mut() = Some(Rc::clone(&l)));
         l
@@ -361,6 +369,9 @@ impl Launch {
     /// `launch:CheckForUpdate()` (Launch.lua:339-356), asked for by the user. `UpdateCheck.lua` asks for the original's manifest and writes `Update/` next to its scripts: the original's update is not the port's to do,
     /// so only the application (`app_version`) has one, from the port's releases ([`crate::update`]).
     pub fn check_for_update(&self, g: &mut Gfx) {
+        if !self.update_check.get() {
+            return;
+        }
         if self.cfg.app_version.is_none() {
             crate::modules::main::not_ported(g, "Launch.lua:339-356 CheckForUpdate: the port does not update the original");
             return;
@@ -370,7 +381,7 @@ impl Launch {
 
     /// The check at the start of the program: it says nothing unless there is an update.
     pub fn check_for_update_at_start(&self) {
-        if self.cfg.app_version.is_some() {
+        if self.cfg.app_version.is_some() && self.update_check.get() {
             self.run_update_check(false);
         }
     }

@@ -444,7 +444,10 @@ impl Main {
         );
         check.base.shown.set_fn(|_| {
             let l = launch();
-            l.cfg.app_version.is_some() && !l.dev_mode.get() && l.update_available.borrow().as_deref().is_none_or(|u| u == "none")
+            l.cfg.app_version.is_some()
+                && l.update_check.get()
+                && !l.dev_mode.get()
+                && l.update_available.borrow().as_deref().is_none_or(|u| u == "none")
         });
         // Main.lua:247-252
         check.label.set_fn(|_| {
