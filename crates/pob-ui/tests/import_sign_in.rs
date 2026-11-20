@@ -87,7 +87,10 @@ fn without_sign_in_the_account_section_is_gone() {
         assert!(!shown, "{n} is shown without a sign-in");
     }
     assert!(off.site_shown, "Import By Account Name is shown");
-    assert_eq!(off.site_pos, off.oauth_pos, "Import By Account Name takes the place of the sign-in section");
+    assert_eq!(
+        off.site_pos, off.oauth_pos,
+        "Import By Account Name takes the place of the sign-in section"
+    );
 }
 
 #[test]
@@ -97,7 +100,12 @@ fn with_sign_in_the_layout_is_upstreams() {
         // not authorized: the section, its status, the button and the error label (ImportTab.lua:24-197); the character controls wait
         assert_eq!(
             shown,
-            ["sectionOauthCharImport", "charImportStatusLabel", "authenticateButton", "oauthErrorLabel"],
+            [
+                "sectionOauthCharImport",
+                "charImportStatusLabel",
+                "authenticateButton",
+                "oauthErrorLabel"
+            ],
             "shown with a sign-in"
         );
         assert!(l.site_shown);
