@@ -621,7 +621,7 @@ impl PassiveTreeView {
         }
 
         // :302-332 the node under the cursor
-        let node_order = std::mem::take(&mut self.cache.as_mut().expect("synced").node_order);
+        let mut node_order = std::mem::take(&mut self.cache.as_mut().expect("synced").node_order);
         let mut hover_node: Option<usize> = None;
         if m_over {
             let cur_x = (cursor_x - offset_x) / scale;
@@ -836,7 +836,11 @@ impl PassiveTreeView {
                     }
                 }
                 spec = engine.borrow().as_ref().expect("engine").spec_rc();
+                // the order taken above goes back first: an unchanged spec keeps it, a changed one gets its own (a cluster socket's graph went,
+                // another class' tree came), and the rest of the frame walks the order of the list it draws
+                self.cache.as_mut().expect("synced").node_order = std::mem::take(&mut node_order);
                 self.sync_cache(&spec, &art);
+                node_order = std::mem::take(&mut self.cache.as_mut().expect("synced").node_order);
                 hover_node = spec.node_idx(id);
                 self.hover_node = hover_node;
                 // the node list may have changed (a cluster socket's graph, another class' tree): the frame's path tables go with it
