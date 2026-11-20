@@ -149,6 +149,8 @@ pub struct Launch {
     err_prompt_link: RefCell<Option<(String, String)>>,
     /// The last frames and key events, for Ctrl+Shift+F12 ([`crate::diag`]).
     pub diag: RefCell<crate::diag::DiagLog>,
+    /// The platform has an OAuth sign-in: a local server the sign-in returns to. The desktop has one; the web application turns it off.
+    pub sign_in: Cell<bool>,
 }
 
 thread_local! {
@@ -230,6 +232,11 @@ pub fn pcall<R>(f: impl FnOnce() -> R) -> Result<R, String> {
 }
 
 impl Launch {
+    /// Off: the Import tab has no "Import From Your Account" section. Called by a host before the first frame.
+    pub fn set_sign_in(&self, on: bool) {
+        self.sign_in.set(on);
+    }
+
     /// `launch = { }` + `SetMainObject(launch)` (Launch.lua:16-17): registers the global.
     pub fn new(cfg: LaunchConfig) -> Rc<Self> {
         install_panic_hook();
@@ -265,6 +272,7 @@ impl Launch {
             opening_link_loaded: Cell::new(false),
             err_prompt_link: RefCell::new(None),
             diag: RefCell::new(crate::diag::DiagLog::default()),
+            sign_in: Cell::new(true),
         });
         LAUNCH.with(|g| *g.borrow_mut() = Some(Rc::clone(&l)));
         l

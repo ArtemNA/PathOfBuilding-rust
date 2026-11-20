@@ -305,6 +305,8 @@ impl ImportTab {
             rect(10.0, 18.0, 650.0, 200.0),
             "Import From Your Account".to_string(),
         );
+        // the port's own: a host without a sign-in (`Launch::set_sign_in(false)`, the web application) hides the section and all in it
+        section_oauth.base.shown.set_fn(|_| crate::launch::launch().sign_in.get());
         let so: ControlRef = section_oauth.clone();
         host.add("sectionOauthCharImport", section_oauth.clone());
         let label_spacing = 6.0;
@@ -462,8 +464,9 @@ impl ImportTab {
         host.add("charImportItemsIgnoreWeaponSwap", ignore_weapon_swap.clone());
 
         // --- :493-496, addAccountNameControls
+        // collapses onto the sign-in section when it is hidden (the port's own: `TOPLEFT` of the tab, y = 18); while it is shown, as upstream
         let section_site = SectionControl::new(
-            anchor("TOPLEFT", &so, "BOTTOMLEFT"),
+            anchor_collapse("TOPLEFT", &so, "BOTTOMLEFT"),
             rect(0.0, 18.0, 650.0, 250.0),
             "Import By Account Name".to_string(),
         );
