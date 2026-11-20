@@ -140,6 +140,10 @@ pub fn report(g: &Gfx) -> String {
             ms[n - 1]
         );
     }
+    let _ = writeln!(s, "\ncaught errors (oldest first):");
+    for e in crate::launch::caught_panics() {
+        let _ = writeln!(s, "  {e}");
+    }
     let _ = writeln!(s, "\nlast key events (ms before now):");
     for (t, e) in log.events.iter().rev() {
         let _ = writeln!(s, "  -{:.0}: {e}", now.duration_since(*t).as_secs_f64() * 1e3);
@@ -167,4 +171,25 @@ pub fn dump(g: &Gfx) -> Option<std::path::PathBuf> {
             None
         }
     }
+}
+
+/// Appends the last caught error with where it was raised to `Diagnostics/errors.log` under the user folder (the port's own: the
+/// prompt shows only the message). Nothing personal: the message and the place in the port's source.
+pub fn log_error(stage: &str) {
+    let Some(last) = crate::launch::caught_panics().pop() else { return };
+    let l = launch();
+    let Some(user) = l.cfg.user_path.as_deref() else { return };
+    let dir = std::path::PathBuf::from(format!("{user}/{}/Diagnostics", l.cfg.user_folder));
+    let secs = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_secs());
+    let line = format!("{secs} v{} In '{stage}': {last}\n", l.cfg.app_version.as_deref().unwrap_or("?"));
+    let _ = std::fs::create_dir_all(&dir).and_then(|()| {
+        use std::io::Write as _;
+        std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(dir.join("errors.log"))?
+            .write_all(line.as_bytes())
+    });
 }

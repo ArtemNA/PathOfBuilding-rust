@@ -440,3 +440,20 @@ fn an_old_link_or_a_start_with_a_link_does_not_open_the_waiting_one() {
     assert!(file.expect("file").exists());
     assert_eq!(l.opening_link.borrow().as_deref(), Some("pob://pobbin/other"));
 }
+
+/// A caught panic keeps where it was raised (the port's own: a Rust panic such as `RefCell already borrowed` has no `file:line` in its
+/// message, the diagnostics and `Diagnostics/errors.log` show it).
+#[test]
+fn a_caught_panic_keeps_where_it_was_raised() {
+    pob_ui::launch::install_panic_hook();
+    let cell = std::cell::RefCell::new(0);
+    let err = pob_ui::launch::pcall(|| {
+        let _held = cell.borrow();
+        *cell.borrow_mut() += 1;
+    })
+    .expect_err("a second borrow panics");
+    assert_eq!(err, "RefCell already borrowed", "the message itself is unchanged");
+    let last = pob_ui::launch::caught_panics().pop().expect("kept");
+    assert!(last.starts_with("RefCell already borrowed (at "), "{last}");
+    assert!(last.contains("launch.rs:"), "the place is this test's line: {last}");
+}

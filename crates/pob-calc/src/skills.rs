@@ -1105,7 +1105,9 @@ pub fn setup_skills(st: &mut SkillsState, inp: &SetupInputs<'_>) -> Result<Setup
                 group_cfg[index] = Some(new_group_cfg(group_slot_name(&st.tab.socket_group_list()[index])));
             }
             let gcfg = group_cfg[index].as_ref().expect("set");
-            for value in ok(mod_db.borrow().list(Some(&gcfg.mod_cfg()), &["GroupProperty"])) {
+            // the list first: a `for` header's temporaries (the `Ref`) live through the loop, and the body adds to this modDB
+            let group_props = ok(mod_db.borrow().list(Some(&gcfg.mod_cfg()), &["GroupProperty"]));
+            for value in group_props {
                 add_mod_with_source(mod_db, &value.get("value"), gcfg.slot_name.as_deref().unwrap_or(""), "1874");
             }
             if is_main(index) && !skill_list.is_empty() {

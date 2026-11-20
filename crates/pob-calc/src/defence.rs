@@ -342,7 +342,9 @@ pub fn resistances(db: &StoreRef, out: &mut Output, mut bd: Option<&mut Breakdow
                         Some(&format!("{res_from} To {res_to} Resistance Conversion")),
                     );
                 }
-                for e in ok(db.borrow().tabulate(Some(Inc), None, &[&from_name])) {
+                // the list first: a `for` header's temporaries (the `Ref`) live through the loop, and `nm` adds to this modDB
+                let incs = ok(db.borrow().tabulate(Some(Inc), None, &[&from_name]));
+                for e in incs {
                     nm(
                         db,
                         &to_name,
@@ -351,7 +353,8 @@ pub fn resistances(db: &StoreRef, out: &mut Output, mut bd: Option<&mut Breakdow
                         e.mod_.source.as_deref(),
                     );
                 }
-                for e in ok(db.borrow().tabulate(Some(More), None, &[&from_name])) {
+                let mores = ok(db.borrow().tabulate(Some(More), None, &[&from_name]));
+                for e in mores {
                     nm(
                         db,
                         &to_name,

@@ -181,22 +181,58 @@ pub fn page_of(outcome: pob_net::Outcome) -> (PageResponse, Option<String>) {
     }
 }
 
+thread_local! {
+    /// Where the last panic of this thread was raised (`file:line` of the Rust code), set by [`install_panic_hook`].
+    static PANIC_AT: RefCell<Option<String>> = const { RefCell::new(None) };
+    /// The panics [`pcall`] caught, newest last, with where they were raised (the port's own: a Lua error carries its `file:line` in the
+    /// message, a Rust panic such as `RefCell already borrowed` does not -- the diagnostics and `Diagnostics/errors.log` show it).
+    static CAUGHT: RefCell<std::collections::VecDeque<String>> = const { RefCell::new(std::collections::VecDeque::new()) };
+}
+
+/// Keeps the place of each panic for [`pcall`]; the previous hook still runs. Once per process.
+pub fn install_panic_hook() {
+    static ONCE: std::sync::Once = std::sync::Once::new();
+    ONCE.call_once(|| {
+        let prev = std::panic::take_hook();
+        std::panic::set_hook(Box::new(move |info| {
+            let at = info.location().map(|l| format!("{}:{}", l.file(), l.line()));
+            PANIC_AT.with_borrow_mut(|p| *p = at);
+            prev(info);
+        }));
+    });
+}
+
+/// The panics [`pcall`] caught in this thread, `message (at file:line)`, oldest first (at most 20).
+pub fn caught_panics() -> Vec<String> {
+    CAUGHT.with_borrow(|c| c.iter().cloned().collect())
+}
+
 /// `PCall(func, ...)`: `Err(message)` when the function raised an error (panicked).
 pub fn pcall<R>(f: impl FnOnce() -> R) -> Result<R, String> {
+    PANIC_AT.with_borrow_mut(|p| *p = None);
     catch_unwind(AssertUnwindSafe(f)).map_err(|e| {
-        if let Some(s) = e.downcast_ref::<&str>() {
+        let msg = if let Some(s) = e.downcast_ref::<&str>() {
             (*s).to_string()
         } else if let Some(s) = e.downcast_ref::<String>() {
             s.clone()
         } else {
             "unknown error".to_string()
-        }
+        };
+        let at = PANIC_AT.with_borrow_mut(Option::take).unwrap_or_else(|| "?".into());
+        CAUGHT.with_borrow_mut(|c| {
+            if c.len() == 20 {
+                c.pop_front();
+            }
+            c.push_back(format!("{msg} (at {at})"));
+        });
+        msg
     })
 }
 
 impl Launch {
     /// `launch = { }` + `SetMainObject(launch)` (Launch.lua:16-17): registers the global.
     pub fn new(cfg: LaunchConfig) -> Rc<Self> {
+        install_panic_hook();
         let l = Rc::new(Self {
             cfg,
             dev_mode: Cell::new(false),
@@ -506,7 +542,10 @@ impl Launch {
         }
         if let Some(main) = self.main() {
             match pcall(|| main.on_frame(f)) {
-                Err(e) => self.show_err_msg(&format!("In 'OnFrame': {e}")),
+                Err(e) => {
+                    crate::diag::log_error("OnFrame");
+                    self.show_err_msg(&format!("In 'OnFrame': {e}"));
+                }
                 // the port's own: the build of the link has loaded and drawn a frame
                 Ok(()) if self.opening_link_loaded.get() => {
                     self.opening_link_loaded.set(false);
