@@ -35,8 +35,8 @@ fn calc_file_json_has_meta_and_allowlisted_stats() {
     let parsed = CandidateOutput::from_json(std::str::from_utf8(&out.stdout).unwrap()).unwrap();
     assert_eq!(
         parsed.stats.len(),
-        632,
-        "Dual Savior: every ALLOWLIST key it emits (= oracle ok count)"
+        634,
+        "Dual Savior: every ALLOWLIST key it emits (= oracle ok count; 2.68.0 +2: MaximumLifeManaDifference, MissingUnreservedLifePercent)"
     );
     assert!(
         parsed.stats.keys().all(|k| pob_calc::is_allowed(k)),
@@ -116,16 +116,18 @@ fn experimental_env_disables_the_filter() {
 /// R7.9 (calcs.mirages; allowlist 796 -> 847, EXCLUDED 11 -> 0): Dual Savior 504 -> 628 (its output is The Saviour's mirage perform's),
 /// Generals 528 -> 645 and Mirage Archer 515 -> 654 (their top offence runs), every golden +11 for the 11 former EXCLUDED keys (ok on
 /// the other five before): Cospris x2 745, OccVortex 769; `unimplemented` 4 on each (the perform tail `Gem*` keys).
-/// O9: `VaalArcticArmourMitigation` is `ok`, not `exact` (golden `+0`, Rust `-0`) -- hence exact = ok - 1.
+/// O9 (history): `VaalArcticArmourMitigation` was `ok`, not `exact` -- the WASM oracle's golden had `+0`, Rust `-0`. The LuaJIT goldens
+/// (R-INDEPENDENT-UPDATE A3, `8201b405`) record `-0` (`negZero`): exact = ok since.
+/// 2.68.0 (`ca3b2bce`): every golden +2 -- the new ALLOWLIST keys `MaximumLifeManaDifference`, `MissingUnreservedLifePercent`.
 #[test]
 fn cli_stats_against_goldens() {
     let pinned: [(&str, usize, usize); 6] = [
-        ("Dual Savior", 632, 631),
-        ("Dual Wield Cospris CoC", 749, 748),
-        ("Dual Wield Cospris CoC - Lethal Pride", 749, 748),
-        ("Generals Perforate Zerker", 649, 648),
-        ("Mirage Archer Toxic Rain", 658, 657),
-        ("OccVortex", 773, 772),
+        ("Dual Savior", 634, 634),
+        ("Dual Wield Cospris CoC", 751, 751),
+        ("Dual Wield Cospris CoC - Lethal Pride", 751, 751),
+        ("Generals Perforate Zerker", 651, 651),
+        ("Mirage Archer Toxic Rain", 660, 660),
+        ("OccVortex", 775, 775),
     ];
     let mut got = Vec::new();
     for (g, (name, _, _)) in GOLDEN_BUILDS.iter().zip(pinned) {
