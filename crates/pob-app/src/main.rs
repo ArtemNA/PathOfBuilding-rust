@@ -208,6 +208,20 @@ fn main() {
         app_version: Some(env!("CARGO_PKG_VERSION").to_string()),
     };
     cfg.read_manifest(&format!("{pob}/manifest.xml"));
+    // an update a previous run downloaded goes in before the window opens, when no other window would be closed by the installer
+    let running = pob_ui::update::Running::mark(&pob_ui::update::update_dir());
+    if let Some(exe) = std::env::current_exe().ok().filter(|_| !args.iter().any(|a| a == "--no-network")) {
+        let kind = exe.parent().map_or(pob_ui::update::Install::Manual, pob_ui::update::install_kind);
+        let uri = args.get(1).is_some_and(|a| !a.starts_with("--"));
+        let dir = pob_ui::update::update_dir();
+        match pob_ui::update::install_at_start(&dir, env!("CARGO_PKG_VERSION"), kind, running.as_ref(), uri, |p| {
+            pob_ui::update::start_install(p, &exe)
+        }) {
+            Ok(true) => return,
+            Ok(false) => {}
+            Err(e) => eprintln!("Update at the start: {e}"),
+        }
+    }
     let runner = Runner {
         fps_log: args.iter().any(|a| a == "--fps-log").then_some((0, 0)),
         open: arg(&args, "--open"),

@@ -471,6 +471,7 @@ impl Launch {
         };
         let progress = Arc::new(pob_net::DownloadProgress::default());
         self.set_update_downloading(&pending.version, Arc::clone(&progress));
+        let sha256 = asset.sha256.clone();
         let job = pob_net::Job::Download {
             req,
             path,
@@ -480,7 +481,13 @@ impl Launch {
         let started = self.launch_sub(job, move |_, outcome| {
             let l = launch();
             match outcome {
-                pob_net::Outcome::Download(Ok(())) => l.update_ready(pending),
+                pob_net::Outcome::Download(Ok(())) => {
+                    // the next start installs it before its window opens, if it is the only window (`update::install_at_start`)
+                    if let Err(e) = crate::update::write_record(&crate::update::update_dir(), &pending, &sha256) {
+                        eprintln!("Update: {e}");
+                    }
+                    l.update_ready(pending);
+                }
                 pob_net::Outcome::Download(Err(e)) | pob_net::Outcome::Crashed(e) => l.update_failed(asked, e),
                 _ => l.update_failed(asked, "the download did not run".to_string()),
             }
