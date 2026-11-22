@@ -659,13 +659,14 @@ impl Item {
         item
     }
 
-    /// `new("Item"):Item(raw, rarity, highQuality)` (Main.lua:166, :181).
+    /// `new("Item"):Item(raw, rarity, highQuality)` (Main.lua:166, :181): `ParseRaw(sanitiseText(raw))` (Item.lua:94-97). The text of an item
+    /// copied in the game has `ä`, dashes and zero-width spaces; cleaned text comes back unchanged.
     pub fn parse_with(raw: &str, rarity: Option<&str>, high_quality: bool) -> Item {
         let mut item = Item {
             parse_mode: pob_parser::ParseMode::Full,
             ..Item::default()
         };
-        item.parse_raw(raw, rarity, high_quality);
+        item.parse_raw(&pob_build::sanitise_text(raw), rarity, high_quality);
         if item.base.is_some() {
             item.build_mod_list();
         }

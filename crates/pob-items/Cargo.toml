@@ -12,11 +12,12 @@ pob-lua = { path = "../pob-lua" }
 pob-mods = { path = "../pob-mods" }
 pob-data.workspace = true
 pob-parser.workspace = true
+# `sanitiseText` (Common.lua:306) of `new("Item", raw)`; pob-build does not depend on this crate
+pob-build.workspace = true
 indexmap.workspace = true
 serde_json.workspace = true
 
 [dev-dependencies]
-pob-build.workspace = true
 pob-golden.workspace = true
 
 [lints]
