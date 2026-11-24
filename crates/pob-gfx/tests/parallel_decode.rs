@@ -7,6 +7,9 @@ mod scene;
 use pob_gfx::{DrawList, Gfx, ImageHandle, LoadFlag};
 use std::sync::atomic::Ordering;
 
+/// The switch is global: the tests of this file take turns.
+static ONE: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 fn test_png() -> std::path::PathBuf {
     scene::oracle_dir().join("scenes/img/test8.png")
 }
@@ -72,6 +75,7 @@ fn frame(gfx: &mut Gfx, parallel: bool) -> (DrawList, Vec<String>) {
 
 #[test]
 fn the_parallel_frame_is_the_frame_in_place() {
+    let _one = ONE.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
     let mut gfx = Gfx::new(&scene::fonts_dir(), (1280, 800), 1.0).expect("fonts");
     let (in_place, during) = frame(&mut gfx, false);
     let (parallel, during_parallel) = frame(&mut gfx, true);
@@ -81,4 +85,38 @@ fn the_parallel_frame_is_the_frame_in_place() {
     // in place each image was decoded where it was drawn; side by side none was by the end of its draws
     assert!(during.iter().take(4).all(|s| !s.contains("loading")), "{during:?}");
     assert!(during_parallel.iter().take(4).all(|s| s.contains("loading")), "{during_parallel:?}");
+}
+
+/// More images than the pool has threads: they queue, every one arrives, and none got a thread of its own.
+#[test]
+fn more_images_than_threads_queue_on_the_pool() {
+    let _one = ONE.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    let mut gfx = Gfx::new(&scene::fonts_dir(), (1280, 800), 1.0).expect("fonts");
+    let mut paths = sheets();
+    paths.push(test_png());
+    let many: Vec<std::path::PathBuf> = (0..8).flat_map(|_| paths.clone()).collect();
+    assert!(many.len() > pob_gfx::image::DECODE_THREADS);
+    let draw = |gfx: &mut Gfx| {
+        let hs: Vec<ImageHandle> = many
+            .iter()
+            .map(|p| {
+                let h = ImageHandle::new();
+                h.load_lazy(p, &[]).expect("load");
+                h
+            })
+            .collect();
+        let mut f = gfx.begin_frame();
+        for (i, h) in hs.iter().enumerate() {
+            f.draw_image(Some(h), i as f64, 0.0, 10.0, 10.0, None).expect("draw");
+        }
+        f.finish()
+    };
+    let in_place = draw(&mut gfx);
+    pob_gfx::image::PARALLEL_DECODE.store(true, Ordering::Relaxed);
+    let before = pob_gfx::image::POOLED_DECODES.load(Ordering::Relaxed);
+    let parallel = draw(&mut gfx);
+    let pooled = pob_gfx::image::POOLED_DECODES.load(Ordering::Relaxed) - before;
+    pob_gfx::image::PARALLEL_DECODE.store(false, Ordering::Relaxed);
+    assert_eq!(seen(&parallel), seen(&in_place));
+    assert_eq!(pooled, many.len(), "every decode went to the pool");
 }

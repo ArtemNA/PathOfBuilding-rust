@@ -120,6 +120,48 @@ pub static PARALLEL_DECODE: std::sync::atomic::AtomicBool = std::sync::atomic::A
 /// (`Launch::set_tree_images_async`). It wins over [`PARALLEL_DECODE`] for those images.
 pub static DRAW_WHEN_READY: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
+/// The threads that decode images while [`PARALLEL_DECODE`] or [`DRAW_WHEN_READY`] is on: a fixed pool with a queue, not a thread per image.
+/// In the web application a thread beyond the page's own pool is a new Worker that loads the whole module again.
+pub const DECODE_THREADS: usize = 8;
+
+/// Runs one decode: on the pool of [`DECODE_THREADS`] when a web switch is on, on a thread of its own otherwise (the desktop, as before).
+fn spawn_decode(job: impl FnOnce() + Send + 'static) {
+    use std::sync::atomic::Ordering::Relaxed;
+    if !(PARALLEL_DECODE.load(Relaxed) || DRAW_WHEN_READY.load(Relaxed)) {
+        std::thread::spawn(job);
+        return;
+    }
+    type Job = Box<dyn FnOnce() + Send>;
+    static POOL: std::sync::OnceLock<std::sync::Mutex<mpsc::Sender<Job>>> = std::sync::OnceLock::new();
+    let pool = POOL.get_or_init(|| {
+        let (tx, rx) = mpsc::channel::<Job>();
+        let rx = std::sync::Arc::new(std::sync::Mutex::new(rx));
+        for i in 0..DECODE_THREADS {
+            let rx = std::sync::Arc::clone(&rx);
+            let _ = std::thread::Builder::new().name(format!("decode-{i}")).spawn(move || {
+                loop {
+                    // the lock is held only to take the next job, not while it runs
+                    let next = rx.lock().unwrap_or_else(std::sync::PoisonError::into_inner).recv();
+                    match next {
+                        Ok(job) => job(),
+                        Err(_) => return,
+                    }
+                }
+            });
+        }
+        std::sync::Mutex::new(tx)
+    });
+    POOLED_DECODES.fetch_add(1, Relaxed);
+    let sent = pool.lock().unwrap_or_else(std::sync::PoisonError::into_inner).send(Box::new(job));
+    if let Err(mpsc::SendError(job)) = sent {
+        // no worker could start: the decode still runs
+        std::thread::spawn(job);
+    }
+}
+
+/// The decodes that ran on the pool ([`spawn_decode`]): what the tests see of it.
+pub static POOLED_DECODES: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
 /// How many draws of this process waited for their image at the end of the frame ([`PARALLEL_DECODE`]): what the tests see of the switch.
 pub static PARALLEL_DRAWS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
 
@@ -221,7 +263,7 @@ impl ImageHandle {
         let nearest = false;
         if flags.contains(&LoadFlag::Async) {
             let (tx, rx) = mpsc::channel();
-            std::thread::spawn(move || {
+            spawn_decode(move || {
                 // The receiver may be gone (handle reloaded/dropped): nothing to do then.
                 let _ = tx.send(decode(&path));
             });
@@ -287,7 +329,7 @@ impl ImageHandle {
         };
         let (path, size, clamp) = (path.clone(), *size, *clamp);
         let (tx, rx) = mpsc::channel();
-        std::thread::spawn(move || {
+        spawn_decode(move || {
             let _ = tx.send(decode_as(&path, size));
         });
         *st = State::Prefetching { rx, size, clamp };
@@ -335,7 +377,7 @@ impl ImageHandle {
             State::Lazy { path, size: None, clamp } => {
                 let (path, clamp) = (path.clone(), *clamp);
                 let (tx, rx) = mpsc::channel();
-                std::thread::spawn(move || {
+                spawn_decode(move || {
                     let _ = tx.send(decode(&path));
                 });
                 State::Loading { rx, clamp, nearest: false }

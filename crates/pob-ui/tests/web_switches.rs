@@ -69,7 +69,6 @@ fn open_a_build_one_way() {
     if mode.starts_with("web") {
         l.set_prefetch(false);
         l.set_parallel_image_decode(true);
-        l.set_preload_data(true);
     }
     if mode == "web-async" {
         l.set_tree_images_async(true);
@@ -77,6 +76,10 @@ fn open_a_build_one_way() {
     l.on_init(&mut gfx);
     main().background.wait();
     frame(&mut gfx, &l);
+    // the web application starts reading the data ahead after its first frame
+    if mode.starts_with("web") {
+        l.set_preload_data(true);
+    }
     let path = format!("{}{BUILD}.xml", main().build_path.borrow());
     main().set_mode("BUILD", vec![ModeArg::Str(path), ModeArg::Str(BUILD.to_string())]);
     // the most a frame of the opening drew: with the tree's images asynchronous it is less, the rest comes later
