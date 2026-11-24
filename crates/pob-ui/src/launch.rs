@@ -258,6 +258,13 @@ impl Launch {
         pob_gfx::image::PARALLEL_DECODE.store(on, std::sync::atomic::Ordering::Relaxed);
     }
 
+    /// On: the passive tree draws without waiting for its images -- one not read yet is decoded on a thread and appears a frame or two later,
+    /// as the original's `ASYNC` images do (`pob_gfx::image::DRAW_WHEN_READY`). A change of what is shown while the images load, so off by
+    /// default and off on the desktop; the web application may turn it on. Called before the first frame.
+    pub fn set_tree_images_async(&self, on: bool) {
+        pob_gfx::image::DRAW_WHEN_READY.store(on, std::sync::atomic::Ordering::Relaxed);
+    }
+
     /// On: a thread reads the data ahead -- all of `data.cache` (held in memory, ~15 MB), the data patches of a build, and the shared tables an
     /// engine parses (it builds an engine of a new build and drops it) -- so that opening a build waits for less. The same values; only who reads
     /// them first differs. Off by default (the desktop reads as it goes); the web application turns it on, where each file read is a request.

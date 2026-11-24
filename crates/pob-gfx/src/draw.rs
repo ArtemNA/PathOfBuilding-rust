@@ -534,6 +534,9 @@ impl Frame<'_> {
         height: f64,
         tc: Option<[f64; 4]>,
     ) -> Result<(), GfxError> {
+        if !self.ready(img) {
+            return Ok(());
+        }
         let deferred = self.deferred(img);
         let Some(tex) = (match &deferred {
             Some(_) => Some(Rc::clone(&self.gfx.white)),
@@ -554,6 +557,14 @@ impl Frame<'_> {
         Ok(())
     }
 
+    /// [`crate::image::DRAW_WHEN_READY`]: `false` when the image is still decoding on a thread and this draw is skipped.
+    fn ready(&self, img: Option<&ImageHandle>) -> bool {
+        match img {
+            Some(h) if crate::image::DRAW_WHEN_READY.load(std::sync::atomic::Ordering::Relaxed) && h.has_load() => h.ready_now(),
+            _ => true,
+        }
+    }
+
     /// The image of a draw that waits for the frame's end ([`crate::image::PARALLEL_DECODE`]); its decode has started.
     fn deferred(&self, img: Option<&ImageHandle>) -> Option<ImageHandle> {
         let h = img?;
@@ -569,6 +580,9 @@ impl Frame<'_> {
 
     /// `DrawImageQuad(img|nil, x1, y1, …, x4, y4[, s1, t1, …, s4, t4])`.
     pub fn draw_image_quad(&mut self, img: Option<&ImageHandle>, xy: [f64; 8], st: Option<[f64; 8]>) -> Result<(), GfxError> {
+        if !self.ready(img) {
+            return Ok(());
+        }
         let deferred = self.deferred(img);
         let Some(tex) = (match &deferred {
             Some(_) => Some(Rc::clone(&self.gfx.white)),

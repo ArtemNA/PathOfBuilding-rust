@@ -114,6 +114,12 @@ type Decoded = Result<(u32, u32, Vec<u8>), ImageError>;
 /// ([`crate::Frame::finish`]) instead of one after the other where each is drawn. The same images, the same pixels; only the waiting differs.
 /// Off by default: the desktop decodes in place. A host whose file reads are slow (the web application, `Launch::set_parallel_image_decode`) turns it on.
 pub static PARALLEL_DECODE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+/// A synchronous lazy image (the passive tree's) that is not decoded yet draws nothing: its decode starts on a thread and a later frame draws it
+/// once it is there, as an `ASYNC` image does (PassiveTree.lua `ASYNC` handles). The first frame of a tree then does not wait for its images,
+/// which appear a moment later. A change of what the original shows, so off by default; the web application may turn it on
+/// (`Launch::set_tree_images_async`). It wins over [`PARALLEL_DECODE`] for those images.
+pub static DRAW_WHEN_READY: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
 /// How many draws of this process waited for their image at the end of the frame ([`PARALLEL_DECODE`]): what the tests see of the switch.
 pub static PARALLEL_DRAWS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
 
@@ -285,6 +291,23 @@ impl ImageHandle {
             let _ = tx.send(decode_as(&path, size));
         });
         *st = State::Prefetching { rx, size, clamp };
+    }
+
+    /// [`DRAW_WHEN_READY`]: the pixels are there to draw now (`true`, or the image failed: the caller asks for the texture as before), or a
+    /// thread is still decoding them (`false`: nothing is drawn this frame). Starts that thread for an image not asked for yet. Never waits.
+    pub(crate) fn ready_now(&self) -> bool {
+        if matches!(&*self.0.borrow(), State::Lazy { size: Some(_), .. }) {
+            self.prefetch();
+        }
+        let mut st = self.0.borrow_mut();
+        let State::Prefetching { rx, clamp, .. } = &*st else { return true };
+        let next = match rx.try_recv() {
+            Ok(d) => finished(d, *clamp, false),
+            Err(mpsc::TryRecvError::Disconnected) => State::Failed,
+            Err(mpsc::TryRecvError::Empty) => return false,
+        };
+        *st = next;
+        true
     }
 
     /// [`PARALLEL_DECODE`]: a synchronous lazy image a frame draws starts decoding on a thread now (`true`), and the frame takes its pixels at its
