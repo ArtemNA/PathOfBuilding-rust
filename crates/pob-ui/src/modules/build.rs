@@ -1867,11 +1867,9 @@ impl Mode for BuildMode {
             }
             // a new build: no sections -- the tabs' defaults; TreeTab's is one empty spec of the latest tree
             // (`new("PassiveSpec"):PassiveSpec(build, latestTreeVersion)`, class 0), which the engine needs as a `<Spec>`
-            _ => Some(format!(
-                "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<PathOfBuilding>\n\t<Build level=\"{}\" targetVersion=\"{LIVE_TARGET_VERSION}\" characterLevelAutoMode=\"{}\"/>\n\t<Tree activeSpec=\"1\">\n\t\t<Spec treeVersion=\"{}\" classId=\"0\" ascendClassId=\"0\" secondaryAscendClassId=\"nil\" nodes=\"\"/>\n\t</Tree>\n</PathOfBuilding>",
-                tostring_num(m.s.borrow().default_char_level.unwrap_or(1.0).clamp(1.0, 100.0)),
+            _ => Some(new_build_xml(
+                m.s.borrow().default_char_level.unwrap_or(1.0).clamp(1.0, 100.0),
                 m.s.borrow().default_char_level.is_none_or(|l| l == 1.0),
-                pob_data::tree::tree_versions().expect("GameVersions").latest_tree_version
             )),
         };
         let mut engine = match imported {
@@ -2664,4 +2662,15 @@ fn check_fresh(e: Option<&Engine>) {
 /// The mismatches `POB_CHECK_FRESH` found so far on this thread.
 pub fn take_fresh_mismatches() -> Vec<String> {
     CHECK_FRESH.with(|c| c.borrow_mut().as_mut().map(|(_, f)| std::mem::take(f)).unwrap_or_default())
+}
+
+/// The XML of a new build: no sections but the tabs' defaults; TreeTab's is one empty spec of the latest tree
+/// (`new("PassiveSpec"):PassiveSpec(build, latestTreeVersion)`, class 0), which the engine needs as a `<Spec>`.
+pub(crate) fn new_build_xml(level: f64, level_auto: bool) -> String {
+    format!(
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<PathOfBuilding>\n\t<Build level=\"{}\" targetVersion=\"{LIVE_TARGET_VERSION}\" characterLevelAutoMode=\"{}\"/>\n\t<Tree activeSpec=\"1\">\n\t\t<Spec treeVersion=\"{}\" classId=\"0\" ascendClassId=\"0\" secondaryAscendClassId=\"nil\" nodes=\"\"/>\n\t</Tree>\n</PathOfBuilding>",
+        tostring_num(level),
+        level_auto,
+        pob_data::tree::tree_versions().expect("GameVersions").latest_tree_version
+    )
 }

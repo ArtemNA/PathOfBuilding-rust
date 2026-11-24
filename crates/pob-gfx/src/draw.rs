@@ -139,6 +139,8 @@ pub struct Gfx {
     /// Virtual `x, y, w, h`; `None` = whole screen.
     viewport: Option<[f64; 4]>,
     list: DrawList,
+    /// [`crate::image::PARALLEL_DECODE`]: the commands of this frame whose image is still decoding, by index in `list.commands`.
+    pending: Vec<(usize, ImageHandle)>,
     platform: Box<dyn Platform>,
     input: InputState,
     requests: WindowRequests,
@@ -172,6 +174,7 @@ impl Gfx {
             sub_layer: 0,
             viewport: None,
             list: DrawList::default(),
+            pending: Vec::new(),
             platform,
             input: InputState::new(),
             requests: WindowRequests::default(),
@@ -395,6 +398,7 @@ impl Gfx {
         self.viewport = None;
         self.shot_this_frame = std::mem::take(&mut self.shot_requested);
         self.list.commands.clear();
+        self.pending.clear();
         self.list.size = self.screen;
         self.list.clear = self.clear;
         Frame { gfx: self }
@@ -530,7 +534,13 @@ impl Frame<'_> {
         height: f64,
         tc: Option<[f64; 4]>,
     ) -> Result<(), GfxError> {
-        let Some(tex) = self.image_texture(img)? else { return Ok(()) };
+        let deferred = self.deferred(img);
+        let Some(tex) = (match &deferred {
+            Some(_) => Some(Rc::clone(&self.gfx.white)),
+            None => self.image_texture(img)?,
+        }) else {
+            return Ok(());
+        };
         // SimpleGraphic takes `left`/`width` as floats and adds them in float (`tree_pixels_equal_original`: 53 pixels up to Δ7 without this)
         let (r, b) = (f64::from(left as f32 + width as f32), f64::from(top as f32 + height as f32));
         let [tl, tt, tr, tb] = tc.unwrap_or([0.0, 0.0, 1.0, 1.0]);
@@ -540,16 +550,37 @@ impl Frame<'_> {
             [[tl, tt], [tr, tt], [tr, tb], [tl, tb]],
             false,
         );
+        self.note_pending(deferred);
         Ok(())
+    }
+
+    /// The image of a draw that waits for the frame's end ([`crate::image::PARALLEL_DECODE`]); its decode has started.
+    fn deferred(&self, img: Option<&ImageHandle>) -> Option<ImageHandle> {
+        let h = img?;
+        (crate::image::PARALLEL_DECODE.load(std::sync::atomic::Ordering::Relaxed) && h.has_load() && h.start_decode()).then(|| h.clone())
+    }
+
+    fn note_pending(&mut self, deferred: Option<ImageHandle>) {
+        if let Some(h) = deferred {
+            let at = self.gfx.list.commands.len() - 1;
+            self.gfx.pending.push((at, h));
+        }
     }
 
     /// `DrawImageQuad(img|nil, x1, y1, …, x4, y4[, s1, t1, …, s4, t4])`.
     pub fn draw_image_quad(&mut self, img: Option<&ImageHandle>, xy: [f64; 8], st: Option<[f64; 8]>) -> Result<(), GfxError> {
-        let Some(tex) = self.image_texture(img)? else { return Ok(()) };
+        let deferred = self.deferred(img);
+        let Some(tex) = (match &deferred {
+            Some(_) => Some(Rc::clone(&self.gfx.white)),
+            None => self.image_texture(img)?,
+        }) else {
+            return Ok(());
+        };
         let st = st.unwrap_or([0.0, 0.0, 1.0, 0.0, 1.0, 1.0, 0.0, 1.0]);
         let p = |k: usize| [xy[2 * k], xy[2 * k + 1]];
         let t = |k: usize| [st[2 * k], st[2 * k + 1]];
         self.push(tex, [p(0), p(1), p(2), p(3)], [t(0), t(1), t(2), t(3)], false);
+        self.note_pending(deferred);
         Ok(())
     }
 
@@ -625,6 +656,25 @@ impl Frame<'_> {
 
     /// Ends the frame: the command list stably sorted by `(layer, subLayer)`.
     pub fn finish(self) -> DrawList {
+        // the images that decoded side by side: each command gets its texture, or goes when the image failed (a failed `Load` draws nothing)
+        let pending = std::mem::take(&mut self.gfx.pending);
+        if !pending.is_empty() {
+            crate::image::PARALLEL_DRAWS.fetch_add(pending.len(), std::sync::atomic::Ordering::Relaxed);
+            let mut gone = vec![false; self.gfx.list.commands.len()];
+            for (at, h) in pending {
+                match h.texture() {
+                    Some(t) => self.gfx.list.commands[at].texture = t,
+                    None => gone[at] = true,
+                }
+            }
+            if gone.contains(&true) {
+                let mut i = 0;
+                self.gfx.list.commands.retain(|_| {
+                    i += 1;
+                    !gone[i - 1]
+                });
+            }
+        }
         self.gfx.list.sort();
         std::mem::take(&mut self.gfx.list)
     }

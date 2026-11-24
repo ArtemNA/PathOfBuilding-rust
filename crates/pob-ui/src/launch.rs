@@ -251,6 +251,35 @@ impl Launch {
         crate::tree_art::PREFETCH.store(on, std::sync::atomic::Ordering::Relaxed);
     }
 
+    /// On: the images a frame draws for the first time are read and decoded side by side, and the frame waits for them once at its end instead of
+    /// one after the other (`pob_gfx::image::PARALLEL_DECODE`). The same images and pixels. Off by default (the desktop decodes in place); the web
+    /// application turns it on, where each file read is a request. Called before the first frame.
+    pub fn set_parallel_image_decode(&self, on: bool) {
+        pob_gfx::image::PARALLEL_DECODE.store(on, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    /// On: a thread reads the data ahead -- all of `data.cache` (held in memory, ~15 MB), the data patches of a build, and the shared tables an
+    /// engine parses (it builds an engine of a new build and drops it) -- so that opening a build waits for less. The same values; only who reads
+    /// them first differs. Off by default (the desktop reads as it goes); the web application turns it on, where each file read is a request.
+    /// Called before the first frame; a second call does nothing.
+    pub fn set_preload_data(&self, on: bool) {
+        static STARTED: std::sync::Once = std::sync::Once::new();
+        if !on {
+            return;
+        }
+        STARTED.call_once(|| {
+            let spawned = std::thread::Builder::new().name("preload-data".into()).spawn(|| {
+                pob_data::bincache::preload();
+                if let Err(e) = pob_engine::engine::Engine::load_xml(&crate::modules::build::new_build_xml(1.0, true)) {
+                    eprintln!("Preload: {e}");
+                }
+            });
+            if let Err(e) = spawned {
+                eprintln!("Preload: {e}");
+            }
+        });
+    }
+
     /// `launch = { }` + `SetMainObject(launch)` (Launch.lua:16-17): registers the global.
     pub fn new(cfg: LaunchConfig) -> Rc<Self> {
         install_panic_hook();

@@ -110,6 +110,13 @@ impl std::error::Error for ImageError {}
 
 type Decoded = Result<(u32, u32, Vec<u8>), ImageError>;
 
+/// The images a frame draws for the first time are read and decoded side by side, and the frame waits for them once at its end
+/// ([`crate::Frame::finish`]) instead of one after the other where each is drawn. The same images, the same pixels; only the waiting differs.
+/// Off by default: the desktop decodes in place. A host whose file reads are slow (the web application, `Launch::set_parallel_image_decode`) turns it on.
+pub static PARALLEL_DECODE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+/// How many draws of this process waited for their image at the end of the frame ([`PARALLEL_DECODE`]): what the tests see of the switch.
+pub static PARALLEL_DRAWS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
 fn decode(path: &Path) -> Decoded {
     let bytes = std::fs::read(path).map_err(|e| ImageError::Io(path.to_path_buf(), e))?;
     let img = image::load_from_memory(&bytes).map_err(|e| ImageError::Decode(path.to_path_buf(), e.to_string()))?;
@@ -278,6 +285,15 @@ impl ImageHandle {
             let _ = tx.send(decode_as(&path, size));
         });
         *st = State::Prefetching { rx, size, clamp };
+    }
+
+    /// [`PARALLEL_DECODE`]: a synchronous lazy image a frame draws starts decoding on a thread now (`true`), and the frame takes its pixels at its
+    /// end. `false`: not such an image (decoded, `ASYNC`, failed, empty); the caller asks for the texture as before.
+    pub(crate) fn start_decode(&self) -> bool {
+        if matches!(&*self.0.borrow(), State::Lazy { size: Some(_), .. }) {
+            self.prefetch();
+        }
+        matches!(&*self.0.borrow(), State::Prefetching { .. })
     }
 
     /// `load` with Lua flag names (`"CLAMP"`, `"ASYNC"`…).

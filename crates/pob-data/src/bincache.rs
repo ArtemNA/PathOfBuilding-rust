@@ -9,7 +9,7 @@ use std::collections::HashMap;
 use std::fmt;
 use std::io::{Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
-use std::sync::OnceLock;
+use std::sync::{Arc, Mutex, OnceLock};
 
 use serde::de::{self, DeserializeOwned, DeserializeSeed, EnumAccess, IntoDeserializer, MapAccess, SeqAccess, VariantAccess, Visitor};
 
@@ -266,6 +266,8 @@ pub fn write_tables(magic: &[u8; 8], tables: &[(String, Vec<u8>)], manifest_sha2
 pub struct CacheFile {
     path: PathBuf,
     tables: HashMap<String, (u64, u64, u64)>,
+    /// [`preload`]: the bytes of the tables read ahead, checked; a table that is here is not read from the file again.
+    preloaded: Box<Mutex<HashMap<String, Arc<Vec<u8>>>>>,
 }
 
 impl CacheFile {
@@ -315,6 +317,7 @@ impl CacheFile {
         Some(CacheFile {
             path: path.to_path_buf(),
             tables,
+            preloaded: Box::default(),
         })
     }
 
@@ -326,6 +329,9 @@ impl CacheFile {
     /// The bytes of a table: `None` if the cache has no such table, an error if it cannot be read or its checksum differs.
     pub fn raw(&self, rel: &str) -> Option<Result<Vec<u8>, String>> {
         let &(at, len, sum) = self.tables.get(rel)?;
+        if let Some(b) = self.preloaded.lock().unwrap_or_else(std::sync::PoisonError::into_inner).get(rel) {
+            return Some(Ok(b.to_vec()));
+        }
         let read = || -> Result<Vec<u8>, String> {
             let io = |e: std::io::Error| format!("{}: {e}", self.path.display());
             let mut f = std::fs::File::open(&self.path).map_err(io)?;
@@ -346,6 +352,42 @@ impl CacheFile {
     pub fn table_names(&self) -> impl Iterator<Item = &str> {
         self.tables.keys().map(String::as_str)
     }
+
+    /// Reads every table into memory in the order of the file (checked as [`Self::raw`] checks them), so that no later read goes to the file.
+    /// Returns the bytes read.
+    fn preload_all(&self) -> u64 {
+        let mut order: Vec<(&String, u64)> = self.tables.iter().map(|(n, &(at, _, _))| (n, at)).collect();
+        order.sort_by_key(|&(_, at)| at);
+        let mut bytes = 0;
+        for (name, _) in order {
+            if self
+                .preloaded
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .contains_key(name)
+            {
+                continue;
+            }
+            if let Some(Ok(b)) = self.raw(name) {
+                bytes += b.len() as u64;
+                self.preloaded
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner)
+                    .insert(name.clone(), Arc::new(b));
+            }
+        }
+        bytes
+    }
+}
+
+/// Reads all of `data.cache` into memory (held for the life of the process, ~15 MB) and the data patches a build reads (`tattoo-passives.json`,
+/// `legion-passives.json`), on the calling thread. A host whose file reads are slow (the web application, each read is a request) calls it on a
+/// thread of its own right after the start: opening a build then reads no data file. The desktop does not; the same values either way.
+pub fn preload() -> u64 {
+    let bytes = cache().map_or(0, CacheFile::preload_all);
+    let _ = crate::tattoo::tattoo_passives();
+    let _ = crate::timeless::legion_passives();
+    bytes
 }
 
 /// The cache of this process, once. Checked against the lock like the JSON.
@@ -720,5 +762,35 @@ impl<'de> VariantAccess<'de> for Variant<'_, '_> {
     }
     fn struct_variant<V: Visitor<'de>>(self, _fields: &'static [&'static str], v: V) -> Result<V::Value, DecodeError> {
         de::Deserializer::deserialize_any(Value { t: self.t, pos: self.pos }, v)
+    }
+}
+
+#[cfg(test)]
+mod preload_tests {
+    use super::*;
+
+    /// [`preload`]: after the tables are read ahead, every read is the same bytes and none goes to the file (it is gone).
+    #[test]
+    fn preloaded_tables_read_without_the_file() {
+        let dir = std::env::temp_dir().join(format!("pob-data-preload-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("mkdir");
+        let file = dir.join("t.cache");
+        let tables: Vec<(String, Vec<u8>)> = (0..5).map(|i| (format!("t{i}.json"), vec![i as u8; 1000 + i])).collect();
+        write_tables(MAGIC, &tables, "sha", &file).expect("write");
+        let c = CacheFile::open(&file, "sha").expect("open");
+        assert_eq!(c.preload_all(), tables.iter().map(|(_, b)| b.len() as u64).sum::<u64>());
+        std::fs::remove_file(&file).expect("remove");
+        for (name, want) in &tables {
+            assert_eq!(&c.raw(name).expect("a table").expect("read"), want, "{name}");
+        }
+        assert!(c.raw("none.json").is_none());
+        // without the read ahead the file is needed
+        let d = dir.join("u.cache");
+        write_tables(MAGIC, &tables, "sha", &d).expect("write");
+        let u = CacheFile::open(&d, "sha").expect("open");
+        std::fs::remove_file(&d).expect("remove");
+        assert!(u.raw("t0.json").expect("a table").is_err());
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
