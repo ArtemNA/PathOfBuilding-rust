@@ -106,6 +106,10 @@ impl Renderer {
     pub fn new_instance() -> wgpu::Instance {
         wgpu::Instance::new(wgpu::InstanceDescriptor {
             backends: wgpu::Backends::from_env().unwrap_or(DEFAULT_BACKENDS),
+            // `DEBUG` (on in debug builds) compiles the shaders without optimisation (DX12 `D3DCOMPILE_SKIP_OPTIMIZATION`), and
+            // their rounding then differs from the release build by a few levels on some pixels; the pixel gates hold in both
+            // builds only when debug renders like release. Validation stays on in debug builds.
+            flags: wgpu::InstanceFlags::from_build_config().difference(wgpu::InstanceFlags::DEBUG),
             ..wgpu::InstanceDescriptor::new_without_display_handle()
         })
     }
