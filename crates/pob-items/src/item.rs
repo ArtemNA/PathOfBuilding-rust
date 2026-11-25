@@ -402,6 +402,9 @@ pub struct Item {
     pub affixes: Option<&'static crate::build_raw::ItemAffixes>,
     /// `self.rareLikeUnique` (Item.lua:1036, reset by ParseRaw :520).
     pub rare_like_unique: Option<&'static crate::build_raw::RareLikeUnique>,
+    /// `self.pendingAffixList` (Item.lua:600-626, 1103-1154): the affixes an advanced-copy `{ ... Modifier "Name" }` header may
+    /// name, consumed by the next mod line; `true` = `self.prefixes`, `false` = `self.suffixes`. Not reset by ParseRaw.
+    pending_affixes: Vec<(String, bool)>,
 }
 
 /// One `self.baseLines[baseName]` entry (Item.lua:1005-1010); `line` is the key.
@@ -1051,8 +1054,10 @@ impl Item {
         let mut stage = Stage::FindImplicit;
         let mut found_explicit = false;
         let mut found_implicit = false;
-        let line_prefix = "";
-        let line_postfix = "";
+        let mut line_prefix = String::new();
+        let mut line_postfix = String::new();
+        // `self.pendingAffixList` lives on the item and ParseRaw does not reset it
+        let mut pending_affixes = std::mem::take(&mut self.pending_affixes);
         let jewel_radius = pob_data::rules::rules().jewel_radii.get("3_16").expect("data.jewelRadii 3_16");
 
         while let Some(raw_line) = at(l) {
@@ -1072,6 +1077,8 @@ impl Item {
             } else if let Some(pos) = tincture_buff_lines.as_ref().and_then(|b| b.iter().position(|x| *x == line)) {
                 tincture_buff_lines.as_mut().expect("some").remove(pos);
             } else if line == "--------" {
+                line_prefix.clear();
+                line_postfix.clear();
                 self.check_section = true;
             } else if line == "Split" {
                 self.split = true;
@@ -1101,11 +1108,13 @@ impl Item {
             {
                 // In-game flask state and base properties aren't modifier lines.
             } else if matches(&line, "^{ ") {
-                // Item.lua:574-631: the in-game advanced copy format needs the affix database (data.itemMods) -- P5.
-                // :578-580 the flags are set before the line is parsed
+                // Item.lua:584-641: the in-game advanced copy format
                 self.advanced_copy = true;
                 has_modifier_headers = true;
-                self.unimplemented.push(format!("{ITEM}:584 advanced copy line skipped: {line}"));
+                line_prefix.clear();
+                line_postfix.clear();
+                self.crafted = true;
+                self.parse_modifier_header(&line, &mut line_prefix, &mut line_postfix, &mut pending_affixes);
             } else {
                 line = format!("{line_prefix}{line}{line_postfix}");
                 if self.check_section {
@@ -1377,8 +1386,11 @@ impl Item {
                         catalyst_scalar = get_catalyst_scalar(self.catalyst, &ml, self.catalyst_quality);
                     }
                     line = gsub(&line, "(%-?%d+%.?%d*)%((%-?%d+%.?%d*)%)", "%1", None);
-                    // Item.lua:1083 `pendingAffixList` exists only after an advanced-copy `{ ... }` header (skipped above).
-                    line = resolve_advanced_copy_ranges(&line, &mut ml);
+                    if pending_affixes.is_empty() {
+                        line = resolve_advanced_copy_ranges(&line, &mut ml);
+                    } else {
+                        line = self.take_pending_affix(&line, &mut ml, &mut pending_affixes);
+                    }
                     let mut ranged_line = apply_range(&line, 1.0, Some(catalyst_scalar), ml.corrupted_range, self.parse_mode);
                     let mut parsed = pob_parser::parse_mod_line(&ranged_line, false, self.parse_mode);
                     let next_mod_group = at(l + 1).and_then(|n| match1(n, "{modGroup:([^}]+)}"));
@@ -1462,6 +1474,7 @@ impl Item {
             l += 1;
         }
 
+        self.pending_affixes = pending_affixes;
         if has_modifier_headers && (self.rarity == "UNIQUE" || self.rarity == "RELIC") {
             // Item.lua:1360-1377 `modLine.order` from data.itemMods.ItemExclusive statOrder.
             let (exact, normalised) = unique_mod_stat_order();
@@ -3060,6 +3073,159 @@ fn list_values_slot(mods: &[SlotMod], name: &str) -> Vec<Value> {
 
 /// Item.lua:1130-1170 -- the advanced-copy `value(min-max)` endpoints and enum ranges (`%b()`); a no-op on PoB-XML text
 /// (no `value(` form survives the `%1` gsub before it).
+impl Item {
+    /// Item.lua:588-640: an advanced-copy header `{ <name> - <tags> }` sets the prefix of the lines below it (the line flags of
+    /// the name, `{custom}`, `{crucible}`, `{tags:...}`) and the affixes a `Modifier "Name"` may be.
+    fn parse_modifier_header(
+        &mut self,
+        line: &str,
+        line_prefix: &mut String,
+        line_postfix: &mut String,
+        pending: &mut Vec<(String, bool)>,
+    ) {
+        let (full_mod_name, mod_tags) = if let Some(c) = match_(line, "^{ (.-) %- (.-)  %- (%d*).*}$", ITEM) {
+            (c[0].clone(), Some(c[1].clone()))
+        } else if let Some(c) = match_(line, "^{ (.-) %- (.-) }$", ITEM) {
+            (c[0].clone(), Some(c[1].clone()))
+        } else if let Some(c) = match_(line, "^{ (.-) }$", ITEM) {
+            (c[0].clone(), None)
+        } else {
+            // :597 `fullModName:match` on nil raises in Lua
+            self.unimplemented
+                .push(format!("{ITEM}:597 Lua error (fullModName is nil): {line}"));
+            return;
+        };
+        let mod_name = match1(&full_mod_name, "^.*Modifier \"(.*)\"");
+        if let (Some(mod_name), Some(affixes)) = (mod_name.as_deref().filter(|n| !n.is_empty()), self.affixes) {
+            pending.clear();
+            let mut backup: Vec<(String, bool)> = Vec::new();
+            let ignore_mod_type = self.ignore_mod_type();
+            let none = std::collections::HashSet::new();
+            // R13: `pairs(self.affixes)`, here the table's file order
+            for (mod_id, m) in affixes.mods() {
+                if m.affix != mod_name {
+                    continue;
+                }
+                let ty = m.ty.as_deref();
+                let slot = if ty == Some("Prefix") || ignore_mod_type {
+                    Some(true)
+                } else if ty == Some("Suffix") {
+                    Some(false)
+                } else {
+                    None
+                };
+                let Some(is_prefix) = slot else { continue };
+                if self.can_have_mod(m, &none) {
+                    pending.push((mod_id.clone(), is_prefix));
+                } else {
+                    // Conqueror mods can't natively spawn on items, so they are the fallback
+                    backup.push((mod_id.clone(), is_prefix));
+                }
+            }
+            if pending.is_empty() && !backup.is_empty() {
+                *pending = backup;
+            } else if pending.is_empty() {
+                // Could be a veiled, temple, or other custom mod, so just keep it around
+                *line_prefix = "{custom}".to_owned();
+            }
+        } else if matches(&full_mod_name, "(.*)Enhancement.*") {
+            *line_postfix = " (enchant)".to_owned();
+        }
+        if let Some(flags) = match1(&gsub(&full_mod_name, "Foulborn", "Mutated", None), "(.*)Modifier.*") {
+            for f in gmatch(&flags, "%a+") {
+                let flag = lower(&f[0]);
+                if line_flag_index(&flag).is_some() {
+                    line_prefix.push_str(&format!("{{{flag}}}"));
+                }
+            }
+        }
+        if matches(&full_mod_name, "^Allocated Crucible Passive Skill") {
+            line_prefix.push_str("{crucible}");
+        }
+        if let Some(tags) = mod_tags.filter(|t| !t.is_empty()) {
+            line_prefix.push_str(&format!("{{tags:{}}}", gsub(&lower(&tags), "%s+", "", None)));
+        }
+    }
+
+    /// Item.lua:1103-1154: the first mod line under a `Modifier "Name"` header becomes an affix of `self.prefixes` /
+    /// `self.suffixes` with the roll of its `value(min-max)`; the line keeps the values.
+    fn take_pending_affix(&mut self, line: &str, ml: &mut ModLine, pending: &mut Vec<(String, bool)>) -> String {
+        let affixes = self.affixes.expect("pendingAffixList comes from self.affixes").mods();
+        if pending.len() > 1 {
+            // Probably a conqueror or essence mod since the mod name is the same for all of them; the first exact match, else the
+            // first loose match, else the first of the list. R13: "first" is `pairs(self.affixes)` order upstream, so with
+            // several mods of one kind the pick is LuaJIT's hash order; here the file order, the candidates on `unimplemented`.
+            let range_line = gsub(line, "%-?%d+%.?%d*%(", "(", None);
+            let value_stripped = gsub(&range_line, "%-?%d+%.?%d*", "#", None);
+            let (mut exact, mut loose) = (Vec::new(), Vec::new());
+            for (i, (id, _)) in pending.iter().enumerate() {
+                let lines = &affixes[id.as_str()].lines;
+                if lines.iter().any(|d| line == d || &range_line == d) {
+                    exact.push(i);
+                } else if lines.iter().any(|d| value_stripped == gsub(d, "%-?%d+%.?%d*", "#", None)) {
+                    loose.push(i);
+                }
+            }
+            let candidates = if !exact.is_empty() {
+                exact
+            } else if !loose.is_empty() {
+                loose
+            } else {
+                (0..pending.len()).collect()
+            };
+            if candidates.len() > 1 {
+                let ids: Vec<&str> = candidates.iter().map(|i| pending[*i].0.as_str()).collect();
+                self.unimplemented.push(format!(
+                    "{ITEM}:1111 R13: advanced copy affix candidates {}; took {}",
+                    ids.join(","),
+                    ids[0]
+                ));
+            }
+            *pending = vec![pending.swap_remove(candidates[0])];
+        }
+        let (mod_id, is_prefix) = pending.remove(0);
+        ml.order = affixes.get(mod_id.as_str()).and_then(|m| m.stat_order.first().copied());
+        let mut out = line.to_owned();
+        let (mut best_delta, mut best_range) = (-1.0, -1.0);
+        let mut roll_ranges = Vec::new();
+        for c in gmatch(line, "(%-?%d+%.?%d*)%((%-?%d+%.?%d*%-%-?%d+%.?%d*)%)") {
+            let (value, range) = (&c[0], &c[1]);
+            let mm = match_(range, "(%-?%d+%.?%d*)%-(%-?%d+%.?%d*)", ITEM).expect("range");
+            let (mut min, mut max) = (tonumber(&mm[0]).expect("n"), tonumber(&mm[1]).expect("n"));
+            if min > max {
+                std::mem::swap(&mut min, &mut max);
+            }
+            let v = tonumber(value).expect("n");
+            let delta = max - min;
+            roll_ranges.push(if delta > 0.0 { round((v - min) / delta, Some(6.0)) } else { 0.5 });
+            out = gsub(&out, &format!("{value}%({}%)", gsub(range, "%-", "%%-", None)), value, None);
+            if delta > best_delta {
+                best_range = round((v - min) / delta, Some(3.0));
+                best_delta = delta;
+            }
+        }
+        let range = if roll_ranges.len() > 1 {
+            AffixRange::List(roll_ranges)
+        } else if best_delta > 0.0 {
+            AffixRange::Num(best_range)
+        } else {
+            AffixRange::Num(0.5)
+        };
+        let affix = Affix {
+            mod_id,
+            range: Some(range),
+            fractured: ml.flag("fractured"),
+        };
+        if is_prefix {
+            self.prefixes.push(affix)
+        } else {
+            self.suffixes.push(affix)
+        }
+        pending.clear();
+        out
+    }
+}
+
 fn resolve_advanced_copy_ranges(line: &str, ml: &mut ModLine) -> String {
     let mut best_delta = -1.0;
     let mut best_range = -1.0;
