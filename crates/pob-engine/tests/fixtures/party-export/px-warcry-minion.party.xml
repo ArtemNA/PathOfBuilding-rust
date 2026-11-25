@@ -5,10 +5,10 @@
 		<ExportedBuffs name="Aura">
 			Anger
 100
-109|Skill:Anger|FireMin|BASE|-|Spell|type=GlobalEffect/effectType=Aura
-155|Skill:Anger|FireMax|BASE|-|Spell|type=GlobalEffect/effectType=Aura
 109|Skill:Anger|FireMin|BASE|-|Attack|type=GlobalEffect/effectType=Aura
 155|Skill:Anger|FireMax|BASE|-|Attack|type=GlobalEffect/effectType=Aura
+109|Skill:Anger|FireMin|BASE|-|Spell|type=GlobalEffect/effectType=Aura
+155|Skill:Anger|FireMax|BASE|-|Spell|type=GlobalEffect/effectType=Aura
 ---
 extraAura
 true|Tree:66771|Onslaught|FLAG|-|-|-
@@ -20,15 +20,15 @@ true|Tree:66771|Onslaught|FLAG|-|-|-
 Enfeeble
 100
 false
+-19|Skill:Enfeeble|Accuracy|INC|-|-|type=GlobalEffect/effectType=Curse
 -29|Skill:Enfeeble|Damage|MORE|-|-|type=GlobalEffect/effectType=Curse,type=Condition/neg=true/var=RareOrUnique
 -18|Skill:Enfeeble|Damage|MORE|-|-|type=GlobalEffect/effectType=Curse,type=Condition/var=RareOrUnique
--19|Skill:Enfeeble|Accuracy|INC|-|-|type=GlobalEffect/effectType=Curse
 ---
 Vulnerability
 144
 false
-15|Skill:Vulnerability|PhysicalDamageTaken|INC|-|-|type=GlobalEffect/effectType=Curse
 25|Skill:Vulnerability|SelfBleedChance|BASE|-|-|type=GlobalEffect/effectType=Curse
+15|Skill:Vulnerability|PhysicalDamageTaken|INC|-|-|type=GlobalEffect/effectType=Curse
 ---
 		</ExportedBuffs>
 		<ExportedBuffs name="Warcry Skills">

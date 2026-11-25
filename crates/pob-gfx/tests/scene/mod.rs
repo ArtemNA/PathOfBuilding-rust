@@ -45,6 +45,56 @@ pub fn oracle_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../tools/sg-oracle")
 }
 
+/// The pinned class `lua-error-popup` (user 2026-11-25): a shot under the original's prompt of a Lua error (`raw`: the oracle's `promptMsg`,
+/// with its `stack traceback:`) has that popup wider and taller than the port's, whose text is [`lua_error_prompt`] of it (compared as a
+/// state). The rectangle both popups cover (`launch:DrawPopup`, Launch.lua: width `DrawStringWidth(20, "VAR", "^0" .. msg) + 20`, height
+/// `(lines + 1) * 20`, centred on the screen) is left out; `None` when `raw` has no traceback. `[x0, y0, x1, y1)` in pixels.
+#[allow(dead_code)]
+pub fn lua_error_popup_mask(g: &Gfx, raw: &str) -> Option<[u32; 4]> {
+    if !raw.contains("\nstack traceback:") {
+        return None;
+    }
+    let rect = |msg: &str| {
+        let txt = format!("^0{msg}");
+        let w = g.draw_string_width(20.0, FontFamily::Var, &txt) as f64 + 20.0;
+        let h = (txt.bytes().filter(|&c| c == b'\n').count() as f64 + 2.0) * 20.0;
+        let (sw, sh) = (f64::from(SCREEN.0), f64::from(SCREEN.1));
+        ((sw - w) / 2.0, (sh - h) / 2.0, (sw + w) / 2.0, (sh + h) / 2.0)
+    };
+    let (a, b) = (rect(raw), rect(&lua_error_prompt(raw)));
+    let clamp = |v: f64, max: u32| (v.max(0.0) as u32).min(max);
+    Some([
+        clamp(a.0.min(b.0).floor(), SCREEN.0),
+        clamp(a.1.min(b.1).floor(), SCREEN.1),
+        clamp(a.2.max(b.2).ceil(), SCREEN.0),
+        clamp(a.3.max(b.3).ceil(), SCREEN.1),
+    ])
+}
+
+/// The original's error prompt in the port's terms (Launch.lua:ShowErrMsg of a Lua error; crates/pob-ui/tests/launch.rs:1): the chunk name of a
+/// source file `<...>/src/Modules\X.lua` -> `Modules/X.lua` (the port names its errors by that), and the `stack traceback:` lines, which a Rust
+/// panic does not have, dropped. The message itself is kept whole; any other text is returned as it is.
+#[allow(dead_code)]
+pub fn lua_error_prompt(s: &str) -> String {
+    let mut out = s.to_string();
+    if let (Some(a), Some(b)) = (out.find("\nstack traceback:"), out.find("\n^8v"))
+        && a < b
+    {
+        out.replace_range(a..b, "");
+    }
+    for dir in ["Modules", "Classes"] {
+        for sep in ['\\', '/'] {
+            let needle = format!("/src/{dir}{sep}");
+            while let Some(i) = out.find(&needle) {
+                // the chunk name starts after the last space or quote before it
+                let start = out[..i].rfind([' ', '\'', '\n']).map_or(0, |p| p + 1);
+                out.replace_range(start..i + needle.len(), &format!("{dir}/"));
+            }
+        }
+    }
+    out
+}
+
 /// One scene call, decoded from JSON once (so timing a frame measures the API, not JSON matching).
 pub enum Call {
     Log,

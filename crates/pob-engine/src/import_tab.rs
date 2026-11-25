@@ -867,7 +867,9 @@ impl Engine {
         Ok(carry)
     }
 
-    /// `ImportTab:GetOrCreateGuardianItemSet()` (:1342-1354).
+    /// `ImportTab:GetOrCreateGuardianItemSet()` (:1342-1354). Deviation (user 2026-11-25: not repeated): since 2.69.0 `NewItemSet` puts the id
+    /// in `itemSetOrderList` itself (ItemsTab.lua:1679) and :1352 `t_insert`s it once more, so the original lists the new set twice; here the
+    /// set list is the order and holds it once.
     fn guardian_item_set(&mut self) -> f64 {
         if let Some(s) = self.item_sets().iter().find(|s| s.title.as_deref() == Some(GUARD_ITEM_SET)) {
             return s.id;

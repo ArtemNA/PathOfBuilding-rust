@@ -107,7 +107,7 @@ fn sync_core(env: &Env, i: usize) {
         .active_skill_list
         .as_mut()
         .and_then(|l| l.get_mut(i))
-        .unwrap_or_else(|| panic!("{CP}:1298: actor.activeSkillList[{}] missing", i + 1));
+        .unwrap_or_else(|| panic!("{CP}:1320: actor.activeSkillList[{}] missing", i + 1));
     core.disable = sk.skill_flags.get("disable").copied();
     core.skill_data = sk
         .skill_data
@@ -160,7 +160,7 @@ pub(super) fn reservation_loop(env: &mut Env, output: &Output, acc: &mut Acc, mu
         let ge_name = ge.name.clone();
         let gel = gel_key
             .and_then(|k| ge.level(k))
-            .unwrap_or_else(|| panic!("{CP}:1992: attempt to index field 'grantedEffectLevel' (a nil value)"));
+            .unwrap_or_else(|| panic!("{CP}:2030: attempt to index field 'grantedEffectLevel' (a nil value)"));
         // `grantedEffectLevel.cost`: the data table, or `{}` where ProcessSocketGroup wiped it (SkillsTab :1186-1190).
         let wiped = gel_key.is_some_and(|k| st.cost_wiped.iter().any(|(id, l)| *id == ge.id && *l == k));
         let cost_truthy = wiped || gel.cost.is_some();
@@ -177,7 +177,7 @@ pub(super) fn reservation_loop(env: &mut Env, output: &Output, acc: &mut Acc, mu
         mana.base_flat = data_or(
             sk.skill_data.get("manaReservationFlat"),
             gel.mana_reservation_flat.unwrap_or(0.0),
-            1992,
+            2030,
             "manaReservationFlat",
         );
         if sml.flag(&["ManaCostGainAsReservation"]) && cost_truthy {
@@ -186,18 +186,18 @@ pub(super) fn reservation_loop(env: &mut Env, output: &Output, acc: &mut Acc, mu
         mana.base_percent = data_or(
             sk.skill_data.get("manaReservationPercent"),
             gel.mana_reservation_percent.unwrap_or(0.0),
-            1996,
+            2034,
             "manaReservationPercent",
         );
         // :1989-1993 (`grantedEffectLevel.lifeReservationFlat` is not a field of the level data: nil)
-        life.base_flat = data_or(sk.skill_data.get("lifeReservationFlat"), 0.0, 1997, "lifeReservationFlat");
+        life.base_flat = data_or(sk.skill_data.get("lifeReservationFlat"), 0.0, 2035, "lifeReservationFlat");
         if sml.flag(&["LifeCostGainAsReservation"]) && cost_truthy {
             life.base_flat = sml.sum(ModType::Base, &["LifeCostBase"]) + cost_of("Life");
         }
         life.base_percent = data_or(
             sk.skill_data.get("lifeReservationPercent"),
             gel.life_reservation_percent.unwrap_or(0.0),
-            2001,
+            2039,
             "lifeReservationPercent",
         );
         // :2024-2034 BloodMagicReserved (3dbca4463: exempts `requiresManaReservation`, no longer `ManaReservationPercentForced`)
@@ -228,7 +228,7 @@ pub(super) fn reservation_loop(env: &mut Env, output: &Output, acc: &mut Acc, mu
             }
             // :2015-2027
             let mut reserved_flat = if let Some(f) = sk.skill_data.get(&format!("{name}ReservationFlatForced")).filter(|v| v.truthy()) {
-                data_num(f, 2024, &format!("{name}ReservationFlatForced"))
+                data_num(f, 2071, &format!("{name}ReservationFlatForced"))
             } else {
                 let base_flat_val = modf(values.base_flat * mult).0;
                 let mut r = 0.0;
@@ -244,7 +244,7 @@ pub(super) fn reservation_loop(env: &mut Env, output: &Output, acc: &mut Acc, mu
             // :2028-2039
             let mut reserved_percent = if let Some(f) = sk.skill_data.get(&format!("{name}ReservationPercentForced")).filter(|v| v.truthy())
             {
-                data_num(f, 2037, &format!("{name}ReservationPercentForced"))
+                data_num(f, 2084, &format!("{name}ReservationPercentForced"))
             } else {
                 let base_percent_val = modf(values.base_percent * 100.0 * mult).0;
                 let mut r = 0.0;
@@ -271,6 +271,31 @@ pub(super) fn reservation_loop(env: &mut Env, output: &Output, acc: &mut Acc, mu
             {
                 reserved_flat *= c + 1.0;
                 reserved_percent *= c + 1.0;
+            }
+            // :2132-2139 (5606cc64f) the efficiency row of a skill that reserves
+            if let Some(bd) = bd.as_deref_mut()
+                && (reserved_flat != 0.0 || reserved_percent != 0.0)
+            {
+                use crate::breakdown::{BTable, BVal};
+                let r = BTable::new()
+                    .with("skillName", ge_name.as_str())
+                    .with("inc", crate::sf!("%+d%%", efficiency))
+                    .with(
+                        "more",
+                        if efficiency_more != 1.0 {
+                            BVal::Str(format!("x {}", tostring_num(efficiency_more)))
+                        } else {
+                            BVal::Bool(false)
+                        },
+                    )
+                    .with(
+                        "total",
+                        format!(
+                            "x {}",
+                            tostring_num(round(1.0 / ((1.0 + efficiency / 100.0) * efficiency_more), Some(4.0)))
+                        ),
+                    );
+                bd.table_mut(&format!("{name}ReservationEfficiency")).field_mut("rowList").push(r);
             }
             let (acc_base, acc_percent, acc_unc) = if name == "Mana" {
                 (&mut acc.mana_base, &mut acc.mana_percent, &mut acc.uncancellable_mana)

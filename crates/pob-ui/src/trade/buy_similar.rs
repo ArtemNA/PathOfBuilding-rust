@@ -202,8 +202,19 @@ fn build_url(item: &Item, slot_name: &str, c: &Ctl, mods: &[ModEntry], is_unique
         let name = item.title.clone().unwrap_or_else(|| item.name.clone());
         let name = gsub(&name, "^Foulborn%s+", "");
         let name = gsub(&name, "%s+$", "");
-        let name = lmatch(&name, "^(.-)%s+%d+$").unwrap_or(name);
-        query.insert("name".into(), json!(name));
+        // CompareBuySimilar.lua:80-87 (5606cc64f) lower-cased, and only a title of the unique database goes in: the trade site errors on
+        // an invalid name. `pairs(main.uniqueDB.list)` stops at the first title found in the name (the database order here, R13)
+        let name = lmatch(&name, "^(.-)%s+%d+$").unwrap_or(name).to_ascii_lowercase();
+        for u in crate::tabs::items::unique_db_items() {
+            let title = u
+                .title
+                .as_deref()
+                .unwrap_or_else(|| panic!("Classes/CompareBuySimilar.lua:83: attempt to index field 'title' (a nil value)"));
+            if name.contains(&title.to_ascii_lowercase()) {
+                query.insert("name".into(), json!(title));
+                break;
+            }
+        }
         if let Some(b) = &item.base_name {
             query.insert("type".into(), json!(b));
         }
@@ -254,7 +265,7 @@ fn build_url(item: &Item, slot_name: &str, c: &Ctl, mods: &[ModEntry], is_unique
                 let (e_min, e_max) = row
                     .edits
                     .as_ref()
-                    .unwrap_or_else(|| panic!("Classes/CompareBuySimilar.lua:150: attempt to index field '?' (a nil value)"));
+                    .unwrap_or_else(|| panic!("Classes/CompareBuySimilar.lua:156: attempt to index field '?' (a nil value)"));
                 let (mut min, mut max) = (buf_num(e_min), buf_num(e_max));
                 if entry.invert == Some(true) {
                     std::mem::swap(&mut min, &mut max);

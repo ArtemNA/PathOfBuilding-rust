@@ -238,7 +238,7 @@ Triggers Level 20 Reflection when Equipped
 			<ModRange id="5" range="0.5"/>
 			<ModRange id="6" range="0.5"/>
 		</Item>
-		<ItemSet id="1" useSecondWeaponSet="false">
+		<ItemSet id="1" title="Default" useSecondWeaponSet="false">
 			<Slot itemId="0" itemPbURL="" name="Amulet"/>
 			<Slot itemId="0" itemPbURL="" name="Arm"/>
 			<Slot itemId="0" itemPbURL="" name="Belt"/>

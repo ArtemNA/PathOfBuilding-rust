@@ -233,13 +233,19 @@ fn gsub_result(r: Result<(Vec<u8>, usize), PatternError>, lua_error: Option<&str
     }
 }
 
-/// Error text without the `bad argument #N to '...'` prefix (the gate for errors is the fact; texts are reported).
+/// Error text without the `bad argument #N to '...'` prefix (the gate for errors is the fact; texts are reported), and without the
+/// `chunk.lua:<line>: ` of the probe's own chunk: since tools/luajit-win loads it under its file name (23a45cdb, `@chunk.lua`), an error
+/// LuaJIT raises in a function the chunk calls carries the chunk line of the call -- where the probe calls it, not what the pattern does.
 fn err_core(v: &Value) -> Option<String> {
     let a = v.as_array()?;
     if a.len() != 2 || a[0] != "ERR" {
         return None;
     }
     let t = String::from_utf8(bytes(&a[1])).unwrap();
+    let t = match t.strip_prefix("chunk.lua:").and_then(|r| r.split_once(": ")) {
+        Some((line, rest)) if line.bytes().all(|b| b.is_ascii_digit()) => rest.to_owned(),
+        _ => t,
+    };
     Some(match t.find("' (") {
         Some(i) if t.starts_with("bad argument #") => t[i + 3..t.len() - 1].to_owned(),
         _ => t,

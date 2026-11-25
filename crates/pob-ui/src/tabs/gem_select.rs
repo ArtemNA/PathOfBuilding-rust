@@ -26,6 +26,36 @@ const IMBUED_TOOLTIP_TEXT: &str =
 /// `gemChangeFunc(gemId, addUndo, focusLost, bufMatchesGem)`.
 pub type GemChangeFunc = Rc<dyn Fn(&mut Gfx, Option<String>, bool, bool, bool)>;
 
+/// GemSelectControl.lua:126-143: whether `PopulateGemList` puts a gem that passed the hidden / sort / level checks in `self.gems`.
+fn list_admits(
+    imbued_select: bool,
+    show: &str,
+    legacy: bool,
+    skills: &pob_data::skills::Skills,
+    gem: &GemEntry,
+    ge: &GrantedEffect,
+) -> bool {
+    let (show_all, show_exc, show_norm) = (show == "ALL", show == "EXCEPTIONAL", show == "NORMAL");
+    let legacy_awakened = ge.legacy && ge.plus_version_of.is_some();
+    let exceptional = gem.tag_string.contains("Exceptional");
+    if imbued_select {
+        let sec_ok = gem
+            .secondary_granted_effect_id
+            .as_ref()
+            .is_none_or(|s| skills.get(s).is_some_and(|x| x.support));
+        ge.support && !exceptional && !legacy_awakened && sec_ok
+    } else if !ge.imbued_only {
+        // :134 `elseif not gemData.grantedEffect.imbuedOnly then` (5606cc64f)
+        if (show_exc || show_all) && (legacy_awakened || exceptional) {
+            legacy || !ge.legacy
+        } else {
+            show_norm || show_all
+        }
+    } else {
+        false
+    }
+}
+
 pub fn gem_of(id: &str) -> Option<&'static GemEntry> {
     pob_data::gems::gems().gems.0.get(id)
 }
@@ -206,7 +236,6 @@ impl GemSelectControl {
                 m.show_legacy_gems.unwrap_or(false),
             )
         });
-        let (show_all, show_exc, show_norm) = (show == "ALL", show == "EXCEPTIONAL", show == "NORMAL");
         let skills = pob_data::skills::skills();
         let by = *self.sort_gems_by.borrow();
         let mut out = self.gems.borrow_mut();
@@ -217,24 +246,8 @@ impl GemSelectControl {
                 continue;
             }
             let req = ge.level(1.0).and_then(|l| l.level_requirement).unwrap_or(1.0);
-            if character_level >= req || !match_level {
-                let legacy_awakened = ge.legacy && ge.plus_version_of.is_some();
-                let exceptional = gem.tag_string.contains("Exceptional");
-                if self.imbued_select {
-                    let sec_ok = gem
-                        .secondary_granted_effect_id
-                        .as_ref()
-                        .is_none_or(|s| skills.get(s).is_some_and(|x| x.support));
-                    if ge.support && !exceptional && !legacy_awakened && sec_ok {
-                        out.insert(gem.id.clone());
-                    }
-                } else if (show_exc || show_all) && (legacy_awakened || exceptional) {
-                    if legacy || !ge.legacy {
-                        out.insert(gem.id.clone());
-                    }
-                } else if show_norm || show_all {
-                    out.insert(gem.id.clone());
-                }
+            if (character_level >= req || !match_level) && list_admits(self.imbued_select, &show, legacy, &skills, gem, ge) {
+                out.insert(gem.id.clone());
             }
         }
     }
@@ -875,6 +888,9 @@ impl GemSelectControl {
 }
 
 impl Control for GemSelectControl {
+    fn dropped(&self) -> bool {
+        self.dropped.get()
+    }
     fn base(&self) -> &ControlBase {
         &self.edit.base
     }
@@ -1197,5 +1213,46 @@ impl GemSelectControl {
         self.build_list("");
         self.sync_selection(g);
         self.update_gem(g, false, true, true);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::list_admits;
+
+    /// GemSelectControl.lua:134 (5606cc64f): an `imbuedOnly` support is not in the normal list, only in the imbued one.
+    #[test]
+    fn imbued_only_gems_stay_out_of_the_normal_list() {
+        let skills = pob_data::skills::skills();
+        let gems = &pob_data::gems::gems().gems.0;
+        let imbued: Vec<&str> = gems
+            .values()
+            .filter(|g| skills.get(&g.granted_effect_id).is_some_and(|e| e.imbued_only))
+            .map(|g| g.id.as_str())
+            .collect();
+        // `grep -c "imbuedOnly = true" src/Data/Skills/*.lua` at 5606cc64f: 12 (all in other.lua), each one gem in Gems.lua
+        assert_eq!(imbued.len(), 12, "{imbued:?}");
+        for show in ["ALL", "NORMAL", "EXCEPTIONAL"] {
+            for legacy in [false, true] {
+                for g in gems.values() {
+                    let ge = skills.get(&g.granted_effect_id).expect("effect");
+                    if ge.imbued_only {
+                        assert!(!list_admits(false, show, legacy, &skills, g, ge), "{} in the {show} list", g.id);
+                    }
+                }
+            }
+        }
+        // the imbued dropdown still offers them (:128-131)
+        for id in &imbued {
+            let g = &gems[*id];
+            let ge = skills.get(&g.granted_effect_id).expect("effect");
+            assert!(list_admits(true, "ALL", false, &skills, g, ge), "{id} not in the imbued list");
+        }
+        // and the normal list keeps the other gems: the same rule without the imbuedOnly branch admits as many plus the 12
+        let normal = gems
+            .values()
+            .filter(|g| list_admits(false, "ALL", true, &skills, g, skills.get(&g.granted_effect_id).expect("effect")))
+            .count();
+        assert_eq!(normal + imbued.len(), gems.len());
     }
 }

@@ -3,182 +3,182 @@
   "dumps":[{
       "step":1,
       "state":{
-        "slider":"0.000000",
-        "h":0,
         "sel":"nil",
+        "sliderDragging":false,
         "dragging":false,
         "changes":0,
-        "sliderDragging":false,
+        "h":0,
+        "v":0,
         "div":"0.500000",
-        "v":0
+        "slider":"0.000000"
       }
     },{
       "step":2,
       "state":{
-        "slider":"0.000000",
-        "h":0,
         "sel":"v",
+        "sliderDragging":false,
         "dragging":false,
         "changes":0,
-        "sliderDragging":false,
+        "h":0,
+        "v":20,
         "div":"0.500000",
-        "v":20
+        "slider":"0.000000"
       }
     },{
       "step":3,
       "state":{
-        "slider":"0.000000",
-        "h":0,
         "sel":"v",
+        "sliderDragging":false,
         "dragging":false,
         "changes":0,
-        "sliderDragging":false,
+        "h":0,
+        "v":20,
         "div":"0.500000",
-        "v":20
+        "slider":"0.000000"
       }
     },{
       "step":4,
       "state":{
-        "slider":"0.000000",
-        "h":0,
         "sel":"v",
+        "sliderDragging":false,
         "dragging":false,
         "changes":0,
-        "sliderDragging":false,
+        "h":0,
+        "v":40,
         "div":"0.500000",
-        "v":40
+        "slider":"0.000000"
       }
     },{
       "step":5,
       "state":{
-        "slider":"0.000000",
-        "h":0,
         "sel":"v",
+        "sliderDragging":false,
         "dragging":false,
         "changes":0,
-        "sliderDragging":false,
+        "h":0,
+        "v":120,
         "div":"0.500000",
-        "v":120
+        "slider":"0.000000"
       }
     },{
       "step":6,
       "state":{
-        "slider":"0.000000",
-        "h":0,
         "sel":"nil",
+        "sliderDragging":false,
         "dragging":false,
         "changes":0,
-        "sliderDragging":false,
+        "h":0,
+        "v":120,
         "div":"0.500000",
-        "v":120
+        "slider":"0.000000"
       }
     },{
       "step":7,
       "state":{
-        "slider":"0.000000",
-        "h":0,
         "sel":"v",
+        "sliderDragging":false,
         "dragging":true,
         "changes":0,
-        "sliderDragging":false,
+        "h":0,
+        "v":120,
         "div":"0.500000",
-        "v":120
+        "slider":"0.000000"
       }
     },{
       "step":8,
       "state":{
-        "slider":"0.000000",
-        "h":0,
         "sel":"v",
+        "sliderDragging":false,
         "dragging":true,
         "changes":0,
-        "sliderDragging":false,
+        "h":0,
+        "v":477,
         "div":"0.500000",
-        "v":477
+        "slider":"0.000000"
       }
     },{
       "step":9,
       "state":{
-        "slider":"0.000000",
-        "h":0,
         "sel":"nil",
+        "sliderDragging":false,
         "dragging":false,
         "changes":0,
-        "sliderDragging":false,
+        "h":0,
+        "v":536,
         "div":"0.500000",
-        "v":536
+        "slider":"0.000000"
       }
     },{
       "step":10,
       "state":{
-        "slider":"0.000000",
-        "h":30,
         "sel":"nil",
+        "sliderDragging":false,
         "dragging":false,
         "changes":0,
-        "sliderDragging":false,
+        "h":30,
+        "v":536,
         "div":"0.500000",
-        "v":536
+        "slider":"0.000000"
       }
     },{
       "step":11,
       "state":{
-        "slider":"0.000000",
-        "h":150,
         "sel":"nil",
+        "sliderDragging":false,
         "dragging":false,
         "changes":0,
-        "sliderDragging":false,
+        "h":150,
+        "v":536,
         "div":"0.500000",
-        "v":536
+        "slider":"0.000000"
       }
     },{
       "step":12,
       "state":{
-        "slider":"0.500000",
-        "h":150,
         "sel":"slider",
+        "sliderDragging":true,
         "dragging":false,
         "changes":1,
-        "sliderDragging":true,
+        "h":150,
+        "v":536,
         "div":"0.500000",
-        "v":536
+        "slider":"0.500000"
       }
     },{
       "step":13,
       "state":{
-        "slider":"0.774725",
-        "h":150,
         "sel":"nil",
+        "sliderDragging":false,
         "dragging":false,
         "changes":2,
-        "sliderDragging":false,
+        "h":150,
+        "v":536,
         "div":"0.500000",
-        "v":536
+        "slider":"0.774725"
       }
     },{
       "step":14,
       "state":{
-        "slider":"1.000000",
-        "h":150,
         "sel":"nil",
+        "sliderDragging":false,
         "dragging":false,
         "changes":3,
-        "sliderDragging":false,
+        "h":150,
+        "v":536,
         "div":"0.500000",
-        "v":536
+        "slider":"1.000000"
       }
     },{
       "step":15,
       "state":{
-        "slider":"1.000000",
-        "h":150,
         "sel":"nil",
+        "sliderDragging":false,
         "dragging":false,
         "changes":3,
-        "sliderDragging":false,
+        "h":150,
+        "v":536,
         "div":"0.450000",
-        "v":536
+        "slider":"1.000000"
       }
     }],
   "shots":["scroll-idle","scroll-hold","scroll-drag","scroll-slide","slider-drag","slider-final"],

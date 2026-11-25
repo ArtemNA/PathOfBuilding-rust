@@ -136,8 +136,11 @@ write('loadout', [
  tab,
  {"cursorBuild": ["buildLoadouts"], "events": click(), "dump": True},
  {"cursorBuildPick": ["buildLoadouts", 4], "events": click(), "dump": True},
+ # 2.69.0: "^7^7Manage" opens the Manage Loadouts popup; its New button the name popup
+ {"cursorPopupChild": ["1", "new"], "events": click(), "dump": True},
  {"cursorPopup": ["edit"], "events": [["KeyDown", "LEFTBUTTON"], ["KeyUp", "LEFTBUTTON"], ["Char", "2"]], "dump": True},
  {"cursorPopup": ["save"], "events": click(), "dump": True, "shot": "loadout-new"},
+ {"cursorPopup": ["2"], "events": click(), "dump": True},
  {"cursor": [1200, 790], "dump": True},
  {"cursorBuild": ["buildLoadouts"], "events": click(), "dump": True},
  {"cursorBuildPick": ["buildLoadouts", 3], "events": click(), "dump": True},

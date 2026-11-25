@@ -14,12 +14,13 @@ fn keys_contains(v: &str) -> bool {
 }
 
 #[test]
-fn all_543_unique_entries_each_a_var_with_apply() {
+fn all_547_unique_entries_each_a_var_with_apply() {
+    // LuaJIT on 5606cc64f: 547 ConfigOptions entries with `apply` (tools/.scratch/count-pins.ts; 543 on 07fa089bf)
     assert_eq!(HAND_PORTED.len(), 10);
-    assert_eq!(GENERATED.len(), 533);
-    assert_eq!(APPLY_REGISTRY.len(), 543);
+    assert_eq!(GENERATED.len(), 537);
+    assert_eq!(APPLY_REGISTRY.len(), 547);
     let keys: HashSet<&str> = APPLY_REGISTRY.iter().map(|e| e.var).collect();
-    assert_eq!(keys.len(), 543);
+    assert_eq!(keys.len(), 547);
     let opts = config_options();
     let without: Vec<&str> = APPLY_REGISTRY
         .iter()
@@ -107,7 +108,7 @@ fn hand_ported_are_the_bodies_outside_the_grammar() {
     );
 }
 
-/// Every var a set can hold now has its closure: a default set with every `check` var on fires all 323 of them (LuaJIT on 07fa089bf: 543 with `apply` - 220 without `check`, tools/.scratch/count-tree-cache.ts) (plus the
+/// Every var a set can hold now has its closure: a default set with every `check` var on fires all 325 of them (LuaJIT on 5606cc64f: 547 with `apply` - 222 without `check`, tools/.scratch/count-pins.ts; 323 on 07fa089bf) (plus the
 /// defaults) and reports nothing as unimplemented.
 #[test]
 fn nothing_is_unimplemented_any_more() {
@@ -118,7 +119,7 @@ fn nothing_is_unimplemented_any_more() {
         s.input.insert(v.var.clone().unwrap(), pob_build::ConfigValue::Bool(true));
         checks += 1;
     }
-    assert_eq!(checks, 323);
+    assert_eq!(checks, 325);
     let l = s.build_mod_list(90.0).unwrap();
     assert!(l.unimplemented.is_empty(), "{:?}", l.unimplemented);
 }

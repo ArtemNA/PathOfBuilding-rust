@@ -109,6 +109,10 @@ fn dump() -> Value {
     let m = main();
     let mut d = Map::new();
     d.insert("mode".into(), json!(m.mode.borrow().clone().unwrap_or("nil".into())));
+    d.insert(
+        "prompt".into(),
+        json!(pob_ui::launch::launch().prompt_msg.borrow().clone().unwrap_or("nil".into())),
+    );
     d.insert("popups".into(), json!(m.popups.borrow().len()));
     let b = m.build_mode.clone();
     if m.mode.borrow().as_deref() == Some("BUILD") && b.c.borrow().is_some() {
@@ -153,6 +157,11 @@ fn dump() -> Value {
 fn oracle_state(s: &Value) -> Value {
     let mut d = Map::new();
     d.insert("mode".into(), s["mode"].clone());
+    // a Lua error's prompt (2.69.0: CalcPerform.lua:1205 on some builds) without its traceback and chunk path
+    d.insert(
+        "prompt".into(),
+        json!(scene::lua_error_prompt(s["prompt"].as_str().unwrap_or("nil"))),
+    );
     d.insert("popups".into(), s["popups"].clone());
     if let Some(b) = s.get("build") {
         let mut bd = Map::new();
@@ -497,7 +506,11 @@ fn run(name: &str) -> Run {
         {
             v.search_str = s.to_string();
         }
-        if let Some(o) = st["treeOrder"].as_str() {
+        // a build whose calcs raised on its load (2.69.0: CalcPerform.lua:1205): the original went back to the list with the half-loaded
+        // `build.spec` behind it, whose hash orders this probe takes; the port has no such object (no engine) -- not a state of the screen
+        if st["treeOrder"].is_string() && main().build_mode.engine.borrow().is_none() {
+            eprintln!("{name} step {}: treeOrder skipped, the build did not load", i + 1);
+        } else if let Some(o) = st["treeOrder"].as_str() {
             out.orders.insert(o.to_string(), order_of());
             // the overlap order of this oracle process (R13: `PassiveTreeView::set_order_sample`)
             let rec = oracle_record(o);
@@ -656,8 +669,16 @@ fn run(name: &str) -> Run {
     if let Some(v) = main().build_mode.tree_view.borrow().as_ref() {
         out.unimplemented.clone_from(&v.unimplemented);
     }
-    // a panic in a handler is the error prompt (`launch.promptMsg`)
-    assert!(l.prompt_msg.borrow().is_none(), "{name}: error: {:?}", l.prompt_msg.borrow());
+    // a panic in a handler is the error prompt (`launch.promptMsg`): none, but the one the original showed too (its last dump)
+    let theirs = oracle_record_opt(name).and_then(|r| {
+        r["dumps"]
+            .as_array()?
+            .last()
+            .and_then(|d| d["state"]["prompt"].as_str())
+            .map(scene::lua_error_prompt)
+    });
+    let ours = l.prompt_msg.borrow().clone();
+    assert!(ours.is_none() || ours == theirs, "{name}: error: {ours:?}");
     pob_ui::modules::main::clear_main();
     out
 }
@@ -672,6 +693,31 @@ fn oracle_popup_order(rec: &Value, step: u64) -> Option<Vec<String>> {
             .filter_map(|v| v.as_str().map(str::to_owned))
             .collect(),
     )
+}
+
+/// The oracle's prompt at the step of a shot of `scenes/{tab}/{name}.json` (the shot step's dump), for [`scene::lua_error_popup_mask`].
+fn oracle_prompt_at_shot(tab: &str, name: &str, rec: &Value, shot: &str) -> Option<String> {
+    let sc: Value =
+        serde_json::from_str(&std::fs::read_to_string(scene::oracle_dir().join(format!("scenes/{tab}/{name}.json"))).ok()?).ok()?;
+    let step = sc["steps"].as_array()?.iter().position(|s| s["shot"].as_str() == Some(shot))? as u64 + 1;
+    let d = rec["dumps"].as_array()?.iter().find(|d| d["step"].as_u64() == Some(step))?;
+    d["state"]["prompt"].as_str().map(str::to_owned)
+}
+
+/// [`scene::lua_error_popup_mask`] of a shot: both images black there.
+fn blank_lua_error_popup(g: &Gfx, raw: Option<&str>, rgba: &mut [u8], oracle: &mut image::RgbaImage) -> bool {
+    let Some([x0, y0, x1, y1]) = raw.and_then(|r| scene::lua_error_popup_mask(g, r)) else {
+        return false;
+    };
+    let w = scene::SCREEN.0;
+    for y in y0..y1 {
+        for x in x0..x1 {
+            let i = ((y * w + x) * 4) as usize;
+            rgba[i..i + 3].copy_from_slice(&[0, 0, 0]);
+            oracle.put_pixel(x, y, image::Rgba([0, 0, 0, 255]));
+        }
+    }
+    true
 }
 
 fn oracle_record_opt(name: &str) -> Option<Value> {
@@ -963,7 +1009,9 @@ fn tree_pixels_equal_original() {
     let mut failures = Vec::new();
     let lossy_sizes = lossy_sheet_sizes();
     let (mut total_lossy, mut total_other) = (0, 0);
+    let g = Gfx::with_platform(&scene::fonts_dir(), scene::SCREEN, 1.0, Box::new(TestPlatform::new())).expect("fonts");
     for name in scenario_names() {
+        let rec = oracle_record_opt(&name).unwrap_or(Value::Null);
         for Shot { name: shot, list, mask } in run(&name).shots {
             let mut rgba = r.render_to_rgba(&list).expect("render");
             // POB_TREE_SAVE_OURS=<dir>;<shot>,<shot>: this port's PNG of those shots
@@ -990,6 +1038,14 @@ fn tree_pixels_equal_original() {
                         oracle.put_pixel(x, y, image::Rgba([0, 0, 0, 255]));
                     }
                 }
+            }
+            if blank_lua_error_popup(
+                &g,
+                oracle_prompt_at_shot("tree", &name, &rec, &shot).as_deref(),
+                &mut rgba,
+                &mut oracle,
+            ) {
+                eprintln!("{shot}: the popup of a Lua error left out (lua-error-popup)");
             }
             if let Ok(pts) = std::env::var("POB_TREE_PROBE") {
                 // debug: the commands covering a pixel, for the class of a pixel difference ("shot:x:y,...")

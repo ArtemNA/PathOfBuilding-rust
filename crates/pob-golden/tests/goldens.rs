@@ -5,14 +5,15 @@ use pob_golden::compare::{StatClass, compare_meta, compare_stats, is_parity, ren
 use pob_golden::{CandidateOutput, GOLDEN_BUILDS, PartialMeta, StatValue, Stats};
 
 /// Key counts of the goldens (PLAN.md progress bar, POB-TS-MAP §1). 2.68.0 (07fa089bf) added two keys to every golden
-/// (`MaximumLifeManaDifference`, `MissingUnreservedLifePercent`); the LuaJIT goldens of R-INDEPENDENT-UPDATE A3 have the same keys.
+/// (`MaximumLifeManaDifference`, `MissingUnreservedLifePercent`), 2.69.0 (5606cc64f) two more (`LifeReservationEfficiency`,
+/// `ManaReservationEfficiency`); the LuaJIT goldens of R-INDEPENDENT-UPDATE A3 have the same keys.
 const TOTALS: [(&str, usize); 6] = [
-    ("Dual Savior", 634),
-    ("Dual Wield Cospris CoC", 751),
-    ("Dual Wield Cospris CoC - Lethal Pride", 751),
-    ("Generals Perforate Zerker", 651),
-    ("Mirage Archer Toxic Rain", 660),
-    ("OccVortex", 775),
+    ("Dual Savior", 636),
+    ("Dual Wield Cospris CoC", 753),
+    ("Dual Wield Cospris CoC - Lethal Pride", 753),
+    ("Generals Perforate Zerker", 653),
+    ("Mirage Archer Toxic Rain", 662),
+    ("OccVortex", 777),
 ];
 
 fn stats(pairs: &[(&str, StatValue)]) -> Stats {

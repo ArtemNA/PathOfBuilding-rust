@@ -461,18 +461,12 @@ impl ListHooks<f64> for SetListHooks {
         }
     }
 
-    /// :123-127
+    /// :132-136
     fn on_sel_key_down(&self, _l: &ListControl<f64>, g: &mut Gfx, _index: usize, id: &f64, key: &str) {
         if key == "F2" {
-            self.0.upgrade().expect("skillsTab").rename_set_popup(g, RenameSet::Existing(*id));
+            self.0.upgrade().expect("skillsTab").rename_skill_set_popup(g, *id);
         }
     }
-}
-
-enum RenameSet {
-    Existing(f64),
-    New,
-    Copy(f64),
 }
 
 impl SkillsTab {
@@ -578,15 +572,107 @@ impl SkillsTab {
         *l.sel_value.borrow_mut() = None;
     }
 
-    /// `SetActiveSkillSet` (:1478-1502).
+    /// `SetActiveSkillSet` (:1533-1559).
     pub fn set_active_skill_set(&self, g: &mut Gfx, id: f64) {
+        self.set_active_skill_set_with(g, Some(id), false);
+    }
+
+    /// `SetActiveSkillSet(skillSetId, deferSync)` (:1533-1559): `nil` is the active set, an id of no set the first of the order.
+    pub fn set_active_skill_set_with(&self, g: &mut Gfx, id: Option<f64>, defer_sync: bool) {
+        let id = id.unwrap_or_else(|| self.read(|e| e.skills_tab().active_skill_set_id));
         self.edit(|e| e.set_active_skill_set(id));
         *self.group_list.list.borrow_mut() = Vec::new();
         self.sync_list();
         self.build().build_flag.set(true);
         let first = (!self.group_list.list.borrow().is_empty()).then_some(1);
         self.set_display_group(g, first);
+        if !defer_sync {
+            self.build().sync_loadouts_pub(g);
+        }
+    }
+
+    /// The set list of the Manage popup is `skillSetOrderList` itself (SkillSetListControl.lua:19).
+    fn refresh_set_list(&self) {
+        if let Some(l) = self.set_list.borrow().upgrade() {
+            *l.list.borrow_mut() = self.read(Engine::skill_sets).into_iter().map(|s| s.0).collect();
+        }
+    }
+
+    /// `SkillsTab:NewSkillSet(skillSetId, title)` (:1477-1482): `nil` takes `#self.skillSets + 1`.
+    pub fn new_skill_set(&self, id: Option<f64>, title: &str) -> f64 {
+        let id = self.edit(|e| match id {
+            Some(id) => e.new_skill_set_with_id(id, Some(title)),
+            None => e.new_skill_set(title),
+        });
+        self.undo.mod_flag.set(true);
+        self.refresh_set_list();
+        id
+    }
+
+    /// `#self.skillSets`.
+    pub fn skill_sets_len(&self) -> usize {
+        self.read(Engine::skill_sets_len)
+    }
+
+    /// `SkillsTab:CopySkillSet(sourceSkillSetId, newSkillSetName)` (:1484-1501).
+    pub fn copy_skill_set(&self, from: f64, title: &str) -> f64 {
+        let id = self.edit(|e| e.copy_skill_set(from, title));
+        self.undo.mod_flag.set(true);
+        self.refresh_set_list();
+        id
+    }
+
+    /// `SkillsTab:RenameSkillSet(skillSetId, newTitle)` (:1503-1512): a gone id does nothing.
+    pub fn rename_skill_set(&self, id: f64, title: &str) {
+        if self.read(Engine::skill_sets).iter().any(|s| s.0 == id) {
+            self.edit(|e| e.rename_skill_set(id, title));
+            self.undo.mod_flag.set(true);
+        }
+    }
+
+    /// `SkillsTab:DeleteSkillSet(skillSetId, orderListIndex)` (:1514-1518).
+    pub fn delete_skill_set(&self, id: f64, order_index: usize) {
+        self.edit(|e| e.delete_skill_set(id, order_index));
+        self.undo.mod_flag.set(true);
+        self.refresh_set_list();
+    }
+
+    /// `SkillsSetService:NewSkillSet(name)` (SkillsSetService.lua:17-22).
+    pub fn service_new_skill_set(&self, g: &mut Gfx, name: &str) {
+        let id = self.new_skill_set(None, name);
+        self.set_active_skill_set_with(g, Some(id), true);
+        self.add_undo_state(false);
         self.build().sync_loadouts_pub(g);
+    }
+
+    /// `SkillsSetService:CopySkillSet(skillSetId, name)` (SkillsSetService.lua:24-29).
+    pub fn service_copy_skill_set(&self, g: &mut Gfx, from: f64, name: &str) {
+        let id = self.copy_skill_set(from, name);
+        self.set_active_skill_set_with(g, Some(id), true);
+        self.add_undo_state(false);
+        self.build().sync_loadouts_pub(g);
+    }
+
+    /// `SkillsSetService:RenameSkillSet(skillSetId, newName)` (SkillsSetService.lua:31-35).
+    pub fn service_rename_skill_set(&self, g: &mut Gfx, id: f64, name: &str) {
+        self.rename_skill_set(id, name);
+        self.add_undo_state(false);
+        self.build().sync_loadouts_pub(g);
+    }
+
+    /// `SkillsSetService:DeleteSkillSet(skillSetId, orderListIndex)` (SkillsSetService.lua:37-46).
+    pub fn service_delete_skill_set(&self, g: &mut Gfx, id: f64, order_index: usize) {
+        if self.read(Engine::skill_sets).len() > 1 {
+            let active = self.read(|e| e.skills_tab().active_skill_set_id);
+            self.delete_skill_set(id, order_index);
+            if id == active {
+                let order: Vec<f64> = self.read(Engine::skill_sets).into_iter().map(|s| s.0).collect();
+                let next = order.get(order_index.saturating_sub(1).max(1) - 1).copied().unwrap_or(f64::NAN);
+                self.set_active_skill_set_with(g, Some(next), true);
+            }
+            self.add_undo_state(false);
+            self.build().sync_loadouts_pub(g);
+        }
     }
 
     /// `SetDisplayGroup(socketGroup)` (:1275-1308). `ProcessSocketGroup` of an unchanged group changes nothing: the engine's tab went through it.
@@ -1252,7 +1338,7 @@ impl SkillsTab {
         b.build_flag.set(true);
     }
 
-    /// `SkillSetListControl:OnSelDelete`'s confirm (SkillSetListControl.lua:106-121).
+    /// `SkillSetListControl:OnSelDelete`'s confirm (SkillSetListControl.lua:119-130).
     fn confirm_delete_set(&self, g: &mut Gfx, index: usize, id: f64) {
         let title = self
             .read(Engine::skill_sets)
@@ -1263,92 +1349,76 @@ impl SkillsTab {
         let w = self.me.clone();
         main().open_confirm_popup(
             g,
-            "Delete Item Set",
+            "Delete Skill Set",
             &format!("Are you sure you want to delete '{title}'?"),
             "Delete",
             Rc::new(move |g: &mut Gfx| {
                 let s = w.upgrade().expect("skillsTab");
-                let l = s.set_list.borrow().upgrade().expect("set list");
-                l.list.borrow_mut().remove(index - 1);
-                let active = s.read(|e| e.skills_tab().active_skill_set_id);
-                s.edit(|e| e.delete_skill_set(id));
-                l.sel_index.set(None);
-                *l.sel_value.borrow_mut() = None;
-                if id == active {
-                    let next = l.list.borrow()[index.saturating_sub(1).max(1) - 1];
-                    s.set_active_skill_set(g, next);
+                s.service_delete_skill_set(g, id, index);
+                if let Some(l) = s.set_list.borrow().upgrade() {
+                    l.sel_index.set(None);
+                    *l.sel_value.borrow_mut() = None;
                 }
-                s.add_undo_state(false);
-                s.build().sync_loadouts_pub(g);
             }),
             None,
         );
     }
 
-    /// `RenameSet(skillSet, addOnName)` (SkillSetListControl.lua:60-86).
-    fn rename_set_popup(&self, g: &mut Gfx, what: RenameSet) {
-        let title = match &what {
-            RenameSet::Existing(id) | RenameSet::Copy(id) => {
-                self.read(Engine::skill_sets).into_iter().find(|s| s.0 == *id).and_then(|s| s.1)
-            }
-            RenameSet::New => None,
-        };
-        let mut controls: IndexMap<String, ControlRef> = IndexMap::new();
-        controls.insert(
-            "label".into(),
-            LabelControl::new(None, rect(0.0, 20.0, 0.0, 16.0), "^7Enter name for this skill set:".to_string()),
-        );
-        let save_slot: Rc<RefCell<Option<Rc<ButtonControl>>>> = Rc::new(RefCell::new(None));
-        let sl = save_slot.clone();
-        let edit = EditControl::new(
+    /// The title of `skillSets[id]` (`None`: no such set, `Some(None)`: a nil title).
+    fn skill_set_title(&self, id: f64) -> Option<Option<String>> {
+        self.read(Engine::skill_sets).into_iter().find(|s| s.0 == id).map(|s| s.1)
+    }
+
+    /// `SkillSetListControl:CreateSkillSet()` (SkillSetListControl.lua:46-61).
+    fn create_skill_set_popup(&self, g: &mut Gfx) {
+        let w = self.me.clone();
+        crate::set_name_popup::open_name_popup(
             g,
-            None,
-            rect(0.0, 40.0, 350.0, 20.0),
-            EditArgs {
-                init: title.clone(),
-                limit: Some(100),
-                change_func: Some(Rc::new(move |_g: &mut Gfx, buf: &str, _| {
-                    if let Some(s) = &*sl.borrow() {
-                        s.base.enabled.set(buf.bytes().any(|c| !c.is_ascii_whitespace()));
-                    }
-                })),
-                ..Default::default()
-            },
+            100.0,
+            "Create Skill Set",
+            "^7Enter name for new skill set:",
+            "New Skill Set",
+            Rc::new(crate::set_name_popup::has_non_space),
+            Rc::new(move |g: &mut Gfx, name: String| w.upgrade().expect("skillsTab").service_new_skill_set(g, &name)),
         );
-        let (w, e2) = (self.me.clone(), edit.clone());
-        let save = ButtonControl::new(None, rect(-45.0, 70.0, 80.0, 20.0), "Save".to_string(), move |g| {
-            let s = w.upgrade().expect("skillsTab");
-            let text = e2.buf.borrow().clone();
-            let new_id = match what {
-                RenameSet::Existing(id) => {
-                    s.edit(|e| e.rename_skill_set(id, &text));
-                    None
-                }
-                RenameSet::New => Some(s.edit(|e| e.new_skill_set(&text))),
-                RenameSet::Copy(id) => Some(s.edit(|e| e.copy_skill_set(id, &text))),
-            };
-            s.undo.mod_flag.set(true);
-            if let Some(id) = new_id {
-                let l = s.set_list.borrow().upgrade().expect("set list");
-                l.list.borrow_mut().push(id);
-                let n = l.list.borrow().len();
-                l.sel_index.set(Some(n));
-                *l.sel_value.borrow_mut() = Some(id);
-            }
-            s.add_undo_state(false);
-            s.build().sync_loadouts_pub(g);
-            main().close_popup();
-        });
-        save.base.enabled.set(false);
-        *save_slot.borrow_mut() = Some(save.clone());
-        controls.insert("edit".into(), edit);
-        controls.insert("save".into(), save);
-        controls.insert(
-            "cancel".into(),
-            ButtonControl::new(None, rect(45.0, 70.0, 80.0, 20.0), "Cancel".to_string(), |_| main().close_popup()),
+    }
+
+    /// `SkillSetListControl:CopySkillSet(selValue)` (SkillSetListControl.lua:63-80).
+    fn copy_skill_set_popup(&self, g: &mut Gfx, sel_value: f64) {
+        let title = self
+            .skill_set_title(sel_value)
+            .expect("Classes/SkillSetListControl.lua:66: attempt to index local 'skillSet' (a nil value)");
+        let w = self.me.clone();
+        crate::set_name_popup::open_name_popup(
+            g,
+            100.0,
+            "Copy Skill Set",
+            "^7Enter name for this skill set:",
+            title.as_deref().unwrap_or("Default"),
+            Rc::new(crate::set_name_popup::has_non_space),
+            Rc::new(move |g: &mut Gfx, name: String| {
+                w.upgrade().expect("skillsTab").service_copy_skill_set(g, sel_value, &name);
+            }),
         );
-        let t = if title.is_some() { "Rename" } else { "Set Name" };
-        main().open_popup(g, 370.0, 100.0, t, controls, Some("save"), Some("edit"), Some("cancel"), None);
+    }
+
+    /// `SkillSetListControl:RenameSkillSet(selValue)` (SkillSetListControl.lua:82-99).
+    fn rename_skill_set_popup(&self, g: &mut Gfx, sel_value: f64) {
+        let title = self
+            .skill_set_title(sel_value)
+            .expect("Classes/SkillSetListControl.lua:85: attempt to index local 'skillSet' (a nil value)");
+        let w = self.me.clone();
+        crate::set_name_popup::open_name_popup(
+            g,
+            100.0,
+            "Rename Skill Set",
+            "^7Enter name for this skill set:",
+            title.as_deref().unwrap_or("Default"),
+            Rc::new(crate::set_name_popup::has_non_space),
+            Rc::new(move |g: &mut Gfx, name: String| {
+                w.upgrade().expect("skillsTab").service_rename_skill_set(g, sel_value, &name);
+            }),
+        );
     }
 
     /// `OpenSkillSetManagePopup` (:1442-1449) + `SkillSetListControl:SkillSetListControl` (SkillSetListControl.lua:17-58).
@@ -1376,7 +1446,7 @@ impl SkillsTab {
             "Copy".to_string(),
             move |g| {
                 let id = l2.upgrade().expect("list").sel_value.borrow().expect("selValue");
-                t().rename_set_popup(g, RenameSet::Copy(id));
+                t().copy_skill_set_popup(g, id);
             },
         );
         let l2 = wl.clone();
@@ -1410,7 +1480,7 @@ impl SkillsTab {
             "Rename".to_string(),
             move |g| {
                 let id = l2.upgrade().expect("list").sel_value.borrow().expect("selValue");
-                t().rename_set_popup(g, RenameSet::Existing(id));
+                t().rename_skill_set_popup(g, id);
             },
         );
         let l2 = wl.clone();
@@ -1425,7 +1495,7 @@ impl SkillsTab {
             rect(-4.0, 0.0, 60.0, 18.0),
             "New".to_string(),
             move |g| {
-                t().rename_set_popup(g, RenameSet::New);
+                t().create_skill_set_popup(g);
             },
         );
         list.host.add("copy", copy);
@@ -2464,7 +2534,7 @@ fn socket_description_line(item: &pob_items::Item) -> String {
             "B" => cc("INTELLIGENCE"),
             "W" => cc("SCION"),
             "A" => "^xB0B0B0".to_string(),
-            o => panic!("Classes/ItemsTab.lua:4316: attempt to concatenate local 'code' (a nil value): socket {o}"),
+            o => panic!("Classes/ItemsTab.lua:4385: attempt to concatenate local 'code' (a nil value): socket {o}"),
         };
         line.push_str(&code);
         line.push_str(&s.color);

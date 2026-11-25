@@ -1,7 +1,7 @@
 // R8.6: LuaJIT truth for the Calcs tab: the CALCS run (`calcsTab.calcsEnv` -- Calcs.lua buildOutput(build, "CALCS")) and the text of every
 // CalcSectionControl cell. Mechanics = export-breakdown.ts (docker LuaJIT, LUT mount, `%.17g` numbers, the same breakdown proxy).
 // Per scenario: loadBuildFromXML -> (breakdown proxy) -> wipeGlobalCache -> calcsTab:BuildOutput() (MAIN, CALCS, misc calculator) ->
-//   output    = calcsOutput, every key (numbers {"$n":"%.17g"}, strings, booleans; table values serialized; `Req<Attr>Item.sourceGem` -> {"$gem":nameSpec});
+//   output    = calcsOutput, every key (numbers {"$n":"%.17g"}, strings, booleans; table values serialized; `Req<Attr>Item.sourceGem` -> {"$gem":nameSpec}, `.sourceSkill` -> {"$skill":grantedEffect.name});
 //   breakdown = calcsEnv.{player,minion}.breakdown, final values (the breakdown-module proxy of export-breakdown.ts: a nested hand module serializes as {});
 //   sections  = for the player (input.showMinion = false) and, with calcsEnv.minion, for the minion (showMinion = true): every section of
 //               calcsTab.sectionList in order -> section:UpdateSize() then section:DrawContent(...) with the globals DrawString captured
@@ -128,7 +128,10 @@ local function SOut(k, v)
   if type(v) == "table" and type(k) == "string" and k:match("^Req%a+Item$") then
     local o = obj()
     for kk, x in pairs(v) do
-      if kk == "sourceGem" then local g = obj() g["$gem"] = tostring(x.nameSpec) o.sourceGem = g else o[tostring(kk)] = S(x, 1) end
+      if kk == "sourceGem" then local g = obj() g["$gem"] = tostring(x.nameSpec) o.sourceGem = g
+      -- 5606cc64f: sourceSkill is the gem's active skill (a deep table) -> its name
+      elseif kk == "sourceSkill" then local g = obj() g["$skill"] = tostring(x.activeEffect.grantedEffect.name) o.sourceSkill = g
+      else o[tostring(kk)] = S(x, 1) end
     end
     return o
   end

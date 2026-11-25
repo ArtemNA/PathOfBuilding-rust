@@ -13,11 +13,12 @@ fn tables_and_fns_count_as_upstream() {
         // 07fa089bf (R-UP2): every count below measured in LuaJIT on the real upvalues of the inner parseMod
         // (tools/.scratch/count-modparser.ts, `pairs` count per table; fns = distinct definitions reachable through table values
         // and upvalues, fn_refs = function values inside the table values). 3dbca4463: modNameList 726, specialModList 3 117.
+        // 5606cc64f (2.69.0, the same script): modFlagList 183 -> 184, specialModList 3 181 -> 3 182.
         ("modNameList", 728),
-        ("modFlagList", 183),
+        ("modFlagList", 184),
         ("preFlagList", 191),
         ("modTagList", 667),
-        ("specialModList", 3_181),
+        ("specialModList", 3_182),
         ("jewelFuncList", 142),
         ("clusterJewelSkills", 362),
         ("unsupportedModList", 3),

@@ -83,6 +83,10 @@ fn table_json(t: &OutTable) -> Json {
             if let Some((g, i)) = r.source_gem {
                 o.insert("sourceGem".to_owned(), json!(format!("{}:{}", g + 1, i + 1)));
             }
+            // 5606cc64f: the gem's first active skill, as the probe's `skillIdx` (export-skills.ts REF)
+            if let Some(i) = r.source_skill {
+                o.insert("sourceSkill".to_owned(), n17((i + 1) as f64));
+            }
             Json::Object(o)
         }
         // written by the buildOutput tail (Calcs.lua:395/:420/:430), after every perform checkpoint

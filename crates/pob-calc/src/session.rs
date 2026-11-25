@@ -21,7 +21,7 @@
 //! is one more nested perform (cached); The Saviour / Tawhoa's Chosen leave a copy outside `activeSkillList` as `mainSkill` (cached as it is).
 
 use std::cell::{Cell, Ref, RefCell};
-use std::collections::BTreeSet;
+
 use std::rc::Rc;
 
 use indexmap::IndexMap;
@@ -70,8 +70,6 @@ impl CalcMode {
 /// [`crate::init_env::init_env_seeded`]). Only ever grows (upstream never undoes them).
 #[derive(Clone, Debug, Default)]
 pub struct SkillsCarry {
-    /// `grantedEffect.fromItem = true` (CalcSetup.lua:1633-1634), by effect id.
-    pub from_item_marks: BTreeSet<String>,
     /// `grantedEffect.levels[level].cost = {}` (SkillsTab ProcessSocketGroup), as `(effect id, level)`.
     pub cost_wiped: Vec<(String, f64)>,
     /// What the last MAIN initEnv merged into `build.skillsTab` (CalcSetup.lua:1468, MAIN only): a CALCULATOR / CALCS initEnv rebuilds the tab and merges these,
@@ -532,7 +530,6 @@ impl CalcSession {
         .map_err(|e| SessionError::Calc(CalcError(format!("initEnv: {e}"))))?;
         if let Some(st) = &env.skills {
             let mut c = self.core.carry.borrow_mut();
-            c.from_item_marks.extend(st.from_item_marks.iter().cloned());
             for k in &st.cost_wiped {
                 if !c.cost_wiped.contains(k) {
                     c.cost_wiped.push(k.clone());
@@ -1033,7 +1030,7 @@ impl CalcSession {
                 }
                 // `activeSkill.infoTrigger`: calcs.triggers (R7.8, `ActiveSkill::info_trigger`) runs after CalcPerform.lua:1487-1490
                 // (The Saviour, recorded by the skill loop under this note -- perform/skills_loop.rs), so its value wins.
-                let saviour = format!("CalcPerform.lua:1490-1491 activeSkill.infoMessage/infoTrigger of skill {} (", i + 1);
+                let saviour = format!("CalcPerform.lua:1526-1527 activeSkill.infoMessage/infoTrigger of skill {} (", i + 1);
                 let trigger = sk.info_trigger.clone().or_else(|| {
                     r.env
                         .unimplemented

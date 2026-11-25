@@ -53,6 +53,23 @@
 "dump": true
 },
 {
+"cursorPopupChild": [
+"1",
+"new"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
+},
+{
 "cursorPopup": [
 "edit"
 ],
@@ -88,6 +105,22 @@
 ],
 "dump": true,
 "shot": "loadout-new"
+},
+{
+"cursorPopup": [
+"2"
+],
+"events": [
+[
+"KeyDown",
+"LEFTBUTTON"
+],
+[
+"KeyUp",
+"LEFTBUTTON"
+]
+],
+"dump": true
 },
 {
 "cursor": [

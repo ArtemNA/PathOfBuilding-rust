@@ -400,8 +400,8 @@ fn run_build(slug: &str, fx: &Json) -> Row {
 /// `unimplemented` notes every build carries (the 6 goldens too: party / buff export, display, UI-only, P5 tree bookkeeping that does not
 /// change the output) -- the rest are what this build reaches beyond them.
 const EVERY_BUILD_NOTES: [&str; 8] = [
-    "CalcPerform.lua:1312 ",
-    "CalcPerform.lua:3803-3990 ",
+    "CalcPerform.lua:1340 ",
+    "CalcPerform.lua:3914-4104 ",
     "CalcSetup.lua:1011 ",
     "CalcSetup.lua:174 ",
     "Calcs.lua:450-464 ",

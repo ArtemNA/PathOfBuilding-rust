@@ -18,61 +18,61 @@ A body goes here when ANY construct is outside the grammar (tools/modparser-gen/
 ## List
 | id | to | referenced as | direct refs | reason |
 | --- | --- | --- | --- | --- |
-| `Modules/ModParser.lua:2658` | 2665 | special | 1 | nested function |
-| `Modules/ModParser.lua:2666` | 2672 | special | 1 | nested function |
-| `Modules/ModParser.lua:2942` | 2948 | special | 1 | statement 'for' |
-| `Modules/ModParser.lua:3323` | 3332 | special | 1 | statement 'for' |
-| `Modules/ModParser.lua:3435` | 3441 | special | 1 | assignment target |
-| `Modules/ModParser.lua:4603` | 4610 | special | 1 | call of string.format |
-| `Modules/ModParser.lua:4684` | 4684 | special | 1 | mod()/flag() with a literal nil before a later argument in the tag part (L9 orphan tag; a closure result cannot carry RawParse.orphan_tags) |
+| `Modules/ModParser.lua:2659` | 2666 | special | 1 | nested function |
+| `Modules/ModParser.lua:2667` | 2673 | special | 1 | nested function |
+| `Modules/ModParser.lua:2943` | 2949 | special | 1 | statement 'for' |
+| `Modules/ModParser.lua:3324` | 3333 | special | 1 | statement 'for' |
+| `Modules/ModParser.lua:3436` | 3442 | special | 1 | assignment target |
+| `Modules/ModParser.lua:4604` | 4611 | special | 1 | call of string.format |
 | `Modules/ModParser.lua:4685` | 4685 | special | 1 | mod()/flag() with a literal nil before a later argument in the tag part (L9 orphan tag; a closure result cannot carry RawParse.orphan_tags) |
 | `Modules/ModParser.lua:4686` | 4686 | special | 1 | mod()/flag() with a literal nil before a later argument in the tag part (L9 orphan tag; a closure result cannot carry RawParse.orphan_tags) |
-| `Modules/ModParser.lua:5818` | 5820 | special | 1 | mod()/flag() with a literal nil before a later argument in the tag part (L9 orphan tag; a closure result cannot carry RawParse.orphan_tags) |
-| `Modules/ModParser.lua:5821` | 5823 | special | 1 | mod()/flag() with a literal nil before a later argument in the tag part (L9 orphan tag; a closure result cannot carry RawParse.orphan_tags) |
-| `Modules/ModParser.lua:5824` | 5826 | special | 1 | mod()/flag() with a literal nil before a later argument in the tag part (L9 orphan tag; a closure result cannot carry RawParse.orphan_tags) |
-| `Modules/ModParser.lua:6288` | 6290 | up | 0 | upvalue of jewelFuncList closures only (R5.4) |
-| `Modules/ModParser.lua:6291` | 6293 | up | 0 | upvalue of jewelFuncList closures only (R5.4) |
-| `Modules/ModParser.lua:6297` | 6299 | up | 0 | upvalue of jewelFuncList closures only (R5.4) |
-| `Modules/ModParser.lua:6300` | 6302 | up | 0 | upvalue of jewelFuncList closures only (R5.4) |
-| `Modules/ModParser.lua:6303` | 6305 | up | 0 | upvalue of jewelFuncList closures only (R5.4) |
-| `Modules/ModParser.lua:6306` | 6308 | up | 0 | upvalue of jewelFuncList closures only (R5.4) |
-| `Modules/ModParser.lua:6309` | 6311 | up | 0 | upvalue of jewelFuncList closures only (R5.4) |
-| `Modules/ModParser.lua:6312` | 6314 | up | 0 | upvalue of jewelFuncList closures only (R5.4) |
-| `Modules/ModParser.lua:6315` | 6317 | up | 0 | upvalue of jewelFuncList closures only (R5.4) |
-| `Modules/ModParser.lua:6318` | 6320 | up | 0 | upvalue of jewelFuncList closures only (R5.4) |
-| `Modules/ModParser.lua:6321` | 6323 | up | 0 | upvalue of jewelFuncList closures only (R5.4) |
-| `Modules/ModParser.lua:6324` | 6326 | up | 0 | upvalue of jewelFuncList closures only (R5.4) |
-| `Modules/ModParser.lua:6327` | 6329 | up | 0 | upvalue of jewelFuncList closures only (R5.4) |
-| `Modules/ModParser.lua:6330` | 6358 | up | 0 | upvalue of jewelFuncList closures only (R5.4) |
-| `Modules/ModParser.lua:6359` | 6365 | up | 0 | upvalue of jewelFuncList closures only (R5.4) |
-| `Modules/ModParser.lua:6366` | 6370 | up | 0 | upvalue of jewelFuncList closures only (R5.4) |
-| `Modules/ModParser.lua:6371` | 6377 | up | 0 | upvalue of jewelFuncList closures only (R5.4) |
-| `Modules/ModParser.lua:6378` | 6382 | up | 0 | upvalue of jewelFuncList closures only (R5.4) |
-| `Modules/ModParser.lua:6383` | 6387 | up | 0 | upvalue of jewelFuncList closures only (R5.4) |
-| `Modules/ModParser.lua:6388` | 6395 | up | 0 | upvalue of jewelFuncList closures only (R5.4) |
-| `Modules/ModParser.lua:6396` | 6402 | up | 0 | upvalue of jewelFuncList closures only (R5.4) |
-| `Modules/ModParser.lua:6403` | 6409 | up | 0 | upvalue of jewelFuncList closures only (R5.4) |
-| `Modules/ModParser.lua:6410` | 6416 | up | 0 | upvalue of jewelFuncList closures only (R5.4) |
-| `Modules/ModParser.lua:6417` | 6423 | up | 0 | upvalue of jewelFuncList closures only (R5.4) |
-| `Modules/ModParser.lua:6424` | 6430 | up | 0 | upvalue of jewelFuncList closures only (R5.4) |
-| `Modules/ModParser.lua:6431` | 6437 | up | 0 | upvalue of jewelFuncList closures only (R5.4) |
-| `Modules/ModParser.lua:6438` | 6444 | up | 0 | upvalue of jewelFuncList closures only (R5.4) |
-| `Modules/ModParser.lua:6445` | 6454 | up | 0 | upvalue of jewelFuncList closures only (R5.4) |
-| `Modules/ModParser.lua:6455` | 6461 | up | 0 | upvalue of jewelFuncList closures only (R5.4) |
-| `Modules/ModParser.lua:6462` | 6468 | up | 0 | upvalue of jewelFuncList closures only (R5.4) |
-| `Modules/ModParser.lua:6469` | 6477 | up | 0 | upvalue of jewelFuncList closures only (R5.4) |
-| `Modules/ModParser.lua:6478` | 6485 | up | 0 | upvalue of jewelFuncList closures only (R5.4) |
-| `Modules/ModParser.lua:6486` | 6493 | up | 0 | upvalue of jewelFuncList closures only (R5.4) |
-| `Modules/ModParser.lua:6498` | 6504 | jewel | 31 | jewelFuncList visitor/factory: the jewel interface is R5.4 (parse.rs:249-256 stops on it) |
-| `Modules/ModParser.lua:6516` | 6523 | jewel | 1 | jewelFuncList visitor/factory: the jewel interface is R5.4 (parse.rs:249-256 stops on it) |
-| `Modules/ModParser.lua:6548` | 6563 | jewel | 1 | jewelFuncList visitor/factory: the jewel interface is R5.4 (parse.rs:249-256 stops on it) |
-| `Modules/ModParser.lua:6564` | 6579 | jewel | 1 | jewelFuncList visitor/factory: the jewel interface is R5.4 (parse.rs:249-256 stops on it) |
-| `Modules/ModParser.lua:6641` | 6641 | jewel | 1 | jewelFuncList visitor/factory: the jewel interface is R5.4 (parse.rs:249-256 stops on it) |
-| `Modules/ModParser.lua:6642` | 6642 | jewel | 1 | jewelFuncList visitor/factory: the jewel interface is R5.4 (parse.rs:249-256 stops on it) |
+| `Modules/ModParser.lua:4687` | 4687 | special | 1 | mod()/flag() with a literal nil before a later argument in the tag part (L9 orphan tag; a closure result cannot carry RawParse.orphan_tags) |
+| `Modules/ModParser.lua:5820` | 5822 | special | 1 | mod()/flag() with a literal nil before a later argument in the tag part (L9 orphan tag; a closure result cannot carry RawParse.orphan_tags) |
+| `Modules/ModParser.lua:5823` | 5825 | special | 1 | mod()/flag() with a literal nil before a later argument in the tag part (L9 orphan tag; a closure result cannot carry RawParse.orphan_tags) |
+| `Modules/ModParser.lua:5826` | 5828 | special | 1 | mod()/flag() with a literal nil before a later argument in the tag part (L9 orphan tag; a closure result cannot carry RawParse.orphan_tags) |
+| `Modules/ModParser.lua:6290` | 6292 | up | 0 | upvalue of jewelFuncList closures only (R5.4) |
+| `Modules/ModParser.lua:6293` | 6295 | up | 0 | upvalue of jewelFuncList closures only (R5.4) |
+| `Modules/ModParser.lua:6299` | 6301 | up | 0 | upvalue of jewelFuncList closures only (R5.4) |
+| `Modules/ModParser.lua:6302` | 6304 | up | 0 | upvalue of jewelFuncList closures only (R5.4) |
+| `Modules/ModParser.lua:6305` | 6307 | up | 0 | upvalue of jewelFuncList closures only (R5.4) |
+| `Modules/ModParser.lua:6308` | 6310 | up | 0 | upvalue of jewelFuncList closures only (R5.4) |
+| `Modules/ModParser.lua:6311` | 6313 | up | 0 | upvalue of jewelFuncList closures only (R5.4) |
+| `Modules/ModParser.lua:6314` | 6316 | up | 0 | upvalue of jewelFuncList closures only (R5.4) |
+| `Modules/ModParser.lua:6317` | 6319 | up | 0 | upvalue of jewelFuncList closures only (R5.4) |
+| `Modules/ModParser.lua:6320` | 6322 | up | 0 | upvalue of jewelFuncList closures only (R5.4) |
+| `Modules/ModParser.lua:6323` | 6325 | up | 0 | upvalue of jewelFuncList closures only (R5.4) |
+| `Modules/ModParser.lua:6326` | 6328 | up | 0 | upvalue of jewelFuncList closures only (R5.4) |
+| `Modules/ModParser.lua:6329` | 6331 | up | 0 | upvalue of jewelFuncList closures only (R5.4) |
+| `Modules/ModParser.lua:6332` | 6360 | up | 0 | upvalue of jewelFuncList closures only (R5.4) |
+| `Modules/ModParser.lua:6361` | 6367 | up | 0 | upvalue of jewelFuncList closures only (R5.4) |
+| `Modules/ModParser.lua:6368` | 6372 | up | 0 | upvalue of jewelFuncList closures only (R5.4) |
+| `Modules/ModParser.lua:6373` | 6379 | up | 0 | upvalue of jewelFuncList closures only (R5.4) |
+| `Modules/ModParser.lua:6380` | 6384 | up | 0 | upvalue of jewelFuncList closures only (R5.4) |
+| `Modules/ModParser.lua:6385` | 6389 | up | 0 | upvalue of jewelFuncList closures only (R5.4) |
+| `Modules/ModParser.lua:6390` | 6397 | up | 0 | upvalue of jewelFuncList closures only (R5.4) |
+| `Modules/ModParser.lua:6398` | 6404 | up | 0 | upvalue of jewelFuncList closures only (R5.4) |
+| `Modules/ModParser.lua:6405` | 6411 | up | 0 | upvalue of jewelFuncList closures only (R5.4) |
+| `Modules/ModParser.lua:6412` | 6418 | up | 0 | upvalue of jewelFuncList closures only (R5.4) |
+| `Modules/ModParser.lua:6419` | 6425 | up | 0 | upvalue of jewelFuncList closures only (R5.4) |
+| `Modules/ModParser.lua:6426` | 6432 | up | 0 | upvalue of jewelFuncList closures only (R5.4) |
+| `Modules/ModParser.lua:6433` | 6439 | up | 0 | upvalue of jewelFuncList closures only (R5.4) |
+| `Modules/ModParser.lua:6440` | 6446 | up | 0 | upvalue of jewelFuncList closures only (R5.4) |
+| `Modules/ModParser.lua:6447` | 6456 | up | 0 | upvalue of jewelFuncList closures only (R5.4) |
+| `Modules/ModParser.lua:6457` | 6463 | up | 0 | upvalue of jewelFuncList closures only (R5.4) |
+| `Modules/ModParser.lua:6464` | 6470 | up | 0 | upvalue of jewelFuncList closures only (R5.4) |
+| `Modules/ModParser.lua:6471` | 6479 | up | 0 | upvalue of jewelFuncList closures only (R5.4) |
+| `Modules/ModParser.lua:6480` | 6487 | up | 0 | upvalue of jewelFuncList closures only (R5.4) |
+| `Modules/ModParser.lua:6488` | 6495 | up | 0 | upvalue of jewelFuncList closures only (R5.4) |
+| `Modules/ModParser.lua:6500` | 6506 | jewel | 31 | jewelFuncList visitor/factory: the jewel interface is R5.4 (parse.rs:249-256 stops on it) |
+| `Modules/ModParser.lua:6518` | 6525 | jewel | 1 | jewelFuncList visitor/factory: the jewel interface is R5.4 (parse.rs:249-256 stops on it) |
+| `Modules/ModParser.lua:6550` | 6565 | jewel | 1 | jewelFuncList visitor/factory: the jewel interface is R5.4 (parse.rs:249-256 stops on it) |
+| `Modules/ModParser.lua:6566` | 6581 | jewel | 1 | jewelFuncList visitor/factory: the jewel interface is R5.4 (parse.rs:249-256 stops on it) |
 | `Modules/ModParser.lua:6643` | 6643 | jewel | 1 | jewelFuncList visitor/factory: the jewel interface is R5.4 (parse.rs:249-256 stops on it) |
-| `Modules/ModParser.lua:6665` | 6665 | jewel | 1 | jewelFuncList visitor/factory: the jewel interface is R5.4 (parse.rs:249-256 stops on it) |
-| `Modules/ModParser.lua:6669` | 6669 | jewel | 1 | jewelFuncList visitor/factory: the jewel interface is R5.4 (parse.rs:249-256 stops on it) |
-| `Modules/ModParser.lua:6670` | 6670 | jewel | 1 | jewelFuncList visitor/factory: the jewel interface is R5.4 (parse.rs:249-256 stops on it) |
+| `Modules/ModParser.lua:6644` | 6644 | jewel | 1 | jewelFuncList visitor/factory: the jewel interface is R5.4 (parse.rs:249-256 stops on it) |
+| `Modules/ModParser.lua:6645` | 6645 | jewel | 1 | jewelFuncList visitor/factory: the jewel interface is R5.4 (parse.rs:249-256 stops on it) |
+| `Modules/ModParser.lua:6667` | 6667 | jewel | 1 | jewelFuncList visitor/factory: the jewel interface is R5.4 (parse.rs:249-256 stops on it) |
 | `Modules/ModParser.lua:6671` | 6671 | jewel | 1 | jewelFuncList visitor/factory: the jewel interface is R5.4 (parse.rs:249-256 stops on it) |
-| `Modules/ModParser.lua:6683` | 6698 | jewel | 44 | jewelFuncList visitor/factory: the jewel interface is R5.4 (parse.rs:249-256 stops on it) |
-| `Modules/ModParser.lua:6710` | 6717 | jewel | 1 | jewelFuncList visitor/factory: the jewel interface is R5.4 (parse.rs:249-256 stops on it) |
+| `Modules/ModParser.lua:6672` | 6672 | jewel | 1 | jewelFuncList visitor/factory: the jewel interface is R5.4 (parse.rs:249-256 stops on it) |
+| `Modules/ModParser.lua:6673` | 6673 | jewel | 1 | jewelFuncList visitor/factory: the jewel interface is R5.4 (parse.rs:249-256 stops on it) |
+| `Modules/ModParser.lua:6685` | 6700 | jewel | 44 | jewelFuncList visitor/factory: the jewel interface is R5.4 (parse.rs:249-256 stops on it) |
+| `Modules/ModParser.lua:6712` | 6719 | jewel | 1 | jewelFuncList visitor/factory: the jewel interface is R5.4 (parse.rs:249-256 stops on it) |

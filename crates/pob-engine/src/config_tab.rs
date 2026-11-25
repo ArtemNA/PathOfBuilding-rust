@@ -204,8 +204,16 @@ impl Engine {
         self.model_mut().config.set_order_list = order.iter().enumerate().map(|(i, id)| ((i + 1) as f64, *id)).collect();
     }
 
-    /// The table part of `SetActiveConfigSet` (:1337-1354): an unknown id falls to the first of the list. `UpdateControls` + `BuildModList` are the tab's.
+    /// The table part of `SetActiveConfigSet` (:1373-1400): an unknown id falls to the first of the list. `UpdateControls` + `BuildModList` are the tab's.
     pub fn config_activate(&mut self, id: f64) {
+        // :1375-1378
+        if order_of(self.model()).is_empty() {
+            let m = self.model_mut();
+            m.config.set_order_list.retain(|(i, _)| *i != 1.0);
+            m.config.set_order_list.push((1.0, 1.0));
+            m.config.set_order_list.sort_by(|a, b| a.0.total_cmp(&b.0));
+            self.config_create_set(Some(1.0), None);
+        }
         let id = if self.config_set_exists(id) {
             id
         } else {
@@ -229,62 +237,86 @@ impl Engine {
         c.controls = controls;
     }
 
-    /// `NewConfigSet()` (:1280-1300) without an id: the first free one. Not in `configSets` until [`Engine::config_insert_set`] (the Lua's Cancel removes it again).
-    /// `t_insert(configSetOrderList, set.id)` of `New Loadout` (Build.lua:341-343).
-    pub fn config_push_set(&mut self, set: ConfigSetModel) {
-        self.model_mut().config.sets.push(set);
-    }
-
-    pub fn config_new_set(&self) -> ConfigSetModel {
-        ConfigSetModel {
-            id: self.config_free_id(),
-            title: None,
+    /// `ConfigTab:CreateConfigSet(configSetId, title)` (ConfigTab.lua:1282-1299): without an id `#self.configSets + 1`; the defaults of
+    /// `input` / `placeholder` are `ConfigState::from_set`'s.
+    fn config_create_set(&mut self, id: Option<f64>, title: Option<&str>) -> f64 {
+        let id = id.unwrap_or_else(|| crate::sets::next_id(&self.set_tables.config));
+        self.set_tables.config.set(id);
+        let set = ConfigSetModel {
+            id,
+            title: title.map(str::to_owned),
             input: IndexMap::new(),
             placeholder: IndexMap::new(),
             custom_mods_list: vec![CustomModsBlockModel::default_block()],
-        }
-    }
-
-    fn config_free_id(&self) -> f64 {
-        let mut id = 1.0;
-        while self.config_set_exists(id) {
-            id += 1.0;
+        };
+        let m = self.model_mut();
+        match m.config.sets.iter_mut().find(|s| s.id == id) {
+            Some(s) => *s = set,
+            None => m.config.sets.push(set),
         }
         id
     }
 
-    /// `copyTable(configSet)` with a free id (ConfigSetListControl.lua:17-23).
-    pub fn config_copy_set(&self, id: f64) -> ConfigSetModel {
+    /// `t_insert(self.configSetOrderList, id)`.
+    fn config_order_push(&mut self, id: f64) {
+        let m = self.model_mut();
+        let n = order_of(m).len();
+        m.config.set_order_list.retain(|(i, _)| *i != (n + 1) as f64);
+        m.config.set_order_list.push(((n + 1) as f64, id));
+        m.config.set_order_list.sort_by(|a, b| a.0.total_cmp(&b.0));
+    }
+
+    /// `ConfigTab:NewConfigSet(configSetId, title)` (ConfigTab.lua:1302-1307): `CreateConfigSet` + the end of the order. The id.
+    pub fn config_new_set(&mut self, id: Option<f64>, title: Option<&str>) -> f64 {
+        let id = self.config_create_set(id, title);
+        self.config_order_push(id);
+        id
+    }
+
+    /// `#self.configSets`.
+    pub fn config_sets_len(&self) -> usize {
+        self.set_tables.config.len()
+    }
+
+    /// `ConfigTab:CopyConfigSet(configSetId, newConfigSetName)` (ConfigTab.lua:1309-1318): `copyTable` with the id `#self.configSets + 1`,
+    /// `t_insert(self.configSets, newConfigSet)` (the same key: nothing changed `#t` in between), the end of the order. The id.
+    pub fn config_copy_set(&mut self, from: f64, title: &str) -> f64 {
+        let id = crate::sets::next_id(&self.set_tables.config);
         let mut s = self
             .model()
             .config
             .sets
             .iter()
-            .find(|s| s.id == id)
-            .expect("configSets[selValue]")
+            .find(|s| s.id == from)
+            .expect("Classes/ConfigTab.lua:1311: attempt to index local 'configSet' (a nil value)")
             .clone();
-        s.id = self.config_free_id();
-        s
+        s.id = id;
+        s.title = Some(title.to_owned());
+        self.set_tables.config.set(id);
+        self.model_mut().config.sets.push(s);
+        self.config_order_push(id);
+        id
     }
 
-    /// `configSets[id] = set` + `t_insert(list, id)` (ConfigSetListControl.lua:54-60).
-    pub fn config_insert_set(&mut self, set: ConfigSetModel) {
-        let m = self.model_mut();
-        let id = set.id;
-        m.config.sets.push(set);
-        let n = order_of(m).len();
-        m.config.set_order_list.push(((n + 1) as f64, id));
-    }
-
+    /// `ConfigTab:RenameConfigSet` (ConfigTab.lua:1320-1329): a gone id does nothing.
     pub fn config_rename_set(&mut self, id: f64, title: &str) {
         if let Some(s) = self.model_mut().config.sets.iter_mut().find(|s| s.id == id) {
             s.title = Some(title.to_owned());
         }
     }
 
-    /// `configSets[id] = nil` (ConfigSetListControl.lua:98).
-    pub fn config_remove_set(&mut self, id: f64) {
+    /// `ConfigTab:DeleteConfigSet(configSetId, orderListIndex)` (ConfigTab.lua:1332-1336): `t_remove(self.configSetOrderList, orderListIndex)`,
+    /// `configSets[id] = nil`.
+    pub fn config_delete_set(&mut self, id: f64, order_index: usize) {
+        let mut order = order_of(self.model());
+        assert!(
+            order.get(order_index - 1) == Some(&id),
+            "ConfigTab:DeleteConfigSet: set {id} is not at {order_index}"
+        );
+        order.remove(order_index - 1);
+        self.config_write_order(&order);
         self.model_mut().config.sets.retain(|s| s.id != id);
+        crate::sets::remove(&mut self.set_tables.config, id);
     }
 
     /// `customModsList` of the active set replaced.
@@ -395,7 +427,7 @@ impl Engine {
                 let source = m
                     .source
                     .as_deref()
-                    .expect("Classes/ConfigTab.lua:418: attempt to concatenate field 'source' (a nil value)");
+                    .expect("Classes/ConfigTab.lua:420: attempt to concatenate field 'source' (a nil value)");
                 let text = format!("{}|{source}", pob_mods::format::format_mod(m));
                 out = Some(match out {
                     Some(o) => format!("{o}\n{text}"),
@@ -437,8 +469,8 @@ impl Engine {
             }
             // :596-599
             ConfigGate::Flag => {
-                let st = st.expect("Classes/ConfigTab.lua:596 mainEnv.player.mainSkill");
-                let main = st.main_skill.expect("Classes/ConfigTab.lua:596 mainEnv.player.mainSkill");
+                let st = st.expect("Classes/ConfigTab.lua:598 mainEnv.player.mainSkill");
+                let main = st.main_skill.expect("Classes/ConfigTab.lua:598 mainEnv.player.mainSkill");
                 st.skill(main).skill_flags.get(opt).copied().unwrap_or(false)
                     || env
                         .skill_mod_list(main)

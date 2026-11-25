@@ -64,10 +64,10 @@ fn mod_cache_counts() {
             (None, None) => empty += 1,
         }
     }
-    // 07fa089bf (R-UP2): 23 201 -> 23 277 entries (grep -c '^c["' Data/ModCache.lua: 23 277; the same grep on 3dbca4463 gives the old
-    // 23 201); the categories and mods counted from data/mod-cache.json by node
+    // 5606cc64f (2.69.0): 23 277 entries (grep -c '^c["' Data/ModCache.lua, as on 07fa089bf); the categories and mods counted from
+    // data/mod-cache.json by Python (07fa089bf: 1115 / 19 268 / 2870 / 24)
     assert_eq!(c.len(), 23_277);
-    assert_eq!((both, mods_only, extra_only, empty), (1115, 19_268, 2870, 24));
+    assert_eq!((both, mods_only, extra_only, empty), (1113, 19_270, 2870, 24));
     assert_eq!(mods_total, 23_400);
     assert_eq!(c.malformed_dropped(), 0);
     let orphan_records = c.entries.iter().filter(|e| !e.orphan_tags.is_empty()).count();
@@ -108,11 +108,11 @@ fn item_bases_counts() {
 fn config_options_counts() {
     let c = config_options::config_options();
     let typed = c.vars.iter().filter(|v| v.ty.is_some()).count();
-    // 07fa089bf (R-UP2): LuaJIT over Modules/ConfigOptions.lua: 590 typed + 102 untyped = 692, of which 7 are `{section=...}`
-    // records the extractor keeps apart (692 - 7 = 685); 543 with `apply`
-    assert_eq!((typed, c.vars.len() - typed, c.vars.len()), (590, 95, 685));
+    // 5606cc64f (2.69.0): LuaJIT over Modules/ConfigOptions.lua: 697 records, 7 `{section=...}` the extractor keeps apart, 594 typed +
+    // 96 untyped = 690; 547 with `apply` (07fa089bf: 590 + 95 = 685, 543)
+    assert_eq!((typed, c.vars.len() - typed, c.vars.len()), (594, 96, 690));
     let count = |f: fn(&config_options::ConfigVar) -> bool| c.vars.iter().filter(|v| f(v)).count();
-    assert_eq!(count(|v| v.apply.is_some()), 543);
+    assert_eq!(count(|v| v.apply.is_some()), 547);
     assert_eq!(count(|v| v.list.is_some()), 41);
     assert_eq!(count(|v| v.default_index.is_some()), 13);
     assert_eq!(count(|v| v.default_state.is_some()), 15);
@@ -131,14 +131,15 @@ fn config_options_counts() {
 #[test]
 fn gems_counts() {
     let g = gems::gems();
-    // 07fa089bf (R-UP2): LuaJIT counts of data.gems / gemForSkill / gemForBaseName / gemsByGameId / the two Vaal maps
-    assert_eq!(g.gems.len(), 874);
+    // 5606cc64f (2.69.0): LuaJIT counts of data.gems (886; 07fa089bf: 874) / gemForSkill / gemForBaseName / gemsByGameId / the two Vaal maps
+    assert_eq!(g.gems.len(), 886);
     assert_eq!(g.gems.keys().filter(|k| k.ends_with("AltX")).count(), 192);
     assert_eq!(g.gems.keys().filter(|k| k.ends_with("AltY")).count(), 72);
     assert_eq!(g.gems.values().filter(|x| x.vaal_gem == Some(true)).count(), 102);
-    assert_eq!(g.gem_for_skill.len(), 824);
-    assert_eq!(g.gem_for_base_name.len(), 875);
-    assert_eq!(g.gems_by_game_id.len(), 609);
+    // 5606cc64f (2.69.0), LuaJIT: gemForSkill 836, gemForBaseName 887, gemsByGameId 621 (07fa089bf: 824 / 875 / 609)
+    assert_eq!(g.gem_for_skill.len(), 836);
+    assert_eq!(g.gem_for_base_name.len(), 887);
+    assert_eq!(g.gems_by_game_id.len(), 621);
     assert_eq!(g.gem_granted_effect_id_for_vaal_gem_id.len(), 102);
     assert_eq!(g.gem_vaal_gem_id_for_base_gem_id.len(), 102);
     let fb = &g.gems["Metadata/Items/Gems/SkillGemFireball"];
@@ -218,8 +219,8 @@ fn rules_globals_pantheons_counts() {
     assert_eq!((r.item_tag_special.len(), r.item_tag_special_exclusion_pattern.len()), (3, 3));
     assert_eq!(
         (r.vestigial_mod_mappings.len(), r.boss_stats.len(), r.timeless_jewel_additions),
-        // 07fa089bf: LuaJIT count of data.vestigialModMappings
-        (474, 4, 337.0)
+        // 5606cc64f (2.69.0): LuaJIT count of data.vestigialModMappings (07fa089bf: 474)
+        (477, 4, 337.0)
     );
     assert_eq!(r.power_stat_list.as_array().map(Vec::len), Some(85));
     assert_eq!(r.high_precision_mods["SupportManaMultiplier"]["MORE"], 4.0);
@@ -227,7 +228,8 @@ fn rules_globals_pantheons_counts() {
     let g = globals::globals();
     assert_eq!(
         (g.mod_flag.len(), g.keyword_flag.len(), g.skill_type.len(), g.color_codes.len()),
-        (27, 30, 135, 68)
+        // 5606cc64f (2.69.0): colorCodes 69 (LuaJIT `pairs` count; 07fa089bf: 68)
+        (27, 30, 135, 69)
     );
     assert_eq!(g.mod_flag["WeaponMask"], f64::from(0x2fff_0000u32));
     assert_eq!(g.skill_type["Spell"], 2.0);
@@ -244,8 +246,8 @@ fn cluster_jewels_and_scalability_counts() {
     assert_eq!(c.info_for_notable.as_object().map(|o| o.len()), Some(287));
     let small = c.jewel("Small Cluster Jewel").unwrap();
     assert_eq!((small.min_nodes, small.max_nodes, small.total_indicies), (2.0, 3.0, 6.0));
-    // 07fa089bf: 14 864 (LuaJIT `pairs` count of data.modScalability; 3dbca4463: 15 202)
-    assert_eq!(mod_scalability::mod_scalability().len(), 14_864);
+    // 5606cc64f (2.69.0): 14 865 (LuaJIT `pairs` count of data.modScalability; 07fa089bf: 14 864, 3dbca4463: 15 202)
+    assert_eq!(mod_scalability::mod_scalability().len(), 14_865);
 }
 
 #[test]

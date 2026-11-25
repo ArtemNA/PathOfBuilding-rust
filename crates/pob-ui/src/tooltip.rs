@@ -254,6 +254,16 @@ fn header_config_of(rarity: &str) -> HeaderConfig {
             38.0,
             6.0,
         ),
+        // Tooltip.lua:58 (5606cc64f)
+        "VISCERA" => c(
+            "Assets/itemsheadervisceraleft.png",
+            "Assets/itemsheadervisceramiddle.png",
+            "Assets/itemsheadervisceraright.png",
+            38.0,
+            38.0,
+            38.0,
+            6.0,
+        ),
         _ => c(
             "Assets/itemsheaderwhiteleft.png",
             "Assets/itemsheaderwhitemiddle.png",
@@ -790,7 +800,7 @@ impl Tooltip {
                     let skip = *is_separator
                         && flavour
                         && !first_separator_skipped
-                        && matches!(header_type.as_str(), "RELIC" | "UNIQUE" | "RARE" | "MAGIC" | "GEM");
+                        && matches!(header_type.as_str(), "RELIC" | "UNIQUE" | "RARE" | "MAGIC" | "GEM" | "VISCERA");
                     if skip {
                         first_separator_skipped = true;
                     } else {
@@ -841,6 +851,8 @@ impl Tooltip {
         }
         sg::draw_rect(f, tt_x, tt_y, total_draw_width, BORDER_WIDTH);
         sg::draw_rect(f, tt_x, tt_y + max_column_height - BORDER_WIDTH, total_draw_width, BORDER_WIDTH);
+        // :660 (5606cc64f) the draw colour back to white
+        sg::set_draw_color(f, 1.0, 1.0, 1.0);
         if let Some(mut children) = self.child_tooltips.take() {
             let total_h: f64 = children.iter_mut().map(|tt| tt.get_dynamic_size(f, view_port).1).sum();
             let y_offset = (view_port.height - total_h - tt_y).min(0.0);

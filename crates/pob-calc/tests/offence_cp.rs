@@ -101,6 +101,9 @@ fn table_json(t: &OutTable) -> Json {
             if let Some((g, i)) = r.source_gem {
                 o.insert("sourceGem".to_owned(), json!(format!("<gem {}:{}>", g + 1, i + 1)));
             }
+            if let Some(i) = r.source_skill {
+                o.insert("sourceSkill".to_owned(), json!(format!("<skill {}>", i + 1)));
+            }
             Json::Object(o)
         }
         // written by the buildOutput tail (Calcs.lua:395/:420/:430), after every offence checkpoint
@@ -205,7 +208,7 @@ thread_local! {
     static TABLES: RefCell<(usize, usize)> = const { RefCell::new((0, 0)) };
 }
 
-/// `a` (LuaJIT) and `b` (Rust) differ only in `sourceGem` (LuaJIT: a table, Rust: `"<gem g:i>"`).
+/// `a` (LuaJIT) and `b` (Rust) differ only in `sourceGem` / `sourceSkill` (LuaJIT: a table, Rust: `"<gem g:i>"` / `"<skill i>"`).
 fn gem_ref_only(a: &Json, b: &Json) -> bool {
     let (Some(a), Some(b)) = (a.as_object(), b.as_object()) else {
         return false;
@@ -213,7 +216,9 @@ fn gem_ref_only(a: &Json, b: &Json) -> bool {
     let keys: BTreeSet<&String> = a.keys().chain(b.keys()).collect();
     keys.into_iter().all(|k| {
         let (x, y) = (a.get(k), b.get(k));
-        x == y || (k == "sourceGem" && x.is_some_and(Json::is_object) && y.and_then(Json::as_str).is_some_and(|s| s.starts_with("<gem ")))
+        x == y
+            || (k == "sourceGem" && x.is_some_and(Json::is_object) && y.and_then(Json::as_str).is_some_and(|s| s.starts_with("<gem ")))
+            || (k == "sourceSkill" && x.is_some_and(Json::is_object) && y.and_then(Json::as_str).is_some_and(|s| s.starts_with("<skill ")))
     })
 }
 

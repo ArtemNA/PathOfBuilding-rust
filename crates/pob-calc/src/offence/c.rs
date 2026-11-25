@@ -241,7 +241,7 @@ fn exerts_and_pacts(off: &mut Off<'_>, pi: usize, exerted_double_damage: f64, ex
                     "AncestralExertsCount",
                     "NumAncestralExerts",
                     "AncestralUpTimeRatio",
-                    2636,
+                    2640,
                 );
                 off.out().set_bool("AncestralCryCalculated", true);
             } else if name == "Infernal Cry" && !off.gtruthy("InfernalCryCalculated") && !disable {
@@ -254,7 +254,7 @@ fn exerts_and_pacts(off: &mut Off<'_>, pi: usize, exerted_double_damage: f64, ex
                         "InfernalExertsCount",
                         "NumInfernalExerts",
                         "InfernalUpTimeRatio",
-                        2660,
+                        2664,
                     );
                 }
                 off.out().set_bool("InfernalCryCalculated", true);
@@ -268,7 +268,7 @@ fn exerts_and_pacts(off: &mut Off<'_>, pi: usize, exerted_double_damage: f64, ex
                     "IntimidatingExertsCount",
                     "NumIntimidatingExerts",
                     "IntimidatingUpTimeRatio",
-                    2685,
+                    2689,
                 );
                 let enemy_dd = if off.env.mode_effective {
                     dsum(&off.enemy_db, ModType::Base, Some(off.pcfg(pi)), &["SelfDoubleDamageChance"])
@@ -293,7 +293,7 @@ fn exerts_and_pacts(off: &mut Off<'_>, pi: usize, exerted_double_damage: f64, ex
                     ]);
                     off.bd_put("IntimidatingAvgDmg", t);
                 }
-                let up = off.g_or("IntimidatingUpTimeRatio", 0.0, 2712);
+                let up = off.g_or("IntimidatingUpTimeRatio", 0.0, 2716);
                 off.gset("IntimidatingHitEffect", 1.0 + avg * up / 100.0);
                 if off.breakdown {
                     let t = BTable::lines([
@@ -304,9 +304,9 @@ fn exerts_and_pacts(off: &mut Off<'_>, pi: usize, exerted_double_damage: f64, ex
                     off.bd_put("IntimidatingHitEffect", t);
                 }
                 off.gset("IntimidatingMaxHitEffect", 1.0 + avg);
-                let t = off.g_or("TheoreticalOffensiveWarcryEffect", 0.0, 2722) * (1.0 + avg * up / 100.0);
+                let t = off.g_or("TheoreticalOffensiveWarcryEffect", 0.0, 2726) * (1.0 + avg * up / 100.0);
                 off.gset("TheoreticalOffensiveWarcryEffect", t);
-                let t = off.g_or("TheoreticalMaxOffensiveWarcryEffect", 0.0, 2723) * (1.0 + avg);
+                let t = off.g_or("TheoreticalMaxOffensiveWarcryEffect", 0.0, 2727) * (1.0 + avg);
                 off.gset("TheoreticalMaxOffensiveWarcryEffect", t);
                 off.out().set_bool("IntimidatingCryCalculated", true);
             } else if name == "Rallying Cry" && off.has_type("Melee") && !off.gtruthy("RallyingCryCalculated") && !disable {
@@ -319,7 +319,7 @@ fn exerts_and_pacts(off: &mut Off<'_>, pi: usize, exerted_double_damage: f64, ex
                     "RallyingExertsCount",
                     "NumRallyingExerts",
                     "RallyingUpTimeRatio",
-                    2731,
+                    2735,
                 );
                 let allies = min2(
                     dsum(&off.env_db, ModType::Base, Some(off.pcfg(pi)), &["Multiplier:NearbyAlly"]),
@@ -337,7 +337,7 @@ fn exerts_and_pacts(off: &mut Off<'_>, pi: usize, exerted_double_damage: f64, ex
                     ]);
                     off.bd_put("RallyingAvgDmg", t);
                 }
-                let up = off.g_or("RallyingUpTimeRatio", 0.0, 2757);
+                let up = off.g_or("RallyingUpTimeRatio", 0.0, 2761);
                 let hit = 1.0 + avg * up / 100.0;
                 off.gset("RallyingHitEffect", hit);
                 if off.breakdown {
@@ -355,7 +355,7 @@ fn exerts_and_pacts(off: &mut Off<'_>, pi: usize, exerted_double_damage: f64, ex
                     ("TheoreticalOffensiveWarcryEffect", hit),
                     ("TheoreticalMaxOffensiveWarcryEffect", 1.0 + avg),
                 ] {
-                    let v = off.g_or(k, 0.0, 2766) * m;
+                    let v = off.g_or(k, 0.0, 2770) * m;
                     off.gset(k, v);
                 }
                 off.out().set_bool("RallyingCryCalculated", true);
@@ -369,14 +369,14 @@ fn exerts_and_pacts(off: &mut Off<'_>, pi: usize, exerted_double_damage: f64, ex
                     "SeismicExertsCount",
                     "NumSeismicExerts",
                     "SeismicUpTimeRatio",
-                    2778,
+                    2782,
                 );
                 if q.flag(None, &["Condition:WarcryMaxHit"]) {
                     let more_aoe = dsum(&off.env_db, ModType::Base, None, &["SeismicMoreAoE"]);
                     q.nm("AreaOfEffect", ModType::More, more_aoe, "Max Seismic Exert AoE", 0, 0, vec![]);
                 } else {
                     let more_aoe = dsum(&off.env_db, ModType::Base, None, &["SeismicMoreAoE"]);
-                    let up = off.g_or("SeismicUpTimeRatio", 0.0, 2786);
+                    let up = off.g_or("SeismicUpTimeRatio", 0.0, 2790);
                     q.nm(
                         "AreaOfEffect",
                         ModType::More,
@@ -399,7 +399,7 @@ fn exerts_and_pacts(off: &mut Off<'_>, pi: usize, exerted_double_damage: f64, ex
                         "BattleCryExertsCount",
                         "NumBattlemageExerts",
                         "BattlemageUpTimeRatio",
-                        2809,
+                        2813,
                     );
                 }
                 off.out().set_bool("BattleMageCryCalculated", true);
@@ -426,8 +426,8 @@ fn exerts_and_pacts(off: &mut Off<'_>, pi: usize, exerted_double_damage: f64, ex
             "SeismicUpTimeRatio",
             "BattlemageUpTimeRatio",
         ] {
-            let a = off.g_or("ExertedAttackUptimeRatio", 0.0, 2845);
-            let b = off.g_or(cry, 0.0, 2845);
+            let a = off.g_or("ExertedAttackUptimeRatio", 0.0, 2849);
+            let b = off.g_or(cry, 0.0, 2849);
             off.gset("ExertedAttackUptimeRatio", max2(a, b));
         }
         // :2847-2856
@@ -443,14 +443,14 @@ fn exerts_and_pacts(off: &mut Off<'_>, pi: usize, exerted_double_damage: f64, ex
             ] {
                 if off.gtruthy(cry) {
                     let name = cry.split_once("Up").map_or(cry, |(n, _)| n);
-                    t.push(sf!("%d%% ^8(%s Cry Uptime)", off.g_or(cry, 0.0, 2852), name));
+                    t.push(sf!("%d%% ^8(%s Cry Uptime)", off.g_or(cry, 0.0, 2856), name));
                 }
             }
-            t.push(sf!("= %d%%", off.g_or("ExertedAttackUptimeRatio", 0.0, 2855)));
+            t.push(sf!("= %d%%", off.g_or("ExertedAttackUptimeRatio", 0.0, 2859)));
             off.bd_put("ExertedAttackUptimeRatio", t);
         }
         // :2857-2888
-        let uptime = num_at(off.gval("ExertedAttackUptimeRatio"), "ExertedAttackUptimeRatio", 2857);
+        let uptime = num_at(off.gval("ExertedAttackUptimeRatio"), "ExertedAttackUptimeRatio", 2861);
         if uptime > 0.0 && !off.gtruthy("ExertedAttackUptimeRatioCalculated") {
             let c = Some(off.pcfg(pi));
             let inc_exerted = q.inc(c, &["ExertIncrease"]);
@@ -490,7 +490,7 @@ fn exerts_and_pacts(off: &mut Off<'_>, pi: usize, exerted_double_damage: f64, ex
                     vec![],
                 );
             } else {
-                let global_up = num_at(off.gval("GlobalWarcryUptimeRatio"), "GlobalWarcryUptimeRatio", 2873);
+                let global_up = num_at(off.gval("GlobalWarcryUptimeRatio"), "GlobalWarcryUptimeRatio", 2877);
                 q.nm(
                     "Damage",
                     ModType::Inc,
@@ -591,15 +591,15 @@ fn exerts_and_pacts(off: &mut Off<'_>, pi: usize, exerted_double_damage: f64, ex
                 let sk = st.skill(off.actor_skill(j));
                 st.skills.effects[sk.active_effect.borrow().granted_effect]
                     .cast_time
-                    .unwrap_or_else(|| panic!("{LUA}:2907: attempt to perform arithmetic on field 'castTime' (a nil value)"))
+                    .unwrap_or_else(|| panic!("{LUA}:2911: attempt to perform arithmetic on field 'castTime' (a nil value)"))
             };
             let cast_rate = 1.0 / cast_time * vq.calc_mod(vc, &["Speed"]) * crate::defence::action_speed_mod(&off.mod_db);
             let cast_time = 1.0 / min2(cast_rate, misc("ServerTickRate"));
             let count = vq.base(vc, &[&format!("{key}EmpoweredSpells")]);
             let stored = stored_uses(&vq, &vcfg, &vsd, 2910);
             // :2938-2940 repeated spells keep the empowerment of the initial cast (3dbca4463 #10348)
-            let speed = num_at(off.gval("Speed"), "Speed", 2939);
-            let repeats = num_at(off.gval("Repeats"), "Repeats", 2939);
+            let speed = num_at(off.gval("Speed"), "Speed", 2943);
+            let repeats = num_at(off.gval("Repeats"), "Repeats", 2943);
             let empowered_use_rate = speed / repeats;
             let mut uptime = if empowered_use_rate == 0.0 {
                 100.0
@@ -627,12 +627,12 @@ fn exerts_and_pacts(off: &mut Off<'_>, pi: usize, exerted_double_damage: f64, ex
             }
             if let Some(d) = vq.list(vc, &[&format!("{key}PactDamage")]).first() {
                 let Value::Mod(m) = d.get("mod") else {
-                    panic!("{LUA}:2934: attempt to index local 'mod' (a nil value)");
+                    panic!("{LUA}:2938: attempt to index local 'mod' (a nil value)");
                 };
                 let v = m
                     .value
                     .as_num()
-                    .unwrap_or_else(|| panic!("{LUA}:2935: attempt to perform arithmetic on field 'value'"));
+                    .unwrap_or_else(|| panic!("{LUA}:2939: attempt to perform arithmetic on field 'value'"));
                 q.new_mod(
                     &m.name,
                     m.ty,
@@ -648,7 +648,7 @@ fn exerts_and_pacts(off: &mut Off<'_>, pi: usize, exerted_double_damage: f64, ex
                 if off.flag("projectile") && !q.flag(sc, &["NoAdditionalProjectiles"]) && !q.flag(sc, &["SingleProjectile"]) {
                     let v = vq.base(vc, &["BeidatAdditionalProjectiles"]) * effect_mult;
                     off.gset("BeidatAdditionalProjectiles", v);
-                    let p = num_at(off.gval("ProjectileCount"), "ProjectileCount", 2942) + v;
+                    let p = num_at(off.gval("ProjectileCount"), "ProjectileCount", 2946) + v;
                     off.gset("ProjectileCount", p);
                 }
                 if off.flag("chaining") && !off.flag("projectile") && !q.flag(sc, &["CannotChain"]) && !q.flag(sc, &["NoAdditionalChains"])
@@ -656,10 +656,10 @@ fn exerts_and_pacts(off: &mut Off<'_>, pi: usize, exerted_double_damage: f64, ex
                     // :2974 `* skillModList:More(skillCfg, "ChainCountMax")` (3dbca4463)
                     let v = vq.base(vc, &["BeidatAdditionalBeamChains"]) * effect_mult * q.more(sc, &["ChainCountMax"]);
                     off.gset("BeidatAdditionalBeamChains", v);
-                    let cm = num_at(off.gval("ChainMax"), "ChainMax", 2946) + v;
+                    let cm = num_at(off.gval("ChainMax"), "ChainMax", 2950) + v;
                     off.gset("ChainMax", cm);
                     off.gset("ChainMaxString", cm);
-                    let ch = num_at(off.gval("Chain"), "Chain", 2948);
+                    let ch = num_at(off.gval("Chain"), "Chain", 2952);
                     off.gset("ChainRemaining", max2(0.0, cm - ch));
                 }
                 if off.has_type("Cascadable") {
@@ -670,7 +670,7 @@ fn exerts_and_pacts(off: &mut Off<'_>, pi: usize, exerted_double_damage: f64, ex
                 let v = vq.base(vc, &["KtashPactSoulRefundChance"]) * effect_mult;
                 off.gset("KtashSoulRefundChance", v);
                 if off.gtruthy("SoulGainPreventionDuration") {
-                    let duration = num_at(off.gval("SoulGainPreventionDuration"), "SoulGainPreventionDuration", 2958);
+                    let duration = num_at(off.gval("SoulGainPreventionDuration"), "SoulGainPreventionDuration", 2962);
                     let duration_mod = 1.0 + vq.base(vc, &["KtashPactSoulGainPrevention"]) * effect_mult / 100.0;
                     let tick = misc("ServerTickRate");
                     off.gset(
@@ -717,14 +717,14 @@ fn ruthless_fist_of_war(off: &mut Off<'_>, pi: usize) {
         .and_then(|c| c.get("usedByMirage"))
         .copied()
         .unwrap_or(false);
-    if max_count > 0.0 && (!used_by_mirage || off.sd_num("mirageUses", 2983).unwrap_or(0.0) > max_count) {
+    if max_count > 0.0 && (!used_by_mirage || off.sd_num("mirageUses", 2987).unwrap_or(0.0) > max_count) {
         match ruthless_effect.as_deref() {
             Some("AVERAGE") => off.pset_num(pi, "RuthlessBlowChance", round(100.0 / max_count, None)),
             Some("MAX") => {
                 off.pset_num(pi, "RuthlessBlowChance", 100.0);
                 let d = off
-                    .sd_num("dpsMultiplier", 2988)
-                    .unwrap_or_else(|| panic!("{LUA}:2988: attempt to perform arithmetic on field 'dpsMultiplier' (a nil value)"));
+                    .sd_num("dpsMultiplier", 2992)
+                    .unwrap_or_else(|| panic!("{LUA}:2992: attempt to perform arithmetic on field 'dpsMultiplier' (a nil value)"));
                 off.set_sd("dpsMultiplier", Value::Num(d / max_count));
             }
             _ => {}
@@ -736,7 +736,7 @@ fn ruthless_fist_of_war(off: &mut Off<'_>, pi: usize) {
     off.pset_num(pi, "RuthlessBlowHitMultiplier", hit_mult);
     let ail_mult = 1.0 + q.base(Some(off.pcfg(pi)), &["RuthlessBlowAilmentMultiplier"]) / 100.0;
     off.pset_num(pi, "RuthlessBlowAilmentMultiplier", ail_mult);
-    let chance = num_at(off.pval(pi, "RuthlessBlowChance"), "RuthlessBlowChance", 2995);
+    let chance = num_at(off.pval(pi, "RuthlessBlowChance"), "RuthlessBlowChance", 2999);
     off.pset_num(pi, "RuthlessBlowHitEffect", 1.0 - chance / 100.0 + chance / 100.0 * hit_mult);
     off.pset_num(pi, "RuthlessBlowAilmentEffect", 1.0 - chance / 100.0 + chance / 100.0 * ail_mult);
 
@@ -745,7 +745,7 @@ fn ruthless_fist_of_war(off: &mut Off<'_>, pi: usize) {
     if cooldown != 0.0 && off.has_type("Slam") && !off.has_type("Vaal") && !off.has_type("OtherThingUsesSkill") {
         let mult = q.base(None, &["FistOfWarDamageMultiplier"]) / 100.0;
         off.gset("FistOfWarDamageMultiplier", mult);
-        let speed = num_at(off.gval("Speed"), "Speed", 3002);
+        let speed = num_at(off.gval("Speed"), "Speed", 3006);
         let up = min2((1.0 / speed) / cooldown, 1.0) * 100.0;
         off.gset("FistOfWarUptimeRatio", up);
         if off.breakdown {
@@ -787,9 +787,9 @@ fn ruthless_fist_of_war(off: &mut Off<'_>, pi: usize) {
         }
         let skill_cfg = off.cfg.clone();
         super::a2::calc_area_of_effect(off, &q, &skill_cfg);
-        let t = off.g_or("TheoreticalOffensiveWarcryEffect", 0.0, 3028) * avg_effect;
+        let t = off.g_or("TheoreticalOffensiveWarcryEffect", 0.0, 3032) * avg_effect;
         off.gset("TheoreticalOffensiveWarcryEffect", t);
-        let t = off.g_or("TheoreticalMaxOffensiveWarcryEffect", 0.0, 3029) * (1.0 + mult);
+        let t = off.g_or("TheoreticalMaxOffensiveWarcryEffect", 0.0, 3033) * (1.0 + mult);
         off.gset("TheoreticalMaxOffensiveWarcryEffect", t);
     } else {
         off.pset_num(pi, "FistOfWarDamageEffect", 1.0);
@@ -815,14 +815,14 @@ fn crits(off: &mut Off<'_>, pi: usize) {
     if q.flag(Some(off.pcfg(pi)), &["NeverCrit"]) {
         set_zero(off);
     } else if q.flag(Some(off.pcfg(pi)), &["SpellSkillsCannotDealCriticalStrikesExceptOnFinalRepeat"]) {
-        if or_num(off.pval(pi, "Repeats"), 1.0, "Repeats", 3049) == 1.0 {
+        if or_num(off.pval(pi, "Repeats"), 1.0, "Repeats", 3053) == 1.0 {
             set_zero(off);
         } else if q.flag(Some(off.pcfg(pi)), &["SpellSkillsAlwaysDealCriticalStrikesOnFinalRepeat"]) {
             if config_is(off, "repeatMode", "None") {
                 off.pset_num(pi, "PreEffectiveCritChance", 0.0);
                 off.pset_num(pi, "CritChance", 0.0);
             } else if config_is(off, "repeatMode", "AVERAGE") {
-                let r = num_at(off.pval(pi, "Repeats"), "Repeats", 3060);
+                let r = num_at(off.pval(pi, "Repeats"), "Repeats", 3064);
                 off.pset_num(pi, "PreEffectiveCritChance", 100.0 / r);
                 off.pset_num(pi, "CritChance", 100.0 / r);
                 // :3062-3068
@@ -844,7 +844,7 @@ fn crits(off: &mut Off<'_>, pi: usize) {
         if q.flag(Some(off.pcfg(pi)), &["MainHandCritIsEqualToParent"]) {
             // :3079 `actor.parent.output.MainHand and actor.parent.output.MainHand.CritChance or actor.parent.weaponData1.CritChance`
             if off.who != crate::perform::Who::Minion {
-                panic!("{LUA}:3079: attempt to index field 'parent' (a nil value)");
+                panic!("{LUA}:3083: attempt to index field 'parent' (a nil value)");
             }
             let from_hand = off.player_state().hands.as_ref().map(|h| {
                 h[0].map.get("CritChance").map(|v| match v {
@@ -860,14 +860,14 @@ fn crits(off: &mut Off<'_>, pi: usize) {
         } else if q.flag(Some(off.pcfg(pi)), &["MainHandCritIsEqualToPartyMember"]) {
             // :3081 `actor.partyMembers` -- nil on a minion
             if off.who == crate::perform::Who::Minion {
-                panic!("{LUA}:3081: attempt to index field 'partyMembers' (a nil value)");
+                panic!("{LUA}:3085: attempt to index field 'partyMembers' (a nil value)");
             }
             // `output.MainHand and output.MainHand.CritChance or (weaponData1 and ... or 0)` -- the party actor has no weaponData1
             // (R-party: `MainHand.CritChance=` of PartyMemberStats)
             let v = match off.env.party.output.get("MainHand") {
                 Some(crate::party::PartyOut::Table(t)) => t.get("CritChance").copied(),
                 Some(crate::party::PartyOut::Num(_)) => {
-                    panic!("{LUA}:3110: attempt to index field 'MainHand' (a number value)")
+                    panic!("{LUA}:3114: attempt to index field 'MainHand' (a number value)")
                 }
                 None => None,
             };
@@ -890,7 +890,7 @@ fn crits(off: &mut Off<'_>, pi: usize) {
         } else if base_crit_from_parent {
             // :3090 `actor.parent.weaponData1 and actor.parent.weaponData1.CritChance or baseCrit`
             if off.who != crate::perform::Who::Minion {
-                panic!("{LUA}:3090: attempt to index field 'parent' (a nil value)");
+                panic!("{LUA}:3094: attempt to index field 'parent' (a nil value)");
             }
             let c = off.env.player.borrow().weapon_data1.get("CritChance");
             if c.truthy() {
@@ -926,9 +926,9 @@ fn crits(off: &mut Off<'_>, pi: usize) {
             }
             let base_crit_n = base_crit
                 .as_num()
-                .unwrap_or_else(|| panic!("{LUA}:3107: attempt to perform arithmetic on local 'baseCrit' ({base_crit:?})"));
+                .unwrap_or_else(|| panic!("{LUA}:3111: attempt to perform arithmetic on local 'baseCrit' ({base_crit:?})"));
             let mut cc = round((base_crit_n + base) * (1.0 + inc / 100.0) * more * 100.0, None) / 100.0;
-            let cap = match q.override_num(None, &["CritChanceCap"], "Modules/CalcOffence.lua:3109") {
+            let cap = match q.override_num(None, &["CritChanceCap"], "Modules/CalcOffence.lua:3113") {
                 Some(v) => v,
                 None => q.base(Some(off.pcfg(pi)), &["CritChanceCap"]),
             };
@@ -975,7 +975,7 @@ fn crits(off: &mut Off<'_>, pi: usize) {
                     cc = (5.0 * cc + 100.0) / 6.0;
                 }
                 pre_hit_check = cc;
-                ahc = num_at(off.pval(pi, "AccuracyHitChance"), "AccuracyHitChance", 3146);
+                ahc = num_at(off.pval(pi, "AccuracyHitChance"), "AccuracyHitChance", 3150);
                 cc = cc * ahc / 100.0;
             }
             off.pset_num(pi, "CritChance", cc);
@@ -1073,7 +1073,7 @@ fn crits(off: &mut Off<'_>, pi: usize) {
             off.pset_num(pi, "CritMultiplier", 1.0);
         } else {
             let mut extra = q.base(Some(off.pcfg(pi)), &["CritMultiplier"]) / 100.0;
-            if let Some(m) = q.override_num(Some(&off.cfg), &["CritMultiplier"], "Modules/CalcOffence.lua:3213") {
+            if let Some(m) = q.override_num(Some(&off.cfg), &["CritMultiplier"], "Modules/CalcOffence.lua:3217") {
                 extra = (m - 100.0) / 100.0;
             }
             if eff {
@@ -1101,9 +1101,9 @@ fn crits(off: &mut Off<'_>, pi: usize) {
                 && !matches!(off.pval(pi, "PreBifurcateCritChance"), None | Some(OutValue::Bool(false)))
                 && crit_override.as_ref().and_then(Value::as_num) != Some(100.0)
             {
-                let pct = num_at(off.pval(pi, "PreBifurcateCritChance"), "PreBifurcateCritChance", 3235);
+                let pct = num_at(off.pval(pi, "PreBifurcateCritChance"), "PreBifurcateCritChance", 3239);
                 let mut bifurcate_multi_chance = pct.powf(2.0) / 100.0;
-                let effective = num_at(off.pval(pi, "CritChance"), "CritChance", 3246);
+                let effective = num_at(off.pval(pi, "CritChance"), "CritChance", 3250);
                 let mut use_chance = 1.0;
                 if q.flag(Some(&off.cfg), &["Every3UseCrit"]) {
                     use_chance = use_chance * 2.0 / 3.0;
@@ -1143,8 +1143,8 @@ fn crits(off: &mut Off<'_>, pi: usize) {
             }
             off.pset_num(pi, "CritMultiplier", 1.0 + max2(0.0, extra));
         }
-        let pct = num_at(off.pval(pi, "CritChance"), "CritChance", 3268) / 100.0;
-        let mult = num_at(off.pval(pi, "CritMultiplier"), "CritMultiplier", 3269);
+        let pct = num_at(off.pval(pi, "CritChance"), "CritChance", 3272) / 100.0;
+        let mult = num_at(off.pval(pi, "CritMultiplier"), "CritMultiplier", 3273);
         let effect = 1.0 - pct + pct * mult;
         off.pset_num(pi, "CritEffect", effect);
         // :3266-3272
@@ -1170,7 +1170,7 @@ fn double_triple_cull(off: &mut Off<'_>, pi: usize) -> f64 {
     let q = off.q.clone();
     let eff = off.env.mode_effective;
     off.pset_num(pi, "ScaledDamageEffect", 1.0);
-    let cc = num_at(off.pval(pi, "CritChance"), "CritChance", 3290);
+    let cc = num_at(off.pval(pi, "CritChance"), "CritChance", 3294);
     let c = Some(off.pcfg(pi));
     let triple_on_crit = min2(q.base(c, &["TripleDamageChanceOnCrit"]), 100.0);
     // `Sum(...) or 0 + (...)`: `or` binds loosest and a Sum is never nil -- the right-hand side is never evaluated (L4)
@@ -1191,7 +1191,7 @@ fn double_triple_cull(off: &mut Off<'_>, pi: usize) -> f64 {
         double = 100.0;
     } else if off.gtruthy("IntimidatingUpTimeRatio") {
         double = min2(
-            double + num_at(off.gval("IntimidatingUpTimeRatio"), "IntimidatingUpTimeRatio", 3299),
+            double + num_at(off.gval("IntimidatingUpTimeRatio"), "IntimidatingUpTimeRatio", 3303),
             100.0,
         );
     }
@@ -1203,11 +1203,11 @@ fn double_triple_cull(off: &mut Off<'_>, pi: usize) -> f64 {
     off.pset_num(pi, "DoubleDamageEffect", double_effect);
     off.pset_num(pi, "ScaledDamageEffect", 1.0 * (1.0 + double_effect + triple_effect));
 
-    let hit_chance = num_at(off.pval(pi, "HitChance"), "HitChance", 3309);
+    let hit_chance = num_at(off.pval(pi, "HitChance"), "HitChance", 3313);
     let dps_mult = off
-        .sd_num("dpsMultiplier", 3309)
-        .unwrap_or_else(|| panic!("{LUA}:3309: attempt to perform arithmetic on field 'dpsMultiplier' (a nil value)"));
-    let hit_rate = hit_chance / 100.0 * off.g_hit_speed(3309) * dps_mult;
+        .sd_num("dpsMultiplier", 3313)
+        .unwrap_or_else(|| panic!("{LUA}:3313: attempt to perform arithmetic on field 'dpsMultiplier' (a nil value)"));
+    let hit_rate = hit_chance / 100.0 * off.g_hit_speed(3313) * dps_mult;
 
     let c = Some(off.pcfg(pi));
     let mut critical_cull = q.max(c, &["CriticalCullPercent"]).unwrap_or(0.0);
@@ -1245,7 +1245,7 @@ fn added_damage_redirect(off: &mut Off<'_>, pi: usize) {
                 let src = m
                     .source
                     .as_deref()
-                    .unwrap_or_else(|| panic!("{LUA}:3340: attempt to index field 'source' (a nil value)"));
+                    .unwrap_or_else(|| panic!("{LUA}:3344: attempt to index field 'source' (a nil value)"));
                 if src.contains("ElementalHit") {
                     continue;
                 }

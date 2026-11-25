@@ -186,10 +186,11 @@ fn mutators(e: &Engine) -> Vec<(&'static str, Edit, Option<Edit>)> {
             Some(Box::new(move |e| {
                 let first = e.skill_sets()[0].0;
                 let last = e.skill_sets().last().expect("set").0;
+                let n = e.skill_sets().len();
                 e.set_active_skill_set(first)?;
                 // the empty set's run clamped `build.mainSocketGroup` (CalcSetup.lua:1590), as upstream
                 e.set_main_group(main as usize);
-                e.delete_skill_set(last)
+                e.delete_skill_set(last, n)
             })),
         ),
         (

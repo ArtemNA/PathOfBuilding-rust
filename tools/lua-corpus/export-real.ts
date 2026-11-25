@@ -230,6 +230,9 @@ D = function(v, depth, seen)
   local cn = className(v)
   if cn == "ModList" then local t = {} for i, m in ipairs(v) do t[i] = fmtMod(m) end table.sort(t) local o = obj() o["$ModList"] = t return o end
   if cn then return "<class " .. cn .. ">" end
+  -- an active skill (2.69.0: sourceSkill of the Req*Item rows) by its name: a deep dump of it differs between passes
+  local ae = rawget(v, "activeEffect")
+  if type(ae) == "table" and rawget(v, "skillFlags") ~= nil then local sk = obj() sk["$skill"] = tostring(ae.grantedEffect and ae.grantedEffect.name) return sk end
   if depth > 8 or seen[v] then return "<deep>" end
   seen[v] = true
   local o, nk = obj(), 0

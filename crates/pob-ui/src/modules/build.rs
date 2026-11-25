@@ -9,7 +9,7 @@
 //! ascendancy changes and loadout switching (`PassiveSpec:SelectClass` …, U3/U5–U7), the
 //! version-conversion popup, dev-mode autosave and `~~temp~~` builds (devMode is never set in the port), import links (U8).
 
-use super::main::{BareControl, HelpSection, Mode, ModeArg, file_exists, main, sel_by_value};
+use super::main::{BareControl, Mode, ModeArg, file_exists, main, sel_by_value};
 use crate::control::{Anchor, Control, ControlBase, ControlRef, Rect, RectProps, anchor, anchor_nil, rect};
 use crate::controls::build_list::FolderListControl;
 use crate::controls::{
@@ -167,7 +167,7 @@ pub struct BuildMode {
     overlay_breakdown_control: RefCell<Option<ControlRef>>,
     breakdown_inputs: RefCell<Option<BreakdownInputs>>,
     breakdown_index: RefCell<Option<Rc<std::collections::HashMap<String, BreakdownIndexEntry>>>>,
-    me: Weak<BuildMode>,
+    pub(crate) me: Weak<BuildMode>,
     pub engine: RefCell<Option<Engine>>,
     /// `treeTab.viewer` (`None` until the tab is first drawn; a new one per opened build).
     pub tree_view: RefCell<Option<PassiveTreeView>>,
@@ -202,6 +202,19 @@ pub struct BuildMode {
     /// `secondaryAscendDropEntryCount` / the list last set (UpdateSecondaryAscendancyDropdown).
     secondary_list: RefCell<Option<Vec<(String, f64)>>>,
     pub initialised: Cell<bool>,
+    /// `self.loadoutsList` (Build.lua:91, :686): a new table per `SyncLoadouts` -- the specs as their index in `specList` then.
+    pub loadouts_list: RefCell<Rc<RefCell<Vec<usize>>>>,
+    /// `self.activeLoadout` (Build.lua:92, :804, :812).
+    pub active_loadout: Cell<Option<f64>>,
+    /// `self.treeListSpecialLinks` & co. of the last `SyncLoadouts` (Build.lua:695).
+    pub(crate) special_links: RefCell<Rc<super::loadouts::SpecialLinks>>,
+    /// `skillsTab.activeSkillSetId` while it is a set `DeleteLoadout` just deleted (the engine moves on at once).
+    pub(crate) stale_active_skill_set: Cell<Option<f64>>,
+    /// `BuildSetListControl:OnOrderChange` of the popup's input, run at the start of this frame (see `build_set_list.rs`).
+    #[allow(clippy::type_complexity)]
+    pub(crate) pending_loadout_order: RefCell<Option<Box<dyn Fn(&mut Gfx)>>>,
+    /// A `CompareEntry` (`init_compare_entry`): its `SyncLoadouts` does nothing (CompareEntry.lua:419-421).
+    pub(crate) is_compare_entry: Cell<bool>,
 }
 
 impl BuildMode {
@@ -245,6 +258,12 @@ impl BuildMode {
             last_show_titlebar_name: Cell::new(None),
             secondary_list: RefCell::new(None),
             initialised: Cell::new(false),
+            loadouts_list: RefCell::new(Rc::new(RefCell::new(Vec::new()))),
+            active_loadout: Cell::new(None),
+            special_links: RefCell::new(Rc::new(Default::default())),
+            stale_active_skill_set: Cell::new(None),
+            pending_loadout_order: RefCell::new(None),
+            is_compare_entry: Cell::new(false),
         })
     }
 
@@ -665,82 +684,9 @@ impl BuildMode {
         main().open_popup(g, 470.0, 555.0, title, controls, Some("save"), Some("edit"), Some("close"), None);
     }
 
-    /// `buildMode:SyncLoadouts()` (Build.lua:771-896): the loadout list and the index to select.
-    /// Build.lua:320-357
-    fn open_new_loadout_popup(&self, g: &mut Gfx) {
-        let save: Rc<RefCell<Option<Rc<ButtonControl>>>> = Rc::new(RefCell::new(None));
-        let s1 = save.clone();
-        let edit = crate::controls::edit::EditControl::new(
-            g,
-            None,
-            rect(0.0, 40.0, 350.0, 20.0),
-            crate::controls::edit::EditArgs {
-                init: Some("New Loadout".to_string()),
-                limit: Some(100),
-                change_func: Some(Rc::new(move |_g: &mut Gfx, buf: &str, _: bool| {
-                    let ok = buf.chars().any(|c| !c.is_whitespace());
-                    if let Some(b) = s1.borrow().as_ref() {
-                        b.base.enabled.set(ok);
-                    }
-                })),
-                ..Default::default()
-            },
-        );
-        let me = self.me.clone();
-        let e2 = edit.clone();
-        let btn = ButtonControl::new(None, rect(-45.0, 70.0, 80.0, 20.0), "Save".to_string(), move |g| {
-            let s = me.upgrade().expect("buildMode");
-            let name = e2.buf.borrow().clone();
-            {
-                let mut eng = s.engine.borrow_mut();
-                let e = eng.as_mut().expect("engine");
-                let mut spec = e.new_spec_model();
-                spec.title = Some(name.clone());
-                e.push_spec(spec);
-                e.new_item_set(Some(&name), None);
-                e.new_skill_set(&name).unwrap_or_else(|er| panic!("{er}"));
-                let mut set = e.config_new_set();
-                set.title = Some(name.clone());
-                e.config_push_set(set);
-            }
-            s.sync_loadouts_pub(g);
-            s.mod_flag.set(true);
-            main().close_popup();
-        });
-        btn.base.enabled.set(false);
-        *save.borrow_mut() = Some(btn.clone());
-        let mut controls: IndexMap<String, ControlRef> = IndexMap::new();
-        controls.insert(
-            "label".into(),
-            LabelControl::new(None, rect(0.0, 20.0, 0.0, 16.0), "^7Enter name for this loadout:".to_string()),
-        );
-        controls.insert("edit".into(), edit);
-        controls.insert("save".into(), btn);
-        controls.insert(
-            "cancel".into(),
-            ButtonControl::new(None, rect(45.0, 70.0, 80.0, 20.0), "Cancel".to_string(), |_g| main().close_popup()),
-        );
-        main().open_popup(
-            g,
-            370.0,
-            100.0,
-            "Set Name",
-            controls,
-            Some("save"),
-            Some("edit"),
-            Some("cancel"),
-            None,
-        );
-    }
-
+    /// `buildMode:SyncLoadouts()` (Build.lua:684-818, `loadouts.rs`).
     fn sync_loadouts(&self, g: &mut Gfx) {
-        let (list, sel) = {
-            let eng = self.engine.borrow();
-            sync_loadouts(eng.as_ref().expect("engine").model())
-        };
-        let c = self.c();
-        *c.build_loadouts.list.borrow_mut() = list.iter().map(|s| DropItem::str(s)).collect();
-        c.build_loadouts.set_sel(g, sel as i64, false);
+        self.sync_loadouts_impl(g);
     }
 
     /// `RefreshSkillSelectControls(self.controls, self.mainSocketGroup, "")` (Build.lua:1618-1716).
@@ -1058,72 +1004,8 @@ impl BuildMode {
             rect(4.0, 0.0, 190.0, 20.0),
             Vec::new(),
             Some(Rc::new(move |g: &mut Gfx, _i, v: &DropItem| {
-                let s = b();
-                let c = s.c();
                 let value = v.label.clone().unwrap_or_default();
-                match value.as_str() {
-                    "^7^7Loadouts:" | "^7^7-----" => c.build_loadouts.set_sel(g, 1, false),
-                    "^7^7Sync" => {
-                        s.sync_loadouts(g);
-                        c.build_loadouts.set_sel(g, 1, false);
-                    }
-                    "^7^7Help >>" => {
-                        main().open_about_popup(g, Some(HelpSection::Index(7)));
-                        c.build_loadouts.set_sel(g, 1, false);
-                    }
-                    "^7^7New Loadout" => {
-                        s.open_new_loadout_popup(g);
-                        c.build_loadouts.set_sel(g, 1, false);
-                    }
-                    _ => {
-                        let same = {
-                            let eng = s.engine.borrow();
-                            loadout_is_active(eng.as_ref().expect("engine").model(), &value)
-                        };
-                        match same {
-                            Some(true) => c.build_loadouts.sel_by_label(&value),
-                            Some(false) => {
-                                let ids = {
-                                    let eng = s.engine.borrow();
-                                    loadout_set_ids(eng.as_ref().expect("engine").model(), &value)
-                                };
-                                // Build.lua:401-403 no exact match nor special grouping: bail
-                                let Some((spec_id, item_id, skill_id, config_id)) = ids else {
-                                    return;
-                                };
-                                let (active_spec, active_item, active_skill, active_config) = {
-                                    let eng = s.engine.borrow();
-                                    let e = eng.as_ref().expect("engine");
-                                    (
-                                        e.model().tree.active_spec as usize,
-                                        e.active_item_set_id(),
-                                        e.skills_tab().active_skill_set_id,
-                                        e.model().config.active_config_set,
-                                    )
-                                };
-                                if spec_id != active_spec {
-                                    // the tree tab is made on first view, and a build opened on another tab has none yet
-                                    let tab = s.tree_tab_made(g);
-                                    tab.set_active_spec(g, spec_id);
-                                }
-                                if item_id != active_item {
-                                    let tab = s.items_tab.borrow().clone().expect("itemsTab");
-                                    tab.set_active_item_set(g, item_id);
-                                }
-                                if skill_id != active_skill {
-                                    let tab = s.skills_tab.borrow().clone().expect("skillsTab");
-                                    tab.set_active_skill_set(g, skill_id);
-                                }
-                                if config_id != active_config {
-                                    let tab = s.config_tab.borrow().clone().expect("configTab");
-                                    tab.set_active_config_set(g, config_id);
-                                }
-                                c.build_loadouts.sel_by_label(&value);
-                            }
-                            None => {}
-                        }
-                    }
-                }
+                b().loadouts_sel_func(g, &value);
             })),
             None,
             false,
@@ -1578,226 +1460,12 @@ fn hex_to_rgb(code: &str) -> [f64; 3] {
     [p(0), p(2), p(4)]
 }
 
-/// `loadout == <the active sets' loadout>`: `Some(true)` when every set id `findSetId` finds is the active one (the selection is a
-/// no-op), `Some(false)` when one differs, `None` when one is not found (the selFunc returns, Build.lua:401-403).
-fn loadout_is_active(m: &pob_build::BuildModel, value: &str) -> Option<bool> {
-    let specs = &m.tree.specs;
-    let spec_ids: Vec<String> = specs
-        .iter()
-        .map(|s| {
-            let t = s.title.clone().unwrap_or_else(|| "Default".into());
-            spec_list_name(&s.tree_version, &t)
-        })
-        .collect();
-    let link = lua::lmatch(value, "%{(%w+)%}");
-    let spec_id = spec_ids.iter().position(|s| s == value).map(|i| i + 1);
-    let active_spec = (m.tree.active_spec as usize).clamp(1, specs.len().max(1));
-    if link.is_some() {
-        // a {link} loadout goes through `loadout_set_ids`
-        return Some(false);
-    }
-    let spec_id = spec_id?;
-    let one_item = m.item_sets.len() == 1;
-    let one_skill = m.skills.sets.len() <= 1;
-    let one_config = m.config.sets.len() <= 1;
-    let find = |titles: Vec<(f64, Option<String>)>| titles.iter().find(|(_, t)| t.as_deref().unwrap_or("Default") == value).map(|x| x.0);
-    let item_id = if one_item {
-        Some(1.0)
-    } else {
-        find(m.item_sets.iter().map(|s| (s.id, s.title.clone())).collect())
-    }?;
-    let skill_id = if one_skill {
-        Some(1.0)
-    } else {
-        find(m.skills.sets.iter().map(|s| (s.id, s.title.clone())).collect())
-    }?;
-    let config_id = if one_config {
-        Some(1.0)
-    } else {
-        find(m.config.sets.iter().map(|s| (s.id, s.title.clone())).collect())
-    }?;
-    Some(
-        spec_id == active_spec
-            && (one_item || item_id == m.active_item_set)
-            && (one_skill || skill_id == m.skills.active_skill_set)
-            && (one_config || config_id == m.config.active_config_set),
-    )
-}
-
-/// Build.lua:395-398: `(newSpecId, newConfigId)` when this loadout does not change the item or the skill set.
-fn loadout_set_ids(m: &pob_build::BuildModel, value: &str) -> Option<(usize, f64, f64, f64)> {
-    let link = lua::lmatch(value, "%{(%w+)%}");
-    // `setSpecialLinks[linkId].setId` (:811-846), and `setSpecialLinks[linkMatch]["setId"]` of a missing link is a Lua error
-    let link_of_sets = |titles: &[(f64, Option<String>)], link: &str| -> f64 {
-        for (id, t) in titles {
-            let t = t.clone().unwrap_or_else(|| "Default".into());
-            if let Some((ids, _)) = link_of(&t)
-                && ids.split(',').any(|x| x == link)
-            {
-                return *id;
-            }
-        }
-        panic!("Modules/Build.lua:368: attempt to index a nil value (field '?')");
-    };
-    let find_set = |titles: Vec<(f64, Option<String>)>| -> Option<f64> {
-        for (id, t) in &titles {
-            if t.as_deref().unwrap_or("Default") == value {
-                return Some(*id);
-            }
-            if let Some(l) = &link {
-                return Some(link_of_sets(&titles, l));
-            }
-        }
-        None
-    };
-    let specs: Vec<(f64, Option<String>)> = m
-        .tree
-        .specs
-        .iter()
-        .enumerate()
-        .map(|(i, s)| ((i + 1) as f64, s.title.clone()))
-        .collect();
-    let mut spec_id = None;
-    for (i, s) in m.tree.specs.iter().enumerate() {
-        let t = s.title.clone().unwrap_or_else(|| "Default".into());
-        if spec_list_name(&s.tree_version, &t) == value {
-            spec_id = Some(i + 1);
-            break;
-        }
-        if let Some(l) = &link {
-            spec_id = Some(link_of_sets(&specs, l) as usize);
-            break;
-        }
-    }
-    let item_id = if m.item_sets.len() == 1 {
-        1.0
-    } else {
-        find_set(m.item_sets.iter().map(|s| (s.id, s.title.clone())).collect())?
-    };
-    let skill_id = if m.skills.sets.len() == 1 {
-        1.0
-    } else {
-        find_set(m.skills.sets.iter().map(|s| (s.id, s.title.clone())).collect())?
-    };
-    let config_id = if m.config.sets.len() == 1 {
-        1.0
-    } else {
-        find_set(m.config.sets.iter().map(|s| (s.id, s.title.clone())).collect())?
-    };
-    Some((spec_id?, item_id, skill_id, config_id))
-}
-
-/// `treeVersions[v].display` with the `[...] ` prefix of a non-latest spec (Build.lua:812).
-fn spec_list_name(tree_version: &str, title: &str) -> String {
-    let tv = pob_data::tree::tree_versions().expect("GameVersions");
-    if tree_version != tv.latest_tree_version {
-        let display = tv
-            .tree_versions
-            .iter()
-            .find(|v| v.ver == tree_version)
-            .map_or_else(|| tree_version.to_string(), |v| v.display.clone());
-        format!("[{display}] {title}")
-    } else {
-        title.to_string()
-    }
-}
-
-/// `string.match(title, "%{([%w,]+)%}")` and the set name without it (Build.lua:792-799).
-fn link_of(title: &str) -> Option<(String, String)> {
-    let link = lua::lmatch(title, "%{([%w,]+)%}")?;
-    let name = lua::gsub(&lua::gsub(&lua::gsub(title, &format!("%{{{link}%}}"), ""), "^%s*", ""), "%s*$", "");
-    Some((link, if name.is_empty() { "Default".into() } else { name }))
-}
-
-/// Build.lua:771-896 `SyncLoadouts` over the model: the list and the index `SetSel` gets.
-pub fn sync_loadouts(m: &pob_build::BuildModel) -> (Vec<String>, usize) {
-    let mut filtered = vec!["^7^7Loadouts:".to_string()];
-    let mut tree_list: Vec<String> = Vec::new();
-    let mut sorted_tree_links: Vec<(String, String)> = Vec::new(); // (setName, linkId)
-    for s in &m.tree.specs {
-        let title = s.title.clone().unwrap_or_else(|| "Default".into());
-        match link_of(&title) {
-            Some((link, name)) => {
-                for id in link.split(',').filter(|x| !x.is_empty()) {
-                    sorted_tree_links.push((name.clone(), id.to_string()));
-                }
-            }
-            None => tree_list.push(spec_list_name(&s.tree_version, &title)),
-        }
-    }
-    let identify = |titles: Vec<Option<String>>| {
-        let mut names = std::collections::HashSet::new();
-        let mut links = std::collections::HashSet::new();
-        for t in titles {
-            let t = t.unwrap_or_else(|| "Default".into());
-            match link_of(&t) {
-                Some((link, _)) => {
-                    for id in link.split(',').filter(|x| !x.is_empty()) {
-                        links.insert(id.to_string());
-                    }
-                }
-                None => {
-                    names.insert(t);
-                }
-            }
-        }
-        (names, links)
-    };
-    let (item_list, item_links) = identify(m.item_sets.iter().map(|s| s.title.clone()).collect());
-    let (skill_list, skill_links) = identify(m.skills.sets.iter().map(|s| s.title.clone()).collect());
-    let (config_list, config_links) = identify(m.config.sets.iter().map(|s| s.title.clone()).collect());
-    let one_skill = m.skills.sets.len() == 1;
-    let one_item = m.item_sets.len() == 1;
-    let one_config = m.config.sets.len() == 1;
-    for t in &tree_list {
-        if (one_item || item_list.contains(t)) && (one_skill || skill_list.contains(t)) && (one_config || config_list.contains(t)) {
-            filtered.push(t.clone());
-        }
-    }
-    for (name, id) in &sorted_tree_links {
-        if (one_item || item_links.contains(id)) && (one_skill || skill_links.contains(id)) && (one_config || config_links.contains(id)) {
-            filtered.push(format!("{name} {{{id}}}"));
-        }
-    }
-    for s in ["^7^7-----", "^7^7New Loadout", "^7^7Sync", "^7^7Help >>"] {
-        filtered.push(s.to_string());
-    }
-    // :870-892
-    let specs = &m.tree.specs;
-    if !specs.is_empty() {
-        let active = (m.tree.active_spec as usize).clamp(1, specs.len());
-        let tree_name = specs[active - 1].title.clone().unwrap_or_else(|| "Default".into());
-        if let Some(i) = filtered.iter().position(|l| *l == tree_name) {
-            let link = lua::lmatch(&tree_name, "%{(%w+)%}").unwrap_or_else(|| tree_name.clone());
-            let title_of = |sets: Vec<(f64, Option<String>)>, active: f64| {
-                sets.into_iter()
-                    .find(|(id, _)| *id == active)
-                    .and_then(|(_, t)| t)
-                    .unwrap_or_else(|| "Default".into())
-            };
-            let skill_name = title_of(
-                m.skills.sets.iter().map(|s| (s.id, s.title.clone())).collect(),
-                m.skills.active_skill_set,
-            );
-            let item_name = title_of(m.item_sets.iter().map(|s| (s.id, s.title.clone())).collect(), m.active_item_set);
-            let config_name = title_of(
-                m.config.sets.iter().map(|s| (s.id, s.title.clone())).collect(),
-                m.config.active_config_set,
-            );
-            if (one_skill || skill_name.contains(&link))
-                && (one_item || item_name.contains(&link))
-                && (one_config || config_name.contains(&link))
-            {
-                return (filtered, i + 1);
-            }
-        }
-    }
-    (filtered, 1)
-}
-
 impl Mode for BuildMode {
     /// `buildMode:Init(dbFileName, buildName, buildXML, convertBuild, importLink)` (Build.lua:64-727).
     fn init(&self, g: &mut Gfx, args: &[ModeArg]) {
+        // Build.lua:90-92
+        *self.loadouts_list.borrow_mut() = Rc::new(RefCell::new(Vec::new()));
+        self.active_loadout.set(None);
         let db = match args.first() {
             Some(ModeArg::Str(p)) => DbFile::Path(p.clone()),
             Some(ModeArg::Bool(false)) => DbFile::False,
@@ -2005,6 +1673,10 @@ impl Mode for BuildMode {
         }
         if !self.initialised.get() {
             return;
+        }
+        let pending = self.pending_loadout_order.borrow_mut().take();
+        if let Some(f2) = pending {
+            f2(f);
         }
         let me = self.rc();
         // `for id, event in ipairs(inputEvents)`: up to the first hole (MINEFIELD U2); `inputEvents[id] = nil` below
@@ -2484,6 +2156,7 @@ impl BuildMode {
 
     /// What `CompareEntry:LoadFromXML` makes of this build object (CompareEntry.lua:63-186): the engine and `configTab`, the other tabs are read through the engine.
     pub fn init_compare_entry(&self, g: &mut Gfx, xml: &str, label: &str) -> Result<(), String> {
+        self.is_compare_entry.set(true);
         *self.build_name.borrow_mut() = Some(label.to_string());
         let engine = Engine::load_xml(xml)?;
         // CompareEntry.lua:102-104
@@ -2514,9 +2187,16 @@ impl BuildMode {
 
     /// What `SetActiveSpec` does on the build (TreeTab.lua:552-556, :583): the window title, the class drop-downs, the loadouts.
     pub fn after_spec_change(&self, g: &mut Gfx) {
+        self.after_spec_change_with(g, false);
+    }
+
+    /// `after_spec_change` of `SetActiveSpec(specId, deferSync)`: `deferSync` skips `SyncLoadouts` (TreeTab.lua:584-586).
+    pub fn after_spec_change_with(&self, g: &mut Gfx, defer_sync: bool) {
         self.set_window_title_with_build_class(g);
         self.fill_class_drop(g);
-        self.sync_loadouts(g);
+        if !defer_sync {
+            self.sync_loadouts(g);
+        }
     }
 
     /// The view's part of `TreeTab:Draw` (:450-451): `viewer.compareSpec`, `viewer:Draw(build, treeViewPort, inputEvents)`.
@@ -2601,7 +2281,10 @@ impl BuildMode {
         let root = launch().cfg.script_path.clone();
         let mut tv = self.tree_view.borrow_mut();
         let view = tv.get_or_insert_with(|| PassiveTreeView::new(&root));
-        let spec = self.engine.borrow().as_ref().expect("engine").spec_rc();
+        // a build whose calcs raised on its load has no engine and no tree to wait for (Launch.lua:123-126 went back to the list)
+        let Some(spec) = self.engine.borrow().as_ref().map(|e| e.spec_rc()) else {
+            return;
+        };
         for h in &view.art(&root, &spec.tree).async_handles {
             h.wait();
         }

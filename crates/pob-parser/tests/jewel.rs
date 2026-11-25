@@ -256,10 +256,11 @@ fn upvalue_patch_visitors_equal_luajit() {
 
 #[test]
 fn every_patched_closure_becomes_a_runnable_visitor() {
-    // the 11 getSimpleConv visitors (:19) and the 2 thresholds (:6585 @ 07fa089bf, :6472 @ 3dbca4463) carry their upvalues now
+    // the 11 getSimpleConv visitors (:19) and the 2 thresholds (:6587 @ 5606cc64f -- grep -n 'local function getThreshold' + 2; :6585 @
+    // 07fa089bf, :6472 @ 3dbca4463) carry their upvalues now
     let patches = pob_data::patches::upvalue_patches().unwrap();
     let n19 = patches.iter().filter(|p| p.fn_id == "Modules/ModParser.lua:19").count();
-    let n6457 = patches.iter().filter(|p| p.fn_id == "Modules/ModParser.lua:6585").count();
+    let n6457 = patches.iter().filter(|p| p.fn_id == "Modules/ModParser.lua:6587").count();
     assert_eq!((n19, n6457, patches.len()), (11, 2, 13));
     let d = pob_data::mod_parser::mod_parser();
     // 07fa089bf: 2 012 (= LuaJIT "level 1: 2012" of export-jewel-upvalues.ts, retaken on that upstream)

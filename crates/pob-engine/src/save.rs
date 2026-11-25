@@ -78,7 +78,7 @@ fn tostring_lua(v: &LuaV<'_>, what: &str) -> Result<String, String> {
         LuaV::Num(n) => Ok(ts(*n)),
         LuaV::Str(s) => Ok(s.to_string()),
         LuaV::Table(_) => Err(format!(
-            "Modules/Build.lua:1058 tostring of the table output.{what} (an address; not reproducible)"
+            "Modules/Build.lua:1226 tostring of the table output.{what} (an address; not reproducible)"
         )),
     }
 }
@@ -366,6 +366,8 @@ pub struct SaveInput<'a> {
     pub calcs_env: Option<&'a pob_calc::Env>,
     /// `build.skillsTab` edited since the last run (U5): `SkillsTab:Save` reads it instead of the run's.
     pub skills_live: Option<&'a pob_calc::SkillsTab>,
+    /// `build.spec` is not `specList[activeSpec]` ([`crate::engine::Engine::spec_list_orphaned`]): `TreeTab:Save` writes the list's object.
+    pub spec_orphaned: bool,
 }
 
 /// `Build:SaveDB` -- the `<PathOfBuilding>` tree (compose with [`pob_build::compose_xml`]).
@@ -409,7 +411,7 @@ fn save_build(inp: &SaveInput<'_>) -> Result<XmlElement, String> {
         Some(InputValue::Str(s)) => Ok(Some(s.clone())),
         None => Ok(None),
         Some(v) => Err(format!(
-            "Modules/Build.lua:1024 configTab.input.{k} is {v:?} (a non-string attribute)"
+            "Modules/Build.lua:1192 configTab.input.{k} is {v:?} (a non-string attribute)"
         )),
     };
     let mut b = with(
@@ -448,7 +450,7 @@ fn save_build(inp: &SaveInput<'_>) -> Result<XmlElement, String> {
         if stat == "SkillDPS" {
             let list = inp
                 .skill_dps
-                .ok_or("Modules/Build.lua:1040: bad argument #1 to 'ipairs' (table expected, got nil)")?;
+                .ok_or("Modules/Build.lua:1208: bad argument #1 to 'ipairs' (table expected, got nil)")?;
             for s in list {
                 let lhs = if s.count >= 2.0 {
                     format!("{}x {}", ts(s.count), s.name)
@@ -690,7 +692,7 @@ fn save_config(inp: &SaveInput<'_>) -> Result<XmlElement, String> {
             .sets
             .iter()
             .find(|s| s.id == id)
-            .ok_or_else(|| format!("Classes/ConfigTab.lua:966 configSets[{}] is nil", ts(id)))?;
+            .ok_or_else(|| format!("Classes/ConfigTab.lua:968 configSets[{}] is nil", ts(id)))?;
         let state = if id == m.config.active_config_set {
             None
         } else {
@@ -734,7 +736,7 @@ fn save_config_set(
             BlockText::Str(s) => text(&mut b, s),
             other => {
                 return Err(format!(
-                    "Classes/ConfigTab.lua:998 CustomModifierBlock text {other:?} is not a string"
+                    "Classes/ConfigTab.lua:1000 CustomModifierBlock text {other:?} is not a string"
                 ));
             }
         }
@@ -874,7 +876,7 @@ fn save_items(inp: &SaveInput<'_>) -> Result<XmlElement, String> {
             // `s_format("%.2f", tostring(statSort.weightMult))`
             let shown = pob_lua::tonumber(&ts(mult)).unwrap_or(mult);
             let mult =
-                pob_lua::format::format("%.2f", &[pob_lua::format::Arg::Num(shown)]).map_err(|e| format!("ItemsTab.lua:1476: {e}"))?;
+                pob_lua::format::format("%.2f", &[pob_lua::format::Arg::Num(shown)]).map_err(|e| format!("ItemsTab.lua:1496: {e}"))?;
             push(
                 &mut weights,
                 with(
@@ -1082,11 +1084,16 @@ fn save_skills(inp: &SaveInput<'_>) -> Result<XmlElement, String> {
 // --- TreeTab:Save / PassiveSpec:Save (TreeTab.lua:536-547, PassiveSpec.lua:197-249) ----------------------------------------------------
 
 fn save_tree(inp: &SaveInput<'_>) -> Result<XmlElement, String> {
-    save_tree_of(inp.model, &inp.res.env)
+    save_tree_with(inp.model, &inp.res.env, inp.spec_orphaned)
 }
 
 /// `TreeTab:Save(xml)` -- the `<Tree>` element of SaveDB from the model and the MAIN env (public for the tattoo gate, `tests/tattoo_save.rs`).
 pub fn save_tree_of(m: &BuildModel, env: &pob_calc::Env) -> Result<XmlElement, String> {
+    save_tree_with(m, env, false)
+}
+
+/// `orphaned`: `build.spec` (`env.spec`) is no entry of `specList`, so every `<Spec>` is the list's own.
+fn save_tree_with(m: &BuildModel, env: &pob_calc::Env, orphaned: bool) -> Result<XmlElement, String> {
     let specs = &m.tree.specs;
     // TreeTab.lua:526/:551 `activeSpec = m_min(specId, #specList)`
     let active = pob_lua::number::min2(m.tree.active_spec, specs.len().max(1) as f64);
@@ -1094,7 +1101,7 @@ pub fn save_tree_of(m: &BuildModel, env: &pob_calc::Env) -> Result<XmlElement, S
     let active_model = pob_build::active_spec(m);
     for sm in specs {
         let loaded;
-        let spec: &PassiveSpec = if std::ptr::eq(sm, active_model) {
+        let spec: &PassiveSpec = if !orphaned && std::ptr::eq(sm, active_model) {
             &env.spec
         } else {
             // every `<Spec>` is a full PassiveSpec upstream (TreeTab.lua:510-519) with its PostLoad (:529-534); the socket slots'

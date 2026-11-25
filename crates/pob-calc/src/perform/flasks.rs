@@ -80,7 +80,7 @@ pub(super) fn conversions(env: &mut Env) {
         for e in entries {
             let m = &e.mod_;
             let modifiers = get_converted_mod_tags(&m.tags, multiplier, true);
-            let mut converted = (num_val(&m.value, "Modules/CalcPerform.lua:1551") * multiplier).floor();
+            let mut converted = (num_val(&m.value, "Modules/CalcPerform.lua:1589") * multiplier).floor();
             if let Some(limit) = limit
                 && converted > 0.0
             {
@@ -111,11 +111,11 @@ pub(super) fn conversions(env: &mut Env) {
         let multiplier = max_(&mod_db, None, &["ImprovedMinionLifeAppliesToPlayer"]).unwrap_or(100.0) / 100.0;
         for value in super::list(&mod_db, &["MinionModifier"]) {
             let Value::Mod(m) = value.get("mod") else {
-                panic!("Modules/CalcPerform.lua:1571: attempt to index field 'mod' (a non-mod value)")
+                panic!("Modules/CalcPerform.lua:1609: attempt to index field 'mod' (a non-mod value)")
             };
             if &*m.name == "Life" && m.ty == Some(ModType::Inc) {
                 let modifiers = get_converted_mod_tags(&m.tags, multiplier, true);
-                let v = (num_val(&m.value, "Modules/CalcPerform.lua:1574") * multiplier).floor();
+                let v = (num_val(&m.value, "Modules/CalcPerform.lua:1612") * multiplier).floor();
                 let created = create_mod(
                     "Life",
                     Some(ModType::Inc),
@@ -166,7 +166,7 @@ pub(super) fn mageblood(env: &mut Env) {
                 && item.ty.as_deref() == Some("Flask")
                 && item.rarity == "MAGIC"
             {
-                let bn = base_name(item, 1585);
+                let bn = base_name(item, 1623);
                 if !(bn.contains("Life Flask") || bn.contains("Mana Flask") || bn.contains("Hybrid Flask")) {
                     magic.push(item.clone());
                 }
@@ -212,7 +212,7 @@ pub(super) struct FlaskCtx {
 fn minion_flag(env: &Env, player: bool, name: &str) -> bool {
     let Some(m) = &env.minion else { return false };
     if player {
-        let cfg = super::player_main_skill(env, 1609).cfg;
+        let cfg = super::player_main_skill(env, 1647).cfg;
         super::flag_cfg(&env.mod_db, Some(&cfg), &[name])
     } else {
         flag(&m.borrow().mod_db, &[name])
@@ -295,8 +295,8 @@ fn flask_recovery(db: &StoreRef, cx: &FlaskCtx, ty: &str, item: &Item) -> Vec<Rc
         return out;
     }
     let name = item.name.as_str();
-    let base_amount = flask_num(item, &format!("{l}Base"), 1664);
-    let dur = flask_num(item, "duration", 1665);
+    let base_amount = flask_num(item, &format!("{l}Base"), 1702);
+    let dur = flask_num(item, "duration", 1703);
     let inst = instant_recovery(db, item);
     let rec_inc = inc(db, &[&format!("Flask{ty}Recovery")]);
     let rec_more = more(db, None, &[&format!("Flask{ty}Recovery")]);
@@ -382,7 +382,7 @@ fn mod_list_key(item: &Item, mods: &[Rc<Mod>]) -> String {
     if item.rarity == "UNIQUE" || item.rarity == "RELIC" {
         item.title
             .clone()
-            .unwrap_or_else(|| panic!("Modules/CalcPerform.lua:1758: item.title is nil (a nil table key)"))
+            .unwrap_or_else(|| panic!("Modules/CalcPerform.lua:1796: item.title is nil (a nil table key)"))
     } else {
         let mut key = String::new();
         for m in mods {
@@ -431,8 +431,8 @@ fn calc_flask_mods(
     mod_list: &[Rc<Mod>],
     only_minion: bool,
 ) {
-    let item_base_name = base_name(item, 1703).to_owned();
-    let item_effect_inc = flask_num(item, "effectInc", 1704);
+    let item_base_name = base_name(item, 1741).to_owned();
+    let item_effect_inc = flask_num(item, "effectInc", 1742);
     let mut eff = cx.effect_inc + item_effect_inc;
     let mut eff_non_player = cx.effect_inc_non_player + item_effect_inc;
     // CalcPerform.lua:1707-1711 (07fa089bf): per-base-type flask effect
@@ -511,7 +511,7 @@ pub(super) fn merge_flasks(env: &Env, cx: &FlaskCtx, only_recovery: bool, check_
     let mut t = FlaskTables::default();
     // :1773-1786 flasks in slot order (`env.itemSlotIndex`, then `item.id`) -- 3dbca4463 #10339
     for item in &slot_ordered(env, &env.flasks) {
-        let bn = base_name(item, 1807).to_owned();
+        let bn = base_name(item, 1845).to_owned();
         t.per_base.entry(bn.clone()).or_default();
         t.per_base_non_player.entry(bn.clone()).or_default();
         let fb = flask_base(item);
@@ -535,8 +535,8 @@ pub(super) fn merge_flasks(env: &Env, cx: &FlaskCtx, only_recovery: bool, check_
         if bn == "Iron Flask" {
             let on_ward_break = base(&db, &["IronFlaskChargesGeneratedOnWardBreak"]);
             if on_ward_break > 0.0 {
-                let gain_mod = flask_num(item, "gainMod", 1827) * (1.0 + inc(&db, &["FlaskChargesGained"]) / 100.0);
-                let charges_used = flask_num(item, "chargesUsed", 1828) * (1.0 + inc(&db, &["FlaskChargesUsed"]) / 100.0);
+                let gain_mod = flask_num(item, "gainMod", 1865) * (1.0 + inc(&db, &["FlaskChargesGained"]) / 100.0);
+                let charges_used = flask_num(item, "chargesUsed", 1866) * (1.0 + inc(&db, &["FlaskChargesUsed"]) / 100.0);
                 if on_ward_break * gain_mod > charges_used {
                     t.conditions.insert("UnbrokenWard".into(), true);
                 }
@@ -666,14 +666,14 @@ pub(super) fn merge_tinctures(env: &Env, cx: &mut TinctureCtx, output: &Output) 
             break;
         }
         cx.tincture_limit -= 1.0;
-        let bn = base_name(item, 1922).to_owned();
+        let bn = base_name(item, 1960).to_owned();
         per_base.entry(bn.clone()).or_default();
         conditions.insert("UsingTincture".into(), true);
         conditions.insert(format!("Using{}", strip_space(&bn)), true);
         // :1867-1898 `calcTinctureMods(item, item.baseName, item.buffModList, item.modList)`
         let item_inc =
             item.tincture_data.as_ref().and_then(|d| d.num("effectInc")).unwrap_or_else(|| {
-                panic!("Modules/CalcPerform.lua:1876: attempt to perform arithmetic on field 'effectInc' (a nil value)")
+                panic!("Modules/CalcPerform.lua:1914: attempt to perform arithmetic on field 'effectInc' (a nil value)")
             });
         let mut eff = cx.effect_inc + item_inc;
         if item.rarity == "MAGIC" {

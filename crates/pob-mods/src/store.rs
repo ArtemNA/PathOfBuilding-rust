@@ -14,7 +14,7 @@ use pob_lua::number::{max2, min2, modf, round, tobit};
 use crate::data;
 use crate::matching::{Query, compare_mod_params, mod_high_precision, mod_matches};
 use crate::types::{ActorLink, ActorRef, Mod, ModCfg, ModType};
-use crate::value::{LuaError, LuaResult, Str, Table, Value, arith, check_num, err_bad_arg, err_compare, err_op};
+use crate::value::{LuaError, LuaResult, Str, Table, Value, arith, err_bad_arg, err_compare, err_op};
 
 pub type StoreRef = Rc<RefCell<ModStore>>;
 
@@ -745,8 +745,9 @@ impl ModStore {
         Ok(Value::Num(own + from_parent + from_mods))
     }
 
-    /// ModStore.lua:317-345 -- the same block twice, for mana (:320) and life (:334).
-    fn reserved_percent(&self, cfg: Option<&ModCfg>, key: &str, base_key: &str, total_name: &str, line: u32) -> LuaResult<f64> {
+    /// ModStore.lua:317-344 -- mana (:320) and life (:333). `None`: life, and no reserving skill was asked for (5606cc64f: "for each 5% of
+    /// Life Reserved" reads the total Life reserved, `output.LifeReservedPercent`); mana answers 0 then.
+    fn reserved_percent(&self, cfg: Option<&ModCfg>, key: &str, base_key: &str, total_name: &str, line: u32) -> LuaResult<Option<f64>> {
         let actor_rc = self.actor();
         let actor = actor_rc.borrow();
         let output = actor
@@ -755,7 +756,7 @@ impl ModStore {
             .ok_or_else(|| err_op(&format!("{MS}:{line}"), "index", Some("field 'output'"), &Value::Nil))?;
         let total = output.get(key).copied();
         if total == Some(0.0) {
-            return Ok(0.0);
+            return Ok(Some(0.0));
         }
         let list = actor
             .active_skill_list
@@ -777,10 +778,14 @@ impl ModStore {
                 let total =
                     total.ok_or_else(|| err_op(&site, "perform arithmetic on", Some(&format!("local '{total_name}'")), &Value::Nil))?;
                 reserved = (base / total * 100.0).floor();
-                break;
+                // :338 the life block returns at the skill, the mana block after the loop -- the same value
+                return Ok(Some(min2(reserved, 100.0)));
             }
         }
-        Ok(min2(reserved, 100.0))
+        if key == "Life" {
+            return Ok(None);
+        }
+        Ok(Some(min2(reserved, 100.0)))
     }
 
     /// ModStore.lua:308-357 -- three special stats, then `(output and output[stat]) or (cfg.skillStats[stat]) or 0`.
@@ -790,27 +795,20 @@ impl ModStore {
         if stat == "ManaReservedPercent" {
             return self
                 .reserved_percent(cfg, "Mana", "ManaReservedBase", "totalMana", 320)
-                .map(Value::Num);
+                .map(|v| Value::Num(v.expect("mana always answers")));
         }
-        if stat == "LifeReservedPercent" {
-            return self
-                .reserved_percent(cfg, "Life", "LifeReservedBase", "totalLife", 334)
-                .map(Value::Num);
+        if stat == "LifeReservedPercent"
+            && let Some(v) = self.reserved_percent(cfg, "Life", "LifeReservedBase", "totalLife", 333)?
+        {
+            return Ok(Value::Num(v));
         }
         let actor_rc = self.actor();
         let actor = actor_rc.borrow();
         let output = actor.output.as_ref();
         if stat == "ManaUnreserved" {
-            let site = format!("{MS}:347");
+            let site = format!("{MS}:344");
             let output = output.ok_or_else(|| err_op(&site, "index", Some("field 'output'"), &Value::Nil))?;
             let cur = output.get(stat).copied();
-            let mana = || {
-                arith(
-                    &Value::from(output.get("Mana").copied()),
-                    &format!("{MS}:353"),
-                    Some("field 'Mana'"),
-                )
-            };
             if let Some(c) = cur
                 && c.is_nan()
             {
@@ -820,12 +818,8 @@ impl ModStore {
             if let Some(c) = cur
                 && c < 0.0
             {
-                // ModStore.lua:352-353
-                let s352 = format!("{MS}:352");
-                let pct = check_num(&Value::from(output.get("ManaUnreservedPercent").copied()), &s352, 1, "abs")?;
-                let eff = arith(&Value::from(actor.mana_efficiency), &s352, Some("field 'ManaEfficiency'"))?;
-                let before = (pct.abs() + 100.0) * ((100.0 + eff) / 100.0);
-                return Ok(Value::Num(mana()? * (before.ceil() / 100.0)));
+                // ModStore.lua:347-349 (5606cc64f) negative unreserved mana means 0 mana is available for skills like Arcane Cloak
+                return Ok(Value::Num(0.0));
             }
         }
         if let Some(v) = output.and_then(|o| o.get(stat)) {

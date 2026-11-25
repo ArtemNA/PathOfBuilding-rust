@@ -307,6 +307,20 @@ local function dump(st)
 		local dest, src = { }, p.controls.source
 		for i, v in ipairs(p.controls.list.list) do dest[i] = v end
 		d.library = { dest = dest, source = #src.list, sourceFirst = src.list[1] or json.null, sel = src.selIndex or json.null, search = src.controls.searchText.buf }
+		-- 5606cc64f (Build.lua:1690-2023): the whole source list, the check boxes, the stat boxes and the spawn list
+		local c, l = p.controls, d.library
+		local function str(v) return v ~= nil and tostring(v) or json.null end
+		l.sourceList, l.unfiltered, l.selValue = { }, #src.unfilteredList, src.selValue or json.null
+		for i, v in ipairs(src.list) do l.sourceList[i] = v end
+		l.searchMode, l.sortMode = src.controls.searchModeDropDown.selIndex, src.controls.sortModeDropDown.selIndex
+		l.boxes = { recommendedList = c.sortMonsterCheckboxShowAll.state, corpseList = c.sortMonsterCheckboxFilterCorpse.state }
+		for _, n in ipairs({ "Beast", "Humanoid", "Eldritch", "Construct", "Demon", "Undead" }) do l.boxes[n] = c["sortMonsterCheckbox" .. n].state end
+		l.stats = { name = str(c.minionNameLabel.labelText), life = str(c.lifeLabel.lifeValue), es = str(c.energyshieldLabel.energyShieldValue),
+			armour = str(c.armourLabel.armourValue), evasion = str(c.evasionLabel.evasionValue), block = str(c.blockLabel.blockValue),
+			resists = str(c.resistsLabel.resistsValue), movement = str(c.movementSpeedLabel.movementSpeedValue) }
+		l.gemLevel = c.minionGemLevel.buf
+		l.spawn = { }
+		for i, v in ipairs(c.spawnLocations.list) do l.spawn[i] = v end
 	end
 	d.writesRefused = table.concat(writesRefused, ",")
 	if runner.bfTrace then d.bfTrace = runner.bfTrace runner.bfTrace = { } end
@@ -704,6 +718,14 @@ function runner:Step()
 		main.modes.BUILD.unsaved = false
 		main:SetMode("LIST")
 		self:Frame()
+		return
+	end
+	if st.spectreOrder then
+		-- R13: `pairs(self.data.spectres)` (Build.lua:1695, :1706) and `pairs(data.worldAreas)` (MinionListControl.lua:148) of this process, for crates/pob-ui/tests/skills.rs
+		local spectres, areas = { }, { }
+		for id in pairs(main.modes.BUILD.data.spectres) do spectres[#spectres + 1] = id end
+		for id in pairs(data.worldAreas) do areas[#areas + 1] = id end
+		writeAll(OUT .. st.spectreOrder .. ".json", json.encode({ spectres = spectres, worldAreas = areas }) .. "\n")
 		return
 	end
 	if st.variantOrder then

@@ -648,13 +648,13 @@ fn minion_scenarios_match_luajit() {
 /// `unimplemented` notes a synth2 scenario may carry beyond its base golden's, with the measured reason: `(scenario, note prefix, why)`.
 const SYNTH2_KNOWN_NOTES: [(&str, &str, &str); 1] = [(
     "s2-enemy-explode-avg-2types",
-    "Data/Skills/other.lua:6393 skills.EnemyExplode.preDamageFunc: pairs(typeAmountChances)",
+    "Data/Skills/other.lua:6636 skills.EnemyExplode.preDamageFunc: pairs(typeAmountChances)",
     "R13 (lj-strhash): the fixture holds the LuaJIT run of Rust's insertion order; the other order changes no key (r13.otherOrder)",
 )];
 
 /// A scenario with a minion (`env.minion` set) carries this wording of the golden's own P5 note CalcPerform.lua:3803-3990 (party / buff
 /// export) instead -- not a gap of the scenario.
-const MINION_PATH_P5_NOTE: &str = "CalcPerform.lua:3811-3990 buff export, party export (P5)";
+const MINION_PATH_P5_NOTE: &str = "CalcPerform.lua:3925-4104 buff export, party export (P5)";
 
 /// The synth2 scenarios that stop at a recorded boundary of the port (not = LuaJIT; pinned so the state cannot drift silently):
 /// `(scenario, every own note's prefix, divergent (scenario, key) pairs)`. Empty since R7-synth-2 ported `copyActiveSkill` of a skill with
@@ -665,7 +665,7 @@ const SYNTH2_BOUNDARY: [(&str, &[&str], usize); 0] = [];
 /// The CalcPerform.lua:1490-1491 note (The Saviour's Reflection, perform/skills_loop.rs) names the skill's list index, which an extra
 /// socket group shifts (`s2-saviour-dominating-blow-dlink`: skill 3/4 vs the golden's 2/3) -- compared without it.
 fn note_key(u: &str) -> String {
-    const P: &str = "CalcPerform.lua:1490-1491 activeSkill.infoMessage/infoTrigger of skill ";
+    const P: &str = "CalcPerform.lua:1526-1527 activeSkill.infoMessage/infoTrigger of skill ";
     match u.strip_prefix(P) {
         Some(rest) => format!("{P}#{}", rest.trim_start_matches(|c: char| c.is_ascii_digit())),
         None => u.to_owned(),

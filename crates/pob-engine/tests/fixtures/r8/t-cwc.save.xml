@@ -853,7 +853,7 @@ Gain 50 Life when you Stun an Enemy
 			<ModRange id="6" range="0.5"/>
 			<ModRange id="7" range="0.5"/>
 		</Item>
-		<ItemSet id="1" useSecondWeaponSet="false">
+		<ItemSet id="1" title="Default" useSecondWeaponSet="false">
 			<Slot itemId="15" itemPbURL="" name="Amulet"/>
 			<Slot itemId="0" itemPbURL="" name="Arm"/>
 			<Slot itemId="29" itemPbURL="" name="Belt"/>

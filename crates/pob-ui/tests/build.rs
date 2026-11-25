@@ -353,6 +353,11 @@ fn run(name: &str) -> Run {
         }
         if let Some(n) = st["perfRecalc"].as_u64() {
             let b = main().build_mode.clone();
+            // a build whose calcs raised on its load has no engine (build-runner.lua records the error, no time)
+            if b.engine.borrow().is_none() {
+                out.perf.push(("recalc".into(), f64::NAN));
+                continue;
+            }
             let t0 = std::time::Instant::now();
             for _ in 0..n {
                 b.engine.borrow_mut().as_mut().expect("engine").refresh().expect("refresh");
@@ -506,6 +511,10 @@ fn build_states_equal_original() {
                 // the checkout writes the harness refused (the `.bin` cache of the Timeless Jewel data) -- the oracle's, not a UI state
                 if let Some(o) = s.as_object_mut() {
                     o.remove("writesRefused");
+                    // a Lua error's prompt (2.69.0: CalcPerform.lua:1205 on some builds) without its traceback and chunk path
+                    if let Some(p) = o.get("prompt").and_then(Value::as_str).map(scene::lua_error_prompt) {
+                        o.insert("prompt".into(), Value::String(p));
+                    }
                 }
                 (d["step"].as_u64().expect("step"), s)
             })
@@ -633,6 +642,31 @@ fn shell_pixel(x: u32, y: u32, popup: Option<[f64; 4]>) -> bool {
     x < 312 || y < 32 || in_popup
 }
 
+/// The oracle's prompt at the step of a shot of `scenes/{tab}/{name}.json` (the shot step's dump), for [`scene::lua_error_popup_mask`].
+fn oracle_prompt_at_shot(tab: &str, name: &str, rec: &Value, shot: &str) -> Option<String> {
+    let sc: Value =
+        serde_json::from_str(&std::fs::read_to_string(scene::oracle_dir().join(format!("scenes/{tab}/{name}.json"))).ok()?).ok()?;
+    let step = sc["steps"].as_array()?.iter().position(|s| s["shot"].as_str() == Some(shot))? as u64 + 1;
+    let d = rec["dumps"].as_array()?.iter().find(|d| d["step"].as_u64() == Some(step))?;
+    d["state"]["prompt"].as_str().map(str::to_owned)
+}
+
+/// [`scene::lua_error_popup_mask`] of a shot: both images black there.
+fn blank_lua_error_popup(g: &Gfx, raw: Option<&str>, rgba: &mut [u8], oracle: &mut image::RgbaImage) -> bool {
+    let Some([x0, y0, x1, y1]) = raw.and_then(|r| scene::lua_error_popup_mask(g, r)) else {
+        return false;
+    };
+    let w = scene::SCREEN.0;
+    for y in y0..y1 {
+        for x in x0..x1 {
+            let i = ((y * w + x) * 4) as usize;
+            rgba[i..i + 3].copy_from_slice(&[0, 0, 0]);
+            oracle.put_pixel(x, y, image::Rgba([0, 0, 0, 255]));
+        }
+    }
+    true
+}
+
 #[test]
 #[ignore = "needs a GPU adapter (or POB_GFX_WARP=1); run with --ignored"]
 fn build_pixels_equal_original() {
@@ -641,8 +675,10 @@ fn build_pixels_equal_original() {
         return;
     }
     let mut r = pob_gfx::Renderer::new_offscreen().expect("wgpu adapter");
+    let g = Gfx::with_platform(&scene::fonts_dir(), scene::SCREEN, 1.0, Box::new(TestPlatform::new())).expect("fonts");
     let mut failures = Vec::new();
     for name in scenario_names() {
+        let rec = oracle_record(&name);
         for (shot, list, popup) in run(&name).shots {
             let mut rgba = r.render_to_rgba(&list).expect("render");
             let p = scene::oracle_dir().join(format!("fixtures/build/{shot}.png"));
@@ -657,6 +693,17 @@ fn build_pixels_equal_original() {
                         oracle.put_pixel(x, y, image::Rgba([0, 0, 0, 255]));
                     }
                 }
+            }
+            if blank_lua_error_popup(
+                &g,
+                oracle_prompt_at_shot("build", &name, &rec, &shot).as_deref(),
+                &mut rgba,
+                &mut oracle,
+            ) {
+                eprintln!(
+                    "{shot}: the popup of a Lua error left out (lua-error-popup) {:?}",
+                    oracle_prompt_at_shot("build", &name, &rec, &shot).and_then(|r| scene::lua_error_popup_mask(&g, &r))
+                );
             }
             let mask = scene::text_mask(&list, w, h);
             let (d, heat) = scene::diff(&rgba, w, &oracle, &mask);

@@ -284,14 +284,17 @@ function runner:Step()
 		-- CPU of the buildFlag branch of Build:OnFrame (BuildOutput + RefreshStatList) N times.
 		local b = main.modes.BUILD
 		local t0 = os.clock()
-		for _ = 1, st.perfRecalc do
-			wipeGlobalCache()
-			b.outputRevision = b.outputRevision + 1
-			b.skillsTab:UpdateSocketGroups()
-			b.calcsTab:BuildOutput()
-			b:RefreshStatList()
-		end
-		sc.perf[#sc.perf + 1] = { what = "recalc", n = st.perfRecalc, ms = (os.clock() - t0) * 1000 / st.perfRecalc }
+		-- a build whose calcs raise (2.69.0: CalcPerform.lua:1205 on some builds) is timed as nothing: the app shows the error, the scene goes on
+		local ok, err = pcall(function()
+			for _ = 1, st.perfRecalc do
+				wipeGlobalCache()
+				b.outputRevision = b.outputRevision + 1
+				b.skillsTab:UpdateSocketGroups()
+				b.calcsTab:BuildOutput()
+				b:RefreshStatList()
+			end
+		end)
+		sc.perf[#sc.perf + 1] = ok and { what = "recalc", n = st.perfRecalc, ms = (os.clock() - t0) * 1000 / st.perfRecalc } or { what = "recalc", error = tostring(err) }
 		return
 	end
 	if st.open then

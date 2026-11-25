@@ -76,11 +76,11 @@ pub(super) fn dot_cost_combined(off: &mut Off<'_>, quantity_multiplier: f64) {
 #[allow(clippy::too_many_lines)]
 fn skill_dot(off: &mut Off<'_>, q: &Q, quantity_multiplier: f64) {
     let sc = off.cfg.clone();
-    let site_bor = || -> ! { panic!("{LUA}:5793: bad argument #2 to 'bor' (number expected, got nil)") };
+    let site_bor = || -> ! { panic!("{LUA}:5799: bad argument #2 to 'bor' (number expected, got nil)") };
     let sflags = sc.flags.unwrap_or_else(|| site_bor()) as u32;
     let skw = sc
         .keyword_flags
-        .unwrap_or_else(|| panic!("{LUA}:5794: bad argument #1 to 'band' (number expected, got nil)")) as u32;
+        .unwrap_or_else(|| panic!("{LUA}:5800: bad argument #1 to 'band' (number expected, got nil)")) as u32;
     // :5772-5795
     let mut flags = mod_flag("Dot") | sflags;
     let kw = skw & !keyword_flag("Hit");
@@ -128,11 +128,11 @@ fn skill_dot(off: &mut Off<'_>, q: &Q, quantity_multiplier: f64) {
         off.keep_cfg(format!("dot{dt}Cfg"), dot_type_cfg.clone(), None);
         let dot_key = format!("{dt}Dot");
         let base_val = if off.can_deal.get(dt).copied().unwrap_or(false) {
-            off.sd_num(&dot_key, 5830).unwrap_or(0.0)
+            off.sd_num(&dot_key, 5836).unwrap_or(0.0)
         } else {
             0.0
         };
-        if !(base_val > 0.0 || g0(off, &dot_key, 5834) > 0.0) {
+        if !(base_val > 0.0 || g0(off, &dot_key, 5840) > 0.0) {
             continue;
         }
         off.set_flag("dot", true);
@@ -182,6 +182,7 @@ fn skill_dot(off: &mut Off<'_>, q: &Q, quantity_multiplier: f64) {
                     true,
                     None,
                     None,
+                    None,
                 );
                 off.bd_put(&format!("{dt}DotEffMult"), t);
             }
@@ -197,7 +198,7 @@ fn skill_dot(off: &mut Off<'_>, q: &Q, quantity_multiplier: f64) {
             inc = max2(inc - q.inc(Some(&sc), &names), 0.0);
         }
         let more = q.more(Some(&dot_type_cfg), &names);
-        let site = format!("{LUA}:5860");
+        let site = format!("{LUA}:5866");
         let mult = q.override_num(Some(&dot_type_cfg), &["DotMultiplier"], &site).unwrap_or_else(|| {
             q.base(Some(&dot_type_cfg), &["DotMultiplier"]) + q.base(Some(&dot_type_cfg), &[&format!("{dt}DotMultiplier")])
         });
@@ -209,7 +210,7 @@ fn skill_dot(off: &mut Off<'_>, q: &Q, quantity_multiplier: f64) {
         };
         let aura = aura_v.unwrap_or(1.0);
         let total = base_val * (1.0 + inc / 100.0) * more * (1.0 + mult / 100.0) * aura * eff_mult;
-        let tdi = gn(off, "TotalDotInstance", 5865);
+        let tdi = gn(off, "TotalDotInstance", 5871);
         let cur = off.gval(&dot_key).cloned();
         let unset = match &cur {
             None | Some(OutValue::Bool(false)) => true,
@@ -220,7 +221,7 @@ fn skill_dot(off: &mut Off<'_>, q: &Q, quantity_multiplier: f64) {
             off.gset(&dot_key, total);
             off.gset("TotalDotInstance", min2(tdi + total, cap));
         } else {
-            let prev = or_num(cur.as_ref(), 0.0, &dot_key, 5867);
+            let prev = or_num(cur.as_ref(), 0.0, &dot_key, 5873);
             off.gset("TotalDotInstance", min2(tdi + total + prev, cap));
         }
         // :5854-5857
@@ -240,12 +241,12 @@ fn skill_dot(off: &mut Off<'_>, q: &Q, quantity_multiplier: f64) {
         } else {
             "Speed"
         };
-        let speed = gn(off, key, 5886);
+        let speed = gn(off, key, 5892);
         let dps_mult = off
-            .sd_num("dpsMultiplier", 5886)
-            .unwrap_or_else(|| panic!("{LUA}:5886: attempt to perform arithmetic on field 'dpsMultiplier' (a nil value)"));
+            .sd_num("dpsMultiplier", 5892)
+            .unwrap_or_else(|| panic!("{LUA}:5892: attempt to perform arithmetic on field 'dpsMultiplier' (a nil value)"));
         let v = min2(
-            gn(off, "TotalDotInstance", 5886) * speed * gn(off, "Duration", 5886) * dps_mult * quantity_multiplier,
+            gn(off, "TotalDotInstance", 5892) * speed * gn(off, "Duration", 5892) * dps_mult * quantity_multiplier,
             cap,
         );
         off.gset("TotalDot", v);
@@ -253,9 +254,9 @@ fn skill_dot(off: &mut Off<'_>, q: &Q, quantity_multiplier: f64) {
         // :5873-5886
         if off.breakdown {
             let mut t = BTable::lines([
-                sf!("%.1f ^8(Damage per Instance)", gn(off, "TotalDotInstance", 5890)),
+                sf!("%.1f ^8(Damage per Instance)", gn(off, "TotalDotInstance", 5896)),
                 sf!("x %.2f ^8(hits per second)", speed),
-                sf!("x %.2f ^8(skill duration)", gn(off, "Duration", 5892)),
+                sf!("x %.2f ^8(skill duration)", gn(off, "Duration", 5898)),
             ]);
             if dps_mult != 1.0 {
                 t.push(sf!("x %g ^8(DPS multiplier for this skill)", dps_mult));
@@ -267,22 +268,22 @@ fn skill_dot(off: &mut Off<'_>, q: &Q, quantity_multiplier: f64) {
             off.bd_put("TotalDot", t);
         }
     } else if q.flag(None, &["dotIsBurningGround"]) {
-        ground(off, "BurningGroundDPS", Some("BurningGroundFromIgnite"), 5905);
+        ground(off, "BurningGroundDPS", Some("BurningGroundFromIgnite"), 5911);
     } else if q.flag(None, &["dotIsCausticGround"]) {
-        ground(off, "CausticGroundDPS", Some("CausticGroundFromPoison"), 5912);
+        ground(off, "CausticGroundDPS", Some("CausticGroundFromPoison"), 5918);
     } else if q.flag(None, &["dotIsCorruptingBlood"]) {
-        ground(off, "CorruptingBloodDPS", None, 5919);
+        ground(off, "CorruptingBloodDPS", None, 5925);
     } else {
         if q.flag(None, &["DotCanStackAsTotems"]) && off.flag("totem") {
             off.set_flag("DotCanStack", true);
         }
         // `activeSkill.skillTypes[SkillType.Brand] and not skillData.countsAttachedBrandsInDamage and output.AttachedBrandCount or 1`
         let abc = if off.has_type("Brand") && !off.sd_truthy("countsAttachedBrandsInDamage") && gt(off, "AttachedBrandCount") {
-            gn(off, "AttachedBrandCount", 5927)
+            gn(off, "AttachedBrandCount", 5933)
         } else {
             1.0
         };
-        let tdi = gn(off, "TotalDotInstance", 5927);
+        let tdi = gn(off, "TotalDotInstance", 5933);
         let v = if abc > 1.0 { min2(tdi * abc, cap) } else { tdi };
         off.gset("TotalDot", v);
         off.gset("TotalDotCalcSection", v);
@@ -337,7 +338,7 @@ fn per_second_costs(off: &mut Off<'_>, q: &Q) {
             continue;
         }
         let cost_key = format!("{resource}Cost");
-        if gn(off, &cost_key, 5935) <= 0.0 {
+        if gn(off, &cost_key, 5941) <= 0.0 {
             continue;
         }
         if gt(off, &format!("{resource}PerSecondHasCost")) {
@@ -349,13 +350,13 @@ fn per_second_costs(off: &mut Off<'_>, q: &Q) {
         }
         let speed_ok = match off.gval("Speed") {
             Some(OutValue::Num(s)) => *s > 0.0,
-            other => panic!("{LUA}:5935: attempt to compare {other:?} (Speed) with number"),
+            other => panic!("{LUA}:5941: attempt to compare {other:?} (Speed) with number"),
         };
         if !(speed_ok || gt(off, "Cooldown")) {
             continue;
         }
         let used = if eb && resource == "Mana" { "ES" } else { resource };
-        let repeats = or_num(off.gval("Repeats"), 1.0, "Repeats", 5942);
+        let repeats = or_num(off.gval("Repeats"), 1.0, "Repeats", 5948);
         let time_type = if off.flag("trap") || off.flag("mine") {
             if off.flag("trap") { "trap throwing" } else { "mine laying" }
         } else if off.flag("totem") {
@@ -383,16 +384,16 @@ fn per_second_costs(off: &mut Off<'_>, q: &Q) {
             };
             match cd {
                 Some(OutValue::Num(c)) if c > 0.0 => 1.0 / c,
-                Some(OutValue::Num(_)) | None | Some(OutValue::Bool(false)) => num_at(pre.as_ref(), "preSpeed", 5963),
-                other => panic!("{LUA}:5948: attempt to compare {other:?} (cooldown) with number"),
+                Some(OutValue::Num(_)) | None | Some(OutValue::Bool(false)) => num_at(pre.as_ref(), "preSpeed", 5969),
+                other => panic!("{LUA}:5954: attempt to compare {other:?} (cooldown) with number"),
             }
         } else if off.flag("totem") {
             // :5936
-            let v = if cooldown_positive(off, 5951) {
-                let tps = gn(off, "TotemPlacementSpeed", 5951);
-                if tps > 0.0 { tps } else { 1.0 / gn(off, "Cooldown", 5951) }
+            let v = if cooldown_positive(off, 5957) {
+                let tps = gn(off, "TotemPlacementSpeed", 5957);
+                if tps > 0.0 { tps } else { 1.0 / gn(off, "Cooldown", 5957) }
             } else {
-                gn(off, "TotemPlacementSpeed", 5951)
+                gn(off, "TotemPlacementSpeed", 5957)
             };
             v / repeats
         } else if q.flag(None, &["HasSeals"]) && q.flag(None, &["UseMaxUnleash"]) && off.player_main_sd("hitTimeOverride").truthy() {
@@ -400,17 +401,17 @@ fn per_second_costs(off: &mut Off<'_>, q: &Q) {
             let v = off.player_main_sd("hitTimeOverride");
             v.as_num().unwrap_or_else(|| {
                 panic!(
-                    "{LUA}:5955: attempt to perform arithmetic on field 'hitTimeOverride' (a {} value)",
+                    "{LUA}:5961: attempt to perform arithmetic on field 'hitTimeOverride' (a {} value)",
                     v.type_name()
                 )
             }) / repeats
         } else {
             // :5943
-            let v = if cooldown_positive(off, 5958) {
-                let s = gn(off, "Speed", 5958);
-                if s > 0.0 { s } else { 1.0 / gn(off, "Cooldown", 5958) }
+            let v = if cooldown_positive(off, 5964) {
+                let s = gn(off, "Speed", 5964);
+                if s > 0.0 { s } else { 1.0 / gn(off, "Cooldown", 5964) }
             } else {
-                gn(off, "Speed", 5958)
+                gn(off, "Speed", 5964)
             };
             v / repeats
         };
@@ -423,13 +424,13 @@ fn per_second_costs(off: &mut Off<'_>, q: &Q) {
         // :5947-5948
         off.out().set_bool(&format!("{used}PerSecondHasCost"), true);
         let ps_key = format!("{used}PerSecondCost");
-        let v = g0(off, &ps_key, 5948) + gn(off, &cost_key, 5948) * use_speed * refund_mult;
+        let v = g0(off, &ps_key, 5954) + gn(off, &cost_key, 5954) * use_speed * refund_mult;
         off.gset(&ps_key, v);
         // :5950-5955 `copyTable(breakdown[resource.."Cost"])` minus its last row
         if let Some(bd) = off.bd() {
             let mut t = match bd.get(&cost_key) {
                 Some(BVal::Table(t)) => t.clone(),
-                other => panic!("Modules/Common.lua: bad argument #1 to 'pairs' (table expected, got {other:?}) (CalcOffence.lua:5966)"),
+                other => panic!("Modules/Common.lua: bad argument #1 to 'pairs' (table expected, got {other:?}) (CalcOffence.lua:5972)"),
             };
             t.list.pop();
             t.push(crate::breakdown::format(
@@ -606,7 +607,7 @@ fn self_damage_mods(q: &Q, name: &str, field: &str) -> Vec<(Value, String)> {
             let ty = v.get("damageType");
             let ty = ty
                 .as_str()
-                .unwrap_or_else(|| panic!("{LUA}:5982: attempt to concatenate field 'damageType' ({})", ty.type_name()))
+                .unwrap_or_else(|| panic!("{LUA}:5988: attempt to concatenate field 'damageType' ({})", ty.type_name()))
                 .to_owned();
             (v.get(field), title_words(&ty))
         })
@@ -636,11 +637,11 @@ fn self_hit(off: &mut Off<'_>, q: &Q) {
         let mut acc: Option<(f64, String)> = None;
         for (v, ty) in self_damage_mods(q, "HeartboundLoopSelfDamage", "baseDamage") {
             let prev = acc.as_ref().map_or(0.0, |a| a.0);
-            acc = Some((prev + val_num(&v, "baseDamage", 5981), ty));
+            acc = Some((prev + val_num(&v, "baseDamage", 5987), ty));
         }
         if let Some((val, ty)) = acc {
             let (lines, t) = apply_dmg_taken_conversion(off, q, &ty, val);
-            let per_cast = gn(off, "SummonedMinionsPerCast", 5989);
+            let per_cast = gn(off, "SummonedMinionsPerCast", 5995);
             let lines = handler_lines(
                 lines,
                 sf!("Heartbound Loop base damage: %d", val),
@@ -659,7 +660,7 @@ fn self_hit(off: &mut Off<'_>, q: &Q) {
         let mut acc: Option<(f64, String)> = None;
         for (v, ty) in self_damage_mods(q, "StormSecretSelfDamage", "baseDamage") {
             let prev = acc.as_ref().map_or(0.0, |a| a.0);
-            acc = Some((prev + val_num(&v, "baseDamage", 6002), ty));
+            acc = Some((prev + val_num(&v, "baseDamage", 6008), ty));
         }
         if let Some((val, ty)) = acc {
             let (lines, t) = apply_dmg_taken_conversion(off, q, &ty, val);
@@ -678,7 +679,7 @@ fn self_hit(off: &mut Off<'_>, q: &Q) {
             && let Some((v, ty)) = first
             && v.truthy()
         {
-            let val = val_num(&v, "baseDamage", 6026);
+            let val = val_num(&v, "baseDamage", 6032);
             let (lines, t) = apply_dmg_taken_conversion(off, q, &ty, val);
             let lines = handler_lines(
                 lines,
@@ -691,15 +692,15 @@ fn self_hit(off: &mut Off<'_>, q: &Q) {
     // "Echoes of Creation" (:6009-6028)
     {
         let first = self_damage_mods(q, "EchoesOfCreationSelfDamage", "dmgMult").into_iter().next();
-        let mut avg = gn(off, "GlobalWarcryUptimeRatio", 6038) / 100.0;
+        let mut avg = gn(off, "GlobalWarcryUptimeRatio", 6044) / 100.0;
         if q.flag(None, &["Condition:WarcryMaxHit"]) {
             avg = dsum(&off.env_db, ModType::Base, None, &["Multiplier:ExertingWarcryCount"]);
         }
         if let Some((m, ty)) = first
             && m.truthy()
         {
-            let m = val_num(&m, "dmgMult", 6043);
-            let life = g0(off, "Life", 6043);
+            let m = val_num(&m, "dmgMult", 6049);
+            let life = g0(off, "Life", 6049);
             let (lines, t) = apply_dmg_taken_conversion(off, q, &ty, life * m / 100.0 * avg);
             let lines = handler_lines(
                 lines,
@@ -722,8 +723,8 @@ fn self_hit(off: &mut Off<'_>, q: &Q) {
             && let Some((m, ty)) = first
             && m.truthy()
         {
-            let m = val_num(&m, "dmgMult", 6059);
-            let cost = g0(off, "ManaCost", 6059);
+            let m = val_num(&m, "dmgMult", 6065);
+            let cost = g0(off, "ManaCost", 6065);
             let (lines, t) = apply_dmg_taken_conversion(off, q, &ty, cost * m / 100.0);
             let lines = handler_lines(
                 lines,
@@ -772,7 +773,7 @@ fn self_hit(off: &mut Off<'_>, q: &Q) {
         let mut acc: Option<(f64, String)> = None;
         for (v, ty) in self_damage_mods(q, "EnmitysEmbraceSelfDamage", "baseDamage") {
             let prev = acc.as_ref().map_or(0.0, |a| a.0);
-            acc = Some((prev + val_num(&v, "baseDamage", 6084), ty));
+            acc = Some((prev + val_num(&v, "baseDamage", 6090), ty));
         }
         if let Some((val, ty)) = acc {
             let (lines, t) = apply_dmg_taken_conversion(off, q, &ty, val);
@@ -787,13 +788,13 @@ fn self_hit(off: &mut Off<'_>, q: &Q) {
     // :6077-6088 `pairs(nameToHandler)` (see the module doc; the breakdown rows follow the same order)
     if taken.len() >= 3 {
         off.note(format!(
-            "CalcOffence.lua:6100 pairs(nameToHandler): {} self hit sources summed in a hash order (R13, Rust: constructor order)",
+            "CalcOffence.lua:6106 pairs(nameToHandler): {} self hit sources summed in a hash order (R13, Rust: constructor order)",
             taken.len()
         ));
     }
     // with two or more handlers the rows of `breakdown.SelfHitDamage` also follow that order (R13 in LuaJIT)
     for (lines, t) in taken {
-        let v = g0(off, "SelfHitDamage", 6103) + t;
+        let v = g0(off, "SelfHitDamage", 6109) + t;
         off.gset("SelfHitDamage", v);
         if let Some(bd) = off.bd() {
             let tb = bd.table_or("SelfHitDamage", BTable::new);
@@ -822,41 +823,41 @@ fn combined_dps(off: &mut Off<'_>, quantity_multiplier: f64) {
     let base_v = off.gval(base_key).cloned();
     gset_val(off, "CombinedDPS", base_v.clone());
     gset_val(off, "CombinedAvg", base_v.clone());
-    let base = || num_at(base_v.as_ref(), base_key, 6141);
+    let base = || num_at(base_v.as_ref(), base_key, 6147);
     if off.flag("dot") {
-        let v = num_at(base_v.as_ref(), base_key, 6134) + g0(off, "TotalDot", 6134);
+        let v = num_at(base_v.as_ref(), base_key, 6140) + g0(off, "TotalDot", 6140);
         off.gset("WithDotDPS", v);
     }
     if quantity_multiplier > 1.0 && gt(off, "TotalPoisonDPS") {
-        let v = min2(gn(off, "TotalPoisonDPS", 6137) * quantity_multiplier, cap);
+        let v = min2(gn(off, "TotalPoisonDPS", 6143) * quantity_multiplier, cap);
         off.gset("TotalPoisonDPS", v);
     }
     if show_average {
-        let v = gn(off, "CombinedAvg", 6140) + g0(off, "TotalPoisonAverageDamage", 6140);
+        let v = gn(off, "CombinedAvg", 6146) + g0(off, "TotalPoisonAverageDamage", 6146);
         off.gset("CombinedAvg", v);
-        let v = base() + g0(off, "TotalPoisonAverageDamage", 6141);
+        let v = base() + g0(off, "TotalPoisonAverageDamage", 6147);
         off.gset("WithPoisonDPS", v);
     } else {
-        let v = base() + g0(off, "TotalPoisonDPS", 6143);
+        let v = base() + g0(off, "TotalPoisonDPS", 6149);
         off.gset("WithPoisonDPS", v);
     }
     // :6122-6137
     if off.flag("ignite") {
         if off.flag("igniteCanStack") {
             if show_average {
-                let v = gn(off, "CombinedDPS", 6148) + gn(off, "IgniteDamage", 6148);
+                let v = gn(off, "CombinedDPS", 6154) + gn(off, "IgniteDamage", 6154);
                 off.gset("CombinedAvg", v);
             } else {
-                let v = base() + gn(off, "TotalIgniteDPS", 6150);
+                let v = base() + gn(off, "TotalIgniteDPS", 6156);
                 off.gset("WithIgniteDPS", v);
             }
         } else if show_average {
-            let v = base() + gn(off, "IgniteDamage", 6153);
+            let v = base() + gn(off, "IgniteDamage", 6159);
             off.gset("WithIgniteDPS", v);
-            let v = gn(off, "CombinedAvg", 6154) + gn(off, "IgniteDamage", 6154);
+            let v = gn(off, "CombinedAvg", 6160) + gn(off, "IgniteDamage", 6160);
             off.gset("CombinedAvg", v);
         } else {
-            let v = base() + gn(off, "IgniteDPS", 6156);
+            let v = base() + gn(off, "IgniteDPS", 6162);
             off.gset("WithIgniteDPS", v);
         }
     } else {
@@ -864,18 +865,18 @@ fn combined_dps(off: &mut Off<'_>, quantity_multiplier: f64) {
     }
     // :6138-6140
     if off.flag("monsterExplode") {
-        let v = gn(off, "CombinedAvg", 6162) / off.monster_life * 100.0;
+        let v = gn(off, "CombinedAvg", 6168) / off.monster_life * 100.0;
         off.gset("CombinedAvgToMonsterLife", v);
     }
     // :6141-6150
     if off.flag("bleed") {
         if show_average {
-            let v = base() + gn(off, "BleedDamage", 6166);
+            let v = base() + gn(off, "BleedDamage", 6172);
             off.gset("WithBleedDPS", v);
-            let v = gn(off, "CombinedAvg", 6167) + gn(off, "BleedDamage", 6167);
+            let v = gn(off, "CombinedAvg", 6173) + gn(off, "BleedDamage", 6173);
             off.gset("CombinedAvg", v);
         } else {
-            let v = base() + gn(off, "BleedDPS", 6169);
+            let v = base() + gn(off, "BleedDPS", 6175);
             off.gset("WithBleedDPS", v);
         }
     } else {
@@ -884,8 +885,8 @@ fn combined_dps(off: &mut Off<'_>, quantity_multiplier: f64) {
     // :6151-6209
     if off.flag("impale") {
         let dps_mult = off
-            .sd_num("dpsMultiplier", 6181)
-            .unwrap_or_else(|| panic!("{LUA}:6181: attempt to perform arithmetic on field 'dpsMultiplier' (a nil value)"));
+            .sd_num("dpsMultiplier", 6187)
+            .unwrap_or_else(|| panic!("{LUA}:6187: attempt to perform arithmetic on field 'dpsMultiplier' (a nil value)"));
         let mut impale;
         // (MH, OH) impale DPS of the separate combine (breakdown rows)
         let mut hand_dps: Option<(f64, f64)> = None;
@@ -894,49 +895,49 @@ fn combined_dps(off: &mut Off<'_>, quantity_multiplier: f64) {
             let hands = off
                 .hands
                 .as_ref()
-                .unwrap_or_else(|| panic!("{LUA}:6179: attempt to index field 'MainHand' (a nil value)"));
+                .unwrap_or_else(|| panic!("{LUA}:6185: attempt to index field 'MainHand' (a nil value)"));
             let hand = |h: usize| -> f64 {
                 let m = &hands[h].map;
-                let mod_ = or_num(m.get("ImpaleModifier"), 1.0, "ImpaleModifier", 6179);
-                num_at(m.get("impaleStoredHitAvg"), "impaleStoredHitAvg", 6179)
+                let mod_ = or_num(m.get("ImpaleModifier"), 1.0, "ImpaleModifier", 6185);
+                num_at(m.get("impaleStoredHitAvg"), "impaleStoredHitAvg", 6185)
                     * (mod_ - 1.0)
-                    * num_at(m.get("HitChance"), "HitChance", 6179)
+                    * num_at(m.get("HitChance"), "HitChance", 6185)
                     / 100.0
                     * dps_mult
             };
             impale = hand(0) + hand(1);
             hand_dps = Some((hand(0), hand(1)));
         } else {
-            let m = g_or1(off, "ImpaleModifier", 6183);
-            impale = gn(off, "impaleStoredHitAvg", 6183) * (m - 1.0) * gn(off, "HitChance", 6183) / 100.0 * dps_mult;
+            let m = g_or1(off, "ImpaleModifier", 6189);
+            impale = gn(off, "impaleStoredHitAvg", 6189) * (m - 1.0) * gn(off, "HitChance", 6189) / 100.0 * dps_mult;
         }
         off.gset("ImpaleDPS", impale);
-        if gn(off, "ImpaleDuration", 6185) <= 0.0 {
+        if gn(off, "ImpaleDuration", 6191) <= 0.0 {
             impale = 0.0;
             off.gset("ImpaleDPS", 0.0);
         }
         if show_average {
-            let v = gn(off, "AverageDamage", 6189) + impale;
+            let v = gn(off, "AverageDamage", 6195) + impale;
             off.gset("WithImpaleDPS", v);
-            let v = gn(off, "CombinedAvg", 6190) + impale;
+            let v = gn(off, "CombinedAvg", 6196) + impale;
             off.gset("CombinedAvg", v);
         } else {
             off.set_flag("notAverage", true);
             let hs = if gt(off, "HitSpeed") {
-                gn(off, "HitSpeed", 6193)
+                gn(off, "HitSpeed", 6199)
             } else {
-                gn(off, "Speed", 6193)
+                gn(off, "Speed", 6199)
             };
             impale *= hs;
             off.gset("ImpaleDPS", impale);
-            let v = gn(off, "TotalDPS", 6194) + impale;
+            let v = gn(off, "TotalDPS", 6200) + impale;
             off.gset("WithImpaleDPS", v);
         }
         if quantity_multiplier > 1.0 {
             impale *= quantity_multiplier;
             off.gset("ImpaleDPS", impale);
         }
-        let v = gn(off, "CombinedDPS", 6199) + impale;
+        let v = gn(off, "CombinedDPS", 6205) + impale;
         off.gset("CombinedDPS", v);
         // :6176-6209
         if off.breakdown {
@@ -945,22 +946,22 @@ fn combined_dps(off: &mut Off<'_>, quantity_multiplier: f64) {
                 use super::b::hand_num;
                 let m = |off: &Off<'_>, h: usize| match off.hands.as_ref().and_then(|hs| hs[h].map.get("ImpaleModifier")) {
                     None | Some(OutValue::Bool(false)) => 1.0,
-                    v => num_at(v, "ImpaleModifier", 6205),
+                    v => num_at(v, "ImpaleModifier", 6211),
                 };
                 t.push(sf!("Main Hand:"));
                 t.push(sf!(
                     "%.2f ^8(MH average physical hit before mitigation)",
-                    hand_num(off, 0, "impaleStoredHitAvg", 6203)
+                    hand_num(off, 0, "impaleStoredHitAvg", 6209)
                 ));
-                t.push(sf!("x %.2f ^8(MH chance to hit)", hand_num(off, 0, "HitChance", 6204) / 100.0));
+                t.push(sf!("x %.2f ^8(MH chance to hit)", hand_num(off, 0, "HitChance", 6210) / 100.0));
                 t.push(sf!("x %.2f ^8(MH impale damage multiplier)\n", m(off, 0) - 1.0));
                 t.push(sf!("= %.2f", mh));
                 t.push(sf!("Off Hand:"));
                 t.push(sf!(
                     "%.2f ^8(OH average physical hit before mitigation)",
-                    hand_num(off, 1, "impaleStoredHitAvg", 6208)
+                    hand_num(off, 1, "impaleStoredHitAvg", 6214)
                 ));
-                t.push(sf!("x %.2f ^8(OH chance to hit)", hand_num(off, 1, "HitChance", 6209) / 100.0));
+                t.push(sf!("x %.2f ^8(OH chance to hit)", hand_num(off, 1, "HitChance", 6215) / 100.0));
                 t.push(sf!("x %.2f ^8(OH impale damage multiplier)", m(off, 1) - 1.0));
                 t.push(sf!("= %.2f", oh));
                 t.push(sf!("Combined total:"));
@@ -968,17 +969,17 @@ fn combined_dps(off: &mut Off<'_>, quantity_multiplier: f64) {
             } else {
                 t.push(sf!(
                     "%.2f ^8(average physical hit before mitigation)",
-                    gn(off, "impaleStoredHitAvg", 6215)
+                    gn(off, "impaleStoredHitAvg", 6221)
                 ));
-                t.push(sf!("x %.2f ^8(chance to hit)", gn(off, "HitChance", 6216) / 100.0));
-                t.push(sf!("x %.2f ^8(impale damage multiplier)", g_or1(off, "ImpaleModifier", 6217) - 1.0));
+                t.push(sf!("x %.2f ^8(chance to hit)", gn(off, "HitChance", 6222) / 100.0));
+                t.push(sf!("x %.2f ^8(impale damage multiplier)", g_or1(off, "ImpaleModifier", 6223) - 1.0));
             }
             if off.flag("notAverage") {
                 if gt(off, "HitSpeed") {
-                    t.push(sf!("x %.2f ^8(hit rate)", gn(off, "HitSpeed", 6220)));
+                    t.push(sf!("x %.2f ^8(hit rate)", gn(off, "HitSpeed", 6226)));
                 } else {
                     let what = if off.flag("attack") { "attack" } else { "cast" };
-                    t.push(sf!("x %.2f ^8(%s rate)", gn(off, "Speed", 6220), what));
+                    t.push(sf!("x %.2f ^8(%s rate)", gn(off, "Speed", 6226), what));
                 }
             }
             if dps_mult != 1.0 {
@@ -987,7 +988,7 @@ fn combined_dps(off: &mut Off<'_>, quantity_multiplier: f64) {
             if quantity_multiplier > 1.0 {
                 t.push(sf!("x %g ^8(quantity multiplier for this skill)", quantity_multiplier));
             }
-            if gn(off, "ImpaleDuration", 6228) <= 0.0 {
+            if gn(off, "ImpaleDuration", 6234) <= 0.0 {
                 t.push(sf!("x 0 ^8(no Impale Duration)"));
             }
             t.push(sf!("= %.1f", impale));
@@ -1002,40 +1003,40 @@ fn combined_dps(off: &mut Off<'_>, quantity_multiplier: f64) {
     {
         let count = m.count.unwrap_or(1.0);
         off.gset("MirageDPS", m_total * count);
-        let v = gn(off, "CombinedDPS", 6239) + m_total * count;
+        let v = gn(off, "CombinedDPS", 6245) + m_total * count;
         off.gset("CombinedDPS", v);
         gset_val(off, "MirageBurningGroundDPS", m.out_val("BurningGroundDPS").cloned());
         gset_val(off, "MirageCausticGroundDPS", m.out_val("CausticGroundDPS").cloned());
         if let Some(x) = m.out("IgniteDPS")
-            && x > g0(off, "IgniteDPS", 6243)
+            && x > g0(off, "IgniteDPS", 6249)
         {
-            let v = gn(off, "MirageDPS", 6244) + x;
+            let v = gn(off, "MirageDPS", 6250) + x;
             off.gset("MirageDPS", v);
             off.gset("IgniteDPS", 0.0);
         }
         if let Some(x) = m.out("BleedDPS")
-            && x > g0(off, "BleedDPS", 6247)
+            && x > g0(off, "BleedDPS", 6253)
         {
-            let v = gn(off, "MirageDPS", 6248) + x;
+            let v = gn(off, "MirageDPS", 6254) + x;
             off.gset("MirageDPS", v);
             off.gset("BleedDPS", 0.0);
         }
         if let Some(x) = m.out("PoisonDPS") {
-            let v = gn(off, "MirageDPS", 6253) + x * count;
+            let v = gn(off, "MirageDPS", 6259) + x * count;
             off.gset("MirageDPS", v);
-            let v = gn(off, "CombinedDPS", 6254) + x * count;
+            let v = gn(off, "CombinedDPS", 6260) + x * count;
             off.gset("CombinedDPS", v);
         }
         if let Some(x) = m.out("ImpaleDPS") {
-            let v = gn(off, "MirageDPS", 6257) + x * count;
+            let v = gn(off, "MirageDPS", 6263) + x * count;
             off.gset("MirageDPS", v);
-            let v = gn(off, "CombinedDPS", 6258) + x * count;
+            let v = gn(off, "CombinedDPS", 6264) + x * count;
             off.gset("CombinedDPS", v);
         }
         if let Some(x) = m.out("DecayDPS") {
-            let v = gn(off, "MirageDPS", 6261) + x;
+            let v = gn(off, "MirageDPS", 6267) + x;
             off.gset("MirageDPS", v);
-            let v = gn(off, "CombinedDPS", 6262) + x;
+            let v = gn(off, "CombinedDPS", 6268) + x;
             off.gset("CombinedDPS", v);
         }
         let dot_can_stack = off.flag("DotCanStack");
@@ -1043,45 +1044,45 @@ fn combined_dps(off: &mut Off<'_>, quantity_multiplier: f64) {
             && (dot_can_stack || !gt(off, "TotalDot") || off.gval("TotalDot") == Some(&OutValue::Num(0.0)))
         {
             let k = if dot_can_stack { count } else { 1.0 };
-            let v = gn(off, "MirageDPS", 6265) + x * k;
+            let v = gn(off, "MirageDPS", 6271) + x * k;
             off.gset("MirageDPS", v);
-            let v = gn(off, "CombinedDPS", 6266) + x * k;
+            let v = gn(off, "CombinedDPS", 6272) + x * k;
             off.gset("CombinedDPS", v);
         }
         let cull = m
             .out("CullMultiplier")
-            .unwrap_or_else(|| panic!("{LUA}:6268: attempt to compare nil with number (mirage.output.CullMultiplier)"));
+            .unwrap_or_else(|| panic!("{LUA}:6274: attempt to compare nil with number (mirage.output.CullMultiplier)"));
         if cull > 1.0 {
             best_cull = cull;
         }
     }
     // :6249-6255
-    let total_dot_dps = g0(off, "TotalDot", 6272)
-        + g0(off, "TotalPoisonDPS", 6272)
-        + max2(g0(off, "CausticGroundDPS", 6272), g0(off, "MirageCausticGroundDPS", 6272))
+    let total_dot_dps = g0(off, "TotalDot", 6278)
+        + g0(off, "TotalPoisonDPS", 6278)
+        + max2(g0(off, "CausticGroundDPS", 6278), g0(off, "MirageCausticGroundDPS", 6278))
         + (if gt(off, "TotalIgniteDPS") {
-            gn(off, "TotalIgniteDPS", 6272)
+            gn(off, "TotalIgniteDPS", 6278)
         } else {
-            g0(off, "IgniteDPS", 6272)
+            g0(off, "IgniteDPS", 6278)
         })
-        + max2(g0(off, "BurningGroundDPS", 6272), g0(off, "MirageBurningGroundDPS", 6272))
-        + g0(off, "BleedDPS", 6272)
-        + g0(off, "CorruptingBloodDPS", 6272)
-        + g0(off, "DecayDPS", 6272);
+        + max2(g0(off, "BurningGroundDPS", 6278), g0(off, "MirageBurningGroundDPS", 6278))
+        + g0(off, "BleedDPS", 6278)
+        + g0(off, "CorruptingBloodDPS", 6278)
+        + g0(off, "DecayDPS", 6278);
     let capped = min2(total_dot_dps, cap);
     off.gset("TotalDotDPS", capped);
     if capped != total_dot_dps {
         off.out().set_bool("showTotalDotDPS", true);
     }
     if !show_average {
-        let v = gn(off, "CombinedDPS", 6278) + capped;
+        let v = gn(off, "CombinedDPS", 6284) + capped;
         off.gset("CombinedDPS", v);
     }
     // :6258-6262
-    best_cull = max2(best_cull, gn(off, "CullMultiplier", 6281));
-    let combined = gn(off, "CombinedDPS", 6282);
+    best_cull = max2(best_cull, gn(off, "CullMultiplier", 6287));
+    let combined = gn(off, "CombinedDPS", 6288);
     off.gset("CullingDPS", combined * (best_cull - 1.0));
-    let rdm = gn(off, "ReservationDpsMultiplier", 6283);
+    let rdm = gn(off, "ReservationDpsMultiplier", 6289);
     off.gset("ReservationDPS", combined * (rdm - 1.0));
     off.gset("CombinedDPS", combined * best_cull * rdm);
 }

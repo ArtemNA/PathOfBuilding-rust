@@ -116,7 +116,8 @@ fn allowlist_is_the_measured_set() {
     // R7.9 (calcs.mirages; OC1-OC6 = LuaJIT on all 82 offence runs, Dual Savior's output = its mirage's): 847 / 0
     // R7 tail (CalcPerform.lua:3935-3986, the main skill's gem level/quality): 851 / 0
     // R-UP2 (2.68.0: MaximumLifeManaDifference, MissingUnreservedLifePercent newly emitted, = LuaJIT): 853 / 0
-    assert_eq!(ALLOWLIST.len(), 853, "pinned size of the measured allowlist");
+    // 2.69.0 (5606cc64f: LifeReservationEfficiency, ManaReservationEfficiency newly emitted, = LuaJIT on every golden): 855 / 0
+    assert_eq!(ALLOWLIST.len(), 855, "pinned size of the measured allowlist");
     assert_eq!(EXCLUDED.len(), 0, "pinned size of the measured exclusions");
 }
 

@@ -74,6 +74,8 @@ pub struct DropDownControl {
     pub max_dropped_width: Cell<f64>,
     pub enable_dropped_width: Cell<bool>,
     pub enable_change_box_width: Cell<bool>,
+    /// `.hideSelDetail` (5606cc64f): the box shows the selected entry's label without its detail.
+    pub hide_sel_detail: Cell<bool>,
     pub hover_sel_drop: Cell<Option<i64>>,
     pub hover_sel: Cell<Option<i64>>,
     pub border_func: RefCell<Option<Rc<dyn Fn() -> (f64, f64, f64)>>>,
@@ -155,6 +157,7 @@ impl DropDownControl {
                 max_dropped_width: Cell::new(width.max(300.0)),
                 enable_dropped_width: Cell::new(false),
                 enable_change_box_width: Cell::new(false),
+                hide_sel_detail: Cell::new(false),
                 hover_sel_drop: Cell::new(None),
                 hover_sel: Cell::new(None),
                 border_func: RefCell::new(None),
@@ -381,6 +384,9 @@ impl DropDownControl {
 }
 
 impl Control for DropDownControl {
+    fn dropped(&self) -> bool {
+        self.dropped.get()
+    }
     fn base(&self) -> &ControlBase {
         &self.base
     }
@@ -507,7 +513,12 @@ impl Control for DropDownControl {
             (Some(format!("Search: {}", self.search.get_search_term_pretty())), None, false)
         } else {
             match self.list.borrow().get(self.sel_index.get().wrapping_sub(1)) {
-                Some(item) if item.is_table => (item.label.clone(), item.detail.clone(), item.strikethrough),
+                // :326-331 (5606cc64f) `hideSelDetail` keeps the box to the label
+                Some(item) if item.is_table => (
+                    item.label.clone(),
+                    if self.hide_sel_detail.get() { None } else { item.detail.clone() },
+                    item.strikethrough,
+                ),
                 Some(item) => (item.label.clone(), None, false),
                 None => (None, None, false),
             }
@@ -571,15 +582,9 @@ impl Control for DropDownControl {
                 sg::set_draw_layer(f, None, 5);
             }
             let sb_enabled = sb.base.enabled.get(f);
-            sg::set_viewport(
-                f,
-                Some([
-                    x + 2.0,
-                    drop_y + 2.0,
-                    if sb_enabled { width - 22.0 } else { width - 4.0 },
-                    self.drop_height.get(),
-                ]),
-            );
+            // :386 (5606cc64f) `local listWidth`
+            let list_width = if sb_enabled { width - 22.0 } else { width - 4.0 };
+            sg::set_viewport(f, Some([x + 2.0, drop_y + 2.0, list_width, self.drop_height.get()]));
             let mut drop_index = 0;
             let list = self.list.borrow().clone();
             let infos = self.search.search_infos.borrow().clone();
@@ -620,13 +625,14 @@ impl Control for DropDownControl {
                         } else {
                             sg::set_draw_color(f, 0.0, 0.0, 0.0);
                         }
-                        sg::draw_rect(f, width - dx - 8.0 - 22.0, y, width - 4.0, line_height);
+                        // :432 (5606cc64f) behind the detail only, at the right of the list
+                        sg::draw_rect(f, list_width - dx - 6.0, y, dx + 6.0, line_height);
                         if hot {
                             sg::set_draw_color(f, 1.0, 1.0, 1.0);
                         } else {
                             sg::set_draw_color(f, 0.66, 0.66, 0.66);
                         }
-                        sg::draw_string(f, width - dx - 4.0 - 22.0, y, Some("LEFT"), line_height, "VAR", detail);
+                        sg::draw_string(f, list_width - dx - 2.0, y, Some("LEFT"), line_height, "VAR", detail);
                     }
                     self.draw_search_highlights(f, label, info, 0.0, y, line_height);
                 }

@@ -120,7 +120,7 @@ pub fn socket_description_line(item: &Item) -> String {
             "B" => cc("INTELLIGENCE"),
             "W" => cc("SCION"),
             "A" => "^xB0B0B0".to_string(),
-            _ => panic!("Classes/ItemsTab.lua:4316: attempt to concatenate local 'code' (a nil value)"),
+            _ => panic!("Classes/ItemsTab.lua:4385: attempt to concatenate local 'code' (a nil value)"),
         };
         line.push_str(&code);
         line.push_str(&s.color);
@@ -345,12 +345,17 @@ pub fn add_item_tooltip(t: &mut Tooltip, g: &Gfx, e: &Engine, item: &Rc<Item>, a
     let flavour = show_flavour_text();
     let (small, big, title_size) = if flavour { (16.0, 18.0, 22.0) } else { (14.0, 16.0, 20.0) };
     let _ = small;
-    let rarity_code = cc(&item.rarity);
+    let mut rarity_code = cc(&item.rarity);
     t.max_width = Some(a.max_width.unwrap_or(600.0).min(600.0));
     t.tooltip_header = Some(item.rarity.clone());
     t.foil_type.clone_from(&item.foil_type);
     t.center = true;
     t.color = TooltipColor::Escape(rarity_code.clone());
+    // ItemsTab.lua:4401-4405 (5606cc64f) Wickerman items: another title colour and header; the box keeps the rarity colour
+    if item.base.is_some_and(|b| b.ty == "Viscera") && flavour {
+        t.tooltip_header = Some("VISCERA".to_owned());
+        rarity_code = cc("VISCERA");
+    }
     let sc: Option<&'static str> = Some("FONTIN SC");
     let (Some(base), Some(base_name)) = (item.base, item.base_name.as_deref()) else {
         let title = item.title.clone().unwrap_or_else(|| {
@@ -748,6 +753,23 @@ pub fn add_item_tooltip(t: &mut Tooltip, g: &Gfx, e: &Engine, item: &Rc<Item>, a
             None,
         );
         buff_lines(t, g, item, big);
+    } else if base.ty == "Viscera" {
+        // :4592-4600 (5606cc64f)
+        let tag = |k: &str| base.tags.get(k).copied().unwrap_or(false);
+        let viscera_name = if tag("viscera_arm") {
+            Some("Upper Limb")
+        } else if tag("viscera_leg") {
+            Some("Lower Limb")
+        } else if tag("viscera_head") {
+            Some("Head")
+        } else if tag("viscera_body") {
+            Some("Torso")
+        } else {
+            None
+        };
+        if let Some(name) = viscera_name {
+            t.add_line_ex(g, big, Some(&format!("^x7F7F7F{name}")), sc, false, None);
+        }
     } else if item.ty.as_deref() == Some("Jewel") {
         if let Some(l) = item.limit {
             t.add_line_ex(

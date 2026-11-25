@@ -32,6 +32,7 @@ pub mod tattoo;
 pub mod timeless;
 pub mod tree;
 pub mod wire;
+pub mod world_areas;
 
 use std::fmt;
 use std::path::{Path, PathBuf};

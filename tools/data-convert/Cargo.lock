@@ -94,7 +94,7 @@ dependencies = [
 
 [[package]]
 name = "pob-data"
-version = "0.2.3"
+version = "0.2.8"
 dependencies = [
  "flate2",
  "indexmap",
@@ -105,11 +105,11 @@ dependencies = [
 
 [[package]]
 name = "pob-lua"
-version = "0.2.3"
+version = "0.2.8"
 
 [[package]]
 name = "pob-mods"
-version = "0.2.3"
+version = "0.2.8"
 dependencies = [
  "indexmap",
  "pob-lua",

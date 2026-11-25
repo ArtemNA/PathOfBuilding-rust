@@ -826,6 +826,10 @@ fn check(name: &str) -> (Vec<String>, BTreeMap<String, usize>, String) {
                 if let Some(g) = r.source_gem {
                     o.insert("sourceGem".into(), gref(g));
                 }
+                // 5606cc64f: the gem's first active skill, as the probe's `skillIdx` (export-skills.ts REF)
+                if let Some(i) = r.source_skill {
+                    o.insert("sourceSkill".into(), n17((i + 1) as f64));
+                }
                 for (k, v) in [("Str", r.str_), ("Dex", r.dex), ("Int", r.int)] {
                     if let Some(v) = v {
                         o.insert(k.into(), n17(v));

@@ -69,18 +69,18 @@ fn meta_of(r: &CalculateResult) -> PartialMeta {
 
 /// What the phases push on every golden (same text, same order; anything else fails): the P5 modules pob-calc does not port.
 const P5_UNIMPLEMENTED: [&str; 3] = [
-    "CalcPerform.lua:1312 partyTab.enableExportBuffs / buff export (P5)",
-    "CalcPerform.lua:3803-3990 minion output, buff export, party export (P5)",
+    "CalcPerform.lua:1340 partyTab.enableExportBuffs / buff export (P5)",
+    "CalcPerform.lua:3914-4104 minion output, buff export, party export (P5)",
     "Calcs.lua:450-464 env.skillsUsed / display stats (P5)",
 ];
 
 /// Dual Savior's two Reflection skills push `infoMessage`/`infoTrigger` (read by CalcTriggers/offence only) between the first
 /// and the second P5 entry: its whole list, pinned the same way.
 const DUAL_SAVIOR_UNIMPLEMENTED: [&str; 5] = [
-    "CalcPerform.lua:1312 partyTab.enableExportBuffs / buff export (P5)",
-    "CalcPerform.lua:1490-1491 activeSkill.infoMessage/infoTrigger of skill 2 (Reflection) (read by CalcTriggers/offence, R7)",
-    "CalcPerform.lua:1490-1491 activeSkill.infoMessage/infoTrigger of skill 3 (Reflection) (read by CalcTriggers/offence, R7)",
-    "CalcPerform.lua:3803-3990 minion output, buff export, party export (P5)",
+    "CalcPerform.lua:1340 partyTab.enableExportBuffs / buff export (P5)",
+    "CalcPerform.lua:1526-1527 activeSkill.infoMessage/infoTrigger of skill 2 (Reflection) (read by CalcTriggers/offence, R7)",
+    "CalcPerform.lua:1526-1527 activeSkill.infoMessage/infoTrigger of skill 3 (Reflection) (read by CalcTriggers/offence, R7)",
+    "CalcPerform.lua:3914-4104 minion output, buff export, party export (P5)",
     "Calcs.lua:450-464 env.skillsUsed / display stats (P5)",
 ];
 

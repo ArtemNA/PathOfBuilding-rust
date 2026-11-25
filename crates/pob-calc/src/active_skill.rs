@@ -91,6 +91,9 @@ pub struct SkillEffect {
     pub other: IndexMap<String, f64>,
     /// `effect.grantedEffectLevel = grantedEffect.levels[effect.level]` (CalcActiveSkill.lua:514/:579) -- the level key.
     pub granted_effect_level: Option<f64>,
+    /// The effect's `grantedEffect` is CalcSetup's tagged copy (`taggedGrantedEffect.fromItem = true`, CalcSetup.lua:1715-1720,
+    /// 5606cc64f): an item's extra support. The data table itself keeps its own `fromItem` (`GrantedEffect::from_item`).
+    pub from_item: bool,
     /// `effect.actorLevel` (CalcActiveSkill.lua:577) -- nil for the player's skills.
     pub actor_level: Option<f64>,
 }
@@ -364,11 +367,6 @@ pub struct ActorView<'a> {
     pub is_player: bool,
 }
 
-/// The `fromItem` of a granted effect including CalcSetup's data write (`grantedEffect.fromItem = true`, CalcSetup.lua:1633-1634).
-pub trait FromItem {
-    fn is_from_item(&self, ge: &GrantedEffect) -> bool;
-}
-
 fn skill_type(name: &str) -> u32 {
     *pob_data::globals::globals()
         .skill_type
@@ -385,18 +383,8 @@ pub fn create_active_skill(
     actor: &ActorView<'_>,
     socket_group: Option<usize>,
     src_from_item: bool,
-    from_item: &dyn FromItem,
 ) -> Result<ActiveSkill, LuaError> {
-    create_active_skill_summoned(
-        skills,
-        active_effect,
-        support_list,
-        actor,
-        socket_group,
-        src_from_item,
-        from_item,
-        None,
-    )
+    create_active_skill_summoned(skills, active_effect, support_list, actor, socket_group, src_from_item, None)
 }
 
 /// The summoning skill of a minion skill as `createActiveSkill` gets it (`summonSkill`, R7.10): its index in `env.player.activeSkillList`
@@ -415,7 +403,6 @@ pub fn create_active_skill_summoned(
     actor: &ActorView<'_>,
     socket_group: Option<usize>,
     src_from_item: bool,
-    from_item: &dyn FromItem,
     summon: Option<Summon<'_>>,
 ) -> Result<ActiveSkill, LuaError> {
     let (act_idx, has_gem_data, src_instance) = {
@@ -445,7 +432,9 @@ pub fn create_active_skill_summoned(
         skill_flags.insert("hit".into(), true);
     }
 
-    let can = |ge: &GrantedEffect, applies: bool, types: &SkillTypeSet| -> Result<bool, LuaError> {
+    // `grantedEffect.fromItem` of a support: the data's own, or CalcSetup's tagged copy (`se_from_item`, 5606cc64f); of the active
+    // effect: the data's own (a tagged copy is only ever a support)
+    let can = |ge: &GrantedEffect, se_from_item: bool, applies: bool, types: &SkillTypeSet| -> Result<bool, LuaError> {
         let view = ActiveSkillView {
             granted_effect: act,
             has_gem_data,
@@ -457,13 +446,13 @@ pub fn create_active_skill_summoned(
             weapon1: actor.weapon1,
             weapon2: actor.weapon2,
         };
-        can_granted_effect_support_active_skill_ext(ge, &view, false, applies, from_item.is_from_item(ge), from_item.is_from_item(act))
+        can_granted_effect_support_active_skill_ext(ge, &view, false, applies, ge.from_item || se_from_item, act.from_item)
     };
     let add_types = |ge: &GrantedEffect, types: &mut SkillTypeSet| -> Result<(), LuaError> {
         let list = ge
             .add_skill_types
             .as_ref()
-            .ok_or_else(|| "Modules/CalcActiveSkill.lua:117: bad argument #1 to 'pairs' (table expected, got nil)".to_owned())?;
+            .ok_or_else(|| "Modules/CalcActiveSkill.lua:126: bad argument #1 to 'pairs' (table expected, got nil)".to_owned())?;
         for &t in list {
             types.insert(t as u32);
         }
@@ -472,15 +461,32 @@ pub fn create_active_skill_summoned(
 
     // :110-123 Pass 1: add skill types from compatible supports. The `else` belongs to `if grantedEffect.support`, so the "rejected"
     // indices are the NON-support effects.
+    // :113-120 (5606cc64f) the failed imbue result Constriction prevents all other supports from applying
+    let mut support_list = support_list;
+    let mut constriction = None;
+    for se in &support_list {
+        let (ge_idx, applies, se_from_item) = {
+            let e = se.borrow();
+            (e.granted_effect, e.applies_to_granted_skills.unwrap_or(false), e.from_item)
+        };
+        let ge = &skills.effects[ge_idx];
+        if ge.id == "SupportConstriction" && can(ge, se_from_item, applies, &skill_types)? {
+            constriction = Some(se.clone());
+            break;
+        }
+    }
+    if let Some(se) = constriction {
+        support_list = vec![se];
+    }
     let mut rejected: Vec<Option<usize>> = Vec::new();
     for (index, se) in support_list.iter().enumerate() {
-        let (ge_idx, applies) = {
+        let (ge_idx, applies, se_from_item) = {
             let e = se.borrow();
-            (e.granted_effect, e.applies_to_granted_skills.unwrap_or(false))
+            (e.granted_effect, e.applies_to_granted_skills.unwrap_or(false), e.from_item)
         };
         let ge = &skills.effects[ge_idx];
         if ge.support {
-            if can(ge, applies, &skill_types)? {
+            if can(ge, se_from_item, applies, &skill_types)? {
                 add_types(ge, &mut skill_types)?;
             }
         } else {
@@ -493,12 +499,12 @@ pub fn create_active_skill_summoned(
         let mut i = 0;
         while i < rejected.len() {
             let Some(idx) = rejected[i] else { break };
-            let (ge_idx, applies) = {
+            let (ge_idx, applies, se_from_item) = {
                 let e = support_list[idx].borrow();
-                (e.granted_effect, e.applies_to_granted_skills.unwrap_or(false))
+                (e.granted_effect, e.applies_to_granted_skills.unwrap_or(false), e.from_item)
             };
             let ge = &skills.effects[ge_idx];
-            if ge.support && can(ge, applies, &skill_types)? {
+            if ge.support && can(ge, se_from_item, applies, &skill_types)? {
                 not_added_new_support = false;
                 rejected[i] = None;
                 add_types(ge, &mut skill_types)?;
@@ -513,12 +519,12 @@ pub fn create_active_skill_summoned(
     // :143-160 Pass 2: add all compatible supports.
     let mut effect_list = vec![active_effect.clone()];
     for se in &support_list {
-        let (ge_idx, applies) = {
+        let (ge_idx, applies, se_from_item) = {
             let e = se.borrow();
-            (e.granted_effect, e.applies_to_granted_skills.unwrap_or(false))
+            (e.granted_effect, e.applies_to_granted_skills.unwrap_or(false), e.from_item)
         };
         let ge = &skills.effects[ge_idx];
-        if ge.support && can(ge, applies, &skill_types)? {
+        if ge.support && can(ge, se_from_item, applies, &skill_types)? {
             effect_list.push(se.clone());
             if let Some(src) = src_instance {
                 let mut e = se.borrow_mut();

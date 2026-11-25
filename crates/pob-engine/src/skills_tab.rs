@@ -27,6 +27,8 @@ pub struct SkillsUndoState {
     pub active_socket_group: f64,
     /// `build.calcsTab.input.skill_number`.
     pub active_socket_group2: Option<InputValue>,
+    /// `state.skillSets`: a new table in the `pairs` order of `self.skillSets` (SkillsTab.lua:1414-1426).
+    pub skill_sets_table: pob_tree::lj_table::LjTable,
 }
 
 /// What `calcFunc` runs with: the temporary edit of a gem instance in the tab's tooltips.
@@ -674,63 +676,76 @@ impl Engine {
         self.skills_tab().skill_sets.iter().map(|s| (s.id, s.title.clone())).collect()
     }
 
-    /// `NewSkillSet()` + the `Save` of `RenameSet(.., true)`: the first free id, at the end of the order (SkillsTab.lua:1452-1462, SkillSetListControl.lua:67-73).
+    /// `NewSkillSet(nil, title)` (SkillsTab.lua:1477-1482): `CreateSkillSet` with the id `#self.skillSets + 1` (:1466-1474), at the end of the order.
     pub fn new_skill_set(&mut self, title: &str) -> Result<f64, String> {
+        let id = crate::sets::next_id(&self.set_tables.skills);
+        self.new_skill_set_with_id(id, Some(title))
+    }
+
+    /// `NewSkillSet(id, title)` (SkillsTab.lua:1477-1482; Build.lua:823 gives `#self.skillsTab.skillSets + 1`).
+    pub fn new_skill_set_with_id(&mut self, id: f64, title: Option<&str>) -> Result<f64, String> {
+        self.set_tables.skills.set(id);
         self.edit_skills(|t, _| {
-            let id = first_free_set(t);
             t.skill_sets.push(SkillSet {
                 id,
-                title: Some(title.to_owned()),
+                title: title.map(str::to_owned),
                 socket_group_list: Vec::new(),
             });
             Ok(id)
         })
     }
 
-    /// The `Copy` button + the popup's `Save` (SkillSetListControl.lua:20-38).
+    /// `#self.skillSets`.
+    pub fn skill_sets_len(&self) -> usize {
+        self.set_tables.skills.len()
+    }
+
+    /// `SkillsTab:CopySkillSet(sourceSkillSetId, newSkillSetName)` (SkillsTab.lua:1484-1501): id `#self.skillSets + 1`, at the end of the order.
     pub fn copy_skill_set(&mut self, source: f64, title: &str) -> Result<f64, String> {
+        let id = crate::sets::next_id(&self.set_tables.skills);
         self.edit_skills(|t, _| {
             let mut copy = t
                 .skill_sets
                 .iter()
                 .find(|s| s.id == source)
                 .cloned()
-                .ok_or_else(|| format!("SkillSetListControl: no skill set {source}"))?;
-            copy.id = first_free_set(t);
+                .ok_or_else(|| "Classes/SkillsTab.lua:1486: attempt to index local 'skillSet' (a nil value)".to_string())?;
+            copy.id = id;
             copy.title = Some(title.to_owned());
-            let id = copy.id;
             t.skill_sets.push(copy);
-            Ok(id)
-        })
+            Ok(())
+        })?;
+        self.set_tables.skills.set(id);
+        Ok(id)
     }
 
+    /// `SkillsTab:RenameSkillSet` (SkillsTab.lua:1503-1512): a gone id does nothing.
     pub fn rename_skill_set(&mut self, id: f64, title: &str) -> Result<(), String> {
         self.edit_skills(|t, _| {
-            t.skill_sets
-                .iter_mut()
-                .find(|s| s.id == id)
-                .ok_or_else(|| format!("SkillSetListControl: no skill set {id}"))?
-                .title = Some(title.to_owned());
-            Ok(())
-        })
-    }
-
-    /// `t_remove(self.list, index)`, `skillSets[id] = nil` (SkillSetListControl.lua:110-111); the caller changes the active set when it was this one.
-    pub fn delete_skill_set(&mut self, id: f64) -> Result<(), String> {
-        let active = self.skills_tab().active_skill_set_id;
-        self.edit_skills(|t, _| {
-            let i = t
-                .skill_sets
-                .iter()
-                .position(|s| s.id == id)
-                .ok_or_else(|| format!("SkillSetListControl: no skill set {id}"))?;
-            t.skill_sets.remove(i);
-            // the list stays readable until `SetActiveSkillSet`
-            if id == active {
-                t.active_skill_set_id = t.skill_sets.get(i.saturating_sub(1)).ok_or("SkillSetListControl: last set")?.id;
+            if let Some(s) = t.skill_sets.iter_mut().find(|s| s.id == id) {
+                s.title = Some(title.to_owned());
             }
             Ok(())
         })
+    }
+
+    /// `SkillsTab:DeleteSkillSet(skillSetId, orderListIndex)` (SkillsTab.lua:1514-1518); the caller changes the active set when it was this one.
+    pub fn delete_skill_set(&mut self, id: f64, order_index: usize) -> Result<(), String> {
+        let active = self.skills_tab().active_skill_set_id;
+        self.edit_skills(|t, _| {
+            let i = order_index - 1;
+            if t.skill_sets.get(i).is_none_or(|s| s.id != id) {
+                return Err(format!("SkillsTab:DeleteSkillSet: set {id} is not at {order_index}"));
+            }
+            t.skill_sets.remove(i);
+            // the list stays readable until `SetActiveSkillSet` (`skillSetOrderList[m_max(1, orderListIndex - 1)]`, SkillsSetService.lua:40)
+            if id == active {
+                t.active_skill_set_id = t.skill_sets.get(i.saturating_sub(1)).ok_or("SkillsTab: the last set")?.id;
+            }
+            Ok(())
+        })?;
+        crate::sets::remove(&mut self.set_tables.skills, id);
+        Ok(())
     }
 
     /// `skillSetOrderList` after a drag (`OnOrderChange`: `modFlag`).
@@ -752,6 +767,7 @@ impl Engine {
             active_skill_set_id: t.active_skill_set_id,
             active_socket_group: self.main_socket_group(),
             active_socket_group2: self.calcs_input().get("skill_number").cloned(),
+            skill_sets_table: crate::sets::copy_table(&self.set_tables.skills),
         }
     }
 
@@ -764,11 +780,13 @@ impl Engine {
             active_skill_set_id: t.active_skill_set_id,
             active_socket_group: self.model().main_socket_group,
             active_socket_group2: self.calcs_input().get("skill_number").cloned(),
+            skill_sets_table: crate::sets::copy_table(&self.set_tables.skills),
         })
     }
 
     /// `RestoreUndoState` (SkillsTab.lua:1421-1439) without its controls.
     pub fn restore_skills_undo_state(&mut self, state: &SkillsUndoState) -> Result<(), String> {
+        crate::sets::wipe_and_fill(&mut self.set_tables.skills, &state.skill_sets_table);
         self.edit_skills(|t, _| {
             t.skill_sets.clone_from(&state.skill_sets);
             t.active_skill_set_id = state.active_skill_set_id;
@@ -1042,8 +1060,9 @@ impl Engine {
                 counts_as_all_1h: p.weapon_data2.get("countsAsAll1H").truthy(),
             },
         };
-        let from_item = |g: &pob_data::skills::GrantedEffect| g.from_item || st.from_item_marks.contains(&g.id);
-        can_granted_effect_support_active_skill_ext(ge, &view, imbued, false, from_item(ge), from_item(act)).map_err(lua_err)
+        // `grantedEffect.fromItem` of a gem's data table and of the skill's active effect: the data's own (5606cc64f: CalcSetup tags a
+        // copy, never these tables)
+        can_granted_effect_support_active_skill_ext(ge, &view, imbued, false, ge.from_item, act.from_item).map_err(lua_err)
     }
 
     /// `sortCache.canSupport` of `UpdateSortCache` (GemSelectControl.lua:305-348): which of `gems` (ids) support what group `group` holds.
@@ -1242,12 +1261,4 @@ pub(crate) fn nil_main_of(tab: &SkillsTab) -> std::collections::HashMap<u64, Vec
             )
         })
         .collect()
-}
-
-fn first_free_set(t: &SkillsTab) -> f64 {
-    let mut id = 1.0;
-    while t.skill_sets.iter().any(|s| s.id == id) {
-        id += 1.0;
-    }
-    id
 }

@@ -42,7 +42,7 @@ fn cost_divisor(resource: &str) -> f64 {
         list.iter()
             .find(|(r, _)| r == resource)
             .map(|(_, d)| *d)
-            .unwrap_or_else(|| panic!("{LUA}:1721: attempt to index field '?' (data.costs[\"{resource}\"] is nil)"))
+            .unwrap_or_else(|| panic!("{LUA}:1725: attempt to index field '?' (data.costs[\"{resource}\"] is nil)"))
     })
 }
 
@@ -67,13 +67,13 @@ pub(super) fn skill_type_stats(off: &mut Off<'_>) {
         if limit.truthy() {
             let name = limit
                 .as_str()
-                .unwrap_or_else(|| panic!("{LUA}:1059: minionData.limit is not a string ({limit:?})"))
+                .unwrap_or_else(|| panic!("{LUA}:1063: minionData.limit is not a string ({limit:?})"))
                 .to_owned();
             let ov = ok(off.env_db.borrow().override_(None, &[&name]));
             let v = match ov {
                 Some(v) if v.truthy() => v
                     .as_num()
-                    .unwrap_or_else(|| panic!("{LUA}:1059: bad argument #1 to 'floor' (number expected, got {})", v.type_name())),
+                    .unwrap_or_else(|| panic!("{LUA}:1063: bad argument #1 to 'floor' (number expected, got {})", v.type_name())),
                 _ => q.calc_val(&name, c) * q.more(c, &["ActiveMinionLimit"]),
             };
             off.out().set_num("ActiveMinionLimit", v.floor());
@@ -147,7 +147,7 @@ pub(super) fn skill_type_stats(off: &mut Off<'_>) {
         } else {
             let proj_min = q.base(c, &["ProjectileCountMinimum"]);
             let proj_max = q
-                .override_num(c, &["ProjectileCountMaximum"], "Modules/CalcOffence.lua:1096")
+                .override_num(c, &["ProjectileCountMaximum"], "Modules/CalcOffence.lua:1100")
                 .unwrap_or(f64::INFINITY);
             let proj = (q.base(c, &["ProjectileCount"]) * q.more(c, &["ProjectileCount"])).floor();
             off.out().set_num("ProjectileCount", max2(min2(proj, proj_max), proj_min));
@@ -242,7 +242,7 @@ pub(super) fn skill_type_stats(off: &mut Off<'_>) {
                 let r = if range.truthy() {
                     let r = range
                         .as_num()
-                        .unwrap_or_else(|| panic!("{LUA}:1159: attempt to perform arithmetic on field 'range'"));
+                        .unwrap_or_else(|| panic!("{LUA}:1163: attempt to perform arithmetic on field 'range'"));
                     r + q.base(wcfg.as_ref(), &["MeleeWeaponRange"]) + 10.0 * q.base(wcfg.as_ref(), &["MeleeWeaponRangeMetre"])
                 } else {
                     6.0 + q.base(c, &["UnarmedRange"]) + 10.0 * q.base(c, &["UnarmedRangeMetre"])
@@ -258,7 +258,7 @@ pub(super) fn skill_type_stats(off: &mut Off<'_>) {
             let mut range: f64 = 100.0;
             for n in [1u8, 2] {
                 if off.flag(if n == 1 { "weapon1Attack" } else { "weapon2Attack" }) {
-                    range = min2(range, weapon_range(off, n, 1167));
+                    range = min2(range, weapon_range(off, n, 1171));
                 }
             }
             let o = off.out();
@@ -307,12 +307,13 @@ pub(super) fn skill_type_stats(off: &mut Off<'_>) {
                 let names = [pr.as_str(), "Reserved", "SupportManaMultiplier"];
                 let inc = dsum(&q.list, ModType::Inc, c, &names);
                 let more = dmore(&q.list, c, &names);
-                if inc != 0.0 && more != 1.0 {
+                // :1209 (5606cc64f: `or`, was `and`)
+                if inc != 0.0 || more != 1.0 {
                     let t = BTable::lines([
                         sf!("%.2f ^8(increased/reduced)", 1.0 + inc / 100.0),
                         sf!("x %.2f ^8(more/less)", more),
                         sf!("/ %.2f ^8(reservation efficiency)", q.calc_mod(c, &[&pe, "ReservationEfficiency"])),
-                        sf!("= %.2f", off.out_num(&key, 1207)),
+                        sf!("= %.2f", off.out_num(&key, 1211)),
                     ]);
                     off.bd_put(&key, t);
                 }
@@ -333,12 +334,12 @@ pub(super) fn skill_type_stats(off: &mut Off<'_>) {
             let sd = &off.sk().skill_data;
             calc_skill_duration(&q.list, &q.malformed, &cfg, sd, off.env.mode_effective, &off.enemy_db)
         };
-        let actual_cooldown = match q.override_num(c, &["CooldownRecovery"], "Modules/CalcOffence.lua:1222") {
+        let actual_cooldown = match q.override_num(c, &["CooldownRecovery"], "Modules/CalcOffence.lua:1226") {
             Some(v) => v,
             None => {
                 let cd = off
-                    .sd_num("cooldown", 1222)
-                    .unwrap_or_else(|| panic!("{LUA}:1222: attempt to perform arithmetic on field 'cooldown' (a nil value)"));
+                    .sd_num("cooldown", 1226)
+                    .unwrap_or_else(|| panic!("{LUA}:1226: attempt to perform arithmetic on field 'cooldown' (a nil value)"));
                 (cd + q.base(c, &["CooldownRecovery"])) / q.calc_mod(c, &["CooldownRecovery"])
             }
         };
@@ -392,8 +393,8 @@ pub(super) fn skill_type_stats(off: &mut Off<'_>) {
         // :1322-1331
         if off.breakdown {
             // `skillData.cooldown or 0 + addedCooldown` (precedence: `cooldown or (0 + addedCooldown)`)
-            let base = off.sd_num("cooldown", 1324).unwrap_or_else(|| {
-                0.0 + added.unwrap_or_else(|| panic!("{LUA}:1324: attempt to perform arithmetic on local 'addedCooldown' (a nil value)"))
+            let base = off.sd_num("cooldown", 1328).unwrap_or_else(|| {
+                0.0 + added.unwrap_or_else(|| panic!("{LUA}:1328: attempt to perform arithmetic on local 'addedCooldown' (a nil value)"))
             });
             let mut t = BTable::lines([
                 sf!("%.2fs ^8(base)", base),
@@ -410,7 +411,7 @@ pub(super) fn skill_type_stats(off: &mut Off<'_>) {
         }
     }
     // :1333-1344
-    if let Some(base_uses) = off.sd_num("storedUses", 1334) {
+    if let Some(base_uses) = off.sd_num("storedUses", 1338) {
         let additional = q.base(c, &["AdditionalCooldownUses", "AdditionalUses"]);
         let v = base_uses + additional;
         off.out().set_num("StoredUses", v);
@@ -436,11 +437,11 @@ pub(super) fn skill_type_stats(off: &mut Off<'_>) {
             } else {
                 q.base(c, &["TotemPlacementTime"])
             };
-        let action = off.out_num("ActionSpeedMod", 1420);
+        let action = off.out_num("ActionSpeedMod", 1424);
         let speed = base_speed * q.calc_mod(c, &["TotemPlacementSpeed"]) * action;
         // :1436 `env.modDB:Override(nil, "TotemsSummoned") or output.ActiveTotemLimit` (set at :1184-1186)
-        let limit = off.out_num("ActiveTotemLimit", 1436);
-        let summoned = or_override(&off.env_db, "TotemsSummoned", limit, 1436);
+        let limit = off.out_num("ActiveTotemLimit", 1440);
+        let summoned = or_override(&off.env_db, "TotemsSummoned", limit, 1440);
         let o = off.out();
         o.set_num("TotemPlacementSpeed", speed);
         o.set_num("TotemPlacementTime", 1.0 / speed);
@@ -540,7 +541,7 @@ pub(super) fn skill_type_stats(off: &mut Off<'_>) {
         let level = q.base(c, &["CorpseLevel"]);
         let consts = constants();
         let life = monster_table_at(&consts.monster_life_table, level)
-            .unwrap_or_else(|| panic!("{LUA}:1474: attempt to perform arithmetic on a nil value (field '?')"));
+            .unwrap_or_else(|| panic!("{LUA}:1478: attempt to perform arithmetic on a nil value (field '?')"));
         let variety = off.sd("corpseMonsterVariety");
         let variety_mult = variety
             .as_str()
@@ -565,7 +566,7 @@ pub(super) fn skill_type_stats(off: &mut Off<'_>) {
             let variety_s = match &variety {
                 Value::Str(s) => s.to_string(),
                 Value::Nil => "nil".to_owned(),
-                v => panic!("{LUA}:1480: corpseMonsterVariety is a {}", v.type_name()),
+                v => panic!("{LUA}:1484: corpseMonsterVariety is a {}", v.type_name()),
             };
             off.bd_put(
                 "CorpseLife",
@@ -593,7 +594,7 @@ pub(super) fn skill_type_stats(off: &mut Off<'_>) {
     // :1897-1898 Eldritch Battery
     let unreserved = off.st.player.output.opt_num("ManaUnreserved").unwrap_or(0.0);
     let es = if ok(off.mod_db.borrow().flag(None, &["EnergyShieldProtectsMana"])) == Some(true) {
-        off.out_num("EnergyShield", 1898)
+        off.out_num("EnergyShield", 1902)
     } else {
         0.0
     };
@@ -602,7 +603,7 @@ pub(super) fn skill_type_stats(off: &mut Off<'_>) {
     if q.flag(None, &["Condition:SacrificialZeal"])
         && matches!(off.st.player.output.get("ManaHasCost"), Some(crate::output::OutValue::Bool(true)))
     {
-        let v = (off.out_num("ManaCost", 1904) * 0.25).floor();
+        let v = (off.out_num("ManaCost", 1908) * 0.25).floor();
         let spell = crate::setup::mod_flag("Spell");
         q.nm("PhysicalMin", ModType::Base, v, "Sacrificial Zeal", spell, 0, vec![]);
         q.nm("PhysicalMax", ModType::Base, v, "Sacrificial Zeal", spell, 0, vec![]);
@@ -610,14 +611,14 @@ pub(super) fn skill_type_stats(off: &mut Off<'_>) {
     // :1914-1924 Sacrifice Support (3dbca4463 #10363: the totem's life for totems; was a PercentStat mod in the skill data)
     if off.sd_truthy("sacrificeLifePercent") {
         let life = if off.flag("totem") {
-            off.out_num("TotemLife", 1921)
+            off.out_num("TotemLife", 1925)
         } else {
-            off.out_num("LifeUnreserved", 1921)
+            off.out_num("LifeUnreserved", 1925)
         };
-        let pct = off.sd_num("sacrificeLifePercent", 1921).expect("truthy");
+        let pct = off.sd_num("sacrificeLifePercent", 1925).expect("truthy");
         let as_chaos = off
-            .sd_num("sacrificeLifeAsChaos", 1921)
-            .unwrap_or_else(|| panic!("{LUA}:1921: attempt to perform arithmetic on field 'sacrificeLifeAsChaos' (a nil value)"));
+            .sd_num("sacrificeLifeAsChaos", 1925)
+            .unwrap_or_else(|| panic!("{LUA}:1925: attempt to perform arithmetic on field 'sacrificeLifeAsChaos' (a nil value)"));
         let add = (life * pct / 100.0 * (as_chaos / 100.0)).floor();
         q.nm("ChaosMin", ModType::Base, add, "Sacrifice Support", 0, 0, vec![]);
         q.nm("ChaosMax", ModType::Base, add, "Sacrifice Support", 0, 0, vec![]);
@@ -629,7 +630,7 @@ pub(super) fn skill_type_stats(off: &mut Off<'_>) {
     // :1928-1931 `activeSkill.infoMessage` (display only); the `%d` of a nil count is the Lua error
     if off.has_type("Brand") {
         let Some(n) = off.st.player.output.opt_num("AttachedBrandCount") else {
-            panic!("{LUA}:1930: bad argument #2 to 'format' (number expected, got nil)");
+            panic!("{LUA}:1934: bad argument #2 to 'format' (number expected, got nil)");
         };
         let label = if off.sd_truthy("countsAttachedBrandsInDamage") {
             "Average Damage"
@@ -641,7 +642,7 @@ pub(super) fn skill_type_stats(off: &mut Off<'_>) {
     }
 
     // :1916-1929 corpse and enemy explosions
-    let monster_life = match off.sd_num("corpseLife", 1916) {
+    let monster_life = match off.sd_num("corpseLife", 1920) {
         Some(v) => v,
         None => monster_table_at(&constants().monster_life_table, off.env.enemy_level).unwrap_or(100.0),
     };
@@ -650,18 +651,18 @@ pub(super) fn skill_type_stats(off: &mut Off<'_>) {
         let dt = match off.sd("corpseExplosionDamageType") {
             Value::Str(s) => s.to_string(),
             Value::Nil | Value::Bool(false) => "Fire".to_owned(),
-            o => panic!("{LUA}:1919: attempt to concatenate a {} value", o.type_name()),
+            o => panic!("{LUA}:1923: attempt to concatenate a {} value", o.type_name()),
         };
         let mult = off
-            .sd_num("corpseExplosionLifeMultiplier", 1919)
-            .or_else(|| off.sd_num("selfFireExplosionLifeMultiplier", 1919))
-            .unwrap_or_else(|| panic!("{LUA}:1919: attempt to perform arithmetic on a nil value"));
+            .sd_num("corpseExplosionLifeMultiplier", 1923)
+            .or_else(|| off.sd_num("selfFireExplosionLifeMultiplier", 1923))
+            .unwrap_or_else(|| panic!("{LUA}:1923: attempt to perform arithmetic on a nil value"));
         off.set_sd(&format!("{dt}BonusMin"), Value::Num(monster_life * mult));
         off.set_sd(&format!("{dt}BonusMax"), Value::Num(monster_life * mult));
     }
     if off.flag("monsterExplode") {
         for dt in DMG_TYPE_LIST {
-            let pct = off.sd_num(&format!("{dt}EffectiveExplodePercentage"), 1925).unwrap_or(0.0);
+            let pct = off.sd_num(&format!("{dt}EffectiveExplodePercentage"), 1929).unwrap_or(0.0);
             let base = pct * monster_life / 100.0;
             off.set_sd(&format!("{dt}Min"), Value::Num(base));
             off.set_sd(&format!("{dt}Max"), Value::Num(base));
@@ -914,14 +915,14 @@ fn trap(off: &mut Off<'_>, q: &Q, cfg: &ModCfg) {
     if time_mod > 0.0 {
         base_speed *= 1.0 / time_mod;
     }
-    let action = off.out_num("ActionSpeedMod", 1263);
+    let action = off.out_num("ActionSpeedMod", 1267);
     let mut speed = base_speed * q.calc_mod(c, &["TrapThrowingSpeed"]) * action;
     let mut count = q.calc_val("TrapThrowCount", c);
-    let base_cooldown = off.sd_num("trapCooldown", 1293).or_else(|| off.sd_num("cooldown", 1293));
+    let base_cooldown = off.sd_num("trapCooldown", 1297).or_else(|| off.sd_num("cooldown", 1297));
     if base_cooldown.is_some() {
         count = 1.0;
     }
-    let count = or_override(&off.env_db, "TrapThrowCount", count, 1268);
+    let count = or_override(&off.env_db, "TrapThrowCount", count, 1272);
     speed = min2(speed, tick());
     let time = 1.0 / speed;
     let o = off.out();
@@ -969,7 +970,7 @@ fn trap(off: &mut Off<'_>, q: &Q, cfg: &ModCfg) {
         let cd = match base_cooldown {
             // :1299 `skillModList:Override(skillCfg, "CooldownRecovery") or baseCooldown / calcLib.mod(...)` (3dbca4463 #10335)
             Some(b) => to_tick(
-                q.override_num(c, &["CooldownRecovery"], "Modules/CalcOffence.lua:1300")
+                q.override_num(c, &["CooldownRecovery"], "Modules/CalcOffence.lua:1304")
                     .unwrap_or_else(|| b / q.calc_mod(c, &["CooldownRecovery"])),
             ),
             None => calc_skill_cooldown(q, cfg, &off.sk().skill_data).0,
@@ -1010,13 +1011,13 @@ fn mine(off: &mut Off<'_>, q: &Q, cfg: &ModCfg) {
     if time_mod > 0.0 {
         base_speed *= 1.0 / time_mod;
     }
-    let action = off.out_num("ActionSpeedMod", 1351);
+    let action = off.out_num("ActionSpeedMod", 1355);
     let mut speed = base_speed * q.calc_mod(c, &["MineLayingSpeed"]) * action;
     let mut count = q.calc_val("MineThrowCount", c);
     if off.sd_truthy("trapCooldown") || off.sd_truthy("cooldown") {
         count = 1.0;
     }
-    let count = or_override(&off.env_db, "MineThrowCount", count, 1357);
+    let count = or_override(&off.env_db, "MineThrowCount", count, 1361);
     if count >= 1.0 {
         speed /= 1.0 + (count - 1.0) * 0.1;
     }
@@ -1027,7 +1028,7 @@ fn mine(off: &mut Off<'_>, q: &Q, cfg: &ModCfg) {
     o.set_num("MineLayingSpeed", speed);
     o.set_num("MineLayingTime", time);
     let t = if off.flag("trap") {
-        time / count / off.out_num("TrapThrowCount", 1368)
+        time / count / off.out_num("TrapThrowCount", 1372)
     } else {
         time / count
     };
@@ -1081,7 +1082,7 @@ fn mine(off: &mut Off<'_>, q: &Q, cfg: &ModCfg) {
         off.bd_put("MineDetonationRadius", crate::breakdown::area(base, area_mod, r, bps, None, None));
     }
     if off.has_type("Aura") {
-        let am = off.out_num("AreaOfEffectMod", 1404);
+        let am = off.out_num("AreaOfEffectMod", 1408);
         let r = calc_radius(misc("MineAuraRadiusBase"), am, None);
         off.out().set_num("MineAuraRadius", r);
         off.out().set_num("MineAuraRadiusMetre", r / 10.0);
@@ -1128,7 +1129,7 @@ fn durations(off: &mut Off<'_>, q: &Q, cfg: &ModCfg) {
         }
         off.bd_set("DurationMod", t.map(Into::into));
     }
-    let duration_base = off.sd_num("duration", 1504).unwrap_or(0.0) + q.base(c, &["Duration", "PrimaryDuration"]);
+    let duration_base = off.sd_num("duration", 1508).unwrap_or(0.0) + q.base(c, &["Duration", "PrimaryDuration"]);
     let permanent = match off.sk().minion.as_ref().map(|m| m.ty.clone()) {
         Some(t) => q.flag(c, &[&format!("{t}PermanentDuration")]),
         None => false,
@@ -1225,7 +1226,7 @@ fn durations(off: &mut Off<'_>, q: &Q, cfg: &ModCfg) {
         }
     }
     // :1609-1623
-    let base = off.sd_num("soulPreventionDuration", 1609).unwrap_or(0.0);
+    let base = off.sd_num("soulPreventionDuration", 1613).unwrap_or(0.0);
     if base > 0.0 {
         let mut names = vec!["SoulGainPreventionDuration"];
         if off.sd_truthy("skillEffectAppliesToSoulGainPrevention") {
@@ -1393,10 +1394,10 @@ fn costs(off: &mut Off<'_>, q: &Q, cfg: &ModCfg) {
         let ge = &st.skills.effects[e.granted_effect];
         let lk = e
             .granted_effect_level
-            .unwrap_or_else(|| panic!("{LUA}:1720: attempt to index field 'grantedEffectLevel' (a nil value)"));
+            .unwrap_or_else(|| panic!("{LUA}:1724: attempt to index field 'grantedEffectLevel' (a nil value)"));
         let lvl = ge
             .level(lk)
-            .unwrap_or_else(|| panic!("{LUA}:1720: attempt to index field 'grantedEffectLevel' (a nil value)"));
+            .unwrap_or_else(|| panic!("{LUA}:1724: attempt to index field 'grantedEffectLevel' (a nil value)"));
         let wiped = st.cost_wiped.iter().any(|(id, l)| *id == ge.id && *l == lk);
         let cost_tbl = if wiped {
             Some(IndexMap::new())
@@ -1410,7 +1411,7 @@ fn costs(off: &mut Off<'_>, q: &Q, cfg: &ModCfg) {
     for k in 0..costs.len() {
         let resource = costs[k].name;
         let skill_cost = q
-            .override_num(c, &[&format!("Base{resource}CostOverride")], "Modules/CalcOffence.lua:1720")
+            .override_num(c, &[&format!("Base{resource}CostOverride")], "Modules/CalcOffence.lua:1724")
             .or_else(|| level_cost.as_ref().and_then(|m| m.get(resource).copied()));
         let mut base_cost = round(skill_cost.map_or(0.0, |s| s / cost_divisor(resource)), Some(2.0));
         let base_cost_no_mult = q.base(c, &[&format!("{resource}CostNoMult")]);
@@ -1420,9 +1421,9 @@ fn costs(off: &mut Off<'_>, q: &Q, cfg: &ModCfg) {
             costs[k].total_cost = q.base(c, &[&format!("{resource}Cost"), "Cost"]);
             if resource == "Mana" && off.has_type("ReservationBecomesCost") && !costs[k].percent && not_es_instead && !life_instead {
                 let text = costs[k].text;
-                let reserved_flat = off.sd_num(&format!("{text}ReservationFlat"), 1728).or(level_flat).unwrap_or(0.0);
+                let reserved_flat = off.sd_num(&format!("{text}ReservationFlat"), 1732).or(level_flat).unwrap_or(0.0);
                 base_cost += reserved_flat;
-                let reserved_pct = off.sd_num(&format!("{text}ReservationPercent"), 1730).or(level_pct).unwrap_or(0.0);
+                let reserved_pct = off.sd_num(&format!("{text}ReservationPercent"), 1734).or(level_pct).unwrap_or(0.0);
                 let pool = off.st.player.output.opt_num(resource).unwrap_or(0.0);
                 base_cost += (pool * reserved_pct / 100.0).floor();
                 divine_correction = round(pool * reserved_pct / 100.0 * mult, None) - (pool * reserved_pct / 100.0 * mult).floor();

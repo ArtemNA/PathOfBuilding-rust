@@ -589,7 +589,7 @@ Implicits: 0
 			<ModRange id="2" range="0.5"/>
 			<ModRange id="3" range="0.5"/>
 		</Item>
-		<ItemSet id="1" useSecondWeaponSet="false">
+		<ItemSet id="1" title="Default" useSecondWeaponSet="false">
 			<Slot itemId="2" itemPbURL="" name="Amulet"/>
 			<Slot itemId="0" itemPbURL="" name="Arm"/>
 			<Slot itemId="4" itemPbURL="" name="Belt"/>

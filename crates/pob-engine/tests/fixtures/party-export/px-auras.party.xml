@@ -13,10 +13,10 @@ PartyMemberMaximumEnduranceChargesEqualToYours
 		<ExportedBuffs name="Aura">
 			Anger
 100
-109|Skill:Anger|FireMin|BASE|-|Spell|type=GlobalEffect/effectType=Aura
-155|Skill:Anger|FireMax|BASE|-|Spell|type=GlobalEffect/effectType=Aura
 109|Skill:Anger|FireMin|BASE|-|Attack|type=GlobalEffect/effectType=Aura
 155|Skill:Anger|FireMax|BASE|-|Attack|type=GlobalEffect/effectType=Aura
+109|Skill:Anger|FireMin|BASE|-|Spell|type=GlobalEffect/effectType=Aura
+155|Skill:Anger|FireMax|BASE|-|Spell|type=GlobalEffect/effectType=Aura
 ---
 Clarity
 100
@@ -30,8 +30,8 @@ Determination
 Haste
 100
 24|Skill:Haste|Speed|INC|Attack|-|type=GlobalEffect/effectType=Aura
-16|Skill:Haste|MovementSpeed|INC|-|-|type=GlobalEffect/effectType=Aura
 24|Skill:Haste|Speed|INC|Cast|-|type=GlobalEffect/effectType=Aura
+16|Skill:Haste|MovementSpeed|INC|-|-|type=GlobalEffect/effectType=Aura
 ---
 Hatred
 100
@@ -49,8 +49,8 @@ Pride
 Vaal Haste
 100
 31|Skill:VaalHaste|Speed|INC|Attack|-|type=GlobalEffect/effectType=Aura
-20|Skill:VaalHaste|MovementSpeed|INC|-|-|type=GlobalEffect/effectType=Aura
 31|Skill:VaalHaste|Speed|INC|Cast|-|type=GlobalEffect/effectType=Aura
+20|Skill:VaalHaste|MovementSpeed|INC|-|-|type=GlobalEffect/effectType=Aura
 ---
 extraAura
 true|Custom:Default|YourFortifyEqualToParent|FLAG|-|-|type=GlobalEffect/effectType=Global/unscalable=true
@@ -70,9 +70,9 @@ Sigil of Power|100|7|Skill:SigilOfPower|LightningMin|BASE|-|-|type=Multiplier/ac
 Enfeeble
 100
 false
+-19|Skill:Enfeeble|Accuracy|INC|-|-|type=GlobalEffect/effectType=Curse
 -29|Skill:Enfeeble|Damage|MORE|-|-|type=GlobalEffect/effectType=Curse,type=Condition/neg=true/var=RareOrUnique
 -18|Skill:Enfeeble|Damage|MORE|-|-|type=GlobalEffect/effectType=Curse,type=Condition/var=RareOrUnique
--19|Skill:Enfeeble|Accuracy|INC|-|-|type=GlobalEffect/effectType=Curse
 ---
 Flammability
 75
@@ -89,8 +89,8 @@ true
 Vulnerability
 144
 false
-15|Skill:Vulnerability|PhysicalDamageTaken|INC|-|-|type=GlobalEffect/effectType=Curse
 25|Skill:Vulnerability|SelfBleedChance|BASE|-|-|type=GlobalEffect/effectType=Curse
+15|Skill:Vulnerability|PhysicalDamageTaken|INC|-|-|type=GlobalEffect/effectType=Curse
 ---
 		</ExportedBuffs>
 		<ExportedBuffs name="EnemyConditions">

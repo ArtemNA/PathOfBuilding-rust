@@ -290,7 +290,8 @@ fn load_item_set(el: &XmlElement) -> ItemSetModel {
     }
     ItemSetModel {
         id: num(el, "id").unwrap_or(0.0),
-        title: attr(el, "title"),
+        // ItemsTab.lua:1368 (5606cc64f) `CreateItemSet(id, node.attrib.title or "Default")`
+        title: Some(attr(el, "title").unwrap_or_else(|| "Default".to_owned())),
         use_second_weapon_set: is_true(el, "useSecondWeaponSet"),
         slots,
         socket_id_urls,
@@ -323,9 +324,10 @@ fn load_items_into(el: &XmlElement, m: &mut BuildModel) {
         }
     }
     if m.item_sets.is_empty() {
+        // ItemsTab.lua:1403-1407 (5606cc64f) `CreateItemSet(1, "Default")`
         m.item_sets.push(ItemSetModel {
             id: 1.0,
-            title: None,
+            title: Some("Default".to_owned()),
             use_second_weapon_set: is_true(el, "useSecondWeaponSet"),
             slots: legacy_slots,
             socket_id_urls: NumMap::default(),
@@ -582,7 +584,7 @@ fn load_config(el: &XmlElement) -> Result<ConfigModel, BuildLoadError> {
             XmlNode::Element(n) if n.name == "ConfigSet" => {
                 let Some(id) = num(n, "id") else {
                     // :905 `NewConfigSet(nil, ...)` picks a free id, :906 stores nil, :907 `configSets[nil].customModsList`.
-                    return Err(BuildLoadError::runtime("Classes/ConfigTab.lua:907: attempt to index a nil value"));
+                    return Err(BuildLoadError::runtime("Classes/ConfigTab.lua:909: attempt to index a nil value"));
                 };
                 let i = new_config_set(&mut sets, id, Some(attr(n, "title").unwrap_or_else(|| "Default".into())));
                 match order.iter_mut().find(|(ix, _)| *ix == index) {
@@ -636,7 +638,7 @@ fn load_config(el: &XmlElement) -> Result<ConfigModel, BuildLoadError> {
         order.iter().find(|(x, _)| *x == 1.0).map_or(1.0, |&(_, id)| id)
     };
     if !sets.iter().any(|s| s.id == active_config_set) {
-        return Err(BuildLoadError::runtime("Classes/ConfigTab.lua:1352: attempt to index a nil value"));
+        return Err(BuildLoadError::runtime("Classes/ConfigTab.lua:1388: attempt to index a nil value"));
     }
     Ok(ConfigModel {
         sets,
@@ -709,7 +711,7 @@ fn parse_root(xml_text: &str) -> Result<XmlElement, BuildLoadError> {
     if top.is_empty() {
         // :2231 `dbXML[1].elem` with `dbXML[1] == nil` (empty or whitespace-only text). Message text not oracle-checked.
         return Err(BuildLoadError::runtime(
-            "Modules/Build.lua:2231: attempt to index field '?' (a nil value)",
+            "Modules/Build.lua:2703: attempt to index field '?' (a nil value)",
         ));
     }
     match top.swap_remove(0) {

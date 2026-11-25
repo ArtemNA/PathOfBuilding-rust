@@ -38,6 +38,8 @@ pub(crate) struct Config {
     /// `minimumCostPerUse = { stat, minimum }` (3dbca4463 #10386; Kitava's Thirst).
     pub minimum_cost_per_use: Option<(&'static str, f64)>,
     pub trigger_on_use: bool,
+    /// `ignoreRepeats` (5606cc64f #10498): repeats are part of the same use -- they pay no cost and are not a new attack.
+    pub ignore_repeats: bool,
     pub source_weapon: bool,
     pub ignore_source_rate: bool,
     pub trigger_chance: Option<f64>,
@@ -255,7 +257,7 @@ pub(crate) fn config_table(
             trigger_on_use: true,
             trigger_skill_cond: cond(|env, s| types_any(env, s, &["Damage", "Attack"]) && has_flags(env, s, mod_flag("Wand"))),
             triggered_skill_cond: cond(|env, s| {
-                sd_truthy(env, s, "triggeredByUnique") && same_slot_as_main(env, s, 1020) && has_type(env, s, "Spell")
+                sd_truthy(env, s, "triggeredByUnique") && same_slot_as_main(env, s, 1019) && has_type(env, s, "Spell")
             }),
             ..Config::default()
         },
@@ -265,16 +267,16 @@ pub(crate) fn config_table(
                 .skill_cfg
                 .as_ref()
                 .and_then(|c| c.slot_name.clone())
-                .unwrap_or_else(|| line_err(1024, "attempt to index field '?' (a nil value)"));
+                .unwrap_or_else(|| line_err(1023, "attempt to index field '?' (a nil value)"));
             let src = env
                 .player
                 .borrow()
                 .item_list
                 .get(&slot)
-                .unwrap_or_else(|| line_err(1024, "attempt to index field '?' (a nil value)"))
+                .unwrap_or_else(|| line_err(1023, "attempt to index field '?' (a nil value)"))
                 .mod_source
                 .clone()
-                .unwrap_or_else(|| line_err(1024, "attempt to index field 'modSource' (a nil value)"));
+                .unwrap_or_else(|| line_err(1023, "attempt to index field 'modSource' (a nil value)"));
             let name = pob_lua::find(src.as_bytes(), b".*:.*:(.*),.*", None, false)
                 .ok()
                 .flatten()
@@ -282,7 +284,7 @@ pub(crate) fn config_table(
                     caps.get(0)
                         .and_then(|c| c.bytes(src.as_bytes()).map(|b| String::from_utf8_lossy(b).into_owned()))
                 })
-                .unwrap_or_else(|| line_err(1025, "attempt to index local 'uniqueTriggerName' (a nil value)"));
+                .unwrap_or_else(|| line_err(1024, "attempt to index local 'uniqueTriggerName' (a nil value)"));
             let is_replica = matches!(pob_lua::find(name.as_bytes(), b"Replica.", None, false), Ok(Some(_)));
             Config {
                 trigger_on_use: true,
@@ -294,7 +296,7 @@ pub(crate) fn config_table(
                     attack || spell
                 }),
                 triggered_skill_cond: cond(|env, s| {
-                    sd_truthy(env, s, "triggeredByUnique") && same_slot_as_main(env, s, 1033) && has_type(env, s, "RangedAttack")
+                    sd_truthy(env, s, "triggeredByUnique") && same_slot_as_main(env, s, 1032) && has_type(env, s, "RangedAttack")
                 }),
                 ..Config::default()
             }
@@ -304,7 +306,7 @@ pub(crate) fn config_table(
             trigger_on_use: true,
             trigger_skill_cond: cond(|env, s| types_any(env, s, &["Damage", "Attack"]) && has_flags(env, s, mod_flag("Bow"))),
             triggered_skill_cond: cond(|env, s| {
-                sd_truthy(env, s, "triggeredByUnique") && same_slot_as_main(env, s, 1042) && has_type(env, s, "Spell")
+                sd_truthy(env, s, "triggeredByUnique") && same_slot_as_main(env, s, 1041) && has_type(env, s, "Spell")
             }),
             ..Config::default()
         },
@@ -320,7 +322,7 @@ pub(crate) fn config_table(
             Config {
                 trigger_name: Some(main_name.clone()),
                 trigger_skill_cond: cond(|env, s| name_of(env, s) == "Queen's Demand"),
-                triggered_skill_cond: cond(|env, s| sd_truthy(env, s, "triggeredByUnique") && same_slot_as_main(env, s, 1055)),
+                triggered_skill_cond: cond(|env, s| sd_truthy(env, s, "triggeredByUnique") && same_slot_as_main(env, s, 1054)),
                 ..Config::default()
             }
         }
@@ -337,7 +339,7 @@ pub(crate) fn config_table(
                     && !flag(env, s, "aura")
                     && s != m
                     && !sd_truthy(env, s, "triggeredByCraft")
-                    && !super::from_item(env, ge_of(env, s))
+                    && !super::from_item(ge_of(env, s))
                     && !is_triggered(env, s)
                 {
                     found = find_trigger_skill(env, s, &found, None, None)?;
@@ -349,12 +351,12 @@ pub(crate) fn config_table(
                         let level = sk.active_effect.borrow().level;
                         let lvl = level
                             .and_then(|l| ge.level(l))
-                            .unwrap_or_else(|| line_err(1072, "attempt to index field '?' (a nil value)"));
+                            .unwrap_or_else(|| line_err(1071, "attempt to index field '?' (a nil value)"));
                         found.rate = Some(1.0 / (ct + lvl.cooldown.unwrap_or(0.0)));
                         use_cast_rate = true;
                     }
                 }
-                if sd_truthy(env, s, "triggeredByCraft") && same_slot_as_main(env, s, 1080) {
+                if sd_truthy(env, s, "triggeredByCraft") && same_slot_as_main(env, s, 1079) {
                     triggered.push(package(env, s));
                 }
             }
@@ -379,6 +381,7 @@ pub(crate) fn config_table(
             Config {
                 trigger_chance: Some(chance),
                 trigger_name: Some(if foulborn { "Foulborn Kitava's Thirst" } else { "Kitava's Thirst" }.into()),
+                ignore_repeats: true,
                 minimum_cost_per_use: Some((stat, required)),
                 trigger_skill_cond: cond(|_, _| true),
                 ..Config::default()
@@ -405,7 +408,7 @@ pub(crate) fn config_table(
         // :1130-1135
         "cospri's malice" => Config {
             trigger_skill_cond: cond(|env, s| has_type(env, s, "Melee") && has_flags(env, s, mod_flag("Sword") | mod_flag("Weapon1H"))),
-            triggered_skill_cond: cond(|env, s| sd_truthy(env, s, "triggeredByCospris") && same_slot_as_main(env, s, 1134)),
+            triggered_skill_cond: cond(|env, s| sd_truthy(env, s, "triggeredByCospris") && same_slot_as_main(env, s, 1135)),
             ..Config::default()
         },
         // CalcTriggers.lua:1143-1147 (07fa089bf)
@@ -417,6 +420,7 @@ pub(crate) fn config_table(
         },
         // CalcTriggers.lua:1148-1151 (07fa089bf)
         "the covetous dark" => Config {
+            ignore_repeats: true,
             trigger_skill_cond: cond(|env, s| has_type(env, s, "Melee")),
             triggered_skill_cond: cond(|env, s| sd_truthy(env, s, "triggeredByCovetousDark")),
             ..Config::default()
@@ -480,7 +484,7 @@ pub(crate) fn config_table(
                 return Ok(None);
             };
             let uuid = cache_skill_uuid(env, mm);
-            let cd = sd_num(env, mm, "cooldown", 1185);
+            let cd = sd_num(env, mm, "cooldown", 1192);
             Config {
                 trigger_name: Some("Summon Holy Relic".into()),
                 actor: Some(Who::Minion),
@@ -495,7 +499,7 @@ pub(crate) fn config_table(
         }
         // :1180-1194
         "cast when damage taken" => {
-            let Some(base) = sd_num(env, m, "triggeredByDamageTaken", 1192) else {
+            let Some(base) = sd_num(env, m, "triggeredByDamageTaken", 1199) else {
                 return Ok(None);
             };
             let threshold_mod = q_of(env, m).calc_mod(None, &["CWDTThreshold"]);
@@ -524,7 +528,7 @@ pub(crate) fn config_table(
             };
             set_flag(env, m, "globalTrigger");
             Config {
-                trigger_chance: sd_num(env, m, k, 1206),
+                trigger_chance: sd_num(env, m, k, 1213),
                 source: Some(m),
                 ..Config::default()
             }
@@ -608,10 +612,10 @@ pub(crate) fn config_table(
         "shattershard" => {
             set_flag(env, m, "globalTrigger");
             let uuid = cache_skill_uuid(env, m);
-            ensure_cached(env, m, &uuid, std::slice::from_ref(&uuid), true, 1312)?;
-            let d = with_cached(env, Some(&uuid), 1314, |c| cached_out(c, "Duration"))?
-                .unwrap_or_else(|| line_err(1314, "attempt to index field '?' (a nil value)"))
-                .unwrap_or_else(|| line_err(1314, "attempt to perform arithmetic on field 'Duration' (a nil value)"));
+            ensure_cached(env, m, &uuid, std::slice::from_ref(&uuid), true, 1319)?;
+            let d = with_cached(env, Some(&uuid), 1321, |c| cached_out(c, "Duration"))?
+                .unwrap_or_else(|| line_err(1321, "attempt to index field '?' (a nil value)"))
+                .unwrap_or_else(|| line_err(1321, "attempt to perform arithmetic on field 'Duration' (a nil value)"));
             set_sd(env, m, "triggerRateCapOverride", Value::Num(1.0 / d));
             // :1306-1312
             if let Some(bd) = bd {
@@ -651,19 +655,19 @@ pub(crate) fn config_table(
             set_sd(env, m, "sourceRateIsFinal", Value::Bool(true));
             let brand = (0..skill_count(env)).find(|&s| name_of(env, s) == "Arcanist Brand");
             if skill(env, m).triggered_by.is_none() {
-                line_err(1339, "attempt to index field 'triggeredBy' (a nil value)");
+                line_err(1346, "attempt to index field 'triggeredBy' (a nil value)");
             }
-            let b = brand.unwrap_or_else(|| line_err(1344, "attempt to index field 'mainSkill' (a nil value)"));
+            let b = brand.unwrap_or_else(|| line_err(1351, "attempt to index field 'mainSkill' (a nil value)"));
             let bq = q_of(env, b);
             let bcfg = cfg_of(env, b);
             let inc = (100.0 + bq.inc(Some(&bcfg), &["Speed", "BrandActivationFrequency"])) / 100.0;
             let more = bq.more(Some(&bcfg), &["BrandActivationFrequency"]);
             let count = sd(env, b, "attachedBrandCount");
-            let repeat = sd_num(env, b, "repeatFrequency", 1350)
-                .unwrap_or_else(|| line_err(1350, "attempt to perform arithmetic on field 'repeatFrequency' (a nil value)"));
+            let repeat = sd_num(env, b, "repeatFrequency", 1357)
+                .unwrap_or_else(|| line_err(1357, "attempt to perform arithmetic on field 'repeatFrequency' (a nil value)"));
             let n = count
                 .as_num()
-                .unwrap_or_else(|| line_err(1350, "attempt to perform arithmetic on a nil value"));
+                .unwrap_or_else(|| line_err(1357, "attempt to perform arithmetic on a nil value"));
             Config {
                 trig_rate: Some(repeat * inc * more * n),
                 source: Some(b),
@@ -792,7 +796,7 @@ pub(crate) fn config_table(
             }
             let link = (0..skill_count(env)).find(|&s| name_of(env, s) == "Intuitive Link");
             if skill(env, m).triggered_by.is_none() {
-                line_err(1500, "attempt to index field 'triggeredBy' (a nil value)");
+                line_err(1507, "attempt to index field 'triggeredBy' (a nil value)");
             }
             let rate = player_db(env).base(None, &["IntuitiveLinkSourceRate"]);
             Config {
@@ -833,6 +837,7 @@ pub(crate) fn config_table(
         "ghostly artillery" => Config {
             source_weapon: true,
             trigger_on_use: true,
+            ignore_repeats: true,
             trigger_skill_cond: cond(|env, s| has_type(env, s, "Attack")),
             ..Config::default()
         },
@@ -844,8 +849,8 @@ pub(crate) fn config_table(
         // :1551-1555
         "BloodShrineUniqueTriggeredExplodingToad" => {
             let base = src_instance(env, m, |g| g.trigger_chance)
-                .unwrap_or_else(|| line_err(1561, "attempt to index field 'srcInstance' (a nil value)"))
-                .unwrap_or_else(|| line_err(1561, "attempt to perform arithmetic on field 'triggerChance' (a nil value)"));
+                .unwrap_or_else(|| line_err(1569, "attempt to index field 'srcInstance' (a nil value)"))
+                .unwrap_or_else(|| line_err(1569, "attempt to perform arithmetic on field 'triggerChance' (a nil value)"));
             let chance = base + player_db(env).base(None, &["BloodShrineExplodingToadTriggerChance"]);
             Config {
                 assuming_every_hit_kills: true,
@@ -858,7 +863,7 @@ pub(crate) fn config_table(
         "bursting toad" => {
             let mut interval = f64::INFINITY;
             for s in 0..skill_count(env) {
-                if let Some(v) = sd_num(env, s, "hextoadTriggerInterval", 1570) {
+                if let Some(v) = sd_num(env, s, "hextoadTriggerInterval", 1578) {
                     interval = min2(interval, v);
                 }
             }
@@ -912,10 +917,10 @@ fn snipe(env: &mut Env, out: &mut Output) -> Result<Option<Config>, String> {
     let hit_multi = mq.base(Some(&mcfg), &["snipeHitMulti"]);
     let ailment_multi = mq.base(Some(&mcfg), &["snipeAilmentMulti"]);
     // :1410-1414
-    let main_slot = || group_slot(env, m, 1420);
+    let main_slot = || group_slot(env, m, 1427);
     let mut triggered = Vec::new();
     for s in 0..skill_count(env) {
-        if sd_truthy(env, s, "triggeredBySnipe") && skill(env, s).socket_group.is_some() && group_slot(env, s, 1420) == main_slot() {
+        if sd_truthy(env, s, "triggeredBySnipe") && skill(env, s).socket_group.is_some() && group_slot(env, s, 1427) == main_slot() {
             triggered.push(s);
         }
     }
@@ -988,13 +993,13 @@ fn snipe(env: &mut Env, out: &mut Output) -> Result<Option<Config>, String> {
         let mut source = None;
         let mut rate: Option<f64> = None;
         for s in 0..skill_count(env) {
-            if name_of(env, s) == "Snipe" && skill(env, s).socket_group.is_some() && group_slot(env, s, 1464) == group_slot(env, m, 1464) {
+            if name_of(env, s) == "Snipe" && skill(env, s).socket_group.is_some() && group_slot(env, s, 1471) == group_slot(env, m, 1471) {
                 set_sd(env, s, "hitTimeMultiplier", Value::Num(stages - 0.5));
                 let uuid = cache_skill_uuid(env, s);
-                ensure_cached(env, s, &uuid, &[], true, 1468)?;
+                ensure_cached(env, s, &uuid, &[], true, 1475)?;
                 let (cached_speed, hit_time) =
-                    with_cached(env, Some(&uuid), 1470, |c| (cached_out(c, "HitSpeed"), cached_out(c, "HitTime")))?
-                        .unwrap_or_else(|| line_err(1470, "attempt to index field '?' (a nil value)"));
+                    with_cached(env, Some(&uuid), 1477, |c| (cached_out(c, "HitSpeed"), cached_out(c, "HitTime")))?
+                        .unwrap_or_else(|| line_err(1477, "attempt to index field '?' (a nil value)"));
                 let sk = skill(env, s);
                 let used_by_mirage = sk
                     .skill_cfg

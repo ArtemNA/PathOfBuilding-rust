@@ -243,7 +243,7 @@ fn minion_name(id: &str) -> Result<String, String> {
         j["minions"][id]["name"]
             .as_str()
             .map(str::to_owned)
-            .ok_or_else(|| format!("Modules/Build.lua:1693: attempt to index field '?' (data.minions['{id}'] is nil)"))
+            .ok_or_else(|| format!("Modules/Build.lua:2165: attempt to index field '?' (data.minions['{id}'] is nil)"))
     })
 }
 
@@ -332,12 +332,12 @@ impl Engine {
         // :1635 `self.skillsTab.socketGroupList[mainGroup]`
         let gi = (main_group.fract() == 0.0 && main_group >= 1.0 && main_group as usize <= list.len())
             .then(|| main_group as usize - 1)
-            .ok_or("Modules/Build.lua:1636: attempt to index local 'mainSocketGroup' (a nil value)")?;
+            .ok_or("Modules/Build.lua:2108: attempt to index local 'mainSocketGroup' (a nil value)")?;
         let group = &list[gi];
         let display = group
             .display_skill_list
             .as_ref()
-            .ok_or("Modules/Build.lua:1639: bad argument #1 to 'ipairs' (table expected, got nil)")?;
+            .ok_or("Modules/Build.lua:2111: bad argument #1 to 'ipairs' (table expected, got nil)")?;
         let main_active = if calcs {
             group.main_active_skill_calcs
         } else {
@@ -375,7 +375,7 @@ impl Engine {
             // :1655 `displaySkillList[mainActiveSkill]`
             let si = (main_active.fract() == 0.0 && main_active >= 1.0 && main_active as usize <= display.len())
                 .then(|| display[main_active as usize - 1])
-                .ok_or("Modules/Build.lua:1656: attempt to index local 'activeSkill' (a nil value)")?;
+                .ok_or("Modules/Build.lua:2128: attempt to index local 'activeSkill' (a nil value)")?;
             let active = st.skill(si);
             let ae = active.active_effect.borrow();
             let ge = &skills_data.effects[ae.granted_effect];
@@ -388,7 +388,7 @@ impl Engine {
                 let part_sel = if calcs { src.skill_part_calcs } else { src.skill_part }.unwrap_or(1.0);
                 let part = (part_sel.fract() == 0.0 && part_sel >= 1.0 && part_sel as usize <= parts.len())
                     .then(|| &parts[part_sel as usize - 1])
-                    .ok_or("Modules/Build.lua:1665: attempt to index field '?' (a nil value)")?;
+                    .ok_or("Modules/Build.lua:2137: attempt to index field '?' (a nil value)")?;
                 if part.stages == Some(true) {
                     // `stagesMin` is not a field of any part in the data
                     sel.stage_count = Some(tostring(
@@ -504,17 +504,17 @@ impl Engine {
             let mg = self.main_socket_group();
             let group = list
                 .get((mg as usize).wrapping_sub(1))
-                .ok_or("Modules/Build.lua:501: attempt to index local 'mainSocketGroup' (a nil value)")?;
+                .ok_or("Modules/Build.lua:414: attempt to index local 'mainSocketGroup' (a nil value)")?;
             let display = group.display_skill_list.as_ref().ok_or("displaySkillList is nil")?;
             let mas = group.main_active_skill.unwrap_or(1.0);
             let si = *display
                 .get((mas as usize).wrapping_sub(1))
-                .ok_or("Modules/Build.lua:501: attempt to index field '?' (a nil value)")?;
+                .ok_or("Modules/Build.lua:414: attempt to index field '?' (a nil value)")?;
             st.skill(si)
                 .active_effect
                 .borrow()
                 .src_instance
-                .ok_or("Modules/Build.lua:501: attempt to index field 'srcInstance' (a nil value)")?
+                .ok_or("Modules/Build.lua:414: attempt to index field 'srcInstance' (a nil value)")?
         };
         if self.model_has_runtime_groups() {
             self.materialize()?;
@@ -541,7 +541,7 @@ impl Engine {
         let grp = set
             .groups
             .get_mut(g.wrapping_sub(1))
-            .ok_or("Modules/Build.lua:495: attempt to index local 'mainSocketGroup' (a nil value)")?;
+            .ok_or("Modules/Build.lua:408: attempt to index local 'mainSocketGroup' (a nil value)")?;
         grp.main_active_skill = index;
         Ok(())
     }

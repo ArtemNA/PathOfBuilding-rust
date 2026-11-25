@@ -232,7 +232,7 @@ fn build_ordered_slots(spec: &PassiveSpec, set: &pob_build::ItemSetModel) -> Vec
 /// set's `selItemId` of another slot (`itemSet["Weapon 1"].selItemId`). A `nil` result is `false`.
 pub fn is_item_valid_for_slot(item: &Item, slot_name: &str, spec: &PassiveSpec, items: &ParsedItems, sel: impl Fn(&str) -> f64) -> bool {
     let item_ty = item.ty.as_deref();
-    let base = item.base.expect("itemsTab.items hold resolved bases (ItemsTab.lua:1278)");
+    let base = item.base.expect("itemsTab.items hold resolved bases (ItemsTab.lua:1299)");
     // :2562 `slotName:match("^([%a ]+) (%d+)$")`
     let (slot_type, slot_id) = match slot_name.rsplit_once(' ') {
         Some((head, digits))
@@ -277,7 +277,7 @@ pub fn is_item_valid_for_slot(item: &Item, slot_name: &str, spec: &PassiveSpec, 
             Some(cj) => {
                 let size = exp
                     .size
-                    .unwrap_or_else(|| panic!("Classes/ItemsTab.lua:2603: attempt to compare number with nil (expansionJewel.size)"));
+                    .unwrap_or_else(|| panic!("Classes/ItemsTab.lua:2669: attempt to compare number with nil (expansionJewel.size)"));
                 cj.size_index <= size
             }
         };
@@ -316,7 +316,7 @@ pub fn is_item_valid_for_slot(item: &Item, slot_name: &str, spec: &PassiveSpec, 
             } else if wti
                 .get(weapon1_type)
                 .unwrap_or_else(|| {
-                    panic!("Classes/ItemsTab.lua:2615: attempt to index a nil value (data.weaponTypeInfo[{weapon1_type:?}])")
+                    panic!("Classes/ItemsTab.lua:2681: attempt to index a nil value (data.weaponTypeInfo[{weapon1_type:?}])")
                 })
                 .one_hand
                 == Some(true)
@@ -363,7 +363,7 @@ fn populate_slots(slots: &mut [Slot], spec: &PassiveSpec, items: &ParsedItems) -
                 // `populate_socket_slots` emptied every slot of the latest tree on the load: left is a spec handed in by the caller
                 // (not loaded here), or a socket of `spec.tree` the latest tree does not have (no slot upstream, D19.4).
                 unimplemented.push(format!(
-                    "ItemSlotControl.lua:105-106 + :72-79 unequipping the invalid jewel {sel_id} from {} (spec.jewels, BuildClusterJewelGraphs)",
+                    "ItemSlotControl.lua:106-107 + :72-79 unequipping the invalid jewel {sel_id} from {} (spec.jewels, BuildClusterJewelGraphs)",
                     slots[i].slot_name
                 ));
             }
@@ -1124,6 +1124,7 @@ fn init_env_core(
         items: IndexMap::new(),
         skills: None,
         skill_mod_lists: Vec::new(),
+        guardian: None,
         unimplemented: Vec::new(),
         limited_skills: None,
         session: std::rc::Weak::new(),
@@ -1530,7 +1531,6 @@ fn init_env_core(
             crate::skills_tab::apply_gem_override(&mut st.tab, edit).map_err(InitEnvError)?;
         }
         if let Some(c) = carry {
-            st.from_item_marks.clone_from(&c.from_item_marks);
             st.cost_wiped.clone_from(&c.cost_wiped);
         }
         env.skills = Some(st);
@@ -1564,8 +1564,8 @@ fn init_env_core(
         if (slot_name == "Graft 1" || slot_name == "Graft 2") && !env.spec.tree_version.contains("3_27") {
             continue;
         }
-        // CalcSetup.lua:821-822 (07fa089bf), verbatim: no slot is named "Wickerman ..." (ItemsTab.lua:210 uses Head/Body/Arm/Leg)
-        if slot_name.starts_with("Wickerman ") && !env.spec.tree_version.contains("3_30") {
+        // CalcSetup.lua:821-822 (5606cc64f) the Wickerman slots (ItemsTab.lua: Head/Body/Arm/Leg) only on 3_30 trees
+        if matches!(slot_name.as_str(), "Head" | "Body" | "Arm" | "Leg") && !env.spec.tree_version.contains("3_30") {
             continue;
         }
         // :811 -- Ring 3 only exists with The Unseen Hand allocated.
@@ -1796,9 +1796,8 @@ fn init_env_core(
     env.unimplemented
         .push("CalcSetup.lua:1013 getMissingAnointCount / missingAnointWarning (UI only)".into());
 
-    // CalcSetup.lua:1036-1049 (07fa089bf) `equipmentBonusModDB`: the glove/boot bonus scaling reads the tree (as parent), the
-    // Custom Modifiers and the Wickerman items' bonus mods. `item.type:match("^Wickerman ")` never matches (Wickerman bases are
-    // `type = "Viscera"`, Data/Bases/wickerman.lua) -- ported verbatim.
+    // CalcSetup.lua:1038-1049 (5606cc64f) `equipmentBonusModDB`: the glove/boot bonus scaling reads the tree (as parent), the
+    // Custom Modifiers and the Viscera items' bonus mods (`item.type == "Viscera"`; until 5606cc64f a `^Wickerman ` match that never hit).
     let equipment_bonus_db = ModStore::new_db(Some(initial.clone()));
     equipment_bonus_db.borrow_mut().add_list(&config_lists.mod_list.mods);
     for item in items.values() {
@@ -1806,7 +1805,7 @@ fn init_env_core(
             .ty
             .as_deref()
             .unwrap_or_else(|| panic!("Modules/CalcSetup.lua:1042: attempt to index field 'type' (a nil value)"));
-        if ty.starts_with("Wickerman ") {
+        if ty == "Viscera" {
             for m in item.mod_list.iter().flatten() {
                 if &*m.m.name == "EffectOfBonusesFromGloves" || &*m.m.name == "EffectOfBonusesFromBoots" {
                     equipment_bonus_db.borrow_mut().add_mod(Rc::new(m.m.clone()));
@@ -1910,6 +1909,7 @@ fn init_env_core(
             str_: item.requirements.str_mod,
             dex: item.requirements.dex_mod,
             int: item.requirements.int_mod,
+            source_skill: None,
         });
 
         // :1081-1099 abyss jewel conditions / multipliers (a tree socket or an abyssal socket)
@@ -2364,7 +2364,7 @@ fn init_env_core(
         .map_err(InitEnvError)?;
     } else {
         env.unimplemented
-            .push("CalcSetup.lua:1478-1994 skills: socket groups, supports, createActiveSkill, buildActiveSkillModList (P5)".into());
+            .push("CalcSetup.lua:1478-2011 skills: socket groups, supports, createActiveSkill, buildActiveSkillModList (P5)".into());
     }
 
     prof.mark("(18-) granted-skill merge");
@@ -2587,7 +2587,7 @@ fn init_env_core(
         .collect();
     if env.skills.is_none() {
         env.unimplemented
-            .push("CalcSetup.lua:2020 requirementsTableGems (gem requirements need data.gems, P5)".into());
+            .push("CalcSetup.lua:2037 requirementsTableGems (gem requirements need data.gems, P5)".into());
     }
     prof.mark("(18d)-(19) rest");
 
@@ -2878,7 +2878,7 @@ fn rebuild_skill_data(env: &mut Env) {
         let cfg = sk.skill_cfg.as_ref().map(|c| c.mod_cfg(&skills, &sk.skill_types, None));
         let list = lists.get(i).unwrap_or_else(|| {
             panic!(
-                "Modules/CalcSetup.lua:2002: activeSkill.skillModList of skill {} is not perform's list",
+                "Modules/CalcSetup.lua:2019: activeSkill.skillModList of skill {} is not perform's list",
                 i + 1
             )
         });
@@ -2887,7 +2887,7 @@ fn rebuild_skill_data(env: &mut Env) {
             let key = v.get("key");
             let key = key
                 .as_str()
-                .unwrap_or_else(|| unimplemented!("CalcSetup.lua:2000 SkillData with a non-string key"))
+                .unwrap_or_else(|| unimplemented!("CalcSetup.lua:2017 SkillData with a non-string key"))
                 .to_owned();
             match v.get("value") {
                 Value::Nil => data.shift_remove(&key),

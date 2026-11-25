@@ -35,8 +35,8 @@ fn calc_file_json_has_meta_and_allowlisted_stats() {
     let parsed = CandidateOutput::from_json(std::str::from_utf8(&out.stdout).unwrap()).unwrap();
     assert_eq!(
         parsed.stats.len(),
-        634,
-        "Dual Savior: every ALLOWLIST key it emits (= oracle ok count; 2.68.0 +2: MaximumLifeManaDifference, MissingUnreservedLifePercent)"
+        636,
+        "Dual Savior: every ALLOWLIST key it emits (= oracle ok count; 2.68.0 +2: MaximumLifeManaDifference, MissingUnreservedLifePercent; 2.69.0 +2: LifeReservationEfficiency, ManaReservationEfficiency)"
     );
     assert!(
         parsed.stats.keys().all(|k| pob_calc::is_allowed(k)),
@@ -122,12 +122,12 @@ fn experimental_env_disables_the_filter() {
 #[test]
 fn cli_stats_against_goldens() {
     let pinned: [(&str, usize, usize); 6] = [
-        ("Dual Savior", 634, 634),
-        ("Dual Wield Cospris CoC", 751, 751),
-        ("Dual Wield Cospris CoC - Lethal Pride", 751, 751),
-        ("Generals Perforate Zerker", 651, 651),
-        ("Mirage Archer Toxic Rain", 660, 660),
-        ("OccVortex", 775, 775),
+        ("Dual Savior", 636, 636),
+        ("Dual Wield Cospris CoC", 753, 753),
+        ("Dual Wield Cospris CoC - Lethal Pride", 753, 753),
+        ("Generals Perforate Zerker", 653, 653),
+        ("Mirage Archer Toxic Rain", 662, 662),
+        ("OccVortex", 777, 777),
     ];
     let mut got = Vec::new();
     for (g, (name, _, _)) in GOLDEN_BUILDS.iter().zip(pinned) {

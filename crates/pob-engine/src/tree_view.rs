@@ -98,7 +98,7 @@ impl Engine {
             let good = (sd.lower_is_better && diff < 0.0) || (!sd.lower_is_better && diff > 0.0);
             let col = if good { color::POSITIVE } else { color::NEGATIVE };
             let scale = if sd.pc || sd.mod_ { 100.0 } else { 1.0 };
-            let fmt = sd.fmt.ok_or("Build.lua:2137: attempt to concatenate field 'fmt' (a nil value)")?;
+            let fmt = sd.fmt.ok_or("Build.lua:2609: attempt to concatenate field 'fmt' (a nil value)")?;
             let mut val_str = signed(fmt, diff * scale)?;
             // :2138-2141 `valStr:match("^([%+%-]?%d+%.%d+)(%D*)$")`: trailing zeros of the number
             if let Some(cap) = pob_lua::match_(val_str.as_bytes(), b"^([%+%-]?%d+%.%d+)(%D*)$", None).map_err(|e| e.0)? {

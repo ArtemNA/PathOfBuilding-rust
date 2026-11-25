@@ -57,6 +57,7 @@ const CONVERTERS: &[(&str, Converter)] = &[
     ("foulborn-map", actors::foulborn_map),
     ("abyss-notable-names", actors::abyss_notable_names),
     ("node-id-list", actors::node_id_list),
+    ("world-areas", actors::world_areas),
     ("item-mods/Explicit", item_mods::explicit),
     ("item-mods/ItemExclusive", item_mods::item_exclusive),
     ("item-mods/Corrupted", item_mods::corrupted),

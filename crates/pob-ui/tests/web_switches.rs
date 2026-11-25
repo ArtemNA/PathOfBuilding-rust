@@ -83,7 +83,10 @@ fn open_a_build_one_way() {
     let path = format!("{}{BUILD}.xml", main().build_path.borrow());
     main().set_mode("BUILD", vec![ModeArg::Str(path), ModeArg::Str(BUILD.to_string())]);
     // the most a frame of the opening drew: with the tree's images asynchronous it is less, the rest comes later
-    let opened = (0..3).map(|_| frame(&mut gfx, &l).commands.len()).max().unwrap_or(0);
+    // the opening frame (it takes the load, ~300 ms) and the most of the three: a pool of 8 decodes the asynchronous images during that first
+    // frame, so they are missing from the first frame only
+    let counts: Vec<usize> = (0..3).map(|_| frame(&mut gfx, &l).commands.len()).collect();
+    let (first, opened) = (counts[0], counts.iter().copied().max().unwrap_or(0));
     main().build_mode.wait_tree_assets();
     // the frames until three in a row are the same: every image that comes later is in
     let mut last = seen(&frame(&mut gfx, &l));
@@ -103,7 +106,7 @@ fn open_a_build_one_way() {
         eng.as_ref().expect("engine").output_json().to_string()
     };
     let parallel = pob_gfx::image::PARALLEL_DRAWS.load(std::sync::atomic::Ordering::Relaxed);
-    std::fs::write(out, format!("{parallel} {opened}\n{calc}\n{settled}")).expect("write");
+    std::fs::write(out, format!("{parallel} {opened} {first}\n{calc}\n{settled}")).expect("write");
     let _ = std::fs::remove_dir_all(&root);
 }
 
@@ -124,22 +127,27 @@ fn the_web_switches_change_nothing_shown() {
         std::fs::read_to_string(&out).expect("its output")
     };
     let (desktop, web, web_async) = (run("desktop"), run("web"), run("web-async"));
-    // the first line: the draws that waited for their image at the end of a frame, and the most commands a frame of the opening drew
-    let head = |s: &str| -> (usize, usize) {
+    // the first line: the draws that waited for their image at the end of a frame, the most commands a frame of the opening drew, and the first frame of the opening
+    let head = |s: &str| -> (usize, usize, usize) {
         let mut it = s
             .lines()
             .next()
             .unwrap_or("")
             .split(' ')
             .map(|n| n.parse::<usize>().expect("a number"));
-        (it.next().expect("parallel"), it.next().expect("opened"))
+        (it.next().expect("parallel"), it.next().expect("opened"), it.next().expect("first"))
     };
     let (d, w, a) = (head(&desktop), head(&web), head(&web_async));
-    println!("parallel draws, commands of the opening frame: desktop {d:?}, web {w:?}, web with asynchronous tree images {a:?}");
+    println!(
+        "parallel draws, commands of the opening (most of 3 frames, first frame): desktop {d:?}, web {w:?}, web with asynchronous tree images {a:?}"
+    );
     assert_eq!(d.0, 0, "the desktop decodes in place");
     assert!(w.0 > 20, "the web way decoded side by side");
     assert_eq!(w.1, d.1, "the parallel decode draws the opening frame whole");
-    assert!(a.1 + 100 < d.1, "the asynchronous tree images are not in the opening frame");
+    assert!(
+        a.2 + 100 < w.2,
+        "the asynchronous tree images are not in the first frame of the opening, the parallel decode's are"
+    );
     let rest = |s: &str| s.lines().skip(1).collect::<Vec<_>>().join("\n");
     let desktop = rest(&desktop);
     assert!(desktop.lines().count() > 500, "a drawn tree: {} lines", desktop.lines().count());

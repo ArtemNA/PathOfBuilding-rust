@@ -9,8 +9,8 @@ use pob_build::{BlockText, BuildLoadError, ConfigState, ConfigValue, LoadedBuild
 use pob_mods::format::format_source_mod;
 use serde_json::{Map, Value as Json, json};
 
-/// `versionNumber` of the PoB checkout the corpus was taken from (`manifest.xml` at pobSha 07fa089bf).
-const POB_VERSION: &str = "2.68.0";
+/// `versionNumber` of the PoB checkout the corpus was taken from (`manifest.xml` at pobSha 5606cc64f; 2.68.0 at 07fa089bf).
+const POB_VERSION: &str = "2.69.0";
 
 fn bstr(s: &str) -> Json {
     Json::String(s.bytes().map(char::from).collect())

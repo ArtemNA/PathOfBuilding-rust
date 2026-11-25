@@ -389,7 +389,7 @@ fn add_keystone_tooltip(view: &mut PassiveTreeView, g: &Gfx, e: &Engine, art: &T
     view.tooltip.center = false;
     if dev && let TreeKeystone::Legion(_) = node {
         // :1437 `node.id > 65535`, and the id of a legion node is a string
-        panic!("Classes/PassiveTreeView.lua:1447: attempt to compare number with string");
+        panic!("Classes/PassiveTreeView.lua:1452: attempt to compare number with string");
     }
     // :1621-1647
     if !sd.is_empty() {
@@ -574,7 +574,7 @@ fn add_node_tooltip(
     {
         let defence = power
             .defence
-            .expect("Classes/PassiveTreeView.lua:1549: bad argument #3 to 'format' (number expected, got nil)");
+            .expect("Classes/PassiveTreeView.lua:1554: bad argument #3 to 'format' (number expected, got nil)");
         let text = pob_lua::format::format(
             "DPS power: %g   Defence power: %g",
             &[pob_lua::format::Arg::Num(offence), pob_lua::format::Arg::Num(defence)],

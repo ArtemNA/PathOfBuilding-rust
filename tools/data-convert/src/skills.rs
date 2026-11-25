@@ -85,6 +85,8 @@ const TAIL: &[F] = &[
     opt("levelMods", S::Custom(mod_or_group_list)),
     opt("hideFromGemList", S::Bool),
     opt("addMinionList", S::Arr(&S::Str)),
+    // 5606cc64f: GemSelectControl.lua:134 hides these gems.
+    opt("imbuedOnly", S::Bool),
 ];
 
 /// Level entry fields after `level`/`values`, in schema order.

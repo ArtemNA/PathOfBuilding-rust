@@ -37,7 +37,7 @@ const RULES_SOURCES: &[&str] = &[
 ];
 
 /// (file relative to data/, sources) in extractor registry order.
-fn static_files(has_viscera: bool) -> Vec<(String, Vec<&'static str>)> {
+fn static_files(has_viscera: bool, has_world_areas: bool) -> Vec<(String, Vec<&'static str>)> {
     let f = |file: &str, src: &[&'static str]| (file.to_owned(), src.to_vec());
     let mut v = vec![
         f("globals.json", &["_globals"]),
@@ -81,6 +81,12 @@ fn static_files(has_viscera: bool) -> Vec<(String, Vec<&'static str>)> {
         f("foulborn-map.json", &["foulbornMap"]),
         f("abyss-notable-names.json", &["abyssNotableNames"]),
         f("node-id-list.json", &["nodeIDList"]),
+    ]);
+    // 5606cc64f on (Data.lua:1506-1507).
+    if has_world_areas {
+        v.push(f("world-areas.json", &["worldAreas"]));
+    }
+    v.extend([
         f("mod-cache.json", &["_modCache"]),
         f("mod-parser.json", &["_modParser"]),
         f("config-options.json", &["_configOptions"]),
@@ -106,7 +112,8 @@ fn upstream_sha(pob: &Path) -> String {
 pub fn convert(c: &mut Ctx, vers: &Versions, out: &Path) -> R<J> {
     let data = c.d.root("data");
     let has_viscera = c.d.t(c.table(data, "data")?).get("viscera").is_some();
-    let mut files = static_files(has_viscera);
+    let has_world_areas = c.d.t(c.table(data, "data")?).get("worldAreas").is_some();
+    let mut files = static_files(has_viscera, has_world_areas);
     for ver in &vers.list {
         files.push((out_file(ver, &vers.latest), vec![]));
     }

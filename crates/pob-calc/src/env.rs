@@ -166,6 +166,9 @@ pub struct ReqEntry {
     pub str_: Option<f64>,
     pub dex: Option<f64>,
     pub int: Option<f64>,
+    /// `sourceSkill` of a gem entry (CalcSetup.lua:1944, 5606cc64f): the gem's first active skill (an index into `activeSkillList`);
+    /// its `GlobalAttributeRequirements` scale the gem's requirement (CalcPerform.lua:2212-2213).
+    pub source_skill: Option<usize>,
 }
 
 /// One `build.itemsTab.orderedSlots` entry (ItemsTab.lua:141-235).
@@ -285,6 +288,9 @@ pub struct Env {
     /// `env.minion = env.player.mainSkill.minion` (CalcPerform.lua:1316, R7.10): the main skill's minion actor while perform runs (the same
     /// `Rc` as that skill's [`crate::minion::Minion::actor`]); `None` = nil.
     pub minion: Option<Rc<RefCell<CalcActor>>>,
+    /// `guardian` of `calcs.perform` (CalcPerform.lua:1318-1330, 5606cc64f): the index of the active Animate Guardian skill -- the main
+    /// skill's when it is one, else the first enabled one; `None` = nil. Set by perform's minion loop.
+    pub guardian: Option<usize>,
     /// `env.override` (CalcSetup.lua:502): what this env was built with (`None` = `{}`); the accelerated re-init of `calcFullDPS` reads
     /// its `conditions` again (:696).
     pub calc_override: Option<Rc<CalcOverride>>,

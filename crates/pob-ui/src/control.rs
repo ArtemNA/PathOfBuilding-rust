@@ -411,6 +411,11 @@ pub trait Control: Any {
     fn imbued_dropped(&self) -> bool {
         false
     }
+
+    /// `control.dropped`: a drop-down's list is open (DropDownControl and its subclasses, GemSelectControl); nil elsewhere.
+    fn dropped(&self) -> bool {
+        false
+    }
 }
 
 /// `Control:AddToTabGroup(master)` (Control.lua:159-166).

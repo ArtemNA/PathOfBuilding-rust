@@ -6,7 +6,7 @@
 //!
 //! | place | what the order decides | class |
 //! |---|---|---|
-//! | `pairs(guards)` :3320 | which guards get a slot: `Vaal Molten Shell` wipes and stops, otherwise every `^Vaal` guard plus the FIRST non-Vaal one | **chooses** when there are 2+ non-Vaal guards (or Vaal Molten Shell after another) -- counted in `SkillsState::order_notes`; one guard on every golden |
+//! | `ipairs(guardOrder)` :3418 | which guards get a slot: `Vaal Molten Shell` wipes and stops, otherwise every `^Vaal` guard plus the FIRST non-Vaal one | a sequence: the order the guards were first merged (5606cc64f #10489; it was `pairs(guards)`, R13) -- the insertion order of [`Buffs`] |
 //! | `ipairs(guardSlots)` :3334 | condition writes (idempotent) and `mergeBuff` into distinct `buffs[guard.name]` keys | independent |
 //! | `pairs(buffs)` :3344 | the order of `modDB:AddList` (the order inside a ModDB bucket = the summation order) and `+1` on `BuffOnSelf` (integers) | a sum of 3+ float terms of one bucket may differ in the last bit (L10) -- the same freedom LuaJIT has between its own runs |
 //! | `pairs(debuffs)` :3358 | the order of `enemyDB:AddList` | as `pairs(buffs)` |
@@ -25,7 +25,7 @@ pub(super) fn guard_slots(env: &mut Env, guards: &Buffs, buffs: &mut Buffs, outp
     let mod_db = env.mod_db.clone();
     let mut slots: Vec<(&str, &[Rc<pob_mods::Mod>])> = Vec::new();
     let mut non_vaal = false;
-    let mut non_vaal_seen = 0usize;
+    // :3418-3419 `for _, name in ipairs(guardOrder)`: the names in the order they first went into `guards` (:2455-2457)
     for (name, list) in guards {
         if name == "Vaal Molten Shell" {
             slots.clear();
@@ -35,20 +35,10 @@ pub(super) fn guard_slots(env: &mut Env, guards: &Buffs, buffs: &mut Buffs, outp
         } else if name.starts_with("Vaal") {
             slots.push((name, &list.mods));
         } else {
-            non_vaal_seen += 1;
             if !non_vaal {
                 slots.push((name, &list.mods));
                 non_vaal = true;
             }
-        }
-    }
-    // The walk chooses (R13) when two non-Vaal guards compete, or when Vaal Molten Shell may come after other guards.
-    if non_vaal_seen > 1 || (guards.contains_key("Vaal Molten Shell") && guards.len() > 1) {
-        let names: Vec<&str> = guards.keys().map(String::as_str).collect();
-        if let Some(st) = env.skills.as_mut() {
-            st.order_notes.push(format!(
-                "Modules/CalcPerform.lua:3328 pairs(guards) chooses the guard slots among {names:?} (LuaJIT: per-process order)"
-            ));
         }
     }
     if non_vaal {
@@ -70,7 +60,7 @@ pub(super) fn apply(env: &Env, buffs: &Buffs, minion_buffs: &Buffs, debuffs: &Bu
         .minion
         .as_ref()
         .map(|m| (m.borrow().mod_db.clone(), super::env_minion(env).ty.clone()));
-    let main = env.minion.as_ref().map(|_| super::player_main_skill(env, 3358));
+    let main = env.minion.as_ref().map(|_| super::player_main_skill(env, 3423));
     for list in buffs.values() {
         mod_db.borrow_mut().add_list(&list.mods);
         if !list.not_buff {
@@ -107,7 +97,7 @@ pub(super) fn apply(env: &Env, buffs: &Buffs, minion_buffs: &Buffs, debuffs: &Bu
         if let Some(l) = &slot.minion_buff_mod_list {
             let (mdb, _) = minion
                 .as_ref()
-                .unwrap_or_else(|| panic!("Modules/CalcPerform.lua:3382: attempt to index field 'minion' (a nil value)"));
+                .unwrap_or_else(|| panic!("Modules/CalcPerform.lua:3447: attempt to index field 'minion' (a nil value)"));
             mdb.borrow_mut().add_list(l);
         }
     }

@@ -160,7 +160,7 @@ pub(super) fn build_passes(off: &mut Off<'_>) {
                         source.set(&format!("{ty}Max"), off.sd(&kmax));
                     }
                 }
-                if let Some(t) = off.sd_num("attackTime", 2042) {
+                if let Some(t) = off.sd_num("attackTime", 2046) {
                     source.set("AttackRate", Value::Num(1000.0 / t));
                 }
             }
@@ -192,7 +192,7 @@ pub(crate) fn combine_stat(off: &mut Off<'_>, stat: &str, mode: CombineMode, cha
     let hands = off
         .hands
         .as_ref()
-        .unwrap_or_else(|| panic!("{LUA}:2068: attempt to index field 'MainHand' (a nil value)"));
+        .unwrap_or_else(|| panic!("{LUA}:2072: attempt to index field 'MainHand' (a nil value)"));
     let mh = hands[0].map.get(stat).cloned();
     let oh = hands[1].map.get(stat).cloned();
     let num = |v: &Option<OutValue>, line: u32| -> f64 {
@@ -235,7 +235,7 @@ pub(crate) fn combine_stat(off: &mut Off<'_>, stat: &str, mode: CombineMode, cha
             }
             CombineMode::Chance => {
                 if truthy(&mh) && truthy(&oh) {
-                    let k = chance_key.unwrap_or_else(|| panic!("{LUA}:2083: attempt to index a nil key"));
+                    let k = chance_key.unwrap_or_else(|| panic!("{LUA}:2087: attempt to index a nil key"));
                     let mut main_chance = hand_num(0, k, 2083) * hand_num(0, "HitChance", 2083);
                     let mut off_chance = hand_num(1, k, 2084) * hand_num(1, "HitChance", 2084);
                     let (m, o) = (num(&mh, 2088), num(&oh, 2088));
@@ -281,7 +281,7 @@ pub(crate) fn combine_stat(off: &mut Off<'_>, stat: &str, mode: CombineMode, cha
             }
             CombineMode::ChanceAilment => {
                 if truthy(&mh) && truthy(&oh) {
-                    let k = chance_key.unwrap_or_else(|| panic!("{LUA}:2129: attempt to index a nil key"));
+                    let k = chance_key.unwrap_or_else(|| panic!("{LUA}:2133: attempt to index a nil key"));
                     // the portions are computed upstream (:2131-2132) but feed only the breakdown
                     let _ = hand_num(0, k, 2129) * hand_num(0, "HitChance", 2129);
                     let _ = hand_num(1, k, 2130) * hand_num(1, "HitChance", 2130);
@@ -293,7 +293,7 @@ pub(crate) fn combine_stat(off: &mut Off<'_>, stat: &str, mode: CombineMode, cha
                     let g = |k: &str| match off.st.player.output.get(k) {
                         None | Some(OutValue::Bool(false)) => 1.0,
                         Some(OutValue::Num(x)) => *x,
-                        other => panic!("{LUA}:2137: attempt to perform arithmetic on field '{k}' ({other:?})"),
+                        other => panic!("{LUA}:2141: attempt to perform arithmetic on field '{k}' ({other:?})"),
                     };
                     let max_instance_stacks = min2(1.0, g(&stack_name) / g(&format!("{stack_name}Max")));
                     let mut r = vec![
@@ -403,7 +403,7 @@ pub(super) fn speed_accuracy(off: &mut Off<'_>) -> BTable {
     for pi in 0..off.passes.len() {
         let label = off.passes[pi].label;
         // :2183-2187
-        if let Some(v) = off.sd_num("averageBurstHits", 2183) {
+        if let Some(v) = off.sd_num("averageBurstHits", 2187) {
             off.pset_num(pi, "AverageBurstHits", v);
         } else if let Some(r) = off.pnum(pi, "Repeats")
             && r > 1.0
@@ -509,8 +509,8 @@ pub(super) fn speed_accuracy(off: &mut Off<'_>) -> BTable {
         if ok(off.enemy_db.borrow().flag(None, &["CannotBlockAttacks"])) == Some(true) && off.is_attack {
             off.pset_num(pi, "enemyBlockChance", 0.0);
         }
-        let ahc = off.pnum_req(pi, "AccuracyHitChance", 2249);
-        let ebc = off.pnum_req(pi, "enemyBlockChance", 2249);
+        let ahc = off.pnum_req(pi, "AccuracyHitChance", 2253);
+        let ebc = off.pnum_req(pi, "enemyBlockChance", 2253);
         let hit_chance = ahc * (1.0 - ebc / 100.0);
         off.pset_num(pi, "HitChance", hit_chance);
         if ebc > 0.0 && !off.is_attack {
@@ -532,14 +532,14 @@ pub(super) fn speed_accuracy(off: &mut Off<'_>) -> BTable {
         let acc = match off.pval(pi, "Accuracy") {
             None | Some(OutValue::Bool(false)) => 0.0,
             Some(OutValue::Num(x)) => *x,
-            other => panic!("{LUA}:2270: attempt to compare {other:?} with number"),
+            other => panic!("{LUA}:2274: attempt to compare {other:?} with number"),
         };
         // `env.player.output.Life`
         let life = off
             .player_state()
             .output
             .opt_num("Life")
-            .unwrap_or_else(|| panic!("{LUA}:2270: attempt to compare number with nil"));
+            .unwrap_or_else(|| panic!("{LUA}:2274: attempt to compare number with nil"));
         q.list.borrow_mut().conditions.insert(Str::from(cond_name.as_str()), acc > life);
 
         // :2272-2471 attack/cast speed
@@ -547,7 +547,7 @@ pub(super) fn speed_accuracy(off: &mut Off<'_>) -> BTable {
         if ct == Some(0.0) && !off.sd_truthy("castTimeOverride") && !off.sd_truthy("triggered") {
             off.pset_num(pi, "Time", 0.0);
             off.pset_num(pi, "Speed", 0.0);
-        } else if let Some(t) = off.sd_num("timeOverride", 2299) {
+        } else if let Some(t) = off.sd_num("timeOverride", 2303) {
             // :2300-2304 traps/mines respect the spell cooldown (3dbca4463 #10335): `globalOutput.TrapCooldown or globalOutput.Cooldown`
             let cooldown = [off.gval("TrapCooldown"), off.gval("Cooldown")]
                 .into_iter()
@@ -556,17 +556,17 @@ pub(super) fn speed_accuracy(off: &mut Off<'_>) -> BTable {
                 .cloned();
             let t = match cooldown {
                 Some(crate::output::OutValue::Num(cd)) => pob_lua::number::max2(t, cd),
-                Some(o) => panic!("{LUA}:2303: bad argument #2 to 'max' (number expected, got {o:?})"),
+                Some(o) => panic!("{LUA}:2307: bad argument #2 to 'max' (number expected, got {o:?})"),
                 None => t,
             };
             off.pset_num(pi, "Time", t);
             off.pset_num(pi, "Speed", 1.0 / t);
         } else if off.sd_truthy("fixedCastTime") {
-            let t = ct.unwrap_or_else(|| panic!("{LUA}:2281: attempt to perform arithmetic on field 'Time' (a nil value)"));
+            let t = ct.unwrap_or_else(|| panic!("{LUA}:2285: attempt to perform arithmetic on field 'Time' (a nil value)"));
             off.pset_num(pi, "Time", t);
             off.pset_num(pi, "Speed", 1.0 / t);
         } else if off.sd_truthy("triggerTime") && off.sd_truthy("triggered") {
-            let trigger_time = off.sd_num("triggerTime", 2287).expect("truthy");
+            let trigger_time = off.sd_num("triggerTime", 2291).expect("truthy");
             let c = Some(off.pcfg(pi));
             let linked = q.base(c, &["ActiveSkillsLinkedToTrigger"]);
             let t = if linked > 0.0 {
@@ -578,31 +578,31 @@ pub(super) fn speed_accuracy(off: &mut Off<'_>) -> BTable {
             off.pset_num(pi, "TriggerTime", t);
             off.pset_num(pi, "Speed", 1.0 / t);
         } else if off.sd_truthy("triggerRate") && off.sd_truthy("triggered") {
-            let rate = off.sd_num("triggerRate", 2295).expect("truthy");
+            let rate = off.sd_num("triggerRate", 2299).expect("truthy");
             off.pset_num(pi, "Time", 1.0 / rate);
             off.pset_num(pi, "TriggerTime", 1.0 / rate);
             off.pset_num(pi, "Speed", rate);
             off.set_sd("showAverage", Value::Bool(false));
         } else {
             let base_time = if off.is_attack {
-                if let Some(m) = off.sd_num("attackSpeedMultiplier", 2303)
-                    && let Some(r) = off.source_num(pi, "AttackRate", 2303)
+                if let Some(m) = off.sd_num("attackSpeedMultiplier", 2307)
+                    && let Some(r) = off.source_num(pi, "AttackRate", 2307)
                 {
                     off.source_set(pi, "AttackRate", Value::Num(r * (1.0 + m / 100.0)));
                 }
                 if off.sd_truthy("castTimeOverridesAttackTime") {
-                    let ct = ct.unwrap_or_else(|| panic!("{LUA}:2308: attempt to perform arithmetic on field 'castTime' (a nil value)"));
-                    ct / (1.0 + off.source_num(pi, "AttackSpeedInc", 2308).unwrap_or(0.0) / 100.0)
+                    let ct = ct.unwrap_or_else(|| panic!("{LUA}:2312: attempt to perform arithmetic on field 'castTime' (a nil value)"));
+                    ct / (1.0 + off.source_num(pi, "AttackSpeedInc", 2312).unwrap_or(0.0) / 100.0)
                 } else if q.calc_mod(sc, &["SkillAttackTime"]) > 0.0 {
-                    let rate = off.source_num(pi, "AttackRate", 2310).unwrap_or(1.0);
+                    let rate = off.source_num(pi, "AttackRate", 2314).unwrap_or(1.0);
                     (1.0 / rate + q.base(Some(off.pcfg(pi)), &["Speed"])) * q.calc_mod(sc, &["SkillAttackTime"])
                 } else {
-                    let rate = off.source_num(pi, "AttackRate", 2312).unwrap_or(1.0);
+                    let rate = off.source_num(pi, "AttackRate", 2316).unwrap_or(1.0);
                     1.0 / rate + q.base(Some(off.pcfg(pi)), &["Speed"])
                 }
             } else {
                 // `skillData.castTimeOverride or grantedEffect.castTime or 1`
-                off.sd_num("castTimeOverride", 2315).or(ct).unwrap_or(1.0)
+                off.sd_num("castTimeOverride", 2319).or(ct).unwrap_or(1.0)
             };
             let more = q.more(Some(off.pcfg(pi)), &["Speed"]);
             let repeats = off.st.player.output.opt_num("Repeats").unwrap_or(1.0);
@@ -617,10 +617,10 @@ pub(super) fn speed_accuracy(off: &mut Off<'_>) -> BTable {
                 let inc_per_trauma = q.inc(sc, &["SpeedPerTrauma"]);
                 let config_trauma = q.base(sc, &["Multiplier:TraumaStacks"]);
                 let inc = q.inc(c, &["Speed"]) - inc_per_trauma * config_trauma;
-                let attack_speed_before_inc = 1.0 / base_time * gnum(off, "ActionSpeedMod", 2325) * more;
+                let attack_speed_before_inc = 1.0 / base_time * gnum(off, "ActionSpeedMod", 2329) * more;
                 let inc_per_trauma_cap =
                     (effective_attack_rate_cap - attack_speed_before_inc * (1.0 + inc / 100.0)) / attack_speed_before_inc * 100.0;
-                let hit_chance = off.pnum_req(pi, "HitChance", 2327);
+                let hit_chance = off.pnum_req(pi, "HitChance", 2331);
                 let trauma_rate_before_inc = trauma_per_attack * (hit_chance / 100.0) * attack_speed_before_inc / repeats;
                 let mut trauma =
                     trauma_rate_before_inc * (1.0 + inc / 100.0) / (1.0 / duration - trauma_rate_before_inc * inc_per_trauma / 100.0);
@@ -672,7 +672,7 @@ pub(super) fn speed_accuracy(off: &mut Off<'_>) -> BTable {
                                 base: Some(step("%.2f ^8(base)", 1.0 / base_time)),
                                 steps: vec![
                                     step("%.2f ^8(more/less)", more),
-                                    step("%.2f ^8(action speed modifier)", gnum(off, "ActionSpeedMod", 2357)),
+                                    step("%.2f ^8(action speed modifier)", gnum(off, "ActionSpeedMod", 2361)),
                                 ],
                                 total: Some(sf!("= %.2f ^8attacks per second", attack_speed_before_inc)),
                                 ..Chain::default()
@@ -746,7 +746,7 @@ pub(super) fn speed_accuracy(off: &mut Off<'_>) -> BTable {
             let inc = q.inc(Some(off.pcfg(pi)), &["Speed"]);
 
             if off.flag("warcry") {
-                let w = off.pnum_req(pi, "WarcryCastTime", 2413);
+                let w = off.pnum_req(pi, "WarcryCastTime", 2417);
                 off.pset_num(pi, "Speed", 1.0 / w);
             } else {
                 let c = Some(off.pcfg(pi));
@@ -756,21 +756,21 @@ pub(super) fn speed_accuracy(off: &mut Off<'_>) -> BTable {
                         + q.base(c, &["TotalCastTime"]));
                 off.pset_num(pi, "Speed", s);
             }
-            let s = off.pnum_req(pi, "Speed", 2418);
+            let s = off.pnum_req(pi, "Speed", 2422);
             off.pset_num(pi, "CastRate", s);
             if off.flag("selfCast") {
-                let s = off.pnum_req(pi, "Speed", 2421) * gnum(off, "ActionSpeedMod", 2421);
+                let s = off.pnum_req(pi, "Speed", 2425) * gnum(off, "ActionSpeedMod", 2425);
                 off.pset_num(pi, "Speed", s);
                 off.pset_num(pi, "CastRate", s);
             }
             if off.flag("totem") {
                 let totem_action_speed = 1.0 + ok(off.mod_db.borrow().sum(ModType::Inc, None, &["TotemActionSpeed"])) / 100.0;
                 off.pset_num(pi, "TotemActionSpeed", totem_action_speed);
-                let s = off.pnum_req(pi, "Speed", 2429) * totem_action_speed;
+                let s = off.pnum_req(pi, "Speed", 2433) * totem_action_speed;
                 off.pset_num(pi, "Speed", s);
                 off.pset_num(pi, "CastRate", s);
                 if off.sd_truthy("totemFireOnce") {
-                    let ht = 1.0 / s + gnum(off, "TotemPlacementTime", 2432);
+                    let ht = 1.0 / s + gnum(off, "TotemPlacementTime", 2436);
                     off.pset_num(pi, "HitTime", ht);
                     off.pset_num(pi, "HitSpeed", 1.0 / ht);
                 }
@@ -779,8 +779,8 @@ pub(super) fn speed_accuracy(off: &mut Off<'_>) -> BTable {
                 && !matches!(cd, OutValue::Bool(false))
             {
                 off.pset(pi, "Cooldown", cd);
-                let cd = off.pnum_req(pi, "Cooldown", 2438);
-                let s = min2(off.pnum_req(pi, "Speed", 2438), 1.0 / cd * repeats);
+                let cd = off.pnum_req(pi, "Cooldown", 2442);
+                let s = min2(off.pnum_req(pi, "Speed", 2442), 1.0 / cd * repeats);
                 off.pset_num(pi, "Speed", s);
             }
             if off.ptruthy(pi, "Cooldown") && off.flag("selfCast") {
@@ -789,19 +789,19 @@ pub(super) fn speed_accuracy(off: &mut Off<'_>) -> BTable {
                 off.set_sd("showAverage", Value::Bool(false));
             }
             if !off.has_type("Channel") {
-                let s = min2(off.pnum_req(pi, "Speed", 2446), tick * repeats);
+                let s = min2(off.pnum_req(pi, "Speed", 2450), tick * repeats);
                 off.pset_num(pi, "Speed", s);
             }
-            let s = off.pnum_req(pi, "Speed", 2448);
+            let s = off.pnum_req(pi, "Speed", 2452);
             let time = if s == 0.0 { 0.0 } else { 1.0 / s };
             off.pset_num(pi, "Time", time);
             // :2453-2470
             if off.breakdown {
-                let cast_rate = off.pnum_req(pi, "CastRate", 2459);
+                let cast_rate = off.pnum_req(pi, "CastRate", 2463);
                 let action = if off.flag("totem") && off.ptruthy(pi, "TotemActionSpeed") {
-                    off.pnum_req(pi, "TotemActionSpeed", 2458)
+                    off.pnum_req(pi, "TotemActionSpeed", 2462)
                 } else if off.flag("selfCast") && !matches!(off.gval("ActionSpeedMod"), None | Some(OutValue::Bool(false))) {
-                    gnum(off, "ActionSpeedMod", 2458)
+                    gnum(off, "ActionSpeedMod", 2462)
                 } else {
                     1.0
                 };
@@ -820,7 +820,7 @@ pub(super) fn speed_accuracy(off: &mut Off<'_>) -> BTable {
                     },
                 );
                 if off.ptruthy(pi, "Cooldown") {
-                    let cd = off.pnum_req(pi, "Cooldown", 2461);
+                    let cd = off.pnum_req(pi, "Cooldown", 2465);
                     if (1.0 / cd) < cast_rate {
                         t.push(sf!("\n"));
                         t.push(sf!("1 / %.2f ^8(skill cooldown)", cd));
@@ -853,21 +853,21 @@ pub(super) fn speed_accuracy(off: &mut Off<'_>) -> BTable {
         // :2473-2487 hit time
         let triggered_on_death = off.sd_truthy("triggeredOnDeath");
         if off.sd_truthy("hitTimeOverride") && !triggered_on_death {
-            let ht = off.sd_num("hitTimeOverride", 2474).expect("truthy");
+            let ht = off.sd_num("hitTimeOverride", 2478).expect("truthy");
             off.pset_num(pi, "HitTime", ht);
             off.pset_num(pi, "HitSpeed", 1.0 / ht);
             if off.has_type("Brand") && !q.flag(None, &["UnlimitedBrandDuration"]) {
-                let d = off.pnum_req(pi, "Duration", 2478);
+                let d = off.pnum_req(pi, "Duration", 2482);
                 off.pset_num(pi, "BrandTicks", (d * (1.0 / ht)).floor());
             }
         } else if off.sd_truthy("hitTimeMultiplier") && off.ptruthy(pi, "Time") && !triggered_on_death {
-            let m = off.sd_num("hitTimeMultiplier", 2481).expect("truthy");
-            let ht = off.pnum_req(pi, "Time", 2481) * m;
+            let m = off.sd_num("hitTimeMultiplier", 2485).expect("truthy");
+            let ht = off.pnum_req(pi, "Time", 2485) * m;
             off.pset_num(pi, "HitTime", ht);
             let hs = if off.ptruthy(pi, "Cooldown") && off.sd_truthy("triggered") {
-                1.0 / max2(ht, off.pnum_req(pi, "Cooldown", 2483))
+                1.0 / max2(ht, off.pnum_req(pi, "Cooldown", 2487))
             } else if off.ptruthy(pi, "Cooldown") {
-                1.0 / (ht + off.pnum_req(pi, "Cooldown", 2485))
+                1.0 / (ht + off.pnum_req(pi, "Cooldown", 2489))
             } else {
                 1.0 / ht
             };
@@ -885,10 +885,10 @@ pub(super) fn misc_dps(off: &mut Off<'_>, stored_trauma_bd: BTable) -> f64 {
     let skill_cfg = off.cfg.clone();
     let sc = Some(&skill_cfg);
     // :2490
-    let mut dps_mult = off.sd_num("dpsMultiplier", 2490).unwrap_or(1.0) * (1.0 + q.inc(sc, &["DPS"]) / 100.0) * q.more(sc, &["DPS"]);
+    let mut dps_mult = off.sd_num("dpsMultiplier", 2494).unwrap_or(1.0) * (1.0 + q.inc(sc, &["DPS"]) / 100.0) * q.more(sc, &["DPS"]);
     off.set_sd("dpsMultiplier", Value::Num(dps_mult));
     if off.has_type("Brand") && !off.sd_truthy("countsAttachedBrandsInDamage") {
-        let n = off.out_num("AttachedBrandCount", 2492);
+        let n = off.out_num("AttachedBrandCount", 2496);
         dps_mult *= n;
         off.set_sd("dpsMultiplier", Value::Num(dps_mult));
         let m = off.st.player.output.opt_num("SkillDPSMultiplier").unwrap_or(1.0) * n;
@@ -898,7 +898,7 @@ pub(super) fn misc_dps(off: &mut Off<'_>, stored_trauma_bd: BTable) -> f64 {
     if final_repeat || q.flag(None, &["OnlyFinalRepeat"]) {
         let r = match off.st.player.output.get("Repeats") {
             None | Some(OutValue::Bool(false)) => 1.0,
-            _ => off.out_num("Repeats", 2496),
+            _ => off.out_num("Repeats", 2500),
         };
         dps_mult /= r;
         off.set_sd("dpsMultiplier", Value::Num(dps_mult));
@@ -937,9 +937,9 @@ pub(super) fn misc_dps(off: &mut Off<'_>, stored_trauma_bd: BTable) -> f64 {
         combine_stat(off, "Speed", CombineMode::HarmonicMean, None);
         combine_stat(off, "HitSpeed", CombineMode::Or, None);
         combine_stat(off, "HitTime", CombineMode::Or, None);
-        let s = off.out_num("Speed", 2515);
+        let s = off.out_num("Speed", 2519);
         off.out().set_num("Time", if s == 0.0 { 0.0 } else { 1.0 / s });
-        if off.out_num("Time", 2521) > 1.0 {
+        if off.out_num("Time", 2525) > 1.0 {
             off.mod_db.borrow_mut().new_mod(pob_mods::create_mod(
                 "Condition:OneSecondAttackTime",
                 Some(ModType::Flag),
@@ -959,7 +959,7 @@ pub(super) fn misc_dps(off: &mut Off<'_>, stored_trauma_bd: BTable) -> f64 {
             if off.breakdown {
                 let t = BTable::lines([
                     "Use Offhand Weapon Attack Speed:".to_owned(),
-                    sf!("= %.2f", off.out_num("Speed", 2531)),
+                    sf!("= %.2f", off.out_num("Speed", 2535)),
                 ]);
                 off.bd_put("Speed", t);
             }
@@ -969,10 +969,10 @@ pub(super) fn misc_dps(off: &mut Off<'_>, stored_trauma_bd: BTable) -> f64 {
                 "Both weapons:".to_owned(),
                 sf!(
                     "2 / (1 / %.2f + 1 / %.2f)",
-                    hand_num(off, 0, "Speed", 2538),
-                    hand_num(off, 1, "Speed", 2538)
+                    hand_num(off, 0, "Speed", 2542),
+                    hand_num(off, 1, "Speed", 2542)
                 ),
-                sf!("= %.2f", off.out_num("Speed", 2539)),
+                sf!("= %.2f", off.out_num("Speed", 2543)),
             ]);
             off.bd_put("Speed", t);
         }
@@ -981,9 +981,9 @@ pub(super) fn misc_dps(off: &mut Off<'_>, stored_trauma_bd: BTable) -> f64 {
             if off.flag("bothWeaponAttack") {
                 let t = BTable::lines([
                     "Both weapons:".to_owned(),
-                    sf!("%.2f%% ^8(main hand)", hand_num(off, 0, "HitChance", 2547)),
-                    sf!("%.2f%% ^8(off hand)", hand_num(off, 1, "HitChance", 2548)),
-                    sf!("= %.2f%% ^8(average)", off.out_num("HitChance", 2549)),
+                    sf!("%.2f%% ^8(main hand)", hand_num(off, 0, "HitChance", 2551)),
+                    sf!("%.2f%% ^8(off hand)", hand_num(off, 1, "HitChance", 2552)),
+                    sf!("= %.2f%% ^8(average)", off.out_num("HitChance", 2553)),
                 ]);
                 off.bd_put("HitChance", t);
             } else {
@@ -1005,19 +1005,19 @@ pub(super) fn misc_dps(off: &mut Off<'_>, stored_trauma_bd: BTable) -> f64 {
         }
         let triggered_on_death = off.sd_truthy("triggeredOnDeath");
         if off.sd_truthy("hitTimeOverride") && !triggered_on_death {
-            let ht = off.sd_num("hitTimeOverride", 2556).expect("truthy");
+            let ht = off.sd_num("hitTimeOverride", 2560).expect("truthy");
             off.out().set_num("HitTime", ht);
             off.out().set_num("HitSpeed", 1.0 / ht);
         } else if off.sd_truthy("hitTimeMultiplier")
             && !matches!(off.st.player.output.get("Time"), None | Some(OutValue::Bool(false)))
             && !triggered_on_death
         {
-            let m = off.sd_num("hitTimeMultiplier", 2559).expect("truthy");
-            let ht = off.out_num("Time", 2559) * m;
+            let m = off.sd_num("hitTimeMultiplier", 2563).expect("truthy");
+            let ht = off.out_num("Time", 2563) * m;
             off.out().set_num("HitTime", ht);
             let cd = match off.st.player.output.get("Cooldown") {
                 None | Some(OutValue::Bool(false)) => None,
-                _ => Some(off.out_num("Cooldown", 2560)),
+                _ => Some(off.out_num("Cooldown", 2564)),
             };
             let hs = match cd {
                 Some(cd) if off.sd_truthy("triggered") => 1.0 / max2(ht, cd),
@@ -1033,13 +1033,13 @@ pub(super) fn misc_dps(off: &mut Off<'_>, stored_trauma_bd: BTable) -> f64 {
         let gtruthy = |off: &Off<'_>, k: &str| !matches!(off.gval(k), None | Some(OutValue::Bool(false)));
         if off.sd_truthy("hitTimeOverride") && !triggered_on_death {
             let t = BTable::lines([
-                sf!("1 / %.2f ^8(hit time override)", off.out_num("HitTime", 2578)),
-                sf!("= %.2f", off.out_num("HitSpeed", 2579)),
+                sf!("1 / %.2f ^8(hit time override)", off.out_num("HitTime", 2582)),
+                sf!("= %.2f", off.out_num("HitSpeed", 2583)),
             ]);
             off.bd_put("HitSpeed", t);
         } else if off.sd_truthy("hitTimeMultiplier") && gtruthy(off, "Time") && !triggered_on_death {
-            let m = off.sd_num("hitTimeMultiplier", 2582).expect("truthy");
-            let (time, ht) = (off.out_num("Time", 2587), off.out_num("HitTime", 2592));
+            let m = off.sd_num("hitTimeMultiplier", 2586).expect("truthy");
+            let (time, ht) = (off.out_num("Time", 2591), off.out_num("HitTime", 2596));
             let mut t = BTable::new();
             if m.floor() != m {
                 t.push(crate::breakdown::format(
@@ -1063,14 +1063,14 @@ pub(super) fn misc_dps(off: &mut Off<'_>, stored_trauma_bd: BTable) -> f64 {
                 t.push(sf!(
                     "1 / min(%.2f, %.2f) ^8min(hit time, cooldown)",
                     ht,
-                    off.out_num("Cooldown", 2595)
+                    off.out_num("Cooldown", 2599)
                 ));
             } else if gtruthy(off, "Cooldown") {
-                t.push(sf!("1 / (%.2f + %.2f) ^8(hit time + cooldown)", ht, off.out_num("Cooldown", 2597)));
+                t.push(sf!("1 / (%.2f + %.2f) ^8(hit time + cooldown)", ht, off.out_num("Cooldown", 2601)));
             } else {
                 t.push(sf!("1 / %.2f ^8(hit time)", ht));
             }
-            t.push(sf!("= %.2f", off.out_num("HitSpeed", 2601)));
+            t.push(sf!("= %.2f", off.out_num("HitSpeed", 2605)));
             off.bd_put("HitSpeed", t);
         }
     }

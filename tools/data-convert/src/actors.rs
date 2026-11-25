@@ -47,6 +47,12 @@ const MINION: S = S::Obj(
         opt("lifeScaling", S::Str),
         opt("weaponType1", S::Str),
         opt("weaponType2", S::Str),
+        // 5606cc64f (Spectre Library, Build.lua:1690-2024 and MinionListControl.lua:79-101): absent before it.
+        opt("baseMovementSpeed", S::Num),
+        opt("monsterCategory", S::Str),
+        opt("itemisedCorpse", S::Bool),
+        opt("extraFlags", S::Obj("minion extraFlags", &[opt("recommendedSpectre", S::Bool)])),
+        opt("spawnLocation", S::Arr(&S::Str)),
         req("skillList", S::Arr(&S::Str)),
         req("modList", S::Arr(&S::Mod)),
     ],
@@ -67,6 +73,31 @@ pub fn minions(c: &mut Ctx) -> R<J> {
     ids.sort();
     c.count(FILE, "spectres", ids.len());
     Ok(J::Obj(vec![("minions".into(), m), ("spectreIds".into(), J::Arr(ids.into_iter().map(J::Str).collect()))]))
+}
+
+// ---- world areas (5606cc64f: Data/WorldAreas.lua, Data.lua:1506-1507; read by MinionListControl.lua:148) ---------------
+
+const WORLD_AREA: S = S::Obj(
+    "world area",
+    &[
+        req("name", S::Str),
+        req("baseName", S::Str),
+        opt("description", S::Arr(&S::Str)),
+        req("tags", S::Arr(&S::Str)),
+        req("act", S::Num),
+        req("level", S::Num),
+        req("isMap", S::Bool),
+        req("monsterVarieties", S::Arr(&S::Str)),
+        opt("bossVarieties", S::Arr(&S::Str)),
+    ],
+);
+
+/// `data.worldAreas`: id -> area; an upstream without it (before 5606cc64f) writes no file.
+pub fn world_areas(c: &mut Ctx) -> R<J> {
+    if c.d.path("data", &["worldAreas"]).is_none() {
+        return Ok(J::Null);
+    }
+    one(c, "world-areas.json", "worldAreas", &S::Rec(&WORLD_AREA))
 }
 
 // ---- bosses, pantheons, foulborn map, abyss notable names: one record map each ----------------------------------------

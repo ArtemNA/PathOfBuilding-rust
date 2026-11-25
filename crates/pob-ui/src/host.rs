@@ -177,14 +177,29 @@ impl ControlHost {
     }
 
     /// `ControlHost:DrawControls(viewPort, selControl)` (ControlHost.lua:109-115).
+    /// ControlHost.lua:114-117 `GetTooltipBlocker()`.
+    pub fn tooltip_blocker(&self, g: &Gfx) -> Option<ControlRef> {
+        tooltip_blocker(self.sel(), g)
+    }
+
     pub fn draw_controls(&self, f: &mut Frame<'_>, view_port: &Rect, sel_control: Option<&ControlRef>) {
+        // :120-121 (5606cc64f) a focused control hides the others' tooltips only while it is hovered or dropped down
+        let blocker = tooltip_blocker(self.sel(), f);
+        let outer = tooltip_blocker(sel_control.cloned(), f);
         for control in self.snapshot() {
             if control.is_shown(f) && control.has_draw() {
-                let own = self.sel();
-                let no_tooltip = own.as_ref().is_some_and(|s| s.base().has_focus.get() && !same(&**s, &*control))
-                    || sel_control.is_some_and(|s| s.base().has_focus.get() && !same(&**s, &*control));
+                let no_tooltip =
+                    blocker.as_ref().is_some_and(|b| !same(&**b, &*control)) || outer.as_ref().is_some_and(|b| !same(&**b, &*control));
                 control.draw(f, view_port, no_tooltip);
             }
         }
     }
+}
+
+/// ControlHost.lua:109-113 (5606cc64f) `getTooltipBlocker(control)`: a focused control that is dropped down, or hovered (or has no
+/// `IsMouseOver`), hides the other controls' tooltips so they cannot overlap.
+fn tooltip_blocker(control: Option<ControlRef>, g: &Gfx) -> Option<ControlRef> {
+    let c = control?;
+    let blocks = c.base().has_focus.get() && (c.dropped() || c.is_mouse_over(g).unwrap_or(true));
+    blocks.then_some(c)
 }

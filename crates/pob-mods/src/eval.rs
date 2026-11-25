@@ -308,7 +308,7 @@ impl ModStore {
                         }
                     }
                     let base = self.mult_sum(&target, tag, cfg, 394, 395)?;
-                    let div = self.divisor(tag, cfg, 403)?;
+                    let div = self.divisor(tag, cfg, 399)?;
                     let mut mult = (base / div + 0.0001).floor();
                     if tag.raw("noFloor").truthy() {
                         mult = base / div;
@@ -328,7 +328,7 @@ impl ModStore {
                         } else if tag.raw("limitNegTotal").truthy() {
                             limit_neg_total = Some(limit);
                         } else {
-                            mult = min_with(mult, &limit, 416)?;
+                            mult = min_with(mult, &limit, 412)?;
                         }
                     }
                     if tag.raw("invert").truthy() && mult != 0.0 {
@@ -372,9 +372,9 @@ impl ModStore {
                     let upper = tag.raw("upper").truthy();
                     let multv = Value::Num(mult);
                     // `(upper and mult > threshold) or (equals and mult ~= threshold) or (not upper and mult < threshold)`
-                    let fail = (upper && lt(&threshold, &multv, 478)?)
+                    let fail = (upper && lt(&threshold, &multv, 474)?)
                         || (tag.raw("equals").truthy() && !multv.raw_eq(&threshold))
-                        || (!upper && lt(&multv, &threshold, 478)?);
+                        || (!upper && lt(&multv, &threshold, 474)?);
                     !fail
                 }
                 TagKind::PerStat => {
@@ -384,8 +384,8 @@ impl ModStore {
                         None => Target::Me,
                     };
                     let base = self.stat_sum(&target, tag, cfg, 492, 493)?;
-                    let div = self.divisor(tag, cfg, 501)?;
-                    let base = arith(&base, &site(501), Some("local 'base'"))?;
+                    let div = self.divisor(tag, cfg, 497)?;
+                    let base = arith(&base, &site(497), Some("local 'base'"))?;
                     let mut mult = (base / div + 0.0001).floor();
                     let mut limit_total = None;
                     if tag.raw("limit").truthy() || tag.raw("limitVar").truthy() {
@@ -397,7 +397,7 @@ impl ModStore {
                         if tag.raw("limitTotal").truthy() {
                             limit_total = Some(limit);
                         } else {
-                            mult = min_with(mult, &limit, 508)?;
+                            mult = min_with(mult, &limit, 504)?;
                         }
                     }
                     let s = Scale {
@@ -425,11 +425,11 @@ impl ModStore {
                     };
                     // ModStore.lua:548 `base * (percent and percent / 100 or 1)`
                     let factor = if percent.truthy() {
-                        arith(&percent, &site(548), Some("local 'percent'"))? / 100.0
+                        arith(&percent, &site(544), Some("local 'percent'"))? / 100.0
                     } else {
                         1.0
                     };
-                    let base = arith(&base, &site(548), Some("local 'base'"))?;
+                    let base = arith(&base, &site(544), Some("local 'base'"))?;
                     let mut mult = base * factor;
                     if tag.raw("floor").truthy() {
                         mult = mult.floor();
@@ -444,7 +444,7 @@ impl ModStore {
                         if tag.raw("limitTotal").truthy() {
                             limit_total = Some(limit);
                         } else {
-                            mult = min_with(mult, &limit, 558)?;
+                            mult = min_with(mult, &limit, 554)?;
                         }
                     }
                     let s = Scale {
@@ -463,9 +463,9 @@ impl ModStore {
                     let stat = if tag.raw("statList").truthy() {
                         // ModStore.lua:584-586, upstream bug (§7.5): the loop variable shadows the accumulator, so a stat
                         // NAME is added to a number (and the result discarded); the outer `stat` stays 0.
-                        for s in list(tag.raw("statList"), 584, "ipairs")? {
+                        for s in list(tag.raw("statList"), 580, "ipairs")? {
                             let g = self.stat_of(&Target::Me, s, cfg)?;
-                            let _ = arith(s, &site(585), Some("local 'stat'"))? + arith(&g, &site(585), None)?;
+                            let _ = arith(s, &site(581), Some("local 'stat'"))? + arith(&g, &site(581), None)?;
                         }
                         Value::Num(0.0)
                     } else {
@@ -482,9 +482,9 @@ impl ModStore {
                         } else {
                             self.mult_of(&Target::Me, tag.raw("thresholdPercentVar"), cfg)?
                         };
-                        let t = arith(&threshold, &site(593), Some("local 'threshold'"))?;
+                        let t = arith(&threshold, &site(589), Some("local 'threshold'"))?;
                         let f = if pct.truthy() {
-                            arith(&pct, &site(593), Some("local 'thresholdPercent'"))? / 100.0
+                            arith(&pct, &site(589), Some("local 'thresholdPercent'"))? / 100.0
                         } else {
                             1.0
                         };
@@ -492,7 +492,7 @@ impl ModStore {
                     }
                     let upper = tag.raw("upper").truthy();
                     let statv = stat;
-                    let fail = (upper && lt(&threshold, &statv, 595)?) || (!upper && lt(&statv, &threshold, 595)?);
+                    let fail = (upper && lt(&threshold, &statv, 591)?) || (!upper && lt(&statv, &threshold, 591)?);
                     !fail
                 }
                 TagKind::DistanceRamp => {
@@ -517,22 +517,22 @@ impl ModStore {
                     let num = |v: &Value, line: u32| arith(v, &site(line), Some("field '?'"));
                     let n = if let Value::Table(t) = ramp { t.len() } else { 0 };
                     let first = at(1, 602)?;
-                    if le(&distv, &pt(&first, 1, 602)?, 602)? {
+                    if le(&distv, &pt(&first, 1, 602)?, 598)? {
                         let f = num(&pt(&first, 2, 603)?, 603)?;
-                        value = Value::Num(arith(&value, &site(603), Some("local 'value'"))? * f);
+                        value = Value::Num(arith(&value, &site(599), Some("local 'value'"))? * f);
                     } else {
                         let last = at(n, 604)?;
-                        if le(&pt(&last, 1, 604)?, &distv, 604)? {
+                        if le(&pt(&last, 1, 604)?, &distv, 600)? {
                             let f = num(&pt(&last, 2, 605)?, 605)?;
-                            value = Value::Num(arith(&value, &site(605), Some("local 'value'"))? * f);
+                            value = Value::Num(arith(&value, &site(601), Some("local 'value'"))? * f);
                         } else {
                             for i in 1..=n {
                                 let dat = at(i, 607)?;
                                 let next = at(i + 1, 608)?;
-                                if le(&distv, &pt(&next, 1, 609)?, 609)? {
+                                if le(&distv, &pt(&next, 1, 609)?, 605)? {
                                     let (d1, d2) = (num(&pt(&dat, 1, 610)?, 610)?, num(&pt(&dat, 2, 610)?, 610)?);
                                     let (n1, n2) = (num(&pt(&next, 1, 610)?, 610)?, num(&pt(&next, 2, 610)?, 610)?);
-                                    let v = arith(&value, &site(610), Some("local 'value'"))?;
+                                    let v = arith(&value, &site(606), Some("local 'value'"))?;
                                     value = Value::Num(v * (d2 + (n2 - d2) * (dist - d1) / (n1 - d1)));
                                     break;
                                 }
@@ -554,9 +554,9 @@ impl ModStore {
                         arith(&ramp.index(&Value::Num(1.0)), &site(line), Some("field '?'"))
                     };
                     if dist <= 15.0 {
-                        value = Value::Num(arith(&value, &site(624), Some("local 'value'"))? * top(624)?);
+                        value = Value::Num(arith(&value, &site(620), Some("local 'value'"))? * top(624)?);
                     } else if (16.0..=39.0).contains(&dist) {
-                        let v = arith(&value, &site(627), Some("local 'value'"))?;
+                        let v = arith(&value, &site(623), Some("local 'value'"))?;
                         let t = top(627)?;
                         value = Value::Num(v * (t - ((t / 25.0) * (dist - 15.0))));
                     } else if dist >= 40.0 {
@@ -571,8 +571,8 @@ impl ModStore {
                     } else {
                         self.mult_of(&Target::Me, tag.raw("limitVar"), cfg)?
                     };
-                    let v = check_num(&value, &site(632), 1, "min")?;
-                    value = Value::Num(min_with(v, &limit, 632)?);
+                    let v = check_num(&value, &site(628), 1, "min")?;
+                    value = Value::Num(min_with(v, &limit, 628)?);
                     true
                 }
                 TagKind::Condition => self.condition_passes(tag, cfg)?,
@@ -591,7 +591,7 @@ impl ModStore {
                     let part = Value::from(c.skill_part);
                     let list_v = tag.raw("skillPartList");
                     let matched = if list_v.truthy() {
-                        list(list_v, 848, "ipairs")?.iter().any(|p| p.raw_eq(&part))
+                        list(list_v, 844, "ipairs")?.iter().any(|p| p.raw_eq(&part))
                     } else {
                         tag.raw("skillPart").raw_eq(&part)
                     };
@@ -605,7 +605,7 @@ impl ModStore {
                     };
                     let list_v = tag.raw("skillTypeList");
                     let matched = if list_v.truthy() {
-                        list(list_v, 866, "pairs")?.iter().any(has)
+                        list(list_v, 862, "pairs")?.iter().any(has)
                     } else {
                         has(tag.raw("skillType"))
                     };
@@ -631,7 +631,7 @@ impl ModStore {
                     let slot = Value::from(c.slot_name.as_ref());
                     let list_v = tag.raw("slotNameList");
                     let matched = if list_v.truthy() {
-                        list(list_v, 896, "ipairs")?.iter().any(|s| s.raw_eq(&slot))
+                        list(list_v, 892, "ipairs")?.iter().any(|s| s.raw_eq(&slot))
                     } else {
                         tag.raw("slotName").raw_eq(&slot)
                     };
@@ -642,7 +642,7 @@ impl ModStore {
                     let Some(flags) = cfg.and_then(|c| c.flags) else {
                         return Ok(Value::Nil);
                     };
-                    band(flags, check_num(tag.raw("modFlags"), &site(915), 2, "band")?) != 0.0
+                    band(flags, check_num(tag.raw("modFlags"), &site(911), 2, "band")?) != 0.0
                 }
                 TagKind::KeywordFlagAnd => {
                     // ModStore.lua:918-924 -- `band(...) ~= tag.keywordFlags` compares against the RAW field.
@@ -650,7 +650,7 @@ impl ModStore {
                         return Ok(Value::Nil);
                     };
                     let wanted = tag.raw("keywordFlags");
-                    Value::Num(band(kw, check_num(wanted, &site(922), 2, "band")?)).raw_eq(wanted)
+                    Value::Num(band(kw, check_num(wanted, &site(918), 2, "band")?)).raw_eq(wanted)
                 }
                 TagKind::MonsterTag => self.monster_tag_passes(tag)?,
                 TagKind::Other => true,
@@ -672,16 +672,16 @@ impl ModStore {
                 }
                 let key: Str = match key {
                     Value::Str(s) => s.clone(),
-                    other => unimplemented!("ModStore.lua:963 globalLimits keyed by a {} (none in the data)", other.type_name()),
+                    other => unimplemented!("ModStore.lua:959 globalLimits keyed by a {} (none in the data)", other.type_name()),
                 };
                 let used = *gl.entry(key.clone()).or_insert(0.0);
-                let v = arith(&value, &site(964), Some("local 'value'"))?;
+                let v = arith(&value, &site(960), Some("local 'value'"))?;
                 // `used + value > tag.globalLimit` compiles to `globalLimit < used + value`.
-                if lt(limit, &Value::Num(used + v), 964)? {
-                    let l = arith(limit, &site(965), Some("field 'globalLimit'"))?;
+                if lt(limit, &Value::Num(used + v), 960)? {
+                    let l = arith(limit, &site(961), Some("field 'globalLimit'"))?;
                     value = Value::Num(l - used);
                 }
-                let v = arith(&value, &site(967), Some("local 'value'"))?;
+                let v = arith(&value, &site(963), Some("local 'value'"))?;
                 gl.insert(key, used + v);
             }
         }
@@ -734,9 +734,9 @@ impl ModStore {
         let mut matched = false;
         let var_list = tag.raw("varList");
         if var_list.truthy() {
-            for v in list(var_list, 637, "pairs")? {
+            for v in list(var_list, 633, "pairs")? {
                 if neg && let Some(w) = &all_one_h {
-                    let added = w.get(&format!("Added{}", concat_str(v, &site(638), Some("local 'var'"))?)).clone();
+                    let added = w.get(&format!("Added{}", concat_str(v, &site(634), Some("local 'var'"))?)).clone();
                     if !added.is_nil() {
                         if !added.truthy() {
                             return Ok(false);
@@ -753,7 +753,7 @@ impl ModStore {
             let v = tag.raw("var");
             let mut skipped = false;
             if neg && let Some(w) = &all_one_h {
-                let added = w.get(&format!("Added{}", concat_str(v, &site(650), Some("field 'var'"))?)).clone();
+                let added = w.get(&format!("Added{}", concat_str(v, &site(646), Some("field 'var'"))?)).clone();
                 if !added.is_nil() {
                     if !added.truthy() {
                         return Ok(false);
@@ -784,7 +784,7 @@ impl ModStore {
             && (tag.raw("var").truthy() || var_list.truthy())
         {
             if var_list.truthy() {
-                for v in list(var_list, 673, "pairs")? {
+                for v in list(var_list, 669, "pairs")? {
                     if self.cond_of(t, v, cfg)? {
                         matched = true;
                         break;
@@ -804,7 +804,7 @@ impl ModStore {
     fn item_condition_passes(&self, tag: &Tag, cfg: Option<&ModCfg>) -> LuaResult<bool> {
         let raw_slot = tag.raw("itemSlot");
         let Value::Str(raw_slot) = raw_slot else {
-            return Err(err_op(&site(693), "index", Some("field 'itemSlot'"), raw_slot));
+            return Err(err_op(&site(689), "index", Some("field 'itemSlot'"), raw_slot));
         };
         let item_slot = normalize_item_slot(raw_slot);
         let actor_rc = self.actor();
@@ -822,12 +822,12 @@ impl ModStore {
                 let mut i1 = list.get(k1.as_str()).cloned();
                 let mut i2 = list.get(k2.as_str()).cloned();
                 if let Some(i) = &i1
-                    && is_kalandra(i, 701)?
+                    && is_kalandra(i, 697)?
                 {
                     i1 = i2.clone();
                 }
                 if let Some(i) = &i2
-                    && is_kalandra(i, 702)?
+                    && is_kalandra(i, 698)?
                 {
                     i2 = i1.clone();
                 }
@@ -839,7 +839,7 @@ impl ModStore {
                 let mut item = list.get(item_slot.as_str()).cloned().or_else(|| cfg_item.clone());
                 if let Some(i) = &item
                     && i.name().is_some()
-                    && is_kalandra(i, 708)?
+                    && is_kalandra(i, 704)?
                 {
                     item = list.get(swap_slot_digit(&item_slot).as_str()).cloned();
                 }
@@ -856,17 +856,17 @@ impl ModStore {
         let search = tag.raw("searchCond");
         if search.truthy() {
             let exclude_self = tag.raw("excludeSelf").truthy();
-            for (slot, item) in pairs_items(&items, 715)? {
+            for (slot, item) in pairs_items(&items, 711)? {
                 let type_ok = !all_slots || (item.item_type() != Some("Jewel") && item.item_type() != Some("Graft"));
                 if (type_ok && **slot != *item_slot) || !exclude_self {
-                    let s = lower_of(search, 717, "field 'searchCond'")?;
+                    let s = lower_of(search, 713, "field 'searchCond'")?;
                     matches.push(Value::Bool(item.find_modifier_substring(&s, &lower(slot))));
                 }
             }
         }
         let cond = tag.raw("rarityCond");
         if cond.truthy() {
-            for (_, i) in pairs_items(&items, 722)? {
+            for (_, i) in pairs_items(&items, 718)? {
                 matches.push(Value::Bool(Value::from(i.rarity().map(Str::from).as_ref()).raw_eq(cond)));
             }
         }
@@ -888,15 +888,15 @@ impl ModStore {
         }
         let name_cond = tag.raw("nameCond");
         if name_cond.truthy() {
-            for (_, i) in pairs_items(&items, 742)? {
+            for (_, i) in pairs_items(&items, 738)? {
                 // `item.name and item.name:lower() == tag.nameCond:lower()`
                 match i.name() {
-                    Some(n) => matches.push(Value::Bool(lower(n) == lower_of(name_cond, 743, "field 'nameCond'")?)),
+                    Some(n) => matches.push(Value::Bool(lower(n) == lower_of(name_cond, 739, "field 'nameCond'")?)),
                     None => matches.push(Value::Nil),
                 }
             }
         }
-        let has_items = !pairs_items(&items, 747)?.is_empty();
+        let has_items = !pairs_items(&items, 743)?.is_empty();
         // `bool == (tag.neg or false)` -- the RAW value, so a truthy non-boolean `neg` matches nothing.
         let neg_v = if tag.raw("neg").truthy() {
             tag.raw("neg").clone()
@@ -921,8 +921,8 @@ impl ModStore {
         for t in monster_tags {
             let match_name = lower(t);
             if list_v.truthy() {
-                for name in list(list_v, 937, "pairs")? {
-                    if lower_of(name, 938, "local 'name'")? == match_name {
+                for name in list(list_v, 933, "pairs")? {
+                    if lower_of(name, 934, "local 'name'")? == match_name {
                         matched = Value::Bool(true);
                         break;
                     }
@@ -930,7 +930,7 @@ impl ModStore {
             } else {
                 // Rewritten every round: with a single tag only the LAST monster tag survives a miss.
                 matched = if single.truthy() {
-                    Value::Bool(lower_of(single, 944, "field 'monsterTag'")? == match_name)
+                    Value::Bool(lower_of(single, 940, "field 'monsterTag'")? == match_name)
                 } else {
                     single.clone()
                 };
@@ -979,7 +979,7 @@ fn socketed_in_passes(tag: &Tag, cfg: Option<&ModCfg>) -> LuaResult<bool> {
             matches.push(total == count && total > 0.0);
         } else if sockets.is_table() && cfg.socket_num.is_some() {
             let n = Value::from(cfg.socket_num);
-            matches.push(list(sockets, 767, "ipairs")?.iter().any(|v| v.raw_eq(&n)));
+            matches.push(list(sockets, 763, "ipairs")?.iter().any(|v| v.raw_eq(&n)));
         } else if let Value::Num(s) = sockets {
             matches.push(count < *s);
         } else {
@@ -1012,7 +1012,7 @@ fn skill_name_passes(tag: &Tag, cfg: Option<&ModCfg>) -> LuaResult<bool> {
             .and_then(|n| get_game_id_from_gem_name(&Value::Str(n), true))
             .unwrap_or("");
         if name_list.truthy() {
-            for name in list(name_list, 809, "pairs")? {
+            for name in list(name_list, 805, "pairs")? {
                 if name.truthy() && get_game_id_from_gem_name(name, true) == Some(match_id) {
                     matched = true;
                     break;
@@ -1024,14 +1024,14 @@ fn skill_name_passes(tag: &Tag, cfg: Option<&ModCfg>) -> LuaResult<bool> {
     } else {
         let match_name = lower(&cfg.and_then(cfg_name).unwrap_or_else(|| Str::from("")));
         if name_list.truthy() {
-            for name in list(name_list, 822, "pairs")? {
-                if lower_of(name, 823, "local 'name'")? == match_name {
+            for name in list(name_list, 818, "pairs")? {
+                if lower_of(name, 819, "local 'name'")? == match_name {
                     matched = true;
                     break;
                 }
             }
         } else {
-            matched = skill_name.truthy() && lower_of(skill_name, 829, "field 'skillName'")? == match_name;
+            matched = skill_name.truthy() && lower_of(skill_name, 825, "field 'skillName'")? == match_name;
         }
     }
     Ok(matched != tag.raw("neg").truthy())

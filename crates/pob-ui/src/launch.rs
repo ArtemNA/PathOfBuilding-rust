@@ -616,6 +616,11 @@ impl Launch {
             match pcall(|| main.on_frame(f)) {
                 Err(e) => {
                     crate::diag::log_error("OnFrame");
+                    // :123-126 "Send user to build list menu if a build crashes on initial load": `outputRevision == 1 and buildFlag` holds
+                    // only while `Build:Init` runs its first `BuildOutput` (Build.lua:607-610); here that is a build mode left without an engine
+                    if !self.dev_mode.get() && main.mode.borrow().as_deref() == Some("BUILD") && main.build_mode.engine.borrow().is_none() {
+                        main.set_mode("LIST", vec![]);
+                    }
                     self.show_err_msg(&format!("In 'OnFrame': {e}"));
                 }
                 // the port's own: the build of the link has loaded and drawn a frame

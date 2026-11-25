@@ -99,6 +99,8 @@
 //! re-measured on `tests/defence_synth.rs`).
 //! R-UP2 (2.68.0, 07fa089bf) re-measured: 2 keys newly emitted and ok on every golden -- `MaximumLifeManaDifference` (CalcPerform) and
 //! `MissingUnreservedLifePercent` (CalcDefence) -- newly ALLOWLIST; none left ALLOWLIST.
+//! 2.69.0 (5606cc64f) re-measured: 2 keys newly emitted and ok on every golden -- `LifeReservationEfficiency` and
+//! `ManaReservationEfficiency` (CalcPerform.lua:2057-2058) -- newly ALLOWLIST; none left ALLOWLIST.
 
 use indexmap::IndexMap;
 
@@ -617,6 +619,7 @@ pub const ALLOWLIST: &[&str] = &[
     "LifeRegenInc",
     "LifeRegenPercent",
     "LifeRegenRecovery",
+    "LifeReservationEfficiency",
     "LifeReserved",
     "LifeReservedPercent",
     "LifeUncancellableReservation",
@@ -709,6 +712,7 @@ pub const ALLOWLIST: &[&str] = &[
     "ManaRegenInc",
     "ManaRegenPercent",
     "ManaRegenRecovery",
+    "ManaReservationEfficiency",
     "ManaReserved",
     "ManaReservedPercent",
     "ManaUncancellableReservation",

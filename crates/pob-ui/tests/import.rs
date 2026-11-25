@@ -627,6 +627,31 @@ fn scenario_names() -> Vec<String> {
     names
 }
 
+/// The pinned deviation `guardian-set` (user 2026-11-25: not repeated, pob-engine `import_tab.rs` `guardian_item_set`): since 2.69.0 the
+/// original lists the "Animate Guardian" set twice in `itemSetOrderList` (ItemsTab.lua:1679 + ImportTab.lua:1352), so its `SaveDB` writes that
+/// `<ItemSet>` twice. Only a block that repeats an earlier one of the same id line for line goes; anything else stays and is compared.
+fn drop_repeated_item_sets(lines: Vec<String>) -> Vec<String> {
+    let mut out: Vec<String> = Vec::with_capacity(lines.len());
+    let mut seen: Vec<Vec<String>> = Vec::new();
+    let mut i = 0;
+    while i < lines.len() {
+        if lines[i].trim_start().starts_with("<ItemSet ") && lines[i].contains("title=\"Animate Guardian\"") {
+            let end = (i..lines.len())
+                .find(|&j| lines[j].trim_start().starts_with("</ItemSet>"))
+                .unwrap_or(i);
+            let block = lines[i..=end].to_vec();
+            if seen.contains(&block) {
+                i = end + 1;
+                continue;
+            }
+            seen.push(block);
+        }
+        out.push(lines[i].clone());
+        i += 1;
+    }
+    out
+}
+
 fn first_diff(a: &Value, b: &Value, path: &str) -> Option<String> {
     match (a, b) {
         (Value::Object(x), Value::Object(y)) => {
@@ -666,7 +691,7 @@ fn first_diff(a: &Value, b: &Value, path: &str) -> Option<String> {
                     .map(str::to_owned)
                     .collect::<Vec<_>>()
             };
-            let (a, b) = (keep(x), keep(y));
+            let (a, b) = (drop_repeated_item_sets(keep(x)), keep(y));
             let only_a: Vec<&String> = a.iter().filter(|l| !b.contains(l)).take(12).collect();
             let only_b: Vec<&String> = b.iter().filter(|l| !a.contains(l)).take(12).collect();
             let first = a.iter().zip(&b).position(|(p, q)| p != q);

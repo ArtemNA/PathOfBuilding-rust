@@ -156,6 +156,8 @@ impl ItemSlotControl {
                     }
                 }
             });
+            // ItemSlotControl.lua:68 (5606cc64f) the box shows the item without its "(equipped)" detail
+            drop.hide_sel_detail.set(true);
             ItemSlotControl {
                 drop: drop.clone(),
                 tab,
@@ -256,7 +258,8 @@ impl ItemSlotControl {
             for (id, item) in &e.items_pairs() {
                 if e.is_item_valid_for_slot(item, &self.slot_name) {
                     ids.push(*id as f64);
-                    list.push(DropItem::str(&format!("{}{}", cc(&item.rarity), item.name)));
+                    // ItemSlotControl.lua:100 (5606cc64f) a table entry, so it can carry the "(equipped)" detail
+                    list.push(DropItem::table(&format!("{}{}", cc(&item.rarity), item.name)));
                     if *id as f64 == cur {
                         sel = list.len();
                     }
@@ -282,6 +285,32 @@ impl ItemSlotControl {
                 a.set_sel_item_id(0.0);
             }
         }
+    }
+
+    /// ItemSlotControl.lua:126-138 (5606cc64f) `UpdateEquippedDetails()`: "(equipped)" after every item an active slot holds.
+    fn update_equipped_details(&self) {
+        let t = self.tab.upgrade().expect("itemsTab");
+        let mut equipped: Vec<f64> = Vec::new();
+        // `orderedSlots`: the slots, their abyssal sockets and the tree's jewel sockets
+        let all: Vec<Rc<ItemSlotControl>> = t.slots.borrow().values().chain(t.sockets.borrow().values()).cloned().collect();
+        for slot in &all {
+            for s in std::iter::once(slot.clone()).chain(slot.abyssal_socket_list.borrow().iter().cloned()) {
+                if !s.inactive.get() {
+                    equipped.push(s.sel_item_id.get());
+                }
+            }
+        }
+        let items = self.items.borrow().clone();
+        let mut list = std::mem::take(&mut *self.drop.list.borrow_mut());
+        for (index, entry) in list.iter_mut().enumerate() {
+            if entry.is_table {
+                entry.detail = items
+                    .get(index)
+                    .is_some_and(|id| equipped.contains(id))
+                    .then(|| "^8(equipped)".to_owned());
+            }
+        }
+        *self.drop.list.borrow_mut() = list;
     }
 
     /// `ItemSlotClass:ReceiveDrag(type, value, source)`.
@@ -324,6 +353,9 @@ fn slot_digits(name: &str) -> Option<f64> {
 impl Control for ItemSlotControl {
     fn base(&self) -> &ControlBase {
         &self.drop.base
+    }
+    fn dropped(&self) -> bool {
+        self.drop.dropped.get()
     }
     fn is_mouse_over(&self, g: &Gfx) -> Option<bool> {
         self.drop.is_mouse_over(g)
@@ -381,7 +413,12 @@ impl Control for ItemSlotControl {
         {
             return a.on_key_down(g, key, double_click);
         }
-        self.drop.clone().on_key_down(g, key, double_click).map(|_| self as ControlRef)
+        // :186-190 (5606cc64f)
+        let ret = self.drop.clone().on_key_down(g, key, double_click);
+        if self.drop.dropped.get() {
+            self.update_equipped_details();
+        }
+        ret.map(|_| self as ControlRef)
     }
     fn has_on_key_up(&self) -> bool {
         true
@@ -705,16 +742,125 @@ impl ItemsTab {
         *self.last_slot.borrow_mut() = Some(last);
     }
 
-    /// `ItemsTab:SetActiveItemSet(id)` (:1644-1670).
+    /// `ItemsTab:SetActiveItemSet(id)` (:1714-1745).
     pub fn set_active_item_set(&self, g: &mut Gfx, id: f64) {
+        self.set_active_item_set_with(g, id, false);
+    }
+
+    /// `ItemsTab:SetActiveItemSet(id, deferSync)` (:1714-1745): an id of no set (`nil` too) is the first of the order.
+    pub fn set_active_item_set_with(&self, g: &mut Gfx, id: f64, defer_sync: bool) {
+        let n = self.read(|e| e.item_sets().len());
         self.edit(|e| {
             e.set_active_item_set(id);
             Ok(())
         });
+        if n == 0 {
+            // :1716-1718 `NewItemSet(1, "Default")`
+            self.undo.mod_flag.set(true);
+            self.refresh_set_list();
+        }
         self.sync_gear_slots();
         self.build().build_flag.set(true);
         self.populate_slots(g);
+        if !defer_sync {
+            self.build().sync_loadouts_pub(g);
+        }
+    }
+
+    /// The set list of the Manage popup is `itemSetOrderList` itself (ItemSetListControl.lua:12): what the tab changed in the order shows there.
+    fn refresh_set_list(&self) {
+        if let Some(l) = self.set_list.borrow().upgrade() {
+            *l.list.borrow_mut() = self.read(|e| e.item_sets().iter().map(|s| s.id).collect());
+        }
+    }
+
+    /// `ItemsTab:NewItemSet(itemSetId, name)` (:1677-1682): `CreateItemSet` (`nil`: the first free id), the end of the order, `modFlag`.
+    pub fn new_item_set(&self, id: Option<f64>, name: &str) -> f64 {
+        let id = self.edit(|e| {
+            Ok(match id {
+                Some(id) => e.new_item_set_with_id(id, Some(name)),
+                None => e.new_item_set(Some(name), None),
+            })
+        });
+        self.undo.mod_flag.set(true);
+        self.refresh_set_list();
+        id
+    }
+
+    /// `#self.itemSets`.
+    pub fn item_sets_len(&self) -> usize {
+        self.read(Engine::item_sets_len)
+    }
+
+    /// `ItemsTab:CopyItemSet(sourceItemSetId, newItemSetName)` (:1684-1692).
+    pub fn copy_item_set(&self, from: f64, name: &str) -> f64 {
+        let id = self.edit(|e| Ok(e.copy_item_set(from, name)));
+        self.undo.mod_flag.set(true);
+        self.refresh_set_list();
+        id
+    }
+
+    /// `ItemsTab:RenameItemSet(itemSetId, newTitle)` (:1695-1704): a gone id does nothing (no `modFlag` either).
+    pub fn rename_item_set(&self, id: f64, name: &str) {
+        if self.read(|e| e.item_sets().iter().any(|s| s.id == id)) {
+            self.edit(|e| {
+                e.rename_item_set(id, name);
+                Ok(())
+            });
+            self.undo.mod_flag.set(true);
+        }
+    }
+
+    /// `ItemsTab:DeleteItemSet(itemSetId, orderListIndex)` (:1707-1711).
+    pub fn delete_item_set(&self, id: f64, order_index: usize) {
+        self.edit(|e| {
+            e.delete_item_set(id, order_index);
+            Ok(())
+        });
+        self.undo.mod_flag.set(true);
+        self.refresh_set_list();
+    }
+
+    /// `ItemSetService:NewItemSet(name)` (ItemSetService.lua:14-20).
+    pub fn service_new_item_set(&self, g: &mut Gfx, name: &str) {
+        let id = self.new_item_set(None, name);
+        self.set_active_item_set_with(g, id, true);
+        self.add_undo_state(false);
         self.build().sync_loadouts_pub(g);
+        self.build().build_flag.set(true);
+    }
+
+    /// `ItemSetService:CopyItemSet(itemSetId, name)` (ItemSetService.lua:22-28).
+    pub fn service_copy_item_set(&self, g: &mut Gfx, from: f64, name: &str) {
+        let id = self.copy_item_set(from, name);
+        self.set_active_item_set_with(g, id, true);
+        self.add_undo_state(false);
+        self.build().sync_loadouts_pub(g);
+        self.build().build_flag.set(true);
+    }
+
+    /// `ItemSetService:RenameItemSet(itemSetId, newName)` (ItemSetService.lua:30-35).
+    pub fn service_rename_item_set(&self, g: &mut Gfx, id: f64, name: &str) {
+        self.rename_item_set(id, name);
+        self.add_undo_state(false);
+        self.build().sync_loadouts_pub(g);
+        self.build().build_flag.set(true);
+    }
+
+    /// `ItemSetService:DeleteItemSet(itemSetId, orderListIndex)` (ItemSetService.lua:37-47).
+    pub fn service_delete_item_set(&self, g: &mut Gfx, id: f64, order_index: usize) {
+        if self.read(|e| e.item_sets().len()) > 1 {
+            self.delete_item_set(id, order_index);
+            // `self.itemsTab.activeItemSetId`: still the deleted id (not the fallback of `active_item_set`)
+            if id == self.read(|e| e.model().active_item_set) {
+                let order: Vec<f64> = self.read(|e| e.item_sets().iter().map(|s| s.id).collect());
+                let next = order.get(order_index.saturating_sub(1).max(1) - 1).copied().unwrap_or(f64::NAN);
+                self.set_active_item_set_with(g, next, true);
+            }
+            self.add_undo_state(false);
+            self.build().sync_loadouts_pub(g);
+            self.build().build_flag.set(true);
+        }
     }
 
     /// `PopulateSlots`, `AddUndoState` after a character import (ImportTab.lua:1164-1165, :1481-1482) with what the engine changed in the slots and the sets.
@@ -1534,81 +1680,53 @@ impl ItemsTab {
         main().open_popup(g, 630.0, 290.0, "Manage Item Sets", controls, None, None, None, None);
     }
 
-    /// `RenameSet(itemSet, addOnName)` of the set list (ItemSetListControl.lua:48-74). `what`: an id, or the set to make when the popup saves.
-    pub(crate) fn rename_set_popup(&self, g: &mut Gfx, what: RenameItemSet) {
-        let title = match &what {
-            RenameItemSet::Existing(id) => self.read(|e| e.item_sets().iter().find(|s| s.id == *id).and_then(|s| s.title.clone())),
-            RenameItemSet::Copy(id) => self.read(|e| e.item_sets().iter().find(|s| s.id == *id).and_then(|s| s.title.clone())),
-            RenameItemSet::New => None,
-        };
-        let save: Rc<RefCell<Option<Rc<ButtonControl>>>> = Rc::new(RefCell::new(None));
-        let s1 = save.clone();
-        let edit = EditControl::new(
-            g,
-            None,
-            rect(0.0, 40.0, 350.0, 20.0),
-            EditArgs {
-                init: title.clone(),
-                limit: Some(100),
-                change_func: Some(Rc::new(move |_g: &mut Gfx, buf: &str, _: bool| {
-                    let ok = buf.chars().any(|c| !c.is_whitespace());
-                    if let Some(b) = s1.borrow().as_ref() {
-                        b.base.enabled.set(ok);
-                    }
-                })),
-                ..EditArgs::default()
-            },
-        );
+    /// `ItemSetListControl:CreateItemSet()` (ItemSetListControl.lua:39-54).
+    pub(crate) fn create_item_set_popup(&self, g: &mut Gfx) {
         let me = self.me.clone();
-        let e2 = edit.clone();
-        let btn = ButtonControl::new(None, rect(-45.0, 70.0, 80.0, 20.0), "Save".to_string(), move |g| {
-            let t = me.upgrade().expect("itemsTab");
-            let name = e2.buf.borrow().clone();
-            let l = t.set_list.borrow().upgrade();
-            let added = match &what {
-                RenameItemSet::Existing(id) => {
-                    t.edit(|e| {
-                        e.rename_item_set(*id, &name);
-                        Ok(())
-                    });
-                    None
-                }
-                RenameItemSet::New => Some(t.edit(|e| Ok(e.new_item_set(Some(&name), None)))),
-                RenameItemSet::Copy(id) => Some(t.edit(|e| Ok(e.copy_item_set(*id, &name)))),
-            };
-            t.undo.mod_flag.set(true);
-            if let (Some(id), Some(l)) = (added, l) {
-                l.list.borrow_mut().push(id);
-                l.sel_index.set(Some(l.list.borrow().len()));
-                *l.sel_value.borrow_mut() = Some(id);
-            }
-            t.add_undo_state(false);
-            t.build().sync_loadouts_pub(g);
-            main().close_popup();
-        });
-        btn.base.enabled.set(false);
-        *save.borrow_mut() = Some(btn.clone());
-        let mut controls: IndexMap<String, ControlRef> = IndexMap::new();
-        controls.insert(
-            "label".into(),
-            LabelControl::new(None, rect(0.0, 20.0, 0.0, 16.0), "^7Enter name for this item set:".to_string()),
-        );
-        controls.insert("edit".into(), edit);
-        controls.insert("save".into(), btn);
-        controls.insert(
-            "cancel".into(),
-            ButtonControl::new(None, rect(45.0, 70.0, 80.0, 20.0), "Cancel".to_string(), |_g| main().close_popup()),
-        );
-        main().open_popup(
+        crate::set_name_popup::open_name_popup(
             g,
-            370.0,
             100.0,
-            if title.is_some() { "Rename" } else { "Set Name" },
-            controls,
-            Some("save"),
-            Some("edit"),
-            Some("cancel"),
-            None,
+            "Create Item Set",
+            "^7Enter name for new item set:",
+            "New Item Set",
+            Rc::new(crate::set_name_popup::has_non_space),
+            Rc::new(move |g: &mut Gfx, name: String| me.upgrade().expect("itemsTab").service_new_item_set(g, &name)),
+        );
+    }
+
+    /// `ItemSetListControl:CopyItemSet(selValue)` (ItemSetListControl.lua:56-72).
+    pub(crate) fn copy_item_set_popup(&self, g: &mut Gfx, sel_value: f64) {
+        let title = self.read(|e| e.item_sets().iter().find(|s| s.id == sel_value).map(|s| s.title.clone()));
+        let title = title.expect("Classes/ItemSetListControl.lua:60: attempt to index local 'itemSet' (a nil value)");
+        let me = self.me.clone();
+        crate::set_name_popup::open_name_popup(
+            g,
+            100.0,
+            "Copy Item Set",
+            "^7Enter name for this item set:",
+            title.as_deref().unwrap_or("Default"),
+            Rc::new(crate::set_name_popup::has_non_space),
+            Rc::new(move |g: &mut Gfx, name: String| {
+                me.upgrade().expect("itemsTab").service_copy_item_set(g, sel_value, &name);
+            }),
+        );
+    }
+
+    /// `ItemSetListControl:RenameItemSet(selValue)` (ItemSetListControl.lua:74-91): the title is never nil (`setName and ...`).
+    pub(crate) fn rename_item_set_popup(&self, g: &mut Gfx, sel_value: f64) {
+        let title = self.read(|e| e.item_sets().iter().find(|s| s.id == sel_value).map(|s| s.title.clone()));
+        let title = title.expect("Classes/ItemSetListControl.lua:78: attempt to index local 'itemSet' (a nil value)");
+        let me = self.me.clone();
+        crate::set_name_popup::open_name_popup(
+            g,
+            100.0,
+            "Rename Item Set",
+            "^7Enter name for this item set:",
+            title.as_deref().unwrap_or("Default"),
+            Rc::new(crate::set_name_popup::has_non_space),
+            Rc::new(move |g: &mut Gfx, name: String| {
+                me.upgrade().expect("itemsTab").service_rename_item_set(g, sel_value, &name);
+            }),
         );
     }
 }
@@ -1669,17 +1787,59 @@ impl ItemsTab {
     }
 }
 
-pub enum RenameItemSet {
-    Existing(f64),
-    New,
-    Copy(f64),
+// ---------------------------------------------------------------------------------------------- the lists
+
+thread_local! {
+    /// ItemsTab.lua:22-41 (5606cc64f) `itemTypeIcons`, loaded on first use.
+    static ITEM_TYPE_ICONS: std::cell::RefCell<Option<std::collections::HashMap<&'static str, pob_gfx::ImageHandle>>> =
+        const { std::cell::RefCell::new(None) };
 }
 
-// ---------------------------------------------------------------------------------------------- the lists
+/// ItemsTab.lua:2663-2666 (5606cc64f) `GetItemIcon(item)`: the icon of the item's type, or of weapons.
+pub fn get_item_icon(item: &Item) -> Option<pob_gfx::ImageHandle> {
+    ITEM_TYPE_ICONS.with_borrow_mut(|m| {
+        let m = m.get_or_insert_with(|| {
+            let root = crate::launch::launch().cfg.script_path.clone();
+            [
+                ("Weapon", "icon_weapon"),
+                ("Bow", "icon_bow"),
+                ("Quiver", "icon_quiver"),
+                ("Shield", "icon_shield"),
+                ("Helmet", "icon_helmet"),
+                ("Body Armour", "icon_body_armour"),
+                ("Gloves", "icon_gloves"),
+                ("Boots", "icon_boots"),
+                ("Amulet", "icon_amulet"),
+                ("Ring", "icon_ring"),
+                ("Belt", "icon_belt"),
+                ("Flask", "icon_flask"),
+                ("Tincture", "icon_flask"),
+                ("Jewel", "icon_jewel"),
+            ]
+            .into_iter()
+            .map(|(ty, file)| {
+                let h = pob_gfx::ImageHandle::new();
+                let _ = h.load(crate::src_cache::resolve(&root, &format!("Assets/{file}.png")), &[]);
+                (ty, h)
+            })
+            .collect()
+        });
+        item.ty
+            .as_deref()
+            .and_then(|t| m.get(t).cloned())
+            .or_else(|| item.base.is_some_and(|b| b.weapon.is_some()).then(|| m["Weapon"].clone()))
+    })
+}
 
 struct ItemListHooks(Weak<ItemsTab>);
 
 impl ListHooks<ItemRow> for ItemListHooks {
+    /// ItemListControl.lua:269-271 (5606cc64f)
+    fn get_row_icon(&self, _l: &ListControl<ItemRow>, _column: usize, _index: usize, v: &ItemRow) -> Option<pob_gfx::ImageHandle> {
+        let ItemRow::Id(id) = v else { return None };
+        let t = self.0.upgrade().expect("itemsTab");
+        t.read(|e| e.item_by_id(*id)).and_then(|item| get_item_icon(&item))
+    }
     /// ItemListControl.lua:250-266
     fn get_row_value(&self, _l: &ListControl<ItemRow>, _g: &Gfx, column: usize, _index: usize, v: &ItemRow) -> String {
         let (1, ItemRow::Id(id)) = (column, v) else { return String::new() };
@@ -2012,7 +2172,7 @@ impl ListHooks<f64> for SetListHooks {
         }
         None
     }
-    /// ItemSetListControl.lua:123-138
+    /// ItemSetListControl.lua:140-151
     fn on_sel_delete(&self, l: &ListControl<f64>, g: &mut Gfx, index: usize, id: &f64) {
         if l.list.borrow().len() <= 1 {
             return;
@@ -2031,30 +2191,19 @@ impl ListHooks<f64> for SetListHooks {
             "Delete",
             Rc::new(move |g: &mut Gfx| {
                 let t = w.upgrade().expect("itemsTab");
-                let l = t.set_list.borrow().upgrade().expect("setList");
-                l.list.borrow_mut().remove(index - 1);
-                t.edit(|e| {
-                    e.delete_item_set(id);
-                    Ok(())
-                });
-                l.sel_index.set(None);
-                *l.sel_value.borrow_mut() = None;
-                if id == t.read(|e| e.model().active_item_set) {
-                    let next = l.list.borrow()[index.saturating_sub(1).max(1) - 1];
-                    t.set_active_item_set(g, next);
+                t.service_delete_item_set(g, id, index);
+                if let Some(l) = t.set_list.borrow().upgrade() {
+                    l.sel_index.set(None);
+                    *l.sel_value.borrow_mut() = None;
                 }
-                t.add_undo_state(false);
-                t.build().sync_loadouts_pub(g);
             }),
             None,
         );
     }
+    /// ItemSetListControl.lua:153-157
     fn on_sel_key_down(&self, _l: &ListControl<f64>, g: &mut Gfx, _index: usize, id: &f64, key: &str) {
         if key == "F2" {
-            self.0
-                .upgrade()
-                .expect("itemsTab")
-                .rename_set_popup(g, RenameItemSet::Existing(*id));
+            self.0.upgrade().expect("itemsTab").rename_item_set_popup(g, *id);
         }
     }
 }
@@ -2154,7 +2303,7 @@ fn new_manage_lists(g: &mut Gfx, tab: Weak<ItemsTab>) -> (Rc<ListControl<f64>>, 
         move |g| {
             let l = w.upgrade().expect("list");
             let id = *l.sel_value.borrow().as_ref().expect("selValue");
-            t1.upgrade().expect("itemsTab").rename_set_popup(g, RenameItemSet::Copy(id));
+            t1.upgrade().expect("itemsTab").copy_item_set_popup(g, id);
         },
     );
     let w = Rc::downgrade(&set_list);
@@ -2190,7 +2339,7 @@ fn new_manage_lists(g: &mut Gfx, tab: Weak<ItemsTab>) -> (Rc<ListControl<f64>>, 
         move |g| {
             let l = w.upgrade().expect("list");
             let id = *l.sel_value.borrow().as_ref().expect("selValue");
-            t1.upgrade().expect("itemsTab").rename_set_popup(g, RenameItemSet::Existing(id));
+            t1.upgrade().expect("itemsTab").rename_item_set_popup(g, id);
         },
     );
     let w = Rc::downgrade(&set_list);
@@ -2205,7 +2354,7 @@ fn new_manage_lists(g: &mut Gfx, tab: Weak<ItemsTab>) -> (Rc<ListControl<f64>>, 
         rect(-4.0, 0.0, 60.0, 18.0),
         "New".to_string(),
         move |g| {
-            t1.upgrade().expect("itemsTab").rename_set_popup(g, RenameItemSet::New);
+            t1.upgrade().expect("itemsTab").create_item_set_popup(g);
         },
     );
     set_list.host.add("copy", copy);
@@ -2303,9 +2452,9 @@ fn viscera_raws() -> Vec<String> {
     pob_data::read_json("viscera.json").unwrap_or_else(|e| panic!("{e}"))
 }
 
-/// Main.lua:204-212 (07fa089bf): `Item(raw, "RARE", true)`, then `BuildAndParseRaw`; one item per name.
+/// Main.lua:204-212 (5606cc64f): `Item(raw, "NORMAL", true)`, then `BuildAndParseRaw`; one item per name.
 fn parse_viscera(raw: &str, list: &mut IndexMap<String, Rc<Item>>) {
-    let mut it = Item::parse_with(&crate::common::sanitise_text(raw), Some("RARE"), true);
+    let mut it = Item::parse_with(&crate::common::sanitise_text(raw), Some("NORMAL"), true);
     if it.base.is_some() {
         it.build_and_parse_raw();
         list.insert(it.name.clone(), Rc::new(it));
@@ -2496,6 +2645,13 @@ fn db_sort_items() -> Vec<DropItem> {
 struct DbHooks(Weak<ItemsTab>);
 
 impl ListHooks<ItemRow> for DbHooks {
+    /// ItemDBControl.lua:340-342 (5606cc64f)
+    fn get_row_icon(&self, _l: &ListControl<ItemRow>, _column: usize, _index: usize, v: &ItemRow) -> Option<pob_gfx::ImageHandle> {
+        match v {
+            ItemRow::Obj(i) => get_item_icon(i),
+            ItemRow::Id(_) => None,
+        }
+    }
     fn get_row_value(&self, _l: &ListControl<ItemRow>, _g: &Gfx, column: usize, _index: usize, v: &ItemRow) -> String {
         match (column, v) {
             (1, ItemRow::Obj(i)) => format!("{}{}", cc(&i.rarity), i.name),
@@ -2585,6 +2741,8 @@ impl ItemDb {
             true,
             Box::new(DbHooks(tab.clone())),
         );
+        // ItemDBControl.lua:31 (5606cc64f)
+        list.reserve_icon_space.set(true);
         let flag = Rc::new(Cell::new(true));
         let lr: ControlRef = list.clone();
         let mk = |g: &mut Gfx, an, x, y, w, items: Vec<&str>| {
@@ -3378,6 +3536,8 @@ impl ItemsTab {
             true,
             Box::new(ItemListHooks(me.clone())),
         );
+        // ItemListControl.lua:22 (5606cc64f)
+        item_list.reserve_icon_space.set(true);
         *item_list.default_text.borrow_mut() = Some("^x7F7F7FThis is the list of items that have been added to this build.\nYou can add items to this list by dragging them from\none of the other lists, or by clicking 'Add to build' when\nviewing an item.".to_string());
         let ilr: ControlRef = item_list.clone();
         let t1 = t.clone();

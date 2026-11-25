@@ -200,7 +200,7 @@ fn jtruthy(j: Option<&Json>) -> bool {
 
 // --- the closures -------------------------------------------------------------------------------------------------------
 
-/// ConfigOptions.lua:2102-2238 `enemyIsBoss`: placeholder defaults per tier, written mid-BuildModList (CALC-ARCH §6).
+/// ConfigOptions.lua:2116-2252 `enemyIsBoss`: placeholder defaults per tier, written mid-BuildModList (CALC-ARCH §6).
 fn enemy_is_boss(v: &ConfigValue, c: &mut ApplyCtx<'_>) -> LuaResult<()> {
     let k = constants();
     // These defaults are here so that the placeholders get reset correctly
@@ -225,7 +225,7 @@ fn enemy_is_boss(v: &ConfigValue, c: &mut ApplyCtx<'_>) -> LuaResult<()> {
         c.ph("enemyLevel", empty());
         c.update_level()?;
         let default_level = c.tab.enemy_level;
-        let default_damage = round(table_at(&k.monster_damage_table, default_level, 2121)? * 1.5, None);
+        let default_damage = round(table_at(&k.monster_damage_table, default_level, 2135)? * 1.5, None);
         c.ph("enemyPhysicalDamage", num(default_damage));
         c.ph("enemyLightningDamage", empty());
         c.ph("enemyColdDamage", empty());
@@ -235,8 +235,8 @@ fn enemy_is_boss(v: &ConfigValue, c: &mut ApplyCtx<'_>) -> LuaResult<()> {
         for p in pens {
             c.ph(p, empty());
         }
-        c.ph("enemyArmour", num(table_at(&k.monster_armour_table, default_level, 2134)?));
-        c.ph("enemyEvasion", num(table_at(&k.monster_evasion_table, default_level, 2135)?));
+        c.ph("enemyArmour", num(table_at(&k.monster_armour_table, default_level, 2148)?));
+        c.ph("enemyEvasion", num(table_at(&k.monster_evasion_table, default_level, 2149)?));
     } else if is(v, "Boss") {
         flag(c.enemy_mod_list, "Condition:RareOrUnique", CONFIG, vec![cond("Effective")]);
         nm(
@@ -254,7 +254,7 @@ fn enemy_is_boss(v: &ConfigValue, c: &mut ApplyCtx<'_>) -> LuaResult<()> {
         c.update_level()?;
         let default_level = c.tab.enemy_level;
         let default_damage = round(
-            table_at(&k.monster_damage_table, default_level, 2155)? * 1.5 * misc("stdBossDPSMult"),
+            table_at(&k.monster_damage_table, default_level, 2169)? * 1.5 * misc("stdBossDPSMult"),
             None,
         );
         for d in dmgs {
@@ -265,8 +265,8 @@ fn enemy_is_boss(v: &ConfigValue, c: &mut ApplyCtx<'_>) -> LuaResult<()> {
         for p in pens {
             c.ph(p, empty());
         }
-        c.ph("enemyArmour", num(table_at(&k.monster_armour_table, default_level, 2168)?));
-        c.ph("enemyEvasion", num(table_at(&k.monster_evasion_table, default_level, 2169)?));
+        c.ph("enemyArmour", num(table_at(&k.monster_armour_table, default_level, 2182)?));
+        c.ph("enemyEvasion", num(table_at(&k.monster_evasion_table, default_level, 2183)?));
     } else if is(v, "Pinnacle") || is(v, "Uber") {
         let uber = is(v, "Uber");
         flag(c.enemy_mod_list, "Condition:RareOrUnique", CONFIG, vec![cond("Effective")]);
@@ -317,12 +317,12 @@ fn enemy_is_boss(v: &ConfigValue, c: &mut ApplyCtx<'_>) -> LuaResult<()> {
     Ok(())
 }
 
-/// ConfigOptions.lua:2288-2367 `presetBossSkills`.
+/// ConfigOptions.lua:2302-2381 `presetBossSkills`.
 fn preset_boss_skills(v: &ConfigValue, c: &mut ApplyCtx<'_>) -> LuaResult<()> {
     if !is(v, "None") {
         let name = lua_tostring(v);
         let Some(boss) = boss_skills().get(&name) else {
-            return Err(LuaError(format!("{CO}:2292: attempt to index local 'bossData' (a nil value)")));
+            return Err(LuaError(format!("{CO}:2306: attempt to index local 'bossData' (a nil value)")));
         };
         let sel = c.tab.list_value_at("enemyIsBoss", c.tab.sel_index("enemyIsBoss"));
         let mut is_uber = sel.as_ref().is_some_and(|x| is(x, "Uber"));
@@ -342,13 +342,13 @@ fn preset_boss_skills(v: &ConfigValue, c: &mut ApplyCtx<'_>) -> LuaResult<()> {
         // math.max coerces (L6) -- `n` does the same.
         let rr_src = c.tab.input.get("enemyDamageRollRange").filter(|x| truthy(Some(x))).cloned();
         let rr_src = rr_src.or_else(|| c.tab.control_placeholder("enemyDamageRollRange"));
-        let roll_range_mult = min2(max2(n(rr_src.as_ref(), 2300)?, 0.0), 100.0);
+        let roll_range_mult = min2(max2(n(rr_src.as_ref(), 2314)?, 0.0), 100.0);
         let uber_mult = boss.get("UberDamageMultiplier").and_then(json_num);
         if let Some(Json::Object(mults)) = boss.get("DamageMultipliers") {
             for (damage_type, m) in mults {
                 let m0 = m.get(0).and_then(json_num).unwrap_or(f64::NAN);
                 let m1 = m.get(1).and_then(json_num).unwrap_or(f64::NAN);
-                let tv = table_at(&constants().monster_damage_table, c.tab.enemy_level, 2303)?;
+                let tv = table_at(&constants().monster_damage_table, c.tab.enemy_level, 2317)?;
                 let var = format!("enemy{damage_type}Damage");
                 match uber_mult {
                     Some(u) if is_uber => c.ph(&var, num(round(tv * (m0 + roll_range_mult * m1) * u, None))),
@@ -451,15 +451,15 @@ fn preset_boss_skills(v: &ConfigValue, c: &mut ApplyCtx<'_>) -> LuaResult<()> {
 pub static HAND_PORTED: [ApplyEntry; 10] = [
     e(
         "enemyIsBoss",
-        2102,
-        2238,
+        2116,
+        2252,
         "0c63f14001520552cd4d5379f9f5636ba8e881470124bbf61cba1ddd6ee5d316",
         enemy_is_boss,
     ),
     e(
         "presetBossSkills",
-        2288,
-        2367,
+        2302,
+        2381,
         "5ee18b51ad867d8b1a16034a80ab73595ed76988455c03766b7301bf005e7203",
         preset_boss_skills,
     ),

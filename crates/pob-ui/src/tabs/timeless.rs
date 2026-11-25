@@ -1043,7 +1043,7 @@ fn search_single_socket(g: &mut Gfx, socket_id: f64) -> Option<SearchResult> {
                             node[3] = TCell::Num(0.001);
                         }
                     }
-                    Some(TCell::Str(_)) => panic!("Classes/TreeTab.lua:2500: attempt to compare string with number"),
+                    Some(TCell::Str(_)) => panic!("Classes/TreeTab.lua:2515: attempt to compare string with number"),
                 }
             }
             i += 1;
@@ -1051,7 +1051,7 @@ fn search_single_socket(g: &mut Gfx, socket_id: f64) -> Option<SearchResult> {
         if let Some(c) = node.get(3) {
             let v = c
                 .tonumber()
-                .unwrap_or_else(|| panic!("Classes/TreeTab.lua:2505: attempt to compare nil with number"));
+                .unwrap_or_else(|| panic!("Classes/TreeTab.lua:2520: attempt to compare nil with number"));
             if v > 0.0 {
                 minimum.push((key.clone(), v));
             }
@@ -1169,7 +1169,7 @@ fn search_single_socket(g: &mut Gfx, socket_id: f64) -> Option<SearchResult> {
                     let is_allocated = granted.contains_key(&target) || spec.alloc_nodes.contains_key(&target);
                     let distance = spec
                         .node(target)
-                        .unwrap_or_else(|| panic!("Classes/TreeTab.lua:2585: attempt to index a nil value (spec.nodes[{target}])"))
+                        .unwrap_or_else(|| panic!("Classes/TreeTab.lua:2600: attempt to index a nil value (spec.nodes[{target}])"))
                         .path_dist;
                     score = is_allocated || (dist > 0.0 && distance <= dist);
                 }
@@ -1242,7 +1242,7 @@ fn search_single_socket(g: &mut Gfx, socket_id: f64) -> Option<SearchResult> {
                         let (stats, sorted) = match (cur_node, cur_add) {
                             (Some(n), _) => (n.stat_defs, &n.sorted_stats),
                             (_, Some(a)) => (a.stats, &a.sorted_stats),
-                            _ => panic!("Classes/TreeTab.lua:2648: attempt to index local 'curNode' (a nil value)"),
+                            _ => panic!("Classes/TreeTab.lua:2663: attempt to index local 'curNode' (a nil value)"),
                         };
                         let roll = |k: &String| f64::from(data[stats.get(k).expect("stat").index as usize]);
                         let mut weight = d1 * roll(&sorted[0]);
@@ -1640,7 +1640,7 @@ fn replace_helper(stat_to_fix: &str, stat_key: &str, stat: &pob_data::timeless::
             pob_lua::Repl::Str(ts(value).as_bytes()),
             None,
         )
-        .unwrap_or_else(|e| panic!("Classes/TreeTab.lua:1992: {e:?}"))
+        .unwrap_or_else(|e| panic!("Classes/TreeTab.lua:2007: {e:?}"))
         .0;
         String::from_utf8_lossy(&out).into_owned()
     };
@@ -1658,7 +1658,7 @@ fn build_stat_mod_lists(tree: &pob_tree::PassiveTree, id: &str, sorted: &[String
     sorted
         .iter()
         .map(|key| {
-            let line = legion_stat_line(sorted, key).unwrap_or_else(|| panic!("Classes/TreeTab.lua:2007: no description of {key} of {id}"));
+            let line = legion_stat_line(sorted, key).unwrap_or_else(|| panic!("Classes/TreeTab.lua:2022: no description of {key} of {id}"));
             pob_engine::tree_tab::FallbackLine {
                 mods: tree.parse_mod_list(&line),
                 divisor: Some(100.0),
@@ -1719,7 +1719,7 @@ fn setup_fallback_weights(g: &mut Gfx) {
                     let original = &node.sd[0];
                     let key = node.sorted_stats.first().unwrap_or_else(|| {
                         panic!(
-                            "Classes/TreeTab.lua:1981: attempt to index local 'statMod' (a nil value), {}",
+                            "Classes/TreeTab.lua:1996: attempt to index local 'statMod' (a nil value), {}",
                             node.id
                         )
                     });
@@ -1739,7 +1739,7 @@ fn setup_fallback_weights(g: &mut Gfx) {
                     divisor: None,
                 }];
                 if is_total {
-                    made.divisor = Some(first_mod_value(&node.stats.mod_list.mods, 2052));
+                    made.divisor = Some(first_mod_value(&node.stats.mod_list.mods, 2067));
                 }
             }
             new_node = Some(made);
@@ -1767,7 +1767,7 @@ fn setup_fallback_weights(g: &mut Gfx) {
                     made.divisor = Some(if line == *original { 1.0 } else { 100.0 });
                 }
                 if !uses_variable_rolls && is_total {
-                    made.divisor = Some(first_mod_value(&list, 2094));
+                    made.divisor = Some(first_mod_value(&list, 2109));
                 }
                 made.lines = vec![FallbackLine { mods: list, divisor: None }];
             }
@@ -1984,7 +1984,7 @@ pub fn find_timeless_jewel(g: &mut Gfx) {
                     let mut min_distance = f64::INFINITY;
                     let radius = tree
                         .nodes_in_radius(id)
-                        .unwrap_or_else(|| panic!("Classes/TreeTab.lua:1321: attempt to index a nil value"));
+                        .unwrap_or_else(|| panic!("Classes/TreeTab.lua:1336: attempt to index a nil value"));
                     for &r in &radius[2] {
                         let n = tree.node(r).expect("node");
                         if n.ty == pob_tree::NodeType::Keystone {

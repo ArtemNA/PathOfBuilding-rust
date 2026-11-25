@@ -148,8 +148,9 @@ fn mutators(e: &Engine) -> Vec<(&'static str, Edit, Option<Edit>)> {
             (!flagged_source).then(|| -> Edit {
                 Box::new(move |e| {
                     let last = e.item_sets().last().expect("set").id;
+                    let n = e.item_sets().len();
                     e.set_active_item_set(set);
-                    e.delete_item_set(last);
+                    e.delete_item_set(last, n);
                     // the empty set's run clamped `build.mainSocketGroup` (CalcSetup.lua:1590), as upstream
                     e.set_main_group(main as usize);
                     Ok(())

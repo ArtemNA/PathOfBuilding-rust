@@ -23,6 +23,7 @@ pub mod modules;
 pub mod poe_api;
 pub mod rate_limiter;
 pub mod search;
+pub mod set_name_popup;
 pub mod sg;
 pub mod src_cache;
 pub mod src_cache_gen;

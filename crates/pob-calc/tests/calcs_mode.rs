@@ -107,6 +107,13 @@ fn out_table(env: &Env, t: &OutTable) -> Json {
                     json!({ "$gem": gi.name_spec.clone().unwrap_or_else(|| "nil".into()) }),
                 );
             }
+            // 5606cc64f: `sourceSkill`, the gem's first active skill -> its granted effect's name (export-calcs.ts)
+            if let Some(i) = r.source_skill {
+                let st = env.skills.as_ref().expect("skills");
+                let sk = &st.active_skill_list[i];
+                let name = &st.skills.effects[sk.active_effect.borrow().granted_effect].name;
+                o.insert("sourceSkill".into(), json!({ "$skill": name }));
+            }
             Json::Object(o)
         }
         OutTable::SkillDps(v) => list(

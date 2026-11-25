@@ -1173,7 +1173,7 @@ fn explode_field(v: &Value, k: &str) -> Value {
     match v {
         Value::Table(t) => t.get(k).clone(),
         other => panic!(
-            "Data/Skills/other.lua:6372: attempt to index local 'explodeMod' (a {} value)",
+            "Data/Skills/other.lua:6615: attempt to index local 'explodeMod' (a {} value)",
             other.type_name()
         ),
     }
@@ -1207,17 +1207,17 @@ fn explode_source_name(off: &Off<'_>) -> String {
         .active_effect
         .borrow()
         .src_instance
-        .unwrap_or_else(|| panic!("Data/Skills/other.lua:6372: attempt to index field 'srcInstance' (a nil value)"));
+        .unwrap_or_else(|| panic!("Data/Skills/other.lua:6615: attempt to index field 'srcInstance' (a nil value)"));
     let src = st.tab.socket_group_list()[g].gem_list[k]
         .explode_source
         .clone()
-        .unwrap_or_else(|| panic!("Data/Skills/other.lua:6372: attempt to index field 'explodeSource' (a nil value)"));
+        .unwrap_or_else(|| panic!("Data/Skills/other.lua:6615: attempt to index field 'explodeSource' (a nil value)"));
     match src {
         crate::skills_tab::ExplodeSource::Node(id) => format!("Tree:{id}"),
         crate::skills_tab::ExplodeSource::Item(it) => match (&it.0.mod_source, it.0.id) {
             (Some(s), _) => s.clone(),
             (None, Some(id)) => format!("Tree:{}", pob_lua::tostring_num(id)),
-            (None, None) => panic!("Data/Skills/other.lua:6372: attempt to concatenate field 'id' (a nil value)"),
+            (None, None) => panic!("Data/Skills/other.lua:6615: attempt to concatenate field 'id' (a nil value)"),
         },
     }
 }
@@ -1237,8 +1237,8 @@ pub(super) fn enemy_explode(off: &mut Off<'_>) {
             let active_effect_source = explode_source_name(off);
             if e.mod_.source.as_deref() == Some(active_effect_source.as_str()) {
                 let em = &e.value;
-                let ty = explode_type(em, 6375);
-                let amount = explode_num(em, "amount", 6376);
+                let ty = explode_type(em, 6618);
+                let amount = explode_num(em, "amount", 6619);
                 if ty == "RandomElement" {
                     for t in ["Fire", "Cold", "Lightning"] {
                         set(off, &format!("{t}EffectiveExplodePercentage"), amount / 3.0);
@@ -1246,7 +1246,7 @@ pub(super) fn enemy_explode(off: &mut Off<'_>) {
                 } else {
                     set(off, &format!("{ty}EffectiveExplodePercentage"), amount);
                 }
-                let chance = if part == Some(2.0) { 1.0 } else { explode_num(em, "chance", 6382) };
+                let chance = if part == Some(2.0) { 1.0 } else { explode_num(em, "chance", 6625) };
                 off.out().set_num("ExplodeChance", chance);
             }
         }
@@ -1255,9 +1255,9 @@ pub(super) fn enemy_explode(off: &mut Off<'_>) {
         let list = off.q.list(Some(&off.cfg), &["ExplodeMod"]);
         let mut by_type: Vec<(String, Vec<(f64, f64)>)> = Vec::new();
         for em in &list {
-            let ty = explode_type(em, 6389);
-            let amount = explode_num(em, "amount", 6390);
-            let chance = explode_num(em, "chance", 6390);
+            let ty = explode_type(em, 6632);
+            let amount = explode_num(em, "amount", 6633);
+            let chance = explode_num(em, "chance", 6633);
             let i = match by_type.iter().position(|(t, _)| *t == ty) {
                 Some(i) => i,
                 None => {
@@ -1273,7 +1273,7 @@ pub(super) fn enemy_explode(off: &mut Off<'_>) {
         }
         if by_type.len() > 1 {
             off.note(
-                "Data/Skills/other.lua:6393 skills.EnemyExplode.preDamageFunc: pairs(typeAmountChances) over more than one ExplodeMod type (string keys, R13: the LuaJIT order varies by process; insertion order used)"
+                "Data/Skills/other.lua:6636 skills.EnemyExplode.preDamageFunc: pairs(typeAmountChances) over more than one ExplodeMod type (string keys, R13: the LuaJIT order varies by process; insertion order used)"
                     .into(),
             );
         }

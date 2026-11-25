@@ -515,8 +515,10 @@ impl Panel {
             },
             Rc::new(|i| {
                 let ty = i.ty.as_deref().unwrap_or("");
+                // ItemsTab.lua:608 (5606cc64f: nor Viscera)
                 ty != "Tincture"
                     && ty != "Graft"
+                    && ty != "Viscera"
                     && (i.corruptible || (ty != "Flask" && ty != "Jewel" && matches!(i.rarity.as_str(), "NORMAL" | "MAGIC" | "RARE")))
                     && !i.implicits_cannot_be_changed
             }),
@@ -2025,7 +2027,7 @@ impl ItemsTab {
         let Some(mods) = item.affix_mods() else { return range };
         let min_max = |m: &AffixMod| -> Option<(f64, f64)> {
             for l in &m.lines {
-                if let Some(c) = pob_items::lua::match_(l, "%((%d[%d%.]*)%-(%d[%d%.]*)%)", "ItemsTab.lua:781") {
+                if let Some(c) = pob_items::lua::match_(l, "%((%d[%d%.]*)%-(%d[%d%.]*)%)", "ItemsTab.lua:802") {
                     return Some((c[0].parse().ok()?, c[1].parse().ok()?));
                 }
             }
@@ -2539,6 +2541,10 @@ fn make_craft_item(name: &str, rarity_sel: usize, title_buf: &str) -> Item {
     let mut sel = rarity_sel;
     if (base.flask.is_some() || (base.ty == "Jewel" && base.sub_type.as_deref() == Some("Charm")) || base.ty == "Tincture") && sel == 3 {
         sel = 2;
+    }
+    // ItemsTab.lua:2802-2804 (5606cc64f) a Viscera base is always Normal
+    if base.ty == "Viscera" {
+        sel = 1;
     }
     let rarity = ["NORMAL", "MAGIC", "RARE", "UNIQUE", "RELIC"][sel - 1];
     let mut item = Item::new_crafted(name, base);

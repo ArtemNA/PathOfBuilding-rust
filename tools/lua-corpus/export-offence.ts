@@ -6,9 +6,9 @@
 //   B. the same with jit.off()+jit.flush()+debug.sethook(line) -> OC1..OC6 (first hit of the line inside calcs.offence with env==top MAIN env, actor==env.player);
 //      B's final output must equal A's (reported);
 //   C. wipeGlobalCache + build.calcsTab:BuildOutput() (MAIN+CALCS, the oracle's config path) -> mainOutput, compared with A.
-// OC lines (CalcOffence.lua @ 07fa089bf -- @ 3dbca4463 OC4..OC6 were 4186/5802/6293; marker -> first executable line,
-// all at function-body level): OC1 1056->1057, OC2 1960->1961 (+ 2010, `end` of buildConversionTable), OC3 2633 (the `for` itself),
-// OC4 4199->4200, OC5 5816->5817, OC6 = line 6316 (`end` of calcs.offence: all statements done, hook fires before RET0). Re-derive
+// OC lines (CalcOffence.lua @ 5606cc64f (2.69.0; @ 07fa089bf 1057/1961/2010/2633/4200/5817/6316) -- @ 3dbca4463 OC4..OC6 were 4186/5802/6293; marker -> first executable line,
+// all at function-body level): OC1 1060->1061, OC2 1964->1965 (+ 2014, `end` of buildConversionTable), OC3 2637 (the `for` itself),
+// OC4 4205->4206, OC5 5822->5823, OC6 = line 6322 (`end` of calcs.offence: all statements done, hook fires before RET0). Re-derive
 // these with `grep -n` on every upstream update (UPDATE-PROMPT.md).
 // Run from the pob-rust root (Node 24):  node tools/lua-corpus/export-offence.ts  -> crates/pob-calc/tests/fixtures/<build>.offence.json (+ -<n> parts if > 1.45 MB)
 //                                        node tools/lua-corpus/export-offence.ts perf -> tools/.scratch/perf-offence.json
@@ -132,6 +132,9 @@ local fmtMod = modLib.formatSourceMod
 local ambiguous = 0
 local function className(t) local mt = getmetatable(t) if type(mt) == "table" then return rawget(mt, "_className") end end
 local function isMod(t) return rawget(t, "name") ~= nil and rawget(t, "type") ~= nil and rawget(t, "flags") ~= nil and rawget(t, "keywordFlags") ~= nil end
+-- 2.69.0: output.Req<Attr>Item.sourceSkill is an active skill (CalcSetup.lua); dumped deep it differs between runs and swells the fixture.
+-- Written as Rust writes it (offence_cp.rs table_json): <skill i>, i = its 1-based index in the activeSkillList of the dumped env.
+local SKILLS = {}
 local D
 D = function(v, depth, seen)
   local tv = type(v)
@@ -146,6 +149,10 @@ D = function(v, depth, seen)
   local cn = className(v)
   if cn == "ModList" then local t = {} for i, m in ipairs(v) do t[i] = fmtMod(m) end table.sort(t) local o = obj() o["$ModList"] = t return o end
   if cn then return "<class " .. cn .. ">" end
+  if type(rawget(v, "activeEffect")) == "table" and rawget(v, "skillFlags") ~= nil then
+    for i, x in ipairs(SKILLS) do if x == v then return "<skill " .. i .. ">" end end
+    return "<skill ?>"
+  end
   if depth > 6 or seen[v] then return "<deep>" end
   seen[v] = true
   local o, nk = obj(), 0
@@ -166,8 +173,9 @@ local function chainCounts(ml) -- own mods of a ModList and of every parent up t
   return t
 end
 
-local TARGET = { [1057] = "OC1", [1961] = "OC2", [2010] = "OC2", [2633] = "OC3", [4200] = "OC4", [5817] = "OC5", [6316] = "OC6" }
+local TARGET = { [1061] = "OC1", [1965] = "OC2", [2014] = "OC2", [2637] = "OC3", [4206] = "OC4", [5823] = "OC5", [6322] = "OC6" }
 local function snap(line, env, actor, sk)
+  SKILLS = env.player.activeSkillList
   local s, out = obj(), actor.output
   s.line, s.output, s.skillFlags = N(line), D(out, 0, {}), D(sk.skillFlags, 0, {})
   s.outputKeys = N(keyCount(out))
@@ -244,6 +252,7 @@ installBase()
 wipeGlobalCache(); resetLogs()
 local envA = calcs.buildOutput(build, "MAIN")
 res.topEnvIsReturned = envA == W.topEnv
+SKILLS = envA.player.activeSkillList
 res.outputFresh, res.mainInfo = D(envA.player.output, 0, {}), mainInfo(envA)
 res.cache, res.fullDPS, res.logs = dumpCache(envA), D(W.st.fullDPS, 0, {}), logs(envA)
 -- B: the same under the line hook (JIT off); OC1..OC6 of the top MAIN env's main-skill offence
@@ -272,6 +281,7 @@ debug.sethook(hook, "l")
 local envB = calcs.buildOutput(build, "MAIN")
 debug.sethook()
 if jitWas then jit.on() end
+SKILLS = envB.player.activeSkillList
 res.checkpoints, res.checkpointHits, res.outputHookRun = oc, hits, D(envB.player.output, 0, {})
 res.checkpointsFirstNested = nested
 res.hookRunLogs = logs(envB)
@@ -344,6 +354,7 @@ local res = obj()
 install()
 wipeGlobalCache(); topEnv, seq, ostack, pstack, runs, performs, ord = nil, 0, {}, {}, {}, {}, {}
 local envA = calcs.buildOutput(build, "MAIN") -- A: plain wrapped run
+SKILLS = envA.player.activeSkillList
 res.sigA, res.outputA, res.performsA = sig(), D(envA.player.output, 0, {}), #performs
 wipeGlobalCache(); topEnv, seq, ostack, pstack, runs, performs, ord = nil, 0, {}, {}, {}, {}, {}
 local jitWas = jit.status()
@@ -353,6 +364,7 @@ local envB = calcs.buildOutput(build, "MAIN") -- B: the same under the line hook
 debug.sethook()
 if jitWas then jit.on() end
 uninstall()
+SKILLS = envB.player.activeSkillList
 res.sigB, res.outputB = sig(), D(envB.player.output, 0, {})
 res.runs, res.performs = {}, strip(performs)
 for i, r in ipairs(runs) do
@@ -438,7 +450,7 @@ async function fixtures(): Promise<void> {
   try { digest = execFileSync('docker', ['image', 'inspect', '--format', '{{index .RepoDigests 0}}', LUAJIT_IMAGE], { encoding: 'utf8' }).trim() } catch { /* tag only */ }
   const lutSha = sha(Buffer.concat(readdirSync(luts).sort().map((f) => Buffer.concat([Buffer.from(f), readFileSync(resolve(luts, f))]))))
   const producer = { generator: 'tools/lua-corpus/export-offence.ts', image: digest || LUAJIT_IMAGE, pobSha: git(roots.pobRoot), dataManifestSha256: sha(readFileSync(resolve(ROOT, 'data/manifest.json'))),
-    lutSha, libm: 'docker = Alpine/musl (MINEFIELD-RUST R2)', ocLines: 'CalcOffence.lua OC1=1057 OC2=1961 OC3=2633 OC4=4200 OC5=5817 OC6=6316 (end of calcs.offence)' }
+    lutSha, libm: 'docker = Alpine/musl (MINEFIELD-RUST R2)', ocLines: 'CalcOffence.lua OC1=1061 OC2=1965 OC3=2637 OC4=4206 OC5=5823 OC6=6322 (end of calcs.offence)' }
   mkdirSync(FIX, { recursive: true })
   const report: Rec = {}
   for (const b of GOLDEN_BUILDS) {
@@ -548,7 +560,7 @@ async function runsMode(): Promise<void> {
       ;(cur[run.seq] ??= {})[k] = v
     }
     const head = { format: 1, producer: { generator: 'tools/lua-corpus/export-offence.ts runs', image: LUAJIT_IMAGE, pobSha: git(roots.pobRoot), dataManifestSha256: sha(readFileSync(resolve(ROOT, 'data/manifest.json'))),
-      libm: 'docker = Alpine/musl (MINEFIELD-RUST R2)', ocLines: 'CalcOffence.lua OC1=1057 OC2=1961 OC3=2633 OC4=4200 OC5=5817 OC6=6316' }, build: b.name, xmlSha256: sha(xml) }
+      libm: 'docker = Alpine/musl (MINEFIELD-RUST R2)', ocLines: 'CalcOffence.lua OC1=1061 OC2=1965 OC3=2637 OC4=4206 OC5=5823 OC6=6322' }, build: b.name, xmlSha256: sha(xml) }
     const headers = runs.map((x) => { const { oc, ...h } = x; return { ...h, ocPresent: OCS.filter((k) => oc[k]) } })
     const names = parts.map((_, i) => `${slug}.offence-runs-${i + 1}.json`)
     const files: { file: string; bytes: number }[] = []

@@ -137,19 +137,19 @@ pub(super) fn setup(off: &mut Off<'_>) -> bool {
         let key = value.get("key");
         let key = key
             .as_str()
-            .unwrap_or_else(|| panic!("{LUA}:529: SkillData key is a {}", value.get("key").type_name()))
+            .unwrap_or_else(|| panic!("{LUA}:533: SkillData key is a {}", value.get("key").type_name()))
             .to_owned();
         if value.get("merge").is_str("MAX") {
             let cur = match off.sd(&key) {
                 Value::Nil | Value::Bool(false) => 0.0,
                 v => v
                     .as_num()
-                    .unwrap_or_else(|| panic!("{LUA}:530: bad argument #2 to 'max' (number expected)")),
+                    .unwrap_or_else(|| panic!("{LUA}:534: bad argument #2 to 'max' (number expected)")),
             };
             let new = value
                 .get("value")
                 .as_num()
-                .unwrap_or_else(|| panic!("{LUA}:530: bad argument #1 to 'max' (number expected)"));
+                .unwrap_or_else(|| panic!("{LUA}:534: bad argument #1 to 'max' (number expected)"));
             off.set_sd(&key, Value::Num(max2(new, cur)));
         } else {
             off.set_sd(&key, value.get("value"));
@@ -187,7 +187,7 @@ pub(super) fn setup(off: &mut Off<'_>) -> bool {
     }
     // :554-558
     if ok(off.mod_db.borrow().flag(None, &["Elusive"])) == Some(true) && q.flag(None, &["SupportedByNightblade"]) {
-        let elusive_effect = off.out_num("ElusiveEffectMod", 555) / 100.0;
+        let elusive_effect = off.out_num("ElusiveEffectMod", 559) / 100.0;
         let nightblade_multi = q.base(None, &["NightbladeElusiveCritMultiplier"]);
         q.nm(
             "CritMultiplier",
@@ -226,7 +226,7 @@ pub(super) fn setup(off: &mut Off<'_>) -> bool {
             let w = base
                 .weapon
                 .as_ref()
-                .unwrap_or_else(|| panic!("{LUA}:574: attempt to index local 'weaponBaseData' (a nil value)"));
+                .unwrap_or_else(|| panic!("{LUA}:578: attempt to index local 'weaponBaseData' (a nil value)"));
             let mut sets: Vec<(String, f64)> = vec![
                 ("CritChance".to_owned(), w.CritChanceBase),
                 ("AttackRate".to_owned(), w.AttackRateBase * speed_mod),
@@ -272,7 +272,7 @@ pub(super) fn setup(off: &mut Off<'_>) -> bool {
     if let Some(sbm) = spellblade_multi
         && has_weapon(off, "Weapon 1")
     {
-        let info = weapon1info.unwrap_or_else(|| panic!("{LUA}:600: attempt to index local 'weapon1info' (a nil value)"));
+        let info = weapon1info.unwrap_or_else(|| panic!("{LUA}:604: attempt to index local 'weapon1info' (a nil value)"));
         if info.melee == Some(true) && info.one_hand == Some(true) {
             let multiplier = sbm / 100.0 * if weapon2info.is_some() { 0.6 } else { 1.0 };
             for dt in DMG_TYPE_LIST {
@@ -313,7 +313,7 @@ pub(super) fn setup(off: &mut Off<'_>) -> bool {
             .into_iter()
             .map(|v| match v.get("mod") {
                 Value::Mod(m) => m,
-                o => panic!("{LUA}:617: attempt to index field 'mod' (a {} value)", o.type_name()),
+                o => panic!("{LUA}:621: attempt to index field 'mod' (a {} value)", o.type_name()),
             })
             .collect()
     };
@@ -325,7 +325,7 @@ pub(super) fn setup(off: &mut Off<'_>) -> bool {
                 q.new_mod(
                     "Damage",
                     Some(ModType::Inc),
-                    Value::Num(mv(&m, 620) * multiplier),
+                    Value::Num(mv(&m, 624) * multiplier),
                     m.source.as_deref(),
                     m.flags,
                     m.keyword_flags,
@@ -393,7 +393,7 @@ pub(super) fn setup(off: &mut Off<'_>) -> bool {
                 q.new_mod(
                     "Damage",
                     Some(ModType::Inc),
-                    Value::Num(mv(m, 658) * multiplier),
+                    Value::Num(mv(m, 662) * multiplier),
                     m.source.as_deref(),
                     flags,
                     m.keyword_flags,
@@ -423,7 +423,7 @@ pub(super) fn setup(off: &mut Off<'_>) -> bool {
                 q.new_mod(
                     "Speed",
                     Some(ModType::Inc),
-                    Value::Num(mv(m, 675) * multiplier),
+                    Value::Num(mv(m, 679) * multiplier),
                     m.source.as_deref(),
                     flags,
                     m.keyword_flags,
@@ -579,7 +579,7 @@ pub(super) fn setup(off: &mut Off<'_>) -> bool {
         if q.flag(None, &[flag]) {
             for e in q.tabulate(Some(ModType::Inc), Some(&empty), &["LightRadius"]) {
                 let m = &e.mod_;
-                let v = if half { (mv(m, 777) / 2.0).floor() } else { mv(m, 770) };
+                let v = if half { (mv(m, 781) / 2.0).floor() } else { mv(m, 774) };
                 q.new_mod(
                     name,
                     Some(ModType::Inc),
@@ -648,7 +648,7 @@ pub(super) fn setup(off: &mut Off<'_>) -> bool {
         }
     }
     // :913-931 Spellslinger
-    if let Some(pct) = off.sd_num("gainPercentBaseWandDamageToSpells", 914) {
+    if let Some(pct) = off.sd_num("gainPercentBaseWandDamageToSpells", 918) {
         let mult = pct / 100.0;
         let (w1, w2) = (wd_val(off, 1, "type").is_str("Wand"), wd_val(off, 2, "type").is_str("Wand"));
         for dt in DMG_TYPE_LIST {
@@ -670,7 +670,7 @@ pub(super) fn setup(off: &mut Off<'_>) -> bool {
         }
     }
     // :932-942 Blade Blast of Dagger Detonation
-    if let Some(pct) = off.sd_num("gainPercentBaseDaggerDamageToSpells", 935) {
+    if let Some(pct) = off.sd_num("gainPercentBaseDaggerDamageToSpells", 939) {
         let is_dagger = |n: u8| wd_val(off, n, "AddedUsingDagger").truthy() || wd_val(off, n, "type").is_str("Dagger");
         let (d1, d2) = (is_dagger(1), is_dagger(2));
         let mult = pct / 100.0 * if d1 && d2 { 0.5 } else { 1.0 };
@@ -705,9 +705,9 @@ pub(super) fn setup(off: &mut Off<'_>) -> bool {
                 let st = off.env.skills.as_ref().expect("skills on");
                 st.skills.effects[off.sk().active_effect.borrow().granted_effect]
                     .cast_time
-                    .unwrap_or_else(|| panic!("{LUA}:962: attempt to perform arithmetic on field 'castTime' (a nil value)"))
+                    .unwrap_or_else(|| panic!("{LUA}:966: attempt to perform arithmetic on field 'castTime' (a nil value)"))
             };
-            let action = off.out_num("ActionSpeedMod", 962);
+            let action = off.out_num("ActionSpeedMod", 966);
             let rate = 1.0 / cast_time * 1.1 * q.calc_mod(Some(&cfg), &["Speed"]) * action;
             if q.flag(None, &["UseMaxUnleash"]) {
                 for e in q.tabulate(Some(ModType::Inc), Some(&empty), &["MaxSealCrit"]) {
@@ -727,7 +727,7 @@ pub(super) fn setup(off: &mut Off<'_>) -> bool {
                     q.new_mod(
                         "Damage",
                         Some(ModType::More),
-                        Value::Num(mv(m, 959) * seal_max),
+                        Value::Num(mv(m, 963) * seal_max),
                         m.source.as_deref(),
                         m.flags,
                         m.keyword_flags,
@@ -748,7 +748,7 @@ pub(super) fn setup(off: &mut Off<'_>) -> bool {
         if off.breakdown {
             use crate::breakdown::{BTable, Chain, multi_chain, step};
             let mut t = BTable::new();
-            let action = off.out_num("ActionSpeedMod", 974);
+            let action = off.out_num("ActionSpeedMod", 978);
             multi_chain(
                 &mut t,
                 &Chain {
@@ -805,8 +805,8 @@ pub(super) fn setup(off: &mut Off<'_>) -> bool {
                         continue;
                     }
                     processed.push(m.clone());
-                    let eff = mv(&m, 988) / div;
-                    let full = mv(&m, 994);
+                    let eff = mv(&m, 992) / div;
+                    let full = mv(&m, 998);
                     let targets: Vec<(&str, f64)> = if div == 3.0 {
                         match phys_mode.as_str() {
                             "AVERAGE" => vec![("Fire", eff), ("Cold", eff), ("Lightning", eff)],
@@ -921,7 +921,7 @@ fn repeats(off: &mut Off<'_>, q: &super::Q, cfg: &ModCfg) {
     };
     // :822-829
     for e in q.tabulate(Some(ModType::Inc), Some(cfg), &["RepeatFinalAreaOfEffect"]) {
-        let mut v = mv(&e.mod_, 824);
+        let mut v = mv(&e.mod_, 828);
         if average {
             v /= repeats;
         }
@@ -929,7 +929,7 @@ fn repeats(off: &mut Off<'_>, q: &super::Q, cfg: &ModCfg) {
     }
     // :830-837
     for e in q.tabulate(Some(ModType::Inc), Some(cfg), &["RepeatPerRepeatAreaOfEffect"]) {
-        let mut v = mv(&e.mod_, 832) * (repeats - 1.0);
+        let mut v = mv(&e.mod_, 836) * (repeats - 1.0);
         if average {
             v /= 2.0;
         }
@@ -937,7 +937,7 @@ fn repeats(off: &mut Off<'_>, q: &super::Q, cfg: &ModCfg) {
     }
     // :838-845
     for e in q.tabulate(Some(ModType::Base), Some(cfg), &["RepeatFinalDoubleDamageChance"]) {
-        let mut v = mv(&e.mod_, 840);
+        let mut v = mv(&e.mod_, 844);
         if average {
             v /= repeats;
         }
@@ -947,7 +947,7 @@ fn repeats(off: &mut Off<'_>, q: &super::Q, cfg: &ModCfg) {
     let mut final_more_total = 1.0;
     let mut more_total = 0.0;
     for e in q.tabulate(Some(ModType::More), Some(cfg), &["RepeatFinalDamage"]) {
-        let mut v = mv(&e.mod_, 850);
+        let mut v = mv(&e.mod_, 854);
         final_more_total *= 1.0 + v / 100.0;
         more_total += v;
         if average && !q.flag(None, &["OnlyFinalRepeat"]) {
@@ -957,7 +957,7 @@ fn repeats(off: &mut Off<'_>, q: &super::Q, cfg: &ModCfg) {
     }
     // :858-872
     for e in q.tabulate(Some(ModType::More), Some(cfg), &["RepeatPerRepeatDamage"]) {
-        let mvv = mv(&e.mod_, 860);
+        let mvv = mv(&e.mod_, 864);
         let mut v = mvv * (repeats - 1.0);
         if average {
             if final_more_total != 1.0 {
@@ -978,12 +978,12 @@ fn repeats(off: &mut Off<'_>, q: &super::Q, cfg: &ModCfg) {
             break;
         } else if average {
             for e in q.tabulate(Some(ModType::More), Some(cfg), &[&format!("Repeat{word}Damage")]) {
-                more_total += mv(&e.mod_, 881);
+                more_total += mv(&e.mod_, 885);
                 last_mod = Some(e.mod_.clone());
             }
         } else if n == repeats {
             for e in q.tabulate(Some(ModType::More), Some(cfg), &[&format!("Repeat{word}Damage")]) {
-                add("Damage", ModType::More, mv(&e.mod_, 886), &e.mod_);
+                add("Damage", ModType::More, mv(&e.mod_, 890), &e.mod_);
             }
         }
     }

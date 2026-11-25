@@ -262,10 +262,11 @@ pub(crate) fn init_mod_db(env_modes: (bool, bool, bool), db: &StoreRef) {
         n(-10.0),
         vec![cond("MalignantMadness"), global_effect("Malignant Madness")],
     );
+    // CalcSetup.lua:87 (5606cc64f: INC, was MORE)
     base(
         db,
         "ActionSpeed",
-        More,
+        Inc,
         n(-10.0),
         vec![cond("MalignantMadness"), global_effect("Malignant Madness")],
     );

@@ -27,7 +27,7 @@ if (!dockerAvailable()) throw new Error('docker is not available (infrastructure
 const roots = resolveRoots()
 
 const LUA = String.raw`
-local PATCH_LINES = { [19] = true, [6585] = true } -- getSimpleConv / getThreshold visitors; @ 07fa089bf (3dbca4463 :6472, ed354c2f8 :6457; re-derive with grep -n on update)
+local PATCH_LINES = { [19] = true, [6587] = true } -- getSimpleConv / getThreshold visitors; @ 5606cc64f (a41fec6c2 :6585, 3dbca4463 :6472, ed354c2f8 :6457; re-derive with grep -n on update)
 local AUX_NAMES = { gemIdLookup = true, conquerorList = true }
 local function up(fn, name) local i = 1 while true do local n, v = debug.getupvalue(fn, i) if not n then return nil end if n == name then return v end i = i + 1 end end
 -- 07fa089bf: ModParser.lua:7148 the cached wrapper calls parseModOrdered (:7122), which holds the inner parseMod

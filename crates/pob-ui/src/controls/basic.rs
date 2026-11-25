@@ -312,6 +312,8 @@ pub struct CheckBoxControl {
     pub before_draw: RefCell<Option<Rc<dyn Fn(&mut Frame<'_>, f64, f64)>>>,
     pub state: Cell<bool>,
     pub clicked: Cell<bool>,
+    /// `self.checkImage` (5606cc64f, CheckBoxControl.lua:18, :136-140): `{ handle = img, [1] = stackIdx }`, drawn instead of the check.
+    pub check_image: RefCell<Option<(ImageHandle, u32)>>,
 }
 
 impl CheckBoxControl {
@@ -340,7 +342,13 @@ impl CheckBoxControl {
             before_draw: RefCell::new(None),
             state: Cell::new(initial_state),
             clicked: Cell::new(false),
+            check_image: RefCell::new(None),
         })
+    }
+
+    /// `CheckBoxControl:SetCheckImage(image)` (CheckBoxControl.lua:136-140): `handle` and the sprite position `image[1]`; `None` draws the check.
+    pub fn set_check_image(&self, image: Option<(ImageHandle, u32)>) {
+        *self.check_image.borrow_mut() = image;
     }
 
     /// CheckBoxControl.lua:21-36
@@ -377,7 +385,7 @@ impl Control for CheckBoxControl {
         true
     }
 
-    /// CheckBoxControl.lua:38-88
+    /// CheckBoxControl.lua:42-106 (5606cc64f)
     fn draw(&self, f: &mut Frame<'_>, view_port: &Rect, no_tooltip: bool) {
         let (x, y) = self.get_pos(f);
         let before = self.before_draw.borrow().clone();
@@ -388,6 +396,7 @@ impl Control for CheckBoxControl {
         let enabled = self.is_enabled(f);
         let m_over = self.mouse_over(f);
         let border = self.border_func.borrow().clone();
+        let check_image = self.check_image.borrow().clone();
         if !enabled {
             sg::set_draw_color(f, 0.33, 0.33, 0.33);
         } else if m_over {
@@ -395,6 +404,8 @@ impl Control for CheckBoxControl {
         } else if let Some(bf) = border {
             let (r, g, b) = bf();
             sg::set_draw_color(f, r, g, b);
+        } else if check_image.is_some() && self.state.get() {
+            sg::set_draw_color(f, 0.75, 0.75, 0.75);
         } else {
             sg::set_draw_color(f, 0.5, 0.5, 0.5);
         }
@@ -409,7 +420,29 @@ impl Control for CheckBoxControl {
             sg::set_draw_color(f, 0.0, 0.0, 0.0);
         }
         sg::draw_rect(f, x + 1.0, y + 1.0, size - 2.0, size - 2.0);
-        if self.state.get() {
+        if let Some((handle, stack_idx)) = &check_image {
+            // :69-81
+            if self.state.get() {
+                if !enabled {
+                    sg::set_draw_color(f, 0.33, 0.33, 0.33);
+                } else if m_over {
+                    // a tint above 1 brightens the image (the oracle: `checkimage-probe.lua`, 2 doubles the texel, clamped at 255)
+                    sg::set_draw_color(f, 2.0, 2.0, 2.0);
+                } else {
+                    sg::set_draw_color(f, 1.0, 1.0, 1.0);
+                }
+            } else {
+                sg::set_draw_color(f, 0.5, 0.5, 0.5);
+            }
+            // `DrawImage(handle, x + 1, y + 1, size - 2, size - 2, self.checkImage[1])`: with 6 arguments SimpleGraphic takes the 6th as the
+            // stack index of an array image ("Usage: ...[, tcLeft, tcTop, tcRight, tcBottom][, stackIdx]"); on a plain image 1 draws exactly
+            // what the 5-argument form does, 0 and 2 are Lua errors (the oracle: `tools/sg-oracle/lua/checkimage-probe.lua`).
+            match *stack_idx {
+                1 => sg::draw_image(f, Some(handle), x + 1.0, y + 1.0, size - 2.0, size - 2.0, None),
+                0 => panic!("DrawImage() argument 6: expected positive integer, got 0"),
+                n => panic!("DrawImage() argument 6: expected valid stack index <= 1, got {n}"),
+            }
+        } else if self.state.get() {
             if !enabled {
                 sg::set_draw_color(f, 0.33, 0.33, 0.33);
             } else if m_over {

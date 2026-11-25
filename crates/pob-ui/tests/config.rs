@@ -98,6 +98,95 @@ fn loadout_test() -> String {
     )
 }
 
+/// 2.69.0 loadouts: three trees of the latest version, three item, skill and config sets of the same names (the same edit as config-runner.lua).
+fn loadouts_test() -> String {
+    loadouts_build((3, 1))
+}
+
+/// u69-delete-first (config-runner.lua `Delete Test`): "Alt" of another class, so the start node in `tree.alloc` tells which tree
+/// `build.spec` is after the first loadout goes.
+fn delete_test() -> String {
+    loadouts_build((1, 0))
+}
+
+/// `alt`: the class and ascendancy of the "Alt" tree.
+fn loadouts_build(alt: (u32, u32)) -> String {
+    let x = std::fs::read_to_string(format!("{}/spec/TestBuilds/3.13/OccVortex.xml", scene::pob_root())).expect("golden");
+    let latest = pob_data::tree::tree_versions().expect("GameVersions").latest_tree_version.clone();
+    let spec = |title: Option<&str>| {
+        let (c, a) = if title == Some("Alt") { alt } else { (3, 1) };
+        format!(
+            "<Spec{} treeVersion=\"{latest}\" classId=\"{c}\" ascendClassId=\"{a}\" nodes=\"\"/>",
+            title.map(|t| format!(" title=\"{t}\"")).unwrap_or_default()
+        )
+    };
+    let between = |x: &str, from: &str, to: &str| {
+        let a = x.find(from).unwrap_or_else(|| panic!("{from}"));
+        let b = a + x[a..].find(to).unwrap_or_else(|| panic!("{to}")) + to.len();
+        (a, b)
+    };
+    let (a, b) = between(&x, "<Tree ", "</Tree>");
+    let x = format!(
+        "{}<Tree activeSpec=\"1\">{}{}{}</Tree>{}",
+        &x[..a],
+        spec(None),
+        spec(Some("Alt")),
+        spec(Some("Third")),
+        &x[b..]
+    );
+    let a = x.find("<Skills ").expect("Skills");
+    let a = a + x[a..].find('>').expect(">") + 1;
+    let b = x.find("</Skills>").expect("/Skills");
+    let x = format!(
+        "{}<SkillSet id=\"1\">{}</SkillSet><SkillSet id=\"2\" title=\"Alt\"/><SkillSet id=\"3\" title=\"Third\"/>{}",
+        &x[..a],
+        &x[a..b],
+        &x[b..]
+    );
+    let x = x.replacen(
+        "</Items>",
+        "<ItemSet id=\"2\" title=\"Alt\"/><ItemSet id=\"3\" title=\"Third\"/></Items>",
+        1,
+    );
+    let (a, b) = between(&x, "<Config", "</Config>");
+    format!(
+        "{}<Config activeConfigSet=\"1\"><ConfigSet id=\"1\" title=\"Default\"/><ConfigSet id=\"2\" title=\"Alt\"><Input name=\"buffOnslaught\" boolean=\"true\"/></ConfigSet><ConfigSet id=\"3\" title=\"Third\"/></Config>{}",
+        &x[..a],
+        &x[b..]
+    )
+}
+
+/// `d.sets` of config-runner.lua (the steps with `sets: true`).
+fn sets_dump() -> Value {
+    let b = main().build_mode.clone();
+    let items = b.items_tab.borrow().clone().expect("itemsTab");
+    let skills = b.skills_tab.borrow().clone().expect("skillsTab");
+    let config = b.config_tab.borrow().clone().expect("configTab");
+    let eng = b.engine.borrow();
+    let e = eng.as_ref().expect("engine");
+    let m = e.model();
+    let t = |x: &Option<String>| x.clone().unwrap_or_else(|| "nil".into());
+    let n = pob_lua::tostring_num;
+    let specs: Vec<String> = m.tree.specs.iter().map(|s| t(&s.title)).collect();
+    let loadouts: Vec<String> = b.loadouts_list_values().iter().map(|i| t(&m.tree.specs[i - 1].title)).collect();
+    json!({
+        "specs": specs,
+        "loadouts": loadouts,
+        "activeLoadout": b.active_loadout.get().map_or(json!("nil"), |a| json!(a)),
+        "activeSpec": m.tree.active_spec,
+        "items": m.item_sets.iter().map(|s| format!("{}:{}", n(s.id), t(&s.title))).collect::<Vec<_>>(),
+        "activeItem": m.active_item_set,
+        "itemSetsLen": e.item_sets_len(),
+        "skills": e.skill_sets().iter().map(|(id, title)| format!("{}:{}", n(*id), t(title))).collect::<Vec<_>>(),
+        "activeSkill": e.skills_tab().active_skill_set_id,
+        "skillSetsLen": e.skill_sets_len(),
+        "configs": e.config_set_order().iter().map(|id| format!("{}:{}", n(*id), t(&e.config_set_title(*id)))).collect::<Vec<_>>(),
+        "activeConfig": e.config_active_set(),
+        "configSetsLen": e.config_sets_len(),
+        "modFlag": b.mod_flag.get() || items.undo.mod_flag.get() || skills.undo.mod_flag.get() || config.undo.mod_flag.get(),
+    })
+}
+
 fn norm(v: &Value) -> Value {
     match v {
         Value::Number(n) => match n.as_f64() {
@@ -147,6 +236,9 @@ impl Sandbox {
         }
         std::fs::write(builds.join("Spectre Test.xml"), spectre_test()).expect("write");
         std::fs::write(builds.join("Loadout Test.xml"), loadout_test()).expect("write");
+        std::fs::write(builds.join("Loadouts Test.xml"), loadouts_test()).expect("write");
+        std::fs::write(builds.join("Sets Test.xml"), loadouts_test()).expect("write");
+        std::fs::write(builds.join("Delete Test.xml"), delete_test()).expect("write");
         std::fs::write(builds.join("Dev Test.xml"), dev_test()).expect("write");
         std::fs::copy(
             scene::oracle_dir().join("scenes/tree/Settings.xml"),
@@ -258,6 +350,24 @@ fn cursor_step(gfx: &mut Gfx, st: &Value, cur: &mut (f64, f64)) {
         *cur = pob_ui::tabs::config::debug_list_button_pos(gfx, c[0].as_str().expect("list"), c[1].as_str().expect("button"));
     } else if let Some(c) = st["cursorRow"].as_array() {
         *cur = pob_ui::tabs::config::debug_list_row_pos(gfx, c[0].as_str().expect("list"), c[1].as_u64().expect("row") as usize);
+    } else if let Some(c) = st["cursorPopupDrop"].as_array() {
+        let p = main().popups.borrow().first().cloned().expect("popup");
+        let key = c[0].as_str().expect("drop-down");
+        let d = p.host.get(key).unwrap_or_else(|| panic!("popup control {key}"));
+        let (x, y) = d.get_pos(gfx);
+        let (w, h) = d.get_size(gfx);
+        *cur = (
+            (x + w / 2.0).floor(),
+            y + h + 2.0 + (c[1].as_f64().expect("row") - 1.0) * (h - 4.0) + 4.0,
+        );
+    } else if let Some(s) = st["cursorItems"].as_str() {
+        let t = b.items_tab.borrow().clone().expect("itemsTab");
+        let c = t.host.get(s).unwrap_or_else(|| panic!("control {s}"));
+        *cur = center(gfx, &*c);
+    } else if let Some(s) = st["cursorSkills"].as_str() {
+        let t = b.skills_tab.borrow().clone().expect("skillsTab");
+        let c = t.host.get(s).unwrap_or_else(|| panic!("control {s}"));
+        *cur = center(gfx, &*c);
     } else if let Some(c) = st["cursorRel"].as_array() {
         cur.0 += c[0].as_f64().expect("dx");
         cur.1 += c[1].as_f64().expect("dy");
@@ -423,7 +533,11 @@ fn run(name: &str) -> Run {
             out.perf.push((label.to_string(), t0.elapsed().as_secs_f64() * 1e3));
         }
         if st["dump"].as_bool() == Some(true) {
-            out.dumps.push(((i + 1) as u64, dump(&gfx)));
+            let mut d = dump(&gfx);
+            if st["sets"].as_bool() == Some(true) {
+                d["sets"] = sets_dump();
+            }
+            out.dumps.push(((i + 1) as u64, d));
         }
         if let (Some(file), Some(file_out)) = (st["file"].as_str(), st["fileOut"].as_str()) {
             let p = format!("{}{file}", main().build_path.borrow());
@@ -537,7 +651,7 @@ fn config_states_equal_original() {
                 p.remove("tipRaw");
             }
             let s = &s;
-            let state = norm(&json!({
+            let mut state = json!({
                 "config": s["config"],
                 "notes": s["notes"],
                 "popup": s["popup"],
@@ -546,7 +660,11 @@ fn config_states_equal_original() {
                 "activeSpec": s["activeSpec"],
                 "viewMode": s["build"]["viewMode"],
                 "unsaved": s["build"]["unsaved"],
-            }));
+            });
+            if !s["sets"].is_null() {
+                state["sets"] = s["sets"].clone();
+            }
+            let state = norm(&state);
             compared += 1;
             if let Some(d) = first_diff(&state, &norm(ours), "") {
                 failures.push(format!("{name} step {step}: {d}"));

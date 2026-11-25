@@ -576,6 +576,7 @@ pub fn eff_mult(
     use_res: bool,
     invert_chance: Option<f64>,
     effective_resist: Option<f64>,
+    inverted_resist: Option<f64>,
 ) -> BTable {
     let mut out = BTable::new();
     let resist_form = if damage_type == "Physical" {
@@ -594,7 +595,16 @@ pub fn eff_mult(
     if let Some(ic) = invert_chance.filter(|ic| *ic != 0.0 && use_res) {
         out.push("Effective resistance:");
         out.push(sf!("%g%% ^8(non-inverted hit after penetration)", resist - pen));
-        out.push(sf!("%g%% ^8(inverted hit after penetration)", -resist - pen));
+        // CalcBreakdown.lua:127-130 (5606cc64f) the inverted resistance as offence capped it
+        let inverted = inverted_resist.unwrap_or_else(|| {
+            panic!("Modules/CalcBreakdown.lua:127: attempt to perform arithmetic on local 'invertedResist' (a nil value)")
+        });
+        let capped = if inverted != -resist {
+            ", capped at maximum resistance"
+        } else {
+            ""
+        };
+        out.push(sf!("%g%% ^8(inverted hit after penetration%s)", inverted - pen, capped));
         out.push(sf!(
             "= %g%% ^8(weighted average from %.0f%% inversion chance)",
             effective_resist,

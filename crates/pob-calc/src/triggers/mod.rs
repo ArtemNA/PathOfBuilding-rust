@@ -98,9 +98,17 @@ pub(super) fn name_of(env: &Env, i: usize) -> String {
     ge_of(env, i).name.clone()
 }
 
-/// `grantedEffect.fromItem` including CalcSetup's data write (CalcSetup.lua:1633-1634).
-pub(super) fn from_item(env: &Env, ge: &GrantedEffect) -> bool {
-    ge.from_item || env.skills.as_ref().is_some_and(|s| s.from_item_marks.contains(&ge.id))
+/// `activeEffect.grantedEffect.fromItem`: the data's own (5606cc64f: CalcSetup tags a copy, only ever a support's -- not the data table).
+pub(super) fn from_item(ge: &GrantedEffect) -> bool {
+    ge.from_item
+}
+
+/// `triggeredBy.grantedEffect.fromItem` of skill `i`: the support effect's -- the data's own or CalcSetup's tagged copy (CalcSetup.lua:1715-1720).
+pub(super) fn triggered_by_from_item(env: &Env, i: usize) -> bool {
+    skill(env, i).triggered_by.as_ref().is_some_and(|t| {
+        let t = t.borrow();
+        t.from_item || env.skills.as_ref().expect("skills on").skills.effects[t.granted_effect].from_item
+    })
 }
 
 /// `skill.skillTypes[SkillType[name]]`.
@@ -247,9 +255,9 @@ pub(super) fn add_trigger_inc_more_mods(env: &Env, active: usize, source: usize)
 pub(super) fn slot_match(env: &Env, i: usize) -> bool {
     let m = main_idx(env);
     let st = env.skills.as_ref().expect("skills on");
-    let main_from_item = from_item(env, ge_of(env, m));
+    let main_from_item = from_item(ge_of(env, m));
     let src_from_item = |k: usize| src_instance(env, k, |g| g.from_item == Some(true)).unwrap_or(false);
-    let fi = main_from_item || from_item(env, ge_of(env, i)) || src_from_item(m) || src_from_item(i);
+    let fi = main_from_item || from_item(ge_of(env, i)) || src_from_item(m) || src_from_item(i);
     let sk = st.skill(i);
     let main = st.skill(m);
     let match1 = fi
@@ -564,7 +572,7 @@ fn unique_item_trigger_name(env: &Env, i: usize) -> Option<String> {
     // :1588-1594 `skill.supportList` -- `gemInstance.grantedEffect.fromItem and not support`
     for se in &sk.support_list {
         let ge = &st.skills.effects[se.borrow().granted_effect];
-        if from_item(env, ge) && !ge.support {
+        if (from_item(ge) || se.borrow().from_item) && !ge.support {
             return Some(ge.name.clone());
         }
     }
@@ -639,7 +647,7 @@ pub(crate) fn triggers_of(env: &mut Env, st: &mut PerformState, who: Who, m: usi
             let actor = c.actor.unwrap_or(who);
             if actor != who {
                 return Err(format!(
-                    "CalcTriggers.lua:1627 config.actor = env.minion for calcs.triggers(env, {who:?}) (the handler would write the other actor's output)"
+                    "CalcTriggers.lua:1635 config.actor = env.minion for calcs.triggers(env, {who:?}) (the handler would write the other actor's output)"
                 ));
             }
             // :1619-1621
@@ -652,7 +660,7 @@ pub(crate) fn triggers_of(env: &mut Env, st: &mut PerformState, who: Who, m: usi
             match c.custom_handler {
                 // the custom handlers work on `env.player` (:136-392)
                 Some(_) if who != Who::Player => Err(format!(
-                    "CalcTriggers.lua:1631 a custom trigger handler for calcs.triggers(env, {who:?}) (the handler writes env.player.output)"
+                    "CalcTriggers.lua:1639 a custom trigger handler for calcs.triggers(env, {who:?}) (the handler writes env.player.output)"
                 )),
                 Some(config::Custom::Cwc) => handler::cwc_handler(env, st),
                 Some(config::Custom::Focus) => handler::helmet_focus_handler(env, st),
@@ -673,8 +681,8 @@ pub(super) fn config_input_is(env: &Env, key: &str, value: &str) -> bool {
 }
 
 /// `calcLib.canGrantedEffectSupportActiveSkill(grantedEffect, skill)` (CalcTools.lua:86-165, no imbued / granted-skill flags) for
-/// `env.player.activeSkillList[skill + 1]`.
-pub(super) fn can_support(env: &Env, ge: usize, i: usize) -> bool {
+/// `env.player.activeSkillList[skill + 1]`. `tagged`: `grantedEffect` is CalcSetup's tagged copy (an effect's, `fromItem = true`).
+pub(super) fn can_support(env: &Env, ge: usize, i: usize, tagged: bool) -> bool {
     let st = env.skills.as_ref().expect("skills on");
     let sk = st.skill(i);
     let ge = &st.skills.effects[ge];
@@ -699,11 +707,12 @@ pub(super) fn can_support(env: &Env, ge: usize, i: usize) -> bool {
             counts_as_all_1h: p.weapon_data2.get("countsAsAll1H").truthy(),
         },
     };
-    crate::calc_tools::can_granted_effect_support_active_skill_ext(ge, &view, false, false, from_item(env, ge), from_item(env, act))
+    crate::calc_tools::can_granted_effect_support_active_skill_ext(ge, &view, false, false, from_item(ge) || tagged, from_item(act))
         .unwrap_or_else(|e| panic!("{e}"))
 }
 
 /// `skill.triggeredBy and calcLib.canGrantedEffectSupportActiveSkill(skill.triggeredBy.grantedEffect, skill)` (:1507, :1514).
 pub(super) fn triggered_by_can_support(env: &Env, i: usize) -> bool {
-    triggered_by_ge(env, i).is_some_and(|g| can_support(env, g, i))
+    let tagged = skill(env, i).triggered_by.as_ref().is_some_and(|t| t.borrow().from_item);
+    triggered_by_ge(env, i).is_some_and(|g| can_support(env, g, i, tagged))
 }

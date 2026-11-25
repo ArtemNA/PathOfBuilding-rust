@@ -328,6 +328,74 @@ impl LjTable {
         }
     }
 
+    /// `t[k] ~= nil` (`lj_tab_getint` of an integral key: the array slot if it is in the array part, else the hash chain).
+    pub fn has(&self, k: f64) -> bool {
+        let ki = k as i32;
+        if f64::from(ki) == k && (ki as u32 as usize) < self.array.len() {
+            return self.array[ki as u32 as usize];
+        }
+        let k = if k == 0.0 { 0.0 } else { k };
+        let Some(nodes) = &self.nodes else { return false };
+        let mut n = Some(self.main_pos(k));
+        while let Some(i) = n {
+            if nodes[i].key == Some(k) {
+                return nodes[i].val;
+            }
+            n = nodes[i].next;
+        }
+        false
+    }
+
+    /// `#t == 0`.
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    /// `#t` -- `lj_tab_len`: a border, found by a binary search in the array part when its last slot is nil, else by a widening then
+    /// a binary search through `lj_tab_getint` (`tab_len_slow`) when there is a hash part. Checked against LuaJIT: tests/lj_tab_len.rs.
+    pub fn len(&self) -> usize {
+        let mut hi = self.array.len();
+        hi = hi.saturating_sub(1);
+        if hi > 0 && !self.array[hi] {
+            let mut lo = 0;
+            while hi - lo > 1 {
+                let mid = (lo + hi) >> 1;
+                if self.array[mid] {
+                    lo = mid;
+                } else {
+                    hi = mid;
+                }
+            }
+            return lo;
+        }
+        if self.nodes.is_none() {
+            return hi;
+        }
+        // tab_len_slow
+        let mut lo = hi;
+        hi += 1;
+        while self.has(hi as f64) {
+            lo = hi;
+            hi += hi;
+            if hi > (i32::MAX as usize - 2) {
+                let mut l = 1;
+                while self.has(l as f64) {
+                    l += 1;
+                }
+                return l - 1;
+            }
+        }
+        while hi - lo > 1 {
+            let mid = (lo + hi) >> 1;
+            if self.has(mid as f64) {
+                lo = mid;
+            } else {
+                hi = mid;
+            }
+        }
+        lo
+    }
+
     /// `pairs(t)` -- `lj_tab_next`: array slots 0.. first, then the hash nodes in index order.
     pub fn pairs_keys(&self) -> Vec<f64> {
         let mut out: Vec<f64> = (0..self.array.len()).filter(|&i| self.array[i]).map(|i| i as f64).collect();

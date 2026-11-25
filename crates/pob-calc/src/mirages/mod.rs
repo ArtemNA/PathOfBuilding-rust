@@ -155,7 +155,7 @@ pub(crate) fn triggers_on_detached(env: &Env) -> Result<(), String> {
     if st(env).skill(DETACHED).flag("disable") || is_limited(env, DETACHED) {
         Ok(())
     } else {
-        Err("CalcTriggers.lua:1611-1636 calcs.triggers on a mirage's copy that is not in env.limitedSkills (R7.9)".into())
+        Err("CalcTriggers.lua:1619-1644 calcs.triggers on a mirage's copy that is not in env.limitedSkills (R7.9)".into())
     }
 }
 
@@ -205,13 +205,13 @@ fn copy_active_skill(env: &Env, src: &Src) -> Result<Env, String> {
         Src::Detached(d) => of(&d.skill, d.actor.clone(), d.keep.clone()),
     };
     if summon_skill.is_some() {
-        return Err("CalcActiveSkill.lua:181 copyActiveSkill of a minion skill (summonSkill: the minion actor, R7.10 boundary)".into());
+        return Err("CalcActiveSkill.lua:190 copyActiveSkill of a minion skill (summonSkill: the minion actor, R7.10 boundary)".into());
     }
     // :182 `calcs.initEnv(env.build, mode, env.override)` -- no override in this port
     let mut new_env = match sess.init_env(CalcMode::Calculator) {
         Ok(e) => e,
-        Err(crate::session::SessionError::Calc(e)) => return Err(format!("CalcActiveSkill.lua:182 initEnv: {}", e.0)),
-        Err(crate::session::SessionError::Unimplemented(w)) => return Err(format!("CalcActiveSkill.lua:182 initEnv: {w}")),
+        Err(crate::session::SessionError::Calc(e)) => return Err(format!("CalcActiveSkill.lua:191 initEnv: {}", e.0)),
+        Err(crate::session::SessionError::Unimplemented(w)) => return Err(format!("CalcActiveSkill.lua:191 initEnv: {w}")),
     };
     let mut nst = new_env.skills.take().expect("skills on");
     // :168-179 the new activeEffect: `srcInstance` is the gem instance of the shared `build.skillsTab` (here: the new env's copy of it)
@@ -249,16 +249,8 @@ fn copy_active_skill(env: &Env, src: &Src) -> Result<Env, String> {
             },
             is_player: true,
         };
-        create_active_skill(
-            &nst.skills,
-            EffectRef::new(eff),
-            support_list,
-            &view,
-            socket_group,
-            src_from_item,
-            &nst.from_item_marks,
-        )
-        .map_err(|e| format!("CalcActiveSkill.lua:181 createActiveSkill: {e}"))?
+        create_active_skill(&nst.skills, EffectRef::new(eff), support_list, &view, socket_group, src_from_item)
+            .map_err(|e| format!("CalcActiveSkill.lua:190 createActiveSkill: {e}"))?
     };
     // :183 `calcs.buildActiveSkillModList(newEnv, newSkill)` -- the new env's inputs, the copied skill's actor
     let mut notes = Vec::new();
@@ -277,7 +269,7 @@ fn copy_active_skill(env: &Env, src: &Src) -> Result<Env, String> {
         crate::init_env::with_mod_list_inputs(&new_env, |inp| {
             crate::skill_modlist::build_skill(&sk, &mut nst.tab, &mut skill, inp, &sa, &mut notes)
         })
-        .map_err(|e| format!("CalcActiveSkill.lua:183 buildActiveSkillModList: {e}"))?
+        .map_err(|e| format!("CalcActiveSkill.lua:192 buildActiveSkillModList: {e}"))?
     };
     if aux {
         nst.aux_skill_list.push(DETACHED);
@@ -287,7 +279,7 @@ fn copy_active_skill(env: &Env, src: &Src) -> Result<Env, String> {
     let base = skill
         .skill_mod_list
         .clone()
-        .unwrap_or_else(|| panic!("Modules/CalcActiveSkill.lua:184: newSkill.baseSkillModList is nil"));
+        .unwrap_or_else(|| panic!("Modules/CalcActiveSkill.lua:193: newSkill.baseSkillModList is nil"));
     let has_minion = skill.minion.is_some();
     let skill_mod_list = ModStore::new_list(Some(base));
     nst.detached_main = Some(DetachedSkill {

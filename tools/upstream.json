@@ -1,7 +1,7 @@
 {
   "_comment": "The ONE place that says which upstream PoB pob-rust targets (R-UP). Read by tools/upstream.ts (probes), tools/sync-data.ps1 (data converter: tools/data-convert) and pob-golden (Rust tests). Env vars POB_ROOT / POB_GOLDENS_DIR override. Nothing here points outside pob-rust and upstream PoB (R-INDEPENDENT-UPDATE). Paths: absolute, or relative to the repo root.",
   "pobRoot": "C:/pob-work/pob-upstream/PathOfBuilding",
-  "pobSha": "a41fec6c20f822a658ae5df1273e8c69d5969bac",
-  "pobVersion": "2.68.1",
+  "pobSha": "5606cc64fa9f15694e69001a52b90aa968d01a86",
+  "pobVersion": "2.69.0",
   "goldensDir": "builds/corpus/goldens"
 }

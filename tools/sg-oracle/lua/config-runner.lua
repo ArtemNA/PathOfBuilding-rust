@@ -69,6 +69,30 @@ end
 		x = x:gsub("<Config.-</Config>", '<Config activeConfigSet="1"><ConfigSet id="1" title="Default"/><ConfigSet id="2" title="Alt"><Input name="buffOnslaught" boolean="true"/></ConfigSet></Config>', 1)
 		writeAll(USER .. "/Path of Building/Builds/Loadout Test.xml", x)
 	end
+-- 2.69.0 loadouts: three trees of the latest version, three item, skill and config sets of the same names (the same edit as crates/pob-ui/tests/config.rs)
+do
+	local latest = (function()
+		local env = setmetatable({ }, { __index = _G })
+		setfenv(assert(loadfile(POB .. "GameVersions.lua")), env)()
+		return env.latestTreeVersion
+	end)()
+	local x = readAll(POB_ROOT .. "spec/TestBuilds/3.13/OccVortex.xml")
+	local spec = function(title, class, asc) return '<Spec' .. (title and (' title="' .. title .. '"') or '') .. ' treeVersion="' .. latest .. '" classId="' .. (class or 3) .. '" ascendClassId="' .. (asc or 1) .. '" nodes=""/>' end
+	local golden = x
+	x = x:gsub("<Tree .-</Tree>", function() return '<Tree activeSpec="1">' .. spec(nil) .. spec("Alt") .. spec("Third") .. '</Tree>' end, 1)
+	-- u69-delete-first: "Alt" of another class, so the start node in `tree.alloc` tells which tree `build.spec` is after the first loadout goes
+	local del = golden:gsub("<Tree .-</Tree>", function() return '<Tree activeSpec="1">' .. spec(nil) .. spec("Alt", 1, 0) .. spec("Third") .. '</Tree>' end, 1)
+	x = x:gsub("(<Skills [^>]*>)(.-)(</Skills>)", function(a, m, z) return a .. '<SkillSet id="1">' .. m .. '</SkillSet><SkillSet id="2" title="Alt"/><SkillSet id="3" title="Third"/>' .. z end, 1)
+	x = x:gsub("</Items>", function() return '<ItemSet id="2" title="Alt"/><ItemSet id="3" title="Third"/></Items>' end, 1)
+	x = x:gsub("<Config.-</Config>", function() return '<Config activeConfigSet="1"><ConfigSet id="1" title="Default"/><ConfigSet id="2" title="Alt"><Input name="buffOnslaught" boolean="true"/></ConfigSet><ConfigSet id="3" title="Third"/></Config>' end, 1)
+	writeAll(USER .. "/Path of Building/Builds/Loadouts Test.xml", x)
+	-- the same build for u69-sets: u69-loadouts saves over "Loadouts Test" in this process (the Rust side starts each scene anew)
+	writeAll(USER .. "/Path of Building/Builds/Sets Test.xml", x)
+	del = del:gsub("(<Skills [^>]*>)(.-)(</Skills>)", function(a, m, z) return a .. '<SkillSet id="1">' .. m .. '</SkillSet><SkillSet id="2" title="Alt"/><SkillSet id="3" title="Third"/>' .. z end, 1)
+	del = del:gsub("</Items>", function() return '<ItemSet id="2" title="Alt"/><ItemSet id="3" title="Third"/></Items>' end, 1)
+	del = del:gsub("<Config.-</Config>", function() return '<Config activeConfigSet="1"><ConfigSet id="1" title="Default"/><ConfigSet id="2" title="Alt"><Input name="buffOnslaught" boolean="true"/></ConfigSet><ConfigSet id="3" title="Third"/></Config>' end, 1)
+	writeAll(USER .. "/Path of Building/Builds/Delete Test.xml", del)
+end
 writeAll(USER .. "/Path of Building/Settings.xml", readAll(base .. "/scenes/tree/Settings.xml"))
 
 -- 2. Environment: the checkout's src, read in place.
@@ -299,6 +323,23 @@ local function dump(st)
 		if v.tooltip then for i, l in ipairs(v.tooltip.lines) do d.tooltip[i] = (l.text or "<sep>") end end
 	end
 	if main.mode == "BUILD" then d.config, d.notes, d.popup = configDump(main.modes.BUILD) d.activeSpec = main.modes.BUILD.treeTab.activeSpec end
+	if main.mode == "BUILD" and st.sets then
+		-- 2.69.0 loadouts: the sets, their order, `#t` of the set tables and `loadoutsList` (the same fields as crates/pob-ui/tests/config.rs)
+		local b = main.modes.BUILD
+		local function order(list, sets)
+			local r = { }
+			for i, id in ipairs(list) do r[i] = tostring(id) .. ":" .. tostring(sets[id] and sets[id].title) end
+			return r
+		end
+		local specs, loadouts = { }, { }
+		for i, s in ipairs(b.treeTab.specList) do specs[i] = tostring(s.title) end
+		for i, s in ipairs(b.loadoutsList) do loadouts[i] = tostring(s.title) end
+		d.sets = { specs = specs, loadouts = loadouts, activeLoadout = b.activeLoadout or "nil", activeSpec = b.treeTab.activeSpec,
+			items = order(b.itemsTab.itemSetOrderList, b.itemsTab.itemSets), activeItem = b.itemsTab.activeItemSetId, itemSetsLen = #b.itemsTab.itemSets,
+			skills = order(b.skillsTab.skillSetOrderList, b.skillsTab.skillSets), activeSkill = b.skillsTab.activeSkillSetId, skillSetsLen = #b.skillsTab.skillSets,
+			configs = order(b.configTab.configSetOrderList, b.configTab.configSets), activeConfig = b.configTab.activeConfigSetId, configSetsLen = #b.configTab.configSets,
+			modFlag = (b.modFlag or b.itemsTab.modFlag or b.skillsTab.modFlag or b.configTab.modFlag or b.treeTab.modFlag) and true or false }
+	end
 	d.writesRefused = table.concat(writesRefused, ",")
 	if runner.bfTrace then d.bfTrace = runner.bfTrace runner.bfTrace = { } end
 	return d
@@ -412,6 +453,18 @@ configDump = function(b)
 			popup.tip = tl
 		end
 		if pc.edit then popup.edit = pc.edit.buf popup.saveEnabled = pc.save and pc.save:IsEnabled() and true or false end
+		if pc.setList then
+			local rows = { }
+			for i, v in ipairs(pc.setList.list) do rows[i] = pc.setList:GetRowValue(1, i, v) end
+			popup.rows, popup.selIndex = rows, pc.setList.selIndex or 0
+		end
+		for _, k in ipairs({ "treeDropDown", "skillDropDown", "itemDropDown", "configDropDown" }) do
+			if pc[k] then
+				local l = { }
+				for i, v in ipairs(pc[k].list) do l[i] = v end
+				popup[k] = { sel = pc[k].selIndex, list = l }
+			end
+		end
 	end
 	return d, notes, popup
 end
@@ -467,6 +520,15 @@ local function calcsCursor(st)
 		local r = l:GetRowRegion()
 		local x, y = l:GetPos()
 		cursorX, cursorY = x + r.x + 20, y + r.y + (st.cursorRow[2] - 1) * l.rowHeight + 8
+	elseif st.cursorPopupDrop then -- { a drop-down of the top popup, 1-based row of its open list }
+		local c = main.popups[1].controls[st.cursorPopupDrop[1]]
+		local x, y = c:GetPos()
+		local w, h = c:GetSize()
+		cursorX, cursorY = math.floor(x + w / 2), y + h + 2 + (st.cursorPopupDrop[2] - 1) * (h - 4) + 4
+	elseif st.cursorItems then
+		center(b.itemsTab.controls[st.cursorItems])
+	elseif st.cursorSkills then
+		center(b.skillsTab.controls[st.cursorSkills])
 	elseif st.cursorRel then
 		cursorX, cursorY = cursorX + st.cursorRel[1], cursorY + st.cursorRel[2]
 	end

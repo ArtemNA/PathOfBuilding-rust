@@ -247,7 +247,7 @@ fn pre_stack(entry: &mut ExportedBuff, stack: &Value) {
                 c.tags[i] = Tag::new(t);
                 let (Some(v), Some(s)) = (c.value.as_num(), stack.as_num()) else {
                     panic!(
-                        "{CP}:3918: attempt to perform arithmetic on a {} value",
+                        "{CP}:3996: attempt to perform arithmetic on a {} value",
                         if c.value.as_num().is_none() {
                             c.value.type_name()
                         } else {
@@ -294,7 +294,7 @@ pub(super) fn finish(env: &Env, state: &PerformState, x: &mut BuffExports, own: 
     // :3880
     let speed = match output("MovementSpeedMod") {
         Some(OutValue::Num(v)) => *v,
-        other => panic!("{CP}:3891: attempt to perform arithmetic on field 'MovementSpeedMod' ({other:?})"),
+        other => panic!("{CP}:3969: attempt to perform arithmetic on field 'MovementSpeedMod' ({other:?})"),
     };
     x.player_mods
         .insert(format!("MovementSpeedMod|percent|max={}", tostring_num(speed * 100.0)));
@@ -370,7 +370,7 @@ pub(super) fn finish(env: &Env, state: &PerformState, x: &mut BuffExports, own: 
 fn enemy_mods(env: &Env, x: &mut BuffExports) {
     let db = env.enemy_db.borrow();
     let StoreKind::Db(d) = &db.kind else {
-        panic!("{CP}:3850: enemyDB is not a ModDB")
+        panic!("{CP}:3928: enemyDB is not a ModDB")
     };
     // `enemyDB.mods[key] and enemyDB.mods[key][1].value`
     let first_value = |key: &str| d.mods.get(key).is_some_and(|l| l.first().is_some_and(|m| m.value.truthy()));
@@ -399,7 +399,7 @@ fn enemy_mods(env: &Env, x: &mut BuffExports) {
             if v.value.as_num() == Some(0.0) || source == Some("EnemyConfig") || source == Some("Base") {
                 continue;
             }
-            let source = source.unwrap_or_else(|| panic!("{CP}:3855: attempt to index field 'source' (a nil value)"));
+            let source = source.unwrap_or_else(|| panic!("{CP}:3933: attempt to index field 'source' (a nil value)"));
             if source.contains("Delirious") || source.starts_with("Party") {
                 continue;
             }
@@ -422,7 +422,7 @@ fn enemy_mods(env: &Env, x: &mut BuffExports) {
                         || match t.get("varList") {
                             Value::Table(l) => match l.array.first() {
                                 Some(Value::Str(s)) => first_value(&format!("Condition:{s}")),
-                                _ => panic!("{CP}:3864: attempt to concatenate field '?' (a non-string value)"),
+                                _ => panic!("{CP}:3942: attempt to concatenate field '?' (a non-string value)"),
                             },
                             _ => false,
                         };

@@ -13,15 +13,15 @@ true|Tree:66771|Onslaught|FLAG|-|-|-
 Vulnerability
 144
 false
-15|Skill:Vulnerability|PhysicalDamageTaken|INC|-|-|type=GlobalEffect/effectType=Curse
 25|Skill:Vulnerability|SelfBleedChance|BASE|-|-|type=GlobalEffect/effectType=Curse
+15|Skill:Vulnerability|PhysicalDamageTaken|INC|-|-|type=GlobalEffect/effectType=Curse
 ---
 		</ExportedBuffs>
 		<ExportedBuffs name="Warcry Skills">
 			Ancestral Cry
 127.710375
-5|Skill:AncestralCry|ElementalResist|BASE|-|-|type=GlobalEffect/div=5/effectType=Warcry/limit=30/warcryPowerBonus=6
 1|Skill:AncestralCry|ElementalResistMax|BASE|-|-|type=GlobalEffect/div=10/effectType=Warcry/limit=30/warcryPowerBonus=3
+5|Skill:AncestralCry|ElementalResist|BASE|-|-|type=GlobalEffect/div=5/effectType=Warcry/limit=30/warcryPowerBonus=6
 ---
 Enduring Cry
 127.710375
@@ -37,8 +37,8 @@ Rallying Cry
 ---
 Seismic Cry
 127.710375
-15|Skill:SeismicCry|StunThreshold|INC|-|-|type=GlobalEffect/div=5/effectType=Warcry/limit=25/warcryPowerBonus=5
 5|Skill:SeismicCry|Armour|MORE|-|-|type=GlobalEffect/div=5/effectType=Warcry/limit=25/warcryPowerBonus=5
+15|Skill:SeismicCry|StunThreshold|INC|-|-|type=GlobalEffect/div=5/effectType=Warcry/limit=25/warcryPowerBonus=5
 ---
 		</ExportedBuffs>
 		<ExportedBuffs name="EnemyConditions">

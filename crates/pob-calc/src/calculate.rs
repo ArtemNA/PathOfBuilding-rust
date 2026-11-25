@@ -328,7 +328,7 @@ fn estimate_player_progress(env: &mut Env, state: &PerformState) -> Result<(f64,
         let lists = env
             .config
             .build_mod_list(level)
-            .map_err(|e| CalcError(format!("Modules/Build.lua:913 configTab:BuildModList(): {e}")))?;
+            .map_err(|e| CalcError(format!("Modules/Build.lua:1081 configTab:BuildModList(): {e}")))?;
         return Ok((level, Some(lists)));
     }
     // :915-946 lab suggestion, warnings, point display -- UI only.

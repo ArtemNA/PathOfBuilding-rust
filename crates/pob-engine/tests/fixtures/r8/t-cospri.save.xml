@@ -853,7 +853,7 @@ Implicits: 0
 Trigger a Socketed Cold Spell on Melee Critical Strike, with a 0.25 second Cooldown
 			<ModRange id="1" range="0.5"/>
 		</Item>
-		<ItemSet id="1" useSecondWeaponSet="false">
+		<ItemSet id="1" title="Default" useSecondWeaponSet="false">
 			<Slot itemId="28" itemPbURL="" name="Amulet"/>
 			<Slot itemId="0" itemPbURL="" name="Arm"/>
 			<Slot itemId="18" itemPbURL="" name="Belt"/>

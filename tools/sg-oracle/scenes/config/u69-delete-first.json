@@ -1,0 +1,242 @@
+{
+ "steps": [
+  {
+   "open": "Delete Test"
+  },
+  {
+   "waitAssets": true
+  },
+  {
+   "cursor": [
+    -100,
+    -100
+   ],
+   "time": 10000
+  },
+  {
+   "cursorBuild": "modeConfig",
+   "hold": [
+    "LEFTBUTTON"
+   ],
+   "events": [
+    [
+     "KeyDown",
+     "LEFTBUTTON"
+    ]
+   ]
+  },
+  {
+   "release": [
+    "LEFTBUTTON"
+   ],
+   "events": [
+    [
+     "KeyUp",
+     "LEFTBUTTON"
+    ]
+   ],
+   "dump": true,
+   "sets": true
+  },
+  {
+   "cursor": [
+    -100,
+    -100
+   ],
+   "dump": true,
+   "sets": true,
+   "shot": "u69-df-open"
+  },
+  {
+   "cursorBuild": "buildLoadouts",
+   "hold": [
+    "LEFTBUTTON"
+   ],
+   "events": [
+    [
+     "KeyDown",
+     "LEFTBUTTON"
+    ]
+   ]
+  },
+  {
+   "release": [
+    "LEFTBUTTON"
+   ],
+   "events": [
+    [
+     "KeyUp",
+     "LEFTBUTTON"
+    ]
+   ],
+   "dump": true,
+   "sets": true
+  },
+  {
+   "cursorRel": [
+    0,
+    100
+   ],
+   "hold": [
+    "LEFTBUTTON"
+   ],
+   "events": [
+    [
+     "KeyDown",
+     "LEFTBUTTON"
+    ]
+   ]
+  },
+  {
+   "release": [
+    "LEFTBUTTON"
+   ],
+   "events": [
+    [
+     "KeyUp",
+     "LEFTBUTTON"
+    ]
+   ],
+   "dump": true,
+   "sets": true,
+   "shot": "u69-df-manage"
+  },
+  {
+   "cursorRow": [
+    "1",
+    1
+   ],
+   "hold": [
+    "LEFTBUTTON"
+   ],
+   "events": [
+    [
+     "KeyDown",
+     "LEFTBUTTON"
+    ]
+   ]
+  },
+  {
+   "release": [
+    "LEFTBUTTON"
+   ],
+   "events": [
+    [
+     "KeyUp",
+     "LEFTBUTTON"
+    ]
+   ],
+   "dump": true,
+   "sets": true
+  },
+  {
+   "cursorList": [
+    "1",
+    "delete"
+   ],
+   "hold": [
+    "LEFTBUTTON"
+   ],
+   "events": [
+    [
+     "KeyDown",
+     "LEFTBUTTON"
+    ]
+   ]
+  },
+  {
+   "release": [
+    "LEFTBUTTON"
+   ],
+   "events": [
+    [
+     "KeyUp",
+     "LEFTBUTTON"
+    ]
+   ],
+   "dump": true,
+   "sets": true
+  },
+  {
+   "cursorPopup": "confirm",
+   "hold": [
+    "LEFTBUTTON"
+   ],
+   "events": [
+    [
+     "KeyDown",
+     "LEFTBUTTON"
+    ]
+   ]
+  },
+  {
+   "release": [
+    "LEFTBUTTON"
+   ],
+   "events": [
+    [
+     "KeyUp",
+     "LEFTBUTTON"
+    ]
+   ],
+   "dump": true,
+   "sets": true,
+   "shot": "u69-df-deleted"
+  },
+  {
+   "cursorPopup": "2",
+   "hold": [
+    "LEFTBUTTON"
+   ],
+   "events": [
+    [
+     "KeyDown",
+     "LEFTBUTTON"
+    ]
+   ]
+  },
+  {
+   "release": [
+    "LEFTBUTTON"
+   ],
+   "events": [
+    [
+     "KeyUp",
+     "LEFTBUTTON"
+    ]
+   ],
+   "dump": true,
+   "sets": true
+  },
+  {
+   "cursor": [
+    -100,
+    -100
+   ],
+   "hold": [
+    "CTRL"
+   ],
+   "events": [
+    [
+     "KeyDown",
+     "s"
+    ],
+    [
+     "KeyUp",
+     "s"
+    ]
+   ],
+   "file": "Delete Test.xml",
+   "fileOut": "u69-df-saved.xml",
+   "dump": true,
+   "sets": true
+  },
+  {
+   "release": [
+    "CTRL"
+   ],
+   "dump": true,
+   "sets": true
+  }
+ ]
+}

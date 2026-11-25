@@ -61,13 +61,13 @@ fn mana_unreserved_nan_without_mana_is_nil() {
         a.output = Some([(Str::from("ManaUnreserved"), f64::NAN)].into_iter().collect());
     }
     assert!(db.borrow().get_stat("ManaUnreserved", None).unwrap().is_nil());
-    // ... and a PerStat over it dies where LuaJIT does: `m_floor(base / (tag.div or 1) + 0.0001)`, ModStore.lua:501.
+    // ... and a PerStat over it dies where LuaJIT does: `m_floor(base / (tag.div or 1) + 0.0001)`, ModStore.lua:497 (5606cc64f; :501 on a41fec6c2).
     let per = tag(&[("type", Value::str("PerStat")), ("stat", Value::str("ManaUnreserved"))]);
     let m = create_mod("X", Some(ModType::Base), Value::Num(1.0), None, 0, 0, vec![per]);
     let e = db.borrow().eval_mod(&m, None, None).unwrap_err();
     assert_eq!(
         e.0,
-        "Classes/ModStore.lua:501: attempt to perform arithmetic on local 'base' (a nil value)"
+        "Classes/ModStore.lua:497: attempt to perform arithmetic on local 'base' (a nil value)"
     );
 }
 

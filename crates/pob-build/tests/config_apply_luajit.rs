@@ -149,17 +149,17 @@ fn ctldiff(before: &ConfigState, after: &ConfigState, with_placeholder: bool) ->
 }
 
 #[test]
-fn all_543_apply_closures_match_luajit() {
+fn all_547_apply_closures_match_luajit() {
     let vars = compare_with_fixture("config-apply.json");
-    // 543: LuaJIT count of ConfigOptions entries with `apply` on 07fa089bf (tools/.scratch/count-data.ts, cfgApply)
-    assert_eq!(vars, 543, "the fixture covers every var with an apply");
+    // 547: LuaJIT count of ConfigOptions entries with `apply` on 5606cc64f (2.69.0; 543 on 07fa089bf; tools/.scratch/count-pins.ts, apply)
+    assert_eq!(vars, 547, "the fixture covers every var with an apply");
 }
 
-/// Every var with an `apply` that is not a `check`: 220 (LuaJIT on 07fa089bf, tools/.scratch/count-tree-cache.ts cfgApplyNoCheck).
+/// Every var with an `apply` that is not a `check`: 222 (LuaJIT on 5606cc64f, 220 on 07fa089bf; tools/.scratch/count-pins.ts applyNoCheck).
 #[test]
 fn string_values_match_luajit() {
     let vars = compare_with_fixture("config-apply-strings.json");
-    assert_eq!(vars, 220, "the fixture covers every var with an apply but `check`");
+    assert_eq!(vars, 222, "the fixture covers every var with an apply but `check`");
 }
 
 /// The number of vars of the fixture.

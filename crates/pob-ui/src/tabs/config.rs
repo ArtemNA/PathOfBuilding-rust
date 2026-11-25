@@ -113,7 +113,7 @@ fn gates_of(v: &ConfigVar) -> Vec<Gate> {
             "ifSkillFlag" => (GateKind::Env(ConfigGate::SkillFlag), false),
             "ifSkillData" => (GateKind::Env(ConfigGate::SkillData), false),
             "includeTransfigured" | "implyCond" | "implyCondList" | "legacy" | "hideIfInvalid" => continue,
-            other => unimplemented!("Classes/ConfigTab.lua:382-662: the {other} gate has no data in this upstream"),
+            other => unimplemented!("Classes/ConfigTab.lua:384-664: the {other} gate has no data in this upstream"),
         };
         out.push(Gate {
             kind,
@@ -195,6 +195,8 @@ pub struct ConfigTab {
     /// `IsKeyDown("ALT")` of this frame, for `inactiveText` (it takes no host).
     alt_down: Cell<bool>,
     pub(super) pending_sel: RefCell<Vec<(String, usize)>>,
+    /// The list of the Manage popup: `configSetOrderList` itself (ConfigSetListControl.lua:11).
+    set_list: RefCell<Weak<SetList>>,
 }
 
 /// `string:matchOrPattern(pattern)`'s `generateOrPatterns` (Common.lua:1039-1070): the keys of its table (a Lua table: unordered, the test only asks for any).
@@ -591,6 +593,7 @@ impl ConfigTab {
                 search_cache: RefCell::new((String::new(), None)),
                 alt_down: Cell::new(false),
                 pending_sel: RefCell::new(Vec::new()),
+                set_list: RefCell::new(Weak::new()),
             }
         });
         // `Load` (:839-939): `SetActiveConfigSet` + `ResetUndo`; `Build.lua:645`'s `BuildModList` ran in the engine's first run
@@ -642,7 +645,7 @@ impl ConfigTab {
                         limit: Some(10),
                         change_func: Some(Rc::new(move |g: &mut Gfx, buf: &str, placeholder: bool| {
                             // :306-313; `SetPlaceholder(.., true)` runs only inside `BuildModList`, in the engine
-                            assert!(!placeholder, "ConfigTab.lua:307: a placeholder write outside BuildModList");
+                            assert!(!placeholder, "ConfigTab.lua:309: a placeholder write outside BuildModList");
                             let t = m.upgrade().expect("configTab");
                             t.e_mut(|e| e.config_write_input(&var2, pob_lua::tonumber(buf).map(InputValue::Num)));
                             t.add_undo_state(false);
@@ -684,7 +687,7 @@ impl ConfigTab {
                 }
                 Kind::Drop(d)
             }
-            Some(other) => unimplemented!("Classes/ConfigTab.lua:322-343 a {other} option ({i}) has no data in this upstream"),
+            Some(other) => unimplemented!("Classes/ConfigTab.lua:324-345 a {other} option ({i}) has no data in this upstream"),
             None => Kind::Bare(BareControl::new(a(), rect(234.0, 0.0, 16.0, 16.0))),
         }
     }
@@ -767,7 +770,7 @@ impl ConfigTab {
             cache.0.clone_from(&buf);
             let lower = buf.to_ascii_lowercase();
             let esc = pob_lua::gsub(lower.as_bytes(), b"[%-%.%+%[%]%$%^%%%?%*]", pob_lua::Repl::Str(b"%%%0"), None)
-                .expect("ConfigTab.lua:194 pattern")
+                .expect("ConfigTab.lua:196 pattern")
                 .0;
             let esc = String::from_utf8_lossy(&esc).into_owned();
             cache.1 = esc.bytes().any(|b| !b.is_ascii_whitespace()).then(|| generate_or_patterns(&esc));
@@ -1231,13 +1234,104 @@ impl ConfigTab {
         }
     }
 
-    /// :1337-1362, `init` nil.
+    /// :1373-1400, `init` nil.
     pub fn set_active_config_set(&self, g: &mut Gfx, id: f64) {
+        self.set_active_config_set_with(g, Some(id), false);
+    }
+
+    /// `SetActiveConfigSet(configSetId, nil, deferSync)` (:1373-1400): `nil` is the active set, an id of no set the first of the order.
+    pub fn set_active_config_set_with(&self, g: &mut Gfx, id: Option<f64>, defer_sync: bool) {
+        let n = self.e(|e| e.config_set_order().len());
+        let id = id.unwrap_or_else(|| self.e(Engine::config_active_set));
         self.e_mut(|e| e.config_activate(id));
+        if n == 0 {
+            self.refresh_set_list();
+        }
         self.update_controls(g);
         self.build_mod_list(g);
         self.build().build_flag.set(true);
+        if !defer_sync {
+            self.build().sync_loadouts_pub(g);
+        }
+    }
+
+    fn refresh_set_list(&self) {
+        if let Some(l) = self.set_list.borrow().upgrade() {
+            *l.list.borrow_mut() = self.e(Engine::config_set_order);
+        }
+    }
+
+    /// `ConfigTab:NewConfigSet(configSetId, title)` (:1302-1307): `nil` takes `#self.configSets + 1`.
+    pub fn new_config_set(&self, id: Option<f64>, title: &str) -> f64 {
+        let id = self.e_mut(|e| e.config_new_set(id, Some(title)));
+        self.undo.mod_flag.set(true);
+        self.refresh_set_list();
+        id
+    }
+
+    /// `#self.configSets`.
+    pub fn config_sets_len(&self) -> usize {
+        self.e(Engine::config_sets_len)
+    }
+
+    /// `ConfigTab:CopyConfigSet(configSetId, newConfigSetName)` (:1309-1318).
+    pub fn copy_config_set(&self, from: f64, title: &str) -> f64 {
+        let id = self.e_mut(|e| e.config_copy_set(from, title));
+        self.undo.mod_flag.set(true);
+        self.refresh_set_list();
+        id
+    }
+
+    /// `ConfigTab:RenameConfigSet(configSetId, newTitle)` (:1320-1329): a gone id does nothing.
+    pub fn rename_config_set(&self, id: f64, title: &str) {
+        if self.e(|e| e.config_set_exists(id)) {
+            self.e_mut(|e| e.config_rename_set(id, title));
+            self.undo.mod_flag.set(true);
+        }
+    }
+
+    /// `ConfigTab:DeleteConfigSet(configSetId, orderListIndex)` (:1332-1336).
+    pub fn delete_config_set(&self, id: f64, order_index: usize) {
+        self.e_mut(|e| e.config_delete_set(id, order_index));
+        self.undo.mod_flag.set(true);
+        self.refresh_set_list();
+    }
+
+    /// `ConfigSetService:NewConfigSet(name)` (ConfigSetService.lua:17-22).
+    pub fn service_new_config_set(&self, g: &mut Gfx, name: &str) {
+        let id = self.new_config_set(None, name);
+        self.set_active_config_set_with(g, Some(id), true);
+        self.add_undo_state(false);
         self.build().sync_loadouts_pub(g);
+    }
+
+    /// `ConfigSetService:CopyConfigSet(configSetId, name)` (ConfigSetService.lua:24-29).
+    pub fn service_copy_config_set(&self, g: &mut Gfx, from: f64, name: &str) {
+        let id = self.copy_config_set(from, name);
+        self.set_active_config_set_with(g, Some(id), true);
+        self.add_undo_state(false);
+        self.build().sync_loadouts_pub(g);
+    }
+
+    /// `ConfigSetService:RenameConfigSet(configSetId, newName)` (ConfigSetService.lua:31-35).
+    pub fn service_rename_config_set(&self, g: &mut Gfx, id: f64, name: &str) {
+        self.rename_config_set(id, name);
+        self.add_undo_state(false);
+        self.build().sync_loadouts_pub(g);
+    }
+
+    /// `ConfigSetService:DeleteConfigSet(configSetId, orderListIndex)` (ConfigSetService.lua:37-46).
+    pub fn service_delete_config_set(&self, g: &mut Gfx, id: f64, order_index: usize) {
+        if self.e(|e| e.config_set_order().len()) > 1 {
+            self.delete_config_set(id, order_index);
+            if id == self.e(Engine::config_active_set) {
+                let order = self.e(Engine::config_set_order);
+                let next = order.get(order_index.saturating_sub(1).max(1) - 1).copied().unwrap_or(f64::NAN);
+                self.set_active_config_set_with(g, Some(next), true);
+            }
+            self.add_undo_state(false);
+            self.build().sync_loadouts_pub(g);
+        }
     }
 
     /// :1024-1116
@@ -1861,7 +1955,7 @@ impl CustomModBlock {
                 let bytes = val.as_bytes();
                 let mut out = String::new();
                 for caps in pob_lua::gmatch(bytes, b"([^\n]*)\n?") {
-                    let caps = caps.expect("ConfigTab.lua:88 pattern");
+                    let caps = caps.expect("ConfigTab.lua:90 pattern");
                     let Some(pob_lua::Capture::Str { start, end }) = caps.get(0) else {
                         continue;
                     };
@@ -1997,22 +2091,20 @@ impl ListHooks<f64> for SetListHooks {
         None
     }
 
-    /// :93-108
+    /// :111-122
     fn on_sel_delete(&self, _l: &SetList, g: &mut Gfx, index: usize, id: &f64) {
         delete_set(g, self.tab.clone(), self.list.borrow().clone(), index, *id);
     }
 
-    /// :110-114
+    /// :124-128
     fn on_sel_key_down(&self, _l: &SetList, g: &mut Gfx, _index: usize, id: &f64, key: &str) {
         if key == "F2" {
-            let t = self.tab.upgrade().expect("configTab");
-            let title = t.e(|e| e.config_set_title(*id));
-            rename_set(g, self.tab.clone(), self.list.borrow().clone(), *id, title, None);
+            rename_config_set_popup(g, self.tab.clone(), *id);
         }
     }
 }
 
-/// :93-108
+/// :111-122
 fn delete_set(g: &mut Gfx, tab: Weak<ConfigTab>, list: Weak<SetList>, index: usize, id: f64) {
     let l = list.upgrade().expect("list");
     if l.list.borrow().len() <= 1 {
@@ -2026,98 +2118,70 @@ fn delete_set(g: &mut Gfx, tab: Weak<ConfigTab>, list: Weak<SetList>, index: usi
         &format!("Are you sure you want to delete '{title}'?"),
         "Delete",
         Rc::new(move |g: &mut Gfx| {
-            let l = list.upgrade().expect("list");
             let t = tab.upgrade().expect("configTab");
-            l.list.borrow_mut().remove(index - 1);
-            let order = l.list.borrow().clone();
-            t.e_mut(|e| {
-                e.config_write_order(&order);
-                e.config_remove_set(id);
-            });
-            l.sel_index.set(None);
-            *l.sel_value.borrow_mut() = None;
-            if id == t.e(Engine::config_active_set) {
-                let next = order[index.saturating_sub(1).max(1) - 1];
-                t.set_active_config_set(g, next);
+            t.service_delete_config_set(g, id, index);
+            if let Some(l) = list.upgrade() {
+                l.sel_index.set(None);
+                *l.sel_value.borrow_mut() = None;
             }
-            t.add_undo_state(false);
-            t.build().sync_loadouts_pub(g);
         }),
         None,
     );
 }
 
-/// :47-73 `RenameSet`: `new` = the set not yet in the list (`addOnName`).
-fn rename_set(
-    g: &mut Gfx,
-    tab: Weak<ConfigTab>,
-    list: Weak<SetList>,
-    id: f64,
-    title: Option<String>,
-    new: Option<pob_build::ConfigSetModel>,
-) {
-    let popup_title = if title.is_some() { "Rename" } else { "Set Name" };
-    let label = LabelControl::new(None, rect(0.0, 20.0, 0.0, 16.0), "^7Enter name for this config set:".to_string());
-    let save_cell: Rc<RefCell<Option<Rc<ButtonControl>>>> = Rc::new(RefCell::new(None));
-    let sc = save_cell.clone();
-    let edit = EditControl::new(
-        g,
-        None,
-        rect(0.0, 40.0, 350.0, 20.0),
-        EditArgs {
-            init: Some(title.clone().unwrap_or_default()),
-            limit: Some(100),
-            change_func: Some(Rc::new(move |_g: &mut Gfx, buf: &str, _p: bool| {
-                let has = buf.bytes().any(|b| !b.is_ascii_whitespace());
-                sc.borrow().as_ref().expect("save").base.enabled.set(has);
-            })),
-            ..EditArgs::default()
-        },
+/// `configSets[selValue]` must exist (`configSet.title`: an index of nil otherwise).
+fn config_set_title_of(t: &ConfigTab, id: f64, at: &str) -> Option<String> {
+    assert!(
+        t.e(|e| e.config_set_exists(id)),
+        "{at}: attempt to index local 'configSet' (a nil value)"
     );
-    let e2 = edit.clone();
-    let tab2 = tab.clone();
-    let new_cell = RefCell::new(new);
-    let list2 = list.clone();
-    let save = ButtonControl::new(None, rect(-45.0, 70.0, 80.0, 20.0), "Save".to_string(), move |g| {
-        let t = tab2.upgrade().expect("configTab");
-        let text = e2.buf.borrow().clone();
-        let added = new_cell.borrow_mut().take();
-        let was_new = added.is_some();
-        t.e_mut(|e| {
-            if let Some(s) = added {
-                e.config_insert_set(s);
-            }
-            e.config_rename_set(id, &text);
-        });
-        t.undo.mod_flag.set(true);
-        if was_new {
-            let l = list2.upgrade().expect("list");
-            l.list.borrow_mut().push(id);
-            l.sel_index.set(Some(l.list.borrow().len()));
-            *l.sel_value.borrow_mut() = Some(id);
-        }
-        t.add_undo_state(false);
-        t.build().sync_loadouts_pub(g);
-        main().close_popup();
-    });
-    save.base.enabled.set(false);
-    *save_cell.borrow_mut() = Some(save.clone());
-    let cancel = ButtonControl::new(None, rect(45.0, 70.0, 80.0, 20.0), "Cancel".to_string(), |_g| main().close_popup());
-    let mut controls: IndexMap<String, ControlRef> = IndexMap::new();
-    controls.insert("label".into(), label);
-    controls.insert("edit".into(), edit);
-    controls.insert("save".into(), save);
-    controls.insert("cancel".into(), cancel);
-    main().open_popup(
+    t.e(|e| e.config_set_title(id))
+}
+
+/// `ConfigSetListControl:CreateConfigSet()` (:38-53).
+fn create_config_set_popup(g: &mut Gfx, tab: Weak<ConfigTab>) {
+    crate::set_name_popup::open_name_popup(
         g,
-        370.0,
         100.0,
-        popup_title,
-        controls,
-        Some("save"),
-        Some("edit"),
-        Some("cancel"),
-        None,
+        "Create Config Set",
+        "^7Enter name for new config set:",
+        "New Config Set",
+        Rc::new(crate::set_name_popup::has_non_space),
+        Rc::new(move |g: &mut Gfx, name: String| tab.upgrade().expect("configTab").service_new_config_set(g, &name)),
+    );
+}
+
+/// `ConfigSetListControl:CopyConfigSet(selValue)` (:55-71).
+fn copy_config_set_popup(g: &mut Gfx, tab: Weak<ConfigTab>, sel_value: f64) {
+    let t = tab.upgrade().expect("configTab");
+    let title = config_set_title_of(&t, sel_value, "Classes/ConfigSetListControl.lua:59");
+    crate::set_name_popup::open_name_popup(
+        g,
+        100.0,
+        "Copy Config Set",
+        "^7Enter name for this config set:",
+        title.as_deref().unwrap_or("Default"),
+        Rc::new(crate::set_name_popup::has_non_space),
+        Rc::new(move |g: &mut Gfx, name: String| {
+            tab.upgrade().expect("configTab").service_copy_config_set(g, sel_value, &name);
+        }),
+    );
+}
+
+/// `ConfigSetListControl:RenameConfigSet(selValue)` (:73-90).
+fn rename_config_set_popup(g: &mut Gfx, tab: Weak<ConfigTab>, sel_value: f64) {
+    let t = tab.upgrade().expect("configTab");
+    let title = config_set_title_of(&t, sel_value, "Classes/ConfigSetListControl.lua:76");
+    crate::set_name_popup::open_name_popup(
+        g,
+        100.0,
+        "Rename Config Set",
+        "^7Enter name for this config set:",
+        title.as_deref().unwrap_or("Default"),
+        Rc::new(crate::set_name_popup::has_non_space),
+        Rc::new(move |g: &mut Gfx, name: String| {
+            tab.upgrade().expect("configTab").service_rename_config_set(g, sel_value, &name);
+        }),
     );
 }
 
@@ -2135,18 +2199,43 @@ pub fn debug_popup(g: &Gfx) -> Json {
     o.insert("title".into(), json!(p.title.get(g)));
     o.insert("width".into(), json!(p.base.width.get(g)));
     o.insert("height".into(), json!(p.base.height.get(g)));
-    if let Some(c) = p.host.get("1") {
+    // `pc[1]` (a set list, the Manage Loadouts list) or `pc.setList` (Manage Item Sets)
+    for key in ["1", "setList"] {
+        let Some(c) = p.host.get(key) else { continue };
         let any: Rc<dyn Any> = c;
-        if let Ok(l) = any.downcast::<SetList>() {
-            let rows: Vec<String> = l
-                .list
-                .borrow()
-                .iter()
-                .enumerate()
-                .map(|(i, v)| l.hooks.get_row_value(&l, g, 1, i + 1, v))
-                .collect();
-            o.insert("rows".into(), json!(rows));
-            o.insert("selIndex".into(), json!(l.sel_index.get().unwrap_or(0)));
+        match any.downcast::<SetList>() {
+            Ok(l) => {
+                let rows: Vec<String> = l
+                    .list
+                    .borrow()
+                    .iter()
+                    .enumerate()
+                    .map(|(i, v)| l.hooks.get_row_value(&l, g, 1, i + 1, v))
+                    .collect();
+                o.insert("rows".into(), json!(rows));
+                o.insert("selIndex".into(), json!(l.sel_index.get().unwrap_or(0)));
+            }
+            Err(any) => {
+                if let Ok(l) = any.downcast::<crate::modules::build_set_list::BuildSetList>() {
+                    let rows: Vec<String> = l
+                        .list
+                        .borrow()
+                        .iter()
+                        .enumerate()
+                        .map(|(i, v)| l.hooks.get_row_value(&l, g, 1, i + 1, v))
+                        .collect();
+                    o.insert("rows".into(), json!(rows));
+                    o.insert("selIndex".into(), json!(l.sel_index.get().unwrap_or(0)));
+                }
+            }
+        }
+    }
+    for key in ["treeDropDown", "skillDropDown", "itemDropDown", "configDropDown"] {
+        if let Some(c) = p.host.get(key) {
+            let any: Rc<dyn Any> = c;
+            let d = any.downcast::<DropDownControl>().expect("a drop-down");
+            let list: Vec<String> = d.list.borrow().iter().map(|v| v.label.clone().unwrap_or_default()).collect();
+            o.insert(key.into(), json!({ "sel": d.sel_index.get(), "list": list }));
         }
     }
     if let Some(c) = p.host.get("listControl") {
@@ -2218,8 +2307,15 @@ pub fn debug_input_state(g: &Gfx) -> Json {
 /// `cursorList` of the gate.
 pub fn debug_list_button_pos(g: &Gfx, list: &str, button: &str) -> (f64, f64) {
     let any: Rc<dyn Any> = popup_control(list);
-    let l = any.downcast::<SetList>().expect("the sets list");
-    let c = l.host.get(button).unwrap_or_else(|| panic!("button {button}"));
+    let c = match any.downcast::<SetList>() {
+        Ok(l) => l.host.get(button),
+        Err(any) => any
+            .downcast::<crate::modules::build_set_list::BuildSetList>()
+            .expect("a sets list")
+            .host
+            .get(button),
+    };
+    let c = c.unwrap_or_else(|| panic!("button {button}"));
     let (x, y) = c.get_pos(g);
     let (w, h) = c.get_size(g);
     ((x + w / 2.0).floor(), (y + h / 2.0).floor())
@@ -2235,6 +2331,14 @@ pub fn debug_list_row_pos(g: &Gfx, list: &str, row: usize) -> (f64, f64) {
             (x + r.x + 20.0, y + r.y + (row as f64 - 1.0) * l.row_height + 8.0)
         }
         Err(any) => {
+            let any = match any.downcast::<crate::modules::build_set_list::BuildSetList>() {
+                Ok(l) => {
+                    let r = l.get_row_region(g);
+                    let (x, y) = l.get_pos(g);
+                    return (x + r.x + 20.0, y + r.y + (row as f64 - 1.0) * l.row_height + 8.0);
+                }
+                Err(any) => any,
+            };
             let l = any
                 .downcast::<ListControl<crate::controls::list::ByRef<super::config_mod_browser::ModEntry>>>()
                 .expect("a list");
@@ -2263,6 +2367,7 @@ fn open_config_set_manage_popup(g: &mut Gfx, tab: Weak<ConfigTab>) {
         }),
     );
     *hook_list.borrow_mut() = Rc::downgrade(&list);
+    *t.set_list.borrow_mut() = Rc::downgrade(&list);
     let lr: ControlRef = list.clone();
     let lw = Rc::downgrade(&list);
     let (w, tb) = (lw.clone(), tab.clone());
@@ -2271,10 +2376,8 @@ fn open_config_set_manage_popup(g: &mut Gfx, tab: Weak<ConfigTab>) {
         rect(2.0, -4.0, 60.0, 18.0),
         "Copy".to_string(),
         move |g| {
-            let t = tb.upgrade().expect("configTab");
             let id = w.upgrade().expect("list").sel_value.borrow().expect("selValue");
-            let set = t.e(|e| e.config_copy_set(id));
-            rename_set(g, tb.clone(), w.clone(), set.id, set.title.clone(), Some(set));
+            copy_config_set_popup(g, tb.clone(), id);
         },
     );
     let w = lw.clone();
@@ -2305,10 +2408,8 @@ fn open_config_set_manage_popup(g: &mut Gfx, tab: Weak<ConfigTab>) {
         rect(-2.0, -4.0, 60.0, 18.0),
         "Rename".to_string(),
         move |g| {
-            let t = tb.upgrade().expect("configTab");
             let id = w.upgrade().expect("list").sel_value.borrow().expect("selValue");
-            let title = t.e(|e| e.config_set_title(id));
-            rename_set(g, tb.clone(), w.clone(), id, title, None);
+            rename_config_set_popup(g, tb.clone(), id);
         },
     );
     let w = lw.clone();
@@ -2317,16 +2418,12 @@ fn open_config_set_manage_popup(g: &mut Gfx, tab: Weak<ConfigTab>) {
         .enabled
         .set_fn(move |_| w.upgrade().expect("list").sel_value.borrow().is_some());
     let rn_r: ControlRef = rename.clone();
-    let (w, tb) = (lw.clone(), tab.clone());
+    let tb = tab.clone();
     let new_btn = ButtonControl::new(
         anchor("RIGHT", &rn_r, "LEFT"),
         rect(-4.0, 0.0, 60.0, 18.0),
         "New".to_string(),
-        move |g| {
-            let t = tb.upgrade().expect("configTab");
-            let set = t.e(Engine::config_new_set);
-            rename_set(g, tb.clone(), w.clone(), set.id, None, Some(set));
-        },
+        move |g| create_config_set_popup(g, tb.clone()),
     );
     list.host.add("copy", copy);
     list.host.add("delete", delete);

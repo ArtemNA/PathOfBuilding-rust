@@ -43,10 +43,10 @@ pub(super) fn dmod(db: &pob_mods::StoreRef, cfg: Option<&ModCfg>, names: &[&str]
 fn flags_of(c: &ModCfg) -> (u32, u32) {
     let f = c
         .flags
-        .unwrap_or_else(|| panic!("{LUA}:4434: bad argument #1 to 'band' (number expected, got nil)"));
+        .unwrap_or_else(|| panic!("{LUA}:4440: bad argument #1 to 'band' (number expected, got nil)"));
     let k = c
         .keyword_flags
-        .unwrap_or_else(|| panic!("{LUA}:4435: bad argument #1 to 'band' (number expected, got nil)"));
+        .unwrap_or_else(|| panic!("{LUA}:4441: bad argument #1 to 'band' (number expected, got nil)"));
     (f as u32, k as u32)
 }
 
@@ -160,8 +160,8 @@ fn source_damage(off: &mut Off<'_>, q: &Q, c: &ModCfg, pi: usize, dt: &'static s
 /// `output[type.."Chance"]` (and the `<type>Chance` / `<type>DPS` breakdown rows), returns the base value.
 #[allow(clippy::too_many_arguments)]
 pub(super) fn calc_ailment_damage(off: &mut Off<'_>, q: &Q, pi: usize, ty: &str, source_crit: f64, hit: f64, crit: f64, hide: bool) -> f64 {
-    let on_hit = off.pnum_req(pi, &format!("{ty}ChanceOnHit"), 4350);
-    let on_crit = off.pnum_req(pi, &format!("{ty}ChanceOnCrit"), 4351);
+    let on_hit = off.pnum_req(pi, &format!("{ty}ChanceOnHit"), 4356);
+    let on_crit = off.pnum_req(pi, &format!("{ty}ChanceOnCrit"), 4357);
     let from_hit = on_hit * (1.0 - source_crit / 100.0);
     let from_crit = on_crit * source_crit / 100.0;
     let chance = from_hit + from_crit;
@@ -199,7 +199,7 @@ pub(super) fn calc_ailment_damage(off: &mut Off<'_>, q: &Q, pi: usize, ty: &str,
     // :4363-4408
     if off.breakdown && base_val > 0.0 && !hide {
         let is_attack = off.is_attack;
-        let cc = off.pnum_req(pi, "CritChance", 4387);
+        let cc = off.pnum_req(pi, "CritChance", 4393);
         let mut lines: Vec<String> = Vec::new();
         if hit == crit || cc == 0.0 {
             lines.push("Total damage:".to_owned());
@@ -295,18 +295,18 @@ pub(super) fn ailment_passes(off: &mut Off<'_>, quantity_multiplier: f64) {
         perfect_agony(off, &q, pi);
         chances(off, &q, pi);
         if off.can_deal.get("Physical").copied().unwrap_or(false)
-            && pn(off, pi, "BleedChanceOnHit", 4427) + pn(off, pi, "BleedChanceOnCrit", 4427) > 0.0
+            && pn(off, pi, "BleedChanceOnHit", 4433) + pn(off, pi, "BleedChanceOnCrit", 4433) > 0.0
         {
             bleed(off, &q, pi);
         }
         if off.can_deal.get("Chaos").copied().unwrap_or(false)
-            && pn(off, pi, "PoisonChanceOnHit", 4700) + pn(off, pi, "PoisonChanceOnCrit", 4700) + pn(off, pi, "ChaosPoisonChance", 4700)
+            && pn(off, pi, "PoisonChanceOnHit", 4706) + pn(off, pi, "PoisonChanceOnCrit", 4706) + pn(off, pi, "ChaosPoisonChance", 4706)
                 > 0.0
         {
             poison(off, &q, pi, quantity_multiplier);
         }
         if off.can_deal.get("Fire").copied().unwrap_or(false)
-            && pn(off, pi, "IgniteChanceOnHit", 5005) + pn(off, pi, "IgniteChanceOnCrit", 5005) > 0.0
+            && pn(off, pi, "IgniteChanceOnHit", 5011) + pn(off, pi, "IgniteChanceOnCrit", 5011) > 0.0
         {
             ignite(off, &q, pi);
         }
@@ -345,7 +345,7 @@ fn perfect_agony(off: &mut Off<'_>, q: &Q, pi: usize) {
             }
             let v = m.value.as_num().unwrap_or_else(|| {
                 panic!(
-                    "{LUA}:4194: bad argument #1 to 'floor' (number expected, got {})",
+                    "{LUA}:4200: bad argument #1 to 'floor' (number expected, got {})",
                     m.value.type_name()
                 )
             });
@@ -359,7 +359,7 @@ fn perfect_agony(off: &mut Off<'_>, q: &Q, pi: usize) {
                     // `NewMod(..., cond, nil, unpack(mod))`: the hole in the tag array -- what ModStore's tag walks see after it is
                     // LuaJIT's table border, not modelled
                     off.note(format!(
-                        "{LUA}:4194 Perfect Agony (legacy) mod with a nil hand condition before {} tag(s) of {}",
+                        "{LUA}:4200 Perfect Agony (legacy) mod with a nil hand condition before {} tag(s) of {}",
                         m.tags.len(),
                         m.name
                     ));
@@ -378,7 +378,7 @@ fn perfect_agony(off: &mut Off<'_>, q: &Q, pi: usize) {
         }
     }
     if q.flag(None, &["DotMultiplierIsCritMultiplier"]) {
-        let site = format!("{LUA}:4201");
+        let site = format!("{LUA}:4207");
         let multi_override = q.override_num(Some(&c), &["CritMultiplier"], &site).map(|m| m - 100.0);
         let v = multi_override.unwrap_or_else(|| q.base(Some(&c), &["CritMultiplier"]))
             + dsum(&off.enemy_db, ModType::Base, Some(&c), &["SelfCritMultiplier"]);
@@ -510,9 +510,9 @@ fn chances(off: &mut Off<'_>, q: &Q, pi: usize) {
         let on_crit_part = if q.flag(c, &["NeverCrit"]) {
             0.0
         } else {
-            pn(off, pi, &on_crit_k, 4273)
+            pn(off, pi, &on_crit_k, 4279)
         };
-        if pn(off, pi, &on_hit_k, 4273) + on_crit_part > 0.0 {
+        if pn(off, pi, &on_hit_k, 4279) + on_crit_part > 0.0 {
             off.set_flag(&format!("inflict{a}"), true);
         }
     }
@@ -544,11 +544,11 @@ fn chances(off: &mut Off<'_>, q: &Q, pi: usize) {
                 1.0 - dsum(&edb, ModType::Base, None, &[&format!("Avoid{a}")]) / 100.0
             };
             for k in [format!("{a}ChanceOnHit"), format!("{a}ChanceOnCrit")] {
-                let v = pn(off, pi, &k, 4295) * mult;
+                let v = pn(off, pi, &k, 4301) * mult;
                 off.pset_num(pi, &k, v);
             }
             if a == "Poison" {
-                let v = pn(off, pi, "ChaosPoisonChance", 4298) * mult;
+                let v = pn(off, pi, "ChaosPoisonChance", 4304) * mult;
                 off.pset_num(pi, "ChaosPoisonChance", v);
             }
         }
@@ -564,7 +564,7 @@ fn chances(off: &mut Off<'_>, q: &Q, pi: usize) {
             let v = if dflag(&off.mod_db, None, &["AilmentsOnlyFromCrit"]) {
                 0.0
             } else {
-                pn(off, pi, &format!("{ailment}ChanceOnHit"), 4315)
+                pn(off, pi, &format!("{ailment}ChanceOnHit"), 4321)
             };
             off.pset_num(pi, &format!("{ailment}ChanceOnCrit"), v);
         }
@@ -611,21 +611,21 @@ fn bleed(off: &mut Off<'_>, q: &Q, pi: usize) {
     off.pbd_put(pi, "BleedPhysical", BTable::new().with("damageTypes", BTable::new()));
     // :4433-4441
     let config_stacks = dsum(&edb, ModType::Base, None, &["Multiplier:BleedStacks"]);
-    let site = format!("{LUA}:4448");
+    let site = format!("{LUA}:4454");
     let max_stacks = q
         .override_num(Some(&c), &["BleedStacksMax"], &site)
         .unwrap_or_else(|| q.base(Some(&c), &["BleedStacksMax"]));
-    let site = format!("{LUA}:4449");
+    let site = format!("{LUA}:4455");
     let override_stack_potential = if q.override_(None, &["BleedStackPotentialOverride"]).is_some_and(|v| v.truthy()) {
         Some(q.override_num(None, &["BleedStackPotentialOverride"], &site).expect("truthy") / max_stacks)
     } else {
         None
     };
     off.gset("BleedStacksMax", max_stacks);
-    let site = format!("{LUA}:4451");
+    let site = format!("{LUA}:4457");
     let duration_base = q.override_num(Some(&dc), &["BleedDurationBase"], &site).unwrap_or_else(|| {
         if off.sd_truthy("bleedDurationIsSkillDuration") && off.sd_truthy("duration") {
-            off.sd_num("duration", 4451).expect("truthy")
+            off.sd_num("duration", 4457).expect("truthy")
         } else {
             misc("BleedDurationBase")
         }
@@ -641,15 +641,15 @@ fn bleed(off: &mut Off<'_>, q: &Q, pi: usize) {
     let bleed_duration = duration_base * duration_mod / rate_mod * off.debuff_duration_mult;
     off.gset("BleedDuration", bleed_duration);
     // :4444-4464
-    let crit_chance = pn(off, pi, "CritChance", 4458);
-    let bleed_chance = pn(off, pi, "BleedChanceOnHit", 4458) / 100.0 * (1.0 - crit_chance / 100.0)
-        + pn(off, pi, "BleedChanceOnCrit", 4458) / 100.0 * crit_chance / 100.0;
-    let mut bleed_stacks = pn(off, pi, "HitChance", 4460) / 100.0 * bleed_chance * dps_multiplier(off, 4460);
-    let hit_speed = off.g_hit_speed(4461);
+    let crit_chance = pn(off, pi, "CritChance", 4464);
+    let bleed_chance = pn(off, pi, "BleedChanceOnHit", 4464) / 100.0 * (1.0 - crit_chance / 100.0)
+        + pn(off, pi, "BleedChanceOnCrit", 4464) / 100.0 * crit_chance / 100.0;
+    let mut bleed_stacks = pn(off, pi, "HitChance", 4466) / 100.0 * bleed_chance * dps_multiplier(off, 4466);
+    let hit_speed = off.g_hit_speed(4467);
     if hit_speed > 0.0 {
-        bleed_stacks = bleed_stacks * bleed_duration * off.g_hit_speed(4463);
+        bleed_stacks = bleed_stacks * bleed_duration * off.g_hit_speed(4469);
     }
-    let site = format!("{LUA}:4465");
+    let site = format!("{LUA}:4471");
     let active_totems = match ok(off.env_db.borrow().override_(None, &["TotemsSummoned"])) {
         Some(v) if v.truthy() => v
             .as_num()
@@ -681,16 +681,16 @@ fn bleed(off: &mut Off<'_>, q: &Q, pi: usize) {
         if let Some(o) = override_stack_potential {
             t.push(sf!("= %g ^8(stack potential override)", o));
         } else {
-            t.push(sf!("%.2f ^8(chance to hit)", pn(off, pi, "HitChance", 4485) / 100.0));
+            t.push(sf!("%.2f ^8(chance to hit)", pn(off, pi, "HitChance", 4491) / 100.0));
             t.push(sf!("* %.2f ^8(chance to bleed)", bleed_chance));
-            if off.g_hit_speed(4487) > 0.0 {
+            if off.g_hit_speed(4493) > 0.0 {
                 t.push(sf!(
                     "* (%.2f / %.2f) ^8(Bleed duration / Attack Time)",
                     bleed_duration,
-                    hit_time(off, pi, 4488)
+                    hit_time(off, pi, 4494)
                 ));
             }
-            let dm = dps_multiplier(off, 4490);
+            let dm = dps_multiplier(off, 4496);
             if dm != 1.0 {
                 t.push(sf!("* %g ^8(DPS multiplier for this skill)", dm));
             }
@@ -740,13 +740,13 @@ fn bleed(off: &mut Off<'_>, q: &Q, pi: usize) {
         off.pset_num(pi, "BleedPhysicalMin", min);
         off.pset_num(pi, "BleedPhysicalMax", max);
         if sub_pass == 2 {
-            let m = crit_dot_multi(off, q, &mut dc, "PhysicalDotMultiplier", 4536);
+            let m = crit_dot_multi(off, q, &mut dc, "PhysicalDotMultiplier", 4542);
             off.pset_num(pi, "CritBleedDotMulti", m);
             let min_c = min * m;
             max_crit = max * m;
             avg_crit = min_c + (max_crit - min_c) * roll / 100.0;
         } else {
-            let m = dot_multi(q, &dc, "PhysicalDotMultiplier", 4545);
+            let m = dot_multi(q, &dc, "PhysicalDotMultiplier", 4551);
             off.pset_num(pi, "BleedDotMulti", m);
             min_hit = min * m;
             max_hit = max * m;
@@ -763,15 +763,15 @@ fn bleed(off: &mut Off<'_>, q: &Q, pi: usize) {
                 crate::breakdown::color("CUSTOM")
             )]),
         );
-        let (pmin, pmax) = (pn(off, pi, "BleedPhysicalMin", 4561), pn(off, pi, "BleedPhysicalMax", 4561));
+        let (pmin, pmax) = (pn(off, pi, "BleedPhysicalMin", 4567), pn(off, pi, "BleedPhysicalMax", 4567));
         let derivation = sf!("%.0f + (%.0f - %.0f) * %.2f%%", pmin, pmax, pmin, roll);
         let note = "^8min source phys + (max source phys - min source phys) * average bleed roll".to_owned();
-        let t = if avg_hit == avg_crit || pn(off, pi, "CritChance", 4558) == 0.0 {
+        let t = if avg_hit == avg_crit || pn(off, pi, "CritChance", 4564) == 0.0 {
             BTable::lines([
                 "Dmg Derivation:".to_owned(),
                 derivation,
                 note,
-                sf!("* %.2f ^8(Bleed DoT Multi)", pn(off, pi, "BleedDotMulti", 4563)),
+                sf!("* %.2f ^8(Bleed DoT Multi)", pn(off, pi, "BleedDotMulti", 4569)),
                 sf!("= %.2f", avg_hit),
             ])
         } else {
@@ -779,13 +779,13 @@ fn bleed(off: &mut Off<'_>, q: &Q, pi: usize) {
                 "Non-Crit Dmg Derivation:".to_owned(),
                 derivation.clone(),
                 note.clone(),
-                sf!("* %.2f ^8(Bleed DoT Multi for Non-Crit)", pn(off, pi, "BleedDotMulti", 4571)),
+                sf!("* %.2f ^8(Bleed DoT Multi for Non-Crit)", pn(off, pi, "BleedDotMulti", 4577)),
                 sf!("= %.0f", avg_hit),
                 String::new(),
                 "Crit Dmg Derivation:".to_owned(),
                 derivation,
                 note,
-                sf!("* %.2f ^8(Bleed DoT Multi for Crit)", pn(off, pi, "CritBleedDotMulti", 4577)),
+                sf!("* %.2f ^8(Bleed DoT Multi for Crit)", pn(off, pi, "CritBleedDotMulti", 4583)),
                 sf!("= %.2f", avg_crit),
             ])
         };
@@ -793,15 +793,15 @@ fn bleed(off: &mut Off<'_>, q: &Q, pi: usize) {
     }
     // :4568-4575
     let base_percent = if off.sd_truthy("bleedBasePercent") {
-        off.sd_num("bleedBasePercent", 4582).expect("truthy")
+        off.sd_num("bleedBasePercent", 4588).expect("truthy")
     } else {
         misc("BleedPercentBase")
     };
-    let crit_chance = pn(off, pi, "CritChance", 4584);
+    let crit_chance = pn(off, pi, "CritChance", 4590);
     let ailment_crit_chance = 100.0 * (1.0 - (1.0 - crit_chance / 100.0).powf(max2(stack_potential, 1.0)));
-    let ruthless = pn(off, pi, "RuthlessBlowAilmentEffect", 4587);
-    let fist = pn(off, pi, "FistOfWarDamageEffect", 4587);
-    let warcry = gn(off, "AilmentWarcryEffect", 4587);
+    let ruthless = pn(off, pi, "RuthlessBlowAilmentEffect", 4593);
+    let fist = pn(off, pi, "FistOfWarDamageEffect", 4593);
+    let warcry = gn(off, "AilmentWarcryEffect", 4593);
     let base_min = calc_ailment_damage(off, q, pi, "Bleed", ailment_crit_chance, min_hit, 0.0, true) * base_percent / 100.0;
     let base_max =
         calc_ailment_damage(off, q, pi, "Bleed", 100.0, max_hit, max_crit, true) * base_percent / 100.0 * ruthless * fist * warcry;
@@ -828,7 +828,9 @@ fn bleed(off: &mut Off<'_>, q: &Q, pi: usize) {
             off.gset("BleedEffMult", eff_mult);
             // :4586-4588
             if off.breakdown && eff_mult != 1.0 {
-                let t = crate::breakdown::eff_mult("Physical", resist, 0.0, taken_inc, eff_mult, taken_more, None, true, None, None);
+                let t = crate::breakdown::eff_mult(
+                    "Physical", resist, 0.0, taken_inc, eff_mult, taken_more, None, true, None, None, None,
+                );
                 off.bd_put("BleedEffMult", t);
             }
         }
@@ -840,11 +842,11 @@ fn bleed(off: &mut Off<'_>, q: &Q, pi: usize) {
         let dps = min2(base_dps, cap);
         off.pset_num(pi, "BleedDPS", dps);
         off.gset("BleedStacks", bleed_stacks);
-        let base = pn(off, pi, "BaseBleedDPS", 4615);
-        off.gset("BleedDamage", base * gn(off, "BleedDuration", 4615));
+        let base = pn(off, pi, "BaseBleedDPS", 4621);
+        off.gset("BleedDamage", base * gn(off, "BleedDuration", 4621));
         // :4602-4682 (the branch rewrites output.BleedDotMulti)
         if off.breakdown {
-            rewrite_dot_multi(off, pi, "Bleed", ailment_crit_chance, 4617);
+            rewrite_dot_multi(off, pi, "Bleed", ailment_crit_chance, 4623);
             let mut lines = vec![sf!("x %.2f ^8(bleed deals %d%% per second)", base_percent / 100.0, base_percent)];
             if effect_mod != 1.0 {
                 lines.push(sf!("x %.2f ^8(ailment effect modifier)", effect_mod));
@@ -1018,10 +1020,10 @@ fn poison(off: &mut Off<'_>, q: &Q, pi: usize, quantity_multiplier: f64) {
     }
     // :4708-4712
     let rate_mod = q.calc_mod(Some(&c), &["PoisonFaster"]) + dsum(&edb, ModType::Inc, None, &["SelfPoisonFaster"]) / 100.0;
-    let site = format!("{LUA}:4723");
+    let site = format!("{LUA}:4729");
     let duration_base = q.override_num(Some(&dc), &["PoisonDurationBase"], &site).unwrap_or_else(|| {
         if off.sd_truthy("poisonDurationIsSkillDuration") && off.sd_truthy("duration") {
-            off.sd_num("duration", 4723).expect("truthy")
+            off.sd_num("duration", 4729).expect("truthy")
         } else {
             misc("PoisonDurationBase")
         }
@@ -1035,15 +1037,15 @@ fn poison(off: &mut Off<'_>, q: &Q, pi: usize, quantity_multiplier: f64) {
     let poison_duration = duration_base * duration_mod / rate_mod * off.debuff_duration_mult;
     off.gset("PoisonDuration", poison_duration);
     // :4714-4717
-    let chaos_hit_avg = or_num(off.pval(pi, "ChaosHitAverage"), 0.0, "ChaosHitAverage", 4728);
+    let chaos_hit_avg = or_num(off.pval(pi, "ChaosHitAverage"), 0.0, "ChaosHitAverage", 4734);
     let chaos_poison_chance = if chaos_hit_avg > 0.0 {
-        pn(off, pi, "ChaosPoisonChance", 4728)
+        pn(off, pi, "ChaosPoisonChance", 4734)
     } else {
         0.0
     };
-    let on_hit = min2(100.0, pn(off, pi, "PoisonChanceOnHit", 4729) + chaos_poison_chance);
-    let on_crit = min2(100.0, pn(off, pi, "PoisonChanceOnCrit", 4730) + chaos_poison_chance);
-    let crit_chance = pn(off, pi, "CritChance", 4731);
+    let on_hit = min2(100.0, pn(off, pi, "PoisonChanceOnHit", 4735) + chaos_poison_chance);
+    let on_crit = min2(100.0, pn(off, pi, "PoisonChanceOnCrit", 4736) + chaos_poison_chance);
+    let crit_chance = pn(off, pi, "CritChance", 4737);
     let poison_chance = on_hit / 100.0 * (1.0 - crit_chance / 100.0) + on_crit / 100.0 * crit_chance / 100.0;
     // :4720-4723
     let mut additional = 1.0;
@@ -1054,23 +1056,23 @@ fn poison(off: &mut Off<'_>, q: &Q, pi: usize, quantity_multiplier: f64) {
     // :4726-4746
     let stack_limit = q.min(Some(&c), &["PoisonStackLimit"]);
     let stack_multiplier = if off.sd_truthy("stackMultiplier") {
-        off.sd_num("stackMultiplier", 4741).expect("truthy")
+        off.sd_num("stackMultiplier", 4747).expect("truthy")
     } else {
         1.0
     };
-    let mut stacks = pn(off, pi, "HitChance", 4741) / 100.0
+    let mut stacks = pn(off, pi, "HitChance", 4747) / 100.0
         * poison_chance
         * additional
-        * dps_multiplier(off, 4741)
+        * dps_multiplier(off, 4747)
         * stack_multiplier
         * quantity_multiplier;
     let mut uncapped_stacks: Option<f64> = None;
-    if off.g_hit_speed(4743) > 0.0 {
-        stacks = stacks * poison_duration * off.g_hit_speed(4745);
+    if off.g_hit_speed(4749) > 0.0 {
+        stacks = stacks * poison_duration * off.g_hit_speed(4751);
         if stack_limit.truthy() {
             let limit = stack_limit
                 .as_num()
-                .unwrap_or_else(|| panic!("{LUA}:4748: attempt to compare number with {}", stack_limit.type_name()));
+                .unwrap_or_else(|| panic!("{LUA}:4754: attempt to compare number with {}", stack_limit.type_name()));
             if limit > 0.0 && stacks > limit {
                 let num_poisoning_hits = (limit / additional).ceil();
                 let max_poison_stacks = num_poisoning_hits * additional;
@@ -1104,12 +1106,12 @@ fn poison(off: &mut Off<'_>, q: &Q, pi: usize, quantity_multiplier: f64) {
                 base: Some(step("%.2fs ^8(poison duration)", poison_duration)),
                 steps: vec![
                     step("%.2f ^8(poison chance)", poison_chance),
-                    step("%.2f ^8(hit chance)", pn(off, pi, "HitChance", 4767) / 100.0),
+                    step("%.2f ^8(hit chance)", pn(off, pi, "HitChance", 4773) / 100.0),
                     step("%.2f ^8(avg. # of poisons inflicted)", additional),
-                    step("%.2f ^8(hits per second)", off.g_hit_speed(4769)),
+                    step("%.2f ^8(hits per second)", off.g_hit_speed(4775)),
                     step(
                         "%g ^8(dps multiplier for this skill)",
-                        off.sd_num("dpsMultiplier", 4770).unwrap_or(1.0),
+                        off.sd_num("dpsMultiplier", 4776).unwrap_or(1.0),
                     ),
                     step("%g ^8(stack multiplier for this skill)", stack_multiplier),
                     step("%g ^8(quantity multiplier for this skill)", quantity_multiplier),
@@ -1146,10 +1148,10 @@ fn poison(off: &mut Off<'_>, q: &Q, pi: usize, quantity_multiplier: f64) {
             total_max += max;
         }
         let mut non_chaos_mult = 1.0;
-        if pn(off, pi, "ChaosPoisonChance", 4800) > 0.0 && pn(off, pi, "PoisonChaosMax", 4800) > 0.0 {
+        if pn(off, pi, "ChaosPoisonChance", 4806) > 0.0 && pn(off, pi, "PoisonChaosMax", 4806) > 0.0 {
             let k = if sub_pass == 2 { "PoisonChanceOnCrit" } else { "PoisonChanceOnHit" };
-            let cur = pn(off, pi, k, 4803);
-            let chaos_chance = min2(100.0, cur + pn(off, pi, "ChaosPoisonChance", 4803));
+            let cur = pn(off, pi, k, 4809);
+            let chaos_chance = min2(100.0, cur + pn(off, pi, "ChaosPoisonChance", 4809));
             non_chaos_mult = cur / chaos_chance;
             off.pset_num(pi, k, chaos_chance);
         }
@@ -1169,12 +1171,12 @@ fn poison(off: &mut Off<'_>, q: &Q, pi: usize, quantity_multiplier: f64) {
             }
         }
         if sub_pass == 2 {
-            let m = crit_dot_multi(off, q, &mut dc, "ChaosDotMultiplier", 4838);
+            let m = crit_dot_multi(off, q, &mut dc, "ChaosDotMultiplier", 4844);
             off.pset_num(pi, "CritPoisonDotMulti", m);
             crit_dmg = (total_min + total_max) / 2.0 * m;
             max_crit = total_max * m;
         } else {
-            let m = dot_multi(q, &dc, "ChaosDotMultiplier", 4846);
+            let m = dot_multi(q, &dc, "ChaosDotMultiplier", 4852);
             off.pset_num(pi, "PoisonDotMulti", m);
             hit_dmg = (total_min + total_max) / 2.0 * m;
             min_hit = total_min * m;
@@ -1183,10 +1185,10 @@ fn poison(off: &mut Off<'_>, q: &Q, pi: usize, quantity_multiplier: f64) {
     }
     // :4843-4846
     let percent = misc("PoisonPercentBase");
-    let crit_chance = pn(off, pi, "CritChance", 4857);
-    let ruthless = pn(off, pi, "RuthlessBlowAilmentEffect", 4858);
-    let fist = pn(off, pi, "FistOfWarDamageEffect", 4858);
-    let warcry = gn(off, "AilmentWarcryEffect", 4858);
+    let crit_chance = pn(off, pi, "CritChance", 4863);
+    let ruthless = pn(off, pi, "RuthlessBlowAilmentEffect", 4864);
+    let fist = pn(off, pi, "FistOfWarDamageEffect", 4864);
+    let warcry = gn(off, "AilmentWarcryEffect", 4864);
     // :4838-4842
     if off.breakdown {
         let mode = if ailment_mode(off) == "CRIT" {
@@ -1224,7 +1226,7 @@ fn poison(off: &mut Off<'_>, q: &Q, pi: usize, quantity_multiplier: f64) {
         let single_uncapped = min2(base_val * effect_mod * rate_mod * eff_mult, cap);
         let single_capped = min2(single_uncapped, cap);
         off.pset_num(pi, "PoisonDPS", single_capped);
-        off.pset_num(pi, "PoisonDamage", single_capped * gn(off, "PoisonDuration", 4883));
+        off.pset_num(pi, "PoisonDamage", single_capped * gn(off, "PoisonDuration", 4889));
         let ground_mult = max2(
             q.max(None, &["PoisonDpsAsCausticGround"]).unwrap_or(0.0),
             ok(edb.borrow().max(None, &["PoisonDpsAsCausticGround"])).unwrap_or(0.0),
@@ -1258,8 +1260,8 @@ fn poison(off: &mut Off<'_>, q: &Q, pi: usize, quantity_multiplier: f64) {
         }
         // :4897-4985 (the branch rewrites output.PoisonDotMulti)
         if off.breakdown {
-            let g_crit = gn(off, "CritChance", 4916);
-            rewrite_dot_multi(off, pi, "Poison", g_crit, 4914);
+            let g_crit = gn(off, "CritChance", 4922);
+            rewrite_dot_multi(off, pi, "Poison", g_crit, 4920);
             let mut lines = Vec::new();
             if ruthless != 1.0 {
                 lines.push(sf!("x %.2f ^8(ruthless blow effect modifier)", ruthless));
@@ -1333,7 +1335,7 @@ fn poison(off: &mut Off<'_>, q: &Q, pi: usize, quantity_multiplier: f64) {
             }
             t.push(sf!("%.1f ^8(damage per second)", single_capped));
             t.push(sf!("x %.2fs ^8(poison duration)", poison_duration));
-            t.push(sf!("= %.1f ^8damage per poison stack", pn(off, pi, "PoisonDamage", 4997)));
+            t.push(sf!("= %.1f ^8damage per poison stack", pn(off, pi, "PoisonDamage", 5003)));
             off.pbd_put(pi, "PoisonDamage", t);
         }
     }
@@ -1369,6 +1371,7 @@ fn dot_eff_mult_breakdown(off: &Off<'_>, c: &ModCfg, dt: &str, extra: Option<&st
         true,
         None,
         None,
+        None,
     )
 }
 
@@ -1386,19 +1389,19 @@ fn ignite(off: &mut Off<'_>, q: &Q, pi: usize) {
         }
     }
     // :5014
-    let crit_chance = pn(off, pi, "CritChance", 5028);
-    let per_hit = pn(off, pi, "IgniteChanceOnHit", 5028) * (1.0 - crit_chance / 100.0)
-        + pn(off, pi, "IgniteChanceOnCrit", 5028) * crit_chance / 100.0;
+    let crit_chance = pn(off, pi, "CritChance", 5034);
+    let per_hit = pn(off, pi, "IgniteChanceOnHit", 5034) * (1.0 - crit_chance / 100.0)
+        + pn(off, pi, "IgniteChanceOnCrit", 5034) * crit_chance / 100.0;
     off.gset("IgniteChancePerHit", per_hit);
     // :5017-5022
     let mut max_stacks = 1.0;
     if off.flag("igniteCanStack") {
-        let site = format!("{LUA}:5033");
+        let site = format!("{LUA}:5039");
         max_stacks = q
             .override_num(Some(&c), &["IgniteStacks"], &site)
             .unwrap_or_else(|| max_stacks + q.base(Some(&c), &["IgniteStacks"]));
     }
-    let site = format!("{LUA}:5035");
+    let site = format!("{LUA}:5041");
     let override_stack_potential = if q.override_(None, &["IgniteStackPotentialOverride"]).is_some_and(|v| v.truthy()) {
         Some(q.override_num(None, &["IgniteStackPotentialOverride"], &site).expect("truthy") / max_stacks)
     } else {
@@ -1408,7 +1411,7 @@ fn ignite(off: &mut Off<'_>, q: &Q, pi: usize) {
     // :5024-5028
     let rate_mod = (q.calc_mod(Some(&c), &["IgniteBurnFaster"]) + dsum(&edb, ModType::Inc, None, &["SelfIgniteBurnFaster"]) / 100.0)
         / q.calc_mod(Some(&c), &["IgniteBurnSlower"]);
-    let site = format!("{LUA}:5039");
+    let site = format!("{LUA}:5045");
     let duration_base = q
         .override_num(Some(&dc), &["IgniteDurationBase"], &site)
         .unwrap_or_else(|| misc("IgniteDurationBase"));
@@ -1432,16 +1435,16 @@ fn ignite(off: &mut Off<'_>, q: &Q, pi: usize) {
     let ignite_duration = duration_base * duration_mod / rate_mod * off.debuff_duration_mult;
     off.gset("IgniteDuration", ignite_duration);
     // :5030-5042
-    let crit_chance = pn(off, pi, "CritChance", 5044);
-    let ignite_chance = pn(off, pi, "IgniteChanceOnHit", 5044) / 100.0 * (1.0 - crit_chance / 100.0)
-        + pn(off, pi, "IgniteChanceOnCrit", 5044) / 100.0 * crit_chance / 100.0;
-    let mut stacks = pn(off, pi, "HitChance", 5046) / 100.0 * ignite_chance * dps_multiplier(off, 5046);
+    let crit_chance = pn(off, pi, "CritChance", 5050);
+    let ignite_chance = pn(off, pi, "IgniteChanceOnHit", 5050) / 100.0 * (1.0 - crit_chance / 100.0)
+        + pn(off, pi, "IgniteChanceOnCrit", 5050) / 100.0 * crit_chance / 100.0;
+    let mut stacks = pn(off, pi, "HitChance", 5052) / 100.0 * ignite_chance * dps_multiplier(off, 5052);
     if !off.sd_truthy("triggeredOnDeath") {
         if off.ptruthy(pi, "Cooldown") {
-            let cd = pn(off, pi, "Cooldown", 5049);
-            stacks = stacks * ignite_duration / max2(cd, hit_time(off, pi, 5049));
-        } else if off.g_hit_speed(5050) > 0.0 {
-            stacks = stacks * ignite_duration * off.g_hit_speed(5052);
+            let cd = pn(off, pi, "Cooldown", 5055);
+            stacks = stacks * ignite_duration / max2(cd, hit_time(off, pi, 5055));
+        } else if off.g_hit_speed(5056) > 0.0 {
+            stacks = stacks * ignite_duration * off.g_hit_speed(5058);
         }
     }
     let stack_potential = override_stack_potential.unwrap_or(stacks / max_stacks);
@@ -1452,7 +1455,7 @@ fn ignite(off: &mut Off<'_>, q: &Q, pi: usize) {
             format!("{}NOTE: Calculation uses a Weighted Avg formula", crate::breakdown::color("CUSTOM")),
             String::new(),
         ]);
-        let site = format!("{LUA}:5064");
+        let site = format!("{LUA}:5070");
         if let Some(o) = q.override_num(None, &["IgniteStackPotentialOverride"], &site) {
             let osp = override_stack_potential.expect("set with the override");
             if max_stacks != 1.0 {
@@ -1462,7 +1465,7 @@ fn ignite(off: &mut Off<'_>, q: &Q, pi: usize) {
                 t.push(sf!("= %g ^8(stack potential override)", osp));
             }
         } else {
-            t.push(sf!("%.2f ^8(chance to hit)", pn(off, pi, "HitChance", 5070) / 100.0));
+            t.push(sf!("%.2f ^8(chance to hit)", pn(off, pi, "HitChance", 5076) / 100.0));
             t.push(sf!("* %.2f ^8(chance to ignite)", ignite_chance));
             if off.sd_truthy("triggeredOnDeath") {
                 t.push(sf!("* 1 ^8Cast on Death override"));
@@ -1470,17 +1473,17 @@ fn ignite(off: &mut Off<'_>, q: &Q, pi: usize) {
                 t.push(sf!(
                     "* (%.2f / max(%.2f, %.2f) ^8(Ignite Duration / max(Cooldown, Cast Time))",
                     ignite_duration,
-                    pn(off, pi, "Cooldown", 5075),
-                    hit_time(off, pi, 5075)
+                    pn(off, pi, "Cooldown", 5081),
+                    hit_time(off, pi, 5081)
                 ));
-            } else if off.g_hit_speed(5076) > 0.0 {
+            } else if off.g_hit_speed(5082) > 0.0 {
                 let t_hit = match off.gval("HitTime") {
-                    None | Some(crate::output::OutValue::Bool(false)) => pn(off, pi, "Time", 5077),
-                    v => num_at(v, "HitTime", 5077),
+                    None | Some(crate::output::OutValue::Bool(false)) => pn(off, pi, "Time", 5083),
+                    v => num_at(v, "HitTime", 5083),
                 };
                 t.push(sf!("* (%.2f / %.2f) ^8(Ignite Duration / Attack Time)", ignite_duration, t_hit));
             }
-            let dm = dps_multiplier(off, 5079);
+            let dm = dps_multiplier(off, 5085);
             if dm != 1.0 {
                 t.push(sf!("* %g ^8(DPS multiplier for this skill)", dm));
             }
@@ -1541,12 +1544,12 @@ fn ignite(off: &mut Off<'_>, q: &Q, pi: usize) {
             }
         }
         if sub_pass == 2 {
-            let m = crit_dot_multi(off, q, &mut dc, "FireDotMultiplier", 5155);
+            let m = crit_dot_multi(off, q, &mut dc, "FireDotMultiplier", 5161);
             off.pset_num(pi, "CritIgniteDotMulti", m);
             crit_dmg = (total_min + (total_max - total_min) * roll / 100.0) * m;
             max_crit = total_max * m;
         } else {
-            let m = dot_multi(q, &dc, "FireDotMultiplier", 5163);
+            let m = dot_multi(q, &dc, "FireDotMultiplier", 5169);
             off.pset_num(pi, "IgniteDotMulti", m);
             hit_dmg = (total_min + (total_max - total_min) * roll / 100.0) * m;
             min_hit = total_min * m;
@@ -1557,15 +1560,15 @@ fn ignite(off: &mut Off<'_>, q: &Q, pi: usize) {
     }
     // :5157-5181
     if off.breakdown {
-        let (tmin, tmax) = (pn(off, pi, "IgniteTotalMin", 5175), pn(off, pi, "IgniteTotalMax", 5175));
+        let (tmin, tmax) = (pn(off, pi, "IgniteTotalMin", 5181), pn(off, pi, "IgniteTotalMax", 5181));
         let derivation = sf!("%.0f + (%.0f - %.0f) * %.2f%%", tmin, tmax, tmin, roll);
         let note = "^8min combined sources + (max combined sources - min combined sources) * average ignite roll".to_owned();
-        let t = if hit_dmg == crit_dmg || pn(off, pi, "CritChance", 5172) == 0.0 {
+        let t = if hit_dmg == crit_dmg || pn(off, pi, "CritChance", 5178) == 0.0 {
             BTable::lines([
                 "Dmg Derivation:".to_owned(),
                 derivation,
                 note,
-                sf!("* %.2f ^8(Ignite DoT Multi)", pn(off, pi, "IgniteDotMulti", 5177)),
+                sf!("* %.2f ^8(Ignite DoT Multi)", pn(off, pi, "IgniteDotMulti", 5183)),
                 sf!("= %.2f", hit_dmg),
             ])
         } else {
@@ -1573,25 +1576,25 @@ fn ignite(off: &mut Off<'_>, q: &Q, pi: usize) {
                 "Non-Crit Dmg Derivation:".to_owned(),
                 derivation.clone(),
                 note.clone(),
-                sf!("* %.2f ^8(Ignite DoT Multi for Non-Crit)", pn(off, pi, "IgniteDotMulti", 5185)),
+                sf!("* %.2f ^8(Ignite DoT Multi for Non-Crit)", pn(off, pi, "IgniteDotMulti", 5191)),
                 sf!("= %.2f", hit_dmg),
                 String::new(),
                 "Crit Dmg Derivation:".to_owned(),
                 derivation,
                 note,
-                sf!("* %.2f ^8(Ignite DoT Multi for Crit)", pn(off, pi, "CritIgniteDotMulti", 5191)),
+                sf!("* %.2f ^8(Ignite DoT Multi for Crit)", pn(off, pi, "CritIgniteDotMulti", 5197)),
                 sf!("= %.2f", crit_dmg),
             ])
         };
         off.bd_put("IgniteDPS", t);
     }
     // :5183-5186
-    let crit_chance = pn(off, pi, "CritChance", 5197);
+    let crit_chance = pn(off, pi, "CritChance", 5203);
     let ailment_crit_chance = 100.0 * (1.0 - (1.0 - crit_chance / 100.0).powf(max2(1.0, stacks)));
     let percent = misc("IgnitePercentBase");
-    let ruthless = pn(off, pi, "RuthlessBlowAilmentEffect", 5199);
-    let fist = pn(off, pi, "FistOfWarDamageEffect", 5199);
-    let warcry = gn(off, "AilmentWarcryEffect", 5199);
+    let ruthless = pn(off, pi, "RuthlessBlowAilmentEffect", 5205);
+    let fist = pn(off, pi, "FistOfWarDamageEffect", 5205);
+    let warcry = gn(off, "AilmentWarcryEffect", 5205);
     let base_min = calc_ailment_damage(off, q, pi, "Ignite", ailment_crit_chance, min_hit, 0.0, true) * percent;
     let base_max = calc_ailment_damage(off, q, pi, "Ignite", 100.0, max_hit, max_crit, true) * percent * ruthless * fist * warcry;
     let base_val =
@@ -1639,10 +1642,10 @@ fn ignite(off: &mut Off<'_>, q: &Q, pi: usize) {
                 off.bd_put("BurningGroundDPS", t);
             }
         }
-        let dps = pn(off, pi, "IgniteDPS", 5256);
-        off.gset("IgniteDamage", dps * gn(off, "IgniteDuration", 5256));
+        let dps = pn(off, pi, "IgniteDPS", 5262);
+        off.gset("IgniteDamage", dps * gn(off, "IgniteDuration", 5262));
         if off.flag("igniteCanStack") {
-            let dur = gn(off, "IgniteDuration", 5258);
+            let dur = gn(off, "IgniteDuration", 5264);
             off.pset_num(pi, "IgniteDamage", dps * dur);
             off.pset_num(pi, "IgniteStacksMax", max_stacks);
             off.pset_num(pi, "TotalIgniteDPS", dps);
@@ -1681,7 +1684,7 @@ fn ignite(off: &mut Off<'_>, q: &Q, pi: usize) {
                     t.push(l);
                 }
             }
-            rewrite_dot_multi(off, pi, "Ignite", ailment_crit_chance, 5310);
+            rewrite_dot_multi(off, pi, "Ignite", ailment_crit_chance, 5316);
             if off.flag("igniteCanStack") {
                 let mut t = BTable::new();
                 if off.is_attack {
@@ -1689,7 +1692,7 @@ fn ignite(off: &mut Off<'_>, q: &Q, pi: usize) {
                 }
                 t.push(sf!("%.1f ^8(damage per second)", dps));
                 t.push(sf!("x %.2fs ^8(ignite duration)", ignite_duration));
-                t.push(sf!("= %.1f ^8damage per ignite stack", pn(off, pi, "IgniteDamage", 5325)));
+                t.push(sf!("= %.1f ^8damage per ignite stack", pn(off, pi, "IgniteDamage", 5331)));
                 off.pbd_put(pi, "IgniteDamage", t);
             }
             if ignite_duration != misc("IgniteDurationBase") {

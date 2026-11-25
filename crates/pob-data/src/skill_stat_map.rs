@@ -83,7 +83,7 @@ pub const FORMAT_TAGS_NUMBER_ERROR: &str = "Modules/ModTools.lua:154: bad argume
 /// `ModList:Sum` on a mod with a table in `flags`.
 pub const QUERY_FLAGS_TABLE_ERROR: &str = "Classes/ModList.lua:107: bad argument #2 to 'band' (number expected, got table)";
 /// `ModList:Sum`/`List` (EvalMod) on a mod with a number in its tag array.
-pub const QUERY_TAGS_NUMBER_ERROR: &str = "Classes/ModStore.lua:369: attempt to index local 'tag' (a number value)";
+pub const QUERY_TAGS_NUMBER_ERROR: &str = "Classes/ModStore.lua:365: attempt to index local 'tag' (a number value)";
 /// `processMod` (Data.lua:74-79) on a mod with a number in its tag array.
 pub const PROCESS_MOD_NUMBER_TAG_ERROR: &str = "Modules/Data.lua:75: attempt to index local 'tag' (a number value)";
 

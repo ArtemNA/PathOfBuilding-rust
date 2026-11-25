@@ -3,65 +3,65 @@
   "dumps":[{
       "step":1,
       "state":{
-        "lastCheck":"none",
         "check":false,
-        "sel":"nil",
         "clicks":0,
-        "checked":0
+        "checked":0,
+        "lastCheck":"none",
+        "sel":"nil"
       }
     },{
       "step":3,
       "state":{
-        "lastCheck":"none",
         "check":false,
-        "sel":"button",
         "clicks":0,
-        "checked":0
+        "checked":0,
+        "lastCheck":"none",
+        "sel":"button"
       }
     },{
       "step":4,
       "state":{
-        "lastCheck":"none",
         "check":false,
-        "sel":"nil",
         "clicks":1,
-        "checked":0
+        "checked":0,
+        "lastCheck":"none",
+        "sel":"nil"
       }
     },{
       "step":5,
       "state":{
-        "lastCheck":"none",
         "check":false,
-        "sel":"check",
         "clicks":1,
-        "checked":0
+        "checked":0,
+        "lastCheck":"none",
+        "sel":"check"
       }
     },{
       "step":6,
       "state":{
-        "lastCheck":"true",
         "check":true,
-        "sel":"nil",
         "clicks":1,
-        "checked":1
+        "checked":1,
+        "lastCheck":"true",
+        "sel":"nil"
       }
     },{
       "step":7,
       "state":{
-        "lastCheck":"false",
         "check":false,
-        "sel":"nil",
         "clicks":1,
-        "checked":2
+        "checked":2,
+        "lastCheck":"false",
+        "sel":"nil"
       }
     },{
       "step":8,
       "state":{
-        "lastCheck":"false",
         "check":false,
-        "sel":"nil",
         "clicks":1,
-        "checked":2
+        "checked":2,
+        "lastCheck":"false",
+        "sel":"nil"
       }
     }],
   "shots":["basic-idle","basic-hover","basic-pressed","basic-check","basic-final"],

@@ -39,6 +39,8 @@ pub struct Engine {
     pub(crate) misc_dirty: std::cell::Cell<bool>,
     /// `itemsTab.items` as a LuaJIT table: its `pairs` order, made from the model's items on first use ([`Engine::items_pairs`]).
     pub(crate) items_table: std::cell::RefCell<Option<pob_tree::lj_table::LjTable>>,
+    /// `itemSets` / `skillSets` / `configSets` as LuaJIT tables, for `#t` ([`crate::sets`]).
+    pub(crate) set_tables: crate::sets::SetTables,
     /// `build.outputRevision` (Build.lua:1266): one per recalculation.
     output_revision: u64,
     /// `build.viewMode == "TREE"` (Calcs.lua:102).
@@ -51,6 +53,8 @@ pub struct Engine {
     /// `specList[i]` of the specs left in this session (parallel to `model.tree.specs`, grown on need): the Lua keeps the objects, and which of the equal shortest
     /// paths a node has follows the history of the object's `allocNodes` table.
     pub(crate) spec_objects: Vec<Option<Rc<pob_tree::PassiveSpec>>>,
+    /// `build.spec` is not `specList[activeSpec]` (tree_tab.rs `remove_spec_raw` / `permute_specs`).
+    pub(crate) spec_orphaned: bool,
     /// `varControls[var].enabled` / `.selIndex` the ConfigTab's `BuildModList`s left: the controls live on the tab, over the runs (`config_tab.rs`).
     pub(crate) config_controls: Option<pob_build::config::ConfigControls>,
     /// The `if*` gates of the ConfigTab over this run (`config_tab.rs`).
@@ -93,6 +97,7 @@ impl Engine {
         crate::calcs_tab::with_default_input(&mut model);
         let extras = SaveExtras::from_xml(xml)?;
         let (res, calcs) = run(&model, None, extras.import.export_party, None)?;
+        let set_tables = crate::sets::SetTables::from_model(&model);
         let mut e = Engine {
             model,
             extras,
@@ -105,11 +110,13 @@ impl Engine {
             misc: std::cell::RefCell::new(None),
             misc_dirty: std::cell::Cell::new(false),
             items_table: std::cell::RefCell::new(None),
+            set_tables,
             output_revision: 1,
             view_mode_is_tree: std::cell::Cell::new(true),
             live_spec: None,
             conquests_kept: false,
             spec_objects: Vec::new(),
+            spec_orphaned: false,
             config_controls: None,
             config_gates: Default::default(),
             skills_live: None,
@@ -279,6 +286,7 @@ impl Engine {
             skill_dps: self.skill_dps.as_deref(),
             calcs_env: Some(&self.calcs.env),
             skills_live: self.skills_live.as_ref(),
+            spec_orphaned: self.spec_orphaned,
         })
     }
 
@@ -432,6 +440,7 @@ impl Engine {
             skill_dps: self.skill_dps.as_deref(),
             calcs_env: Some(&self.calcs.env),
             skills_live: None,
+            spec_orphaned: self.spec_orphaned,
         })
     }
 
@@ -489,6 +498,15 @@ impl Engine {
 
     /// The `nodes` / `masteryEffects` / class / tattoos the live spec would save, into the model (PassiveSpec.lua:199-202, 3dbca4463 #10338: sorted ids).
     pub fn write_spec_to_model(&mut self, spec: pob_tree::PassiveSpec) {
+        if self.spec_orphaned {
+            // `build.spec` is not `specList[activeSpec]` ([`Engine::spec_list_orphaned`]): the Lua edits that object, which no list holds
+            // and `SaveDB` does not write
+            let spec = Rc::new(spec);
+            self.live_spec = Some(spec.clone());
+            self.conquests_kept = false;
+            self.res.env.spec = spec;
+            return;
+        }
         let sm = active_spec_mut(&mut self.model);
         let mut ids = spec.alloc_table_pairs();
         ids.sort_unstable();
@@ -536,8 +554,10 @@ impl Engine {
         self.conquests_kept = true;
     }
 
+    /// The object the calcs take whole as `build.spec`: one that keeps its conquests, or one no list holds any more
+    /// ([`Engine::spec_list_orphaned`]: its class, ascendancy and the rest are not `specList[activeSpec]`'s).
     fn kept_spec(&self) -> Option<Rc<pob_tree::PassiveSpec>> {
-        self.live_spec.clone().filter(|_| self.conquests_kept)
+        self.live_spec.clone().filter(|_| self.conquests_kept || self.spec_orphaned)
     }
 
     /// A session over `model`. The usual path loads the spec from the model.
@@ -847,7 +867,7 @@ impl Engine {
             && env.item(s.sel_item_id).is_some()
         {
             return Err(format!(
-                "unimplemented: Classes/ItemsTab.lua:1976-2015 CopyAnointsAndEldritchImplicits from the equipped '{item_type}' item"
+                "unimplemented: Classes/ItemsTab.lua:2037-2076 CopyAnointsAndEldritchImplicits from the equipped '{item_type}' item"
             ));
         }
         item.normalise_quality();
@@ -1058,7 +1078,7 @@ impl Engine {
             Some(d) => Some(pob_calc::power::DisplayStatFmt {
                 fmt: d
                     .fmt
-                    .ok_or("Classes/TreeTab.lua:1092: attempt to concatenate field 'fmt' (a nil value)")?
+                    .ok_or("Classes/TreeTab.lua:1107: attempt to concatenate field 'fmt' (a nil value)")?
                     .to_owned(),
                 pc: d.pc,
                 mod_: d.mod_,

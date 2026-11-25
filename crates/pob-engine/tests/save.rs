@@ -192,6 +192,7 @@ fn rust_canon(e: &Engine, r13: &mut Vec<R13Gem>) -> String {
         skill_dps: e.skill_dps(),
         calcs_env: Some(&e.calcs_run().env),
         skills_live: None,
+        spec_orphaned: false,
     })
     .unwrap_or_else(|err| panic!("SaveDB: {err}"));
     canon(&tree, r13)

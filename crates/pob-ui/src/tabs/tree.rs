@@ -490,19 +490,29 @@ impl TreeTab {
 
     /// TreeTab.lua:548-584 `SetActiveSpec(specId)`.
     pub fn set_active_spec(&self, g: &mut Gfx, spec_id: usize) {
+        self.set_active_spec_with(g, spec_id, false);
+    }
+
+    /// `SetActiveSpec(specId, deferSync)` (TreeTab.lua:549-587).
+    pub fn set_active_spec_with(&self, g: &mut Gfx, spec_id: usize, defer_sync: bool) {
         let b = main().build_mode.clone();
         ok_or_panic(with_engine(|e| e.set_active_spec(spec_id)));
         b.build_flag.set(true);
-        self.sync_active_spec(g);
+        self.sync_active_spec_with(g, defer_sync);
     }
 
     /// The part of `SetActiveSpec` after `build.spec` changed.
     pub fn sync_active_spec(&self, g: &mut Gfx) {
+        self.sync_active_spec_with(g, false);
+    }
+
+    /// The part of `SetActiveSpec(specId, deferSync)` after `build.spec` changed: `deferSync` skips `build:SyncLoadouts()` (:584-586).
+    pub fn sync_active_spec_with(&self, g: &mut Gfx, defer_sync: bool) {
         let b = main().build_mode.clone();
         let ver = engine_read(|e| e.spec_rc().tree_version.clone());
         crate::tree_view::set_jewel_radii_globally(&ver);
         self.show_convert.set(!ver.starts_with(latest_tree_version()));
-        b.after_spec_change(g);
+        b.after_spec_change_with(g, defer_sync);
         // :573-578 `if itemOrderList[1] then itemsTab:PopulateSlots()`, `specSelect.selIndex = specId`
         let items_tab = b.items_tab.borrow().clone();
         if let Some(it) = items_tab {
@@ -1408,10 +1418,12 @@ enum RenameTarget {
 
 /// `RenameSpec(spec, title, addOnName)` (:50-74).
 fn rename_spec_popup(g: &mut Gfx, target: RenameTarget, title: &str) {
+    // PassiveSpecListControl.lua:54 (5606cc64f) `spec.title or "Default"`
     let init = match &target {
         RenameTarget::Existing(i) => tab().summaries.borrow().get(*i - 1).and_then(|s| s.title.clone()),
         RenameTarget::New(m) => m.title.clone(),
-    };
+    }
+    .or_else(|| Some("Default".to_owned()));
     let target = Rc::new(RefCell::new(Some(target)));
     let mut controls: IndexMap<String, ControlRef> = IndexMap::new();
     controls.insert(
@@ -1532,7 +1544,9 @@ pub fn open_spec_manage_popup(g: &mut Gfx) {
         rect(-4.0, 0.0, 60.0, 18.0),
         "New".to_string(),
         |g| {
-            let m = engine_read(pob_engine::engine::Engine::new_spec_model);
+            let mut m = engine_read(pob_engine::engine::Engine::new_spec_model);
+            // :41 (5606cc64f) `newSpec.title = "New Tree"`
+            m.title = Some("New Tree".to_owned());
             rename_spec_popup(g, RenameTarget::New(Box::new(m)), "New Tree");
         },
     );

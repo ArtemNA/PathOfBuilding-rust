@@ -142,7 +142,8 @@ impl Engine {
             .map(|i| {
                 let sm = &self.model().tree.specs[i - 1];
                 let loaded;
-                let spec: &PassiveSpec = if i == active {
+                // `build.spec` is not in `specList` ([`Engine::spec_list_orphaned`]): every row is its list entry
+                let spec: &PassiveSpec = if i == active && !self.spec_orphaned {
                     &self.result().env.spec
                 } else {
                     loaded = self.load_spec(i)?;
@@ -187,8 +188,91 @@ impl Engine {
 
     /// TreeTab.lua:548-584 `SetActiveSpec(specId)`: `prevSpec.jewels` / `curSpec.jewels` are per `<Spec>` in the model already.
     pub fn set_active_spec(&mut self, spec_id: usize) -> Result<(), String> {
-        self.keep_active_object();
+        // `build.spec` is not in `specList` any more (see [`Engine::spec_list_orphaned`]): nothing of it goes back to the list
+        if !self.spec_orphaned {
+            self.keep_active_object();
+        }
         self.activate_spec(spec_id)
+    }
+
+    /// `specList[activeSpec]` is not `build.spec` since a [`Engine::remove_spec_raw`] / [`Engine::permute_specs`] (Build.lua:325, :458-483 leave
+    /// `treeTab.activeSpec` as it was), until the next `SetActiveSpec`.
+    pub fn spec_list_orphaned(&self) -> bool {
+        self.spec_orphaned
+    }
+
+    /// `t_remove(self.treeTab.specList, index)` of `DeleteLoadout` (Build.lua:325): `activeSpec` stays the number it was.
+    pub fn remove_spec_raw(&mut self, index: usize) {
+        let active = self.active_spec();
+        if !self.spec_orphaned {
+            self.keep_active_object();
+        }
+        self.sync_spec_objects();
+        self.spec_objects.remove(index - 1);
+        self.model_mut().tree.specs.remove(index - 1);
+        if index <= active {
+            self.orphan_active_spec();
+        }
+    }
+
+    /// `build.spec` stays the object it is while `specList[activeSpec]` is another one: the calcs take it whole from now on (its class
+    /// and ascendancy are not the model's active spec's).
+    fn orphan_active_spec(&mut self) {
+        if !self.spec_orphaned {
+            let spec = self.result().env.spec.clone();
+            self.set_live_spec(Some(spec));
+        }
+        self.spec_orphaned = true;
+    }
+
+    /// `specList` rebuilt in a new order (Build.lua:458-459, :472-483): `new_order[i]` is the old 1-based index of the spec now at `i + 1`.
+    /// `activeSpec` stays the number it was.
+    pub fn permute_specs(&mut self, new_order: &[usize]) {
+        let active = self.active_spec();
+        if !self.spec_orphaned {
+            self.keep_active_object();
+        }
+        self.sync_spec_objects();
+        assert_eq!(new_order.len(), self.spec_count(), "a permutation of specList");
+        let objects: Vec<_> = new_order.iter().map(|&i| self.spec_objects[i - 1].clone()).collect();
+        let m = self.model_mut();
+        let specs: Vec<SpecModel> = new_order.iter().map(|&i| m.tree.specs[i - 1].clone()).collect();
+        m.tree.specs = specs;
+        self.spec_objects = objects;
+        if new_order.get(active - 1) != Some(&active) {
+            self.orphan_active_spec();
+        }
+    }
+
+    /// `TreeTab:CopyTree(sourceSpecId, newSpecName)` (TreeTab.lua:657-667): `PassiveSpec(build, source.treeVersion)`, the title,
+    /// `copyTable(source.jewels)`, `RestoreUndoState(source:CreateUndoState())`, `BuildClusterJewelGraphs`, at the end of `specList`.
+    pub fn copy_tree(&mut self, source: usize, title: Option<&str>) -> Result<(), String> {
+        let mut sm = self.copy_spec_model(source)?;
+        let default = format!(
+            "{} (Copy)",
+            self.model().tree.specs[source - 1].title.as_deref().unwrap_or("Default")
+        );
+        sm.title = Some(title.map_or(default, str::to_owned));
+        self.push_spec(sm);
+        Ok(())
+    }
+
+    /// `new("PassiveSpec"):PassiveSpec(build, latestTreeVersion)` (Build.lua:820, :845): `SelectClass(0)` (PassiveSpec.lua:35), no
+    /// secondary ascendancy, no title.
+    pub fn fresh_spec_model(&self) -> SpecModel {
+        SpecModel {
+            title: None,
+            tree_version: pob_data::tree::tree_versions().expect("GameVersions").latest_tree_version.clone(),
+            cluster_hash_format_version: 2.0,
+            class_id: 0.0,
+            ascend_class_id: 0.0,
+            secondary_ascend_class_id: None,
+            nodes: Vec::new(),
+            mastery_effects: NumMap::default(),
+            jewels: NumMap::default(),
+            url: None,
+            overrides: Vec::new(),
+        }
     }
 
     fn sync_spec_objects(&mut self) {
@@ -206,6 +290,7 @@ impl Engine {
     /// `build.spec = specList[specId]`: the kept object, else a load of the model; its run now (the Lua reads `build.spec` in this very frame); the `buildFlag` frame runs
     /// again ([`Engine::refresh`]), since a loadout changes the item, skill and config sets after the spec.
     fn activate_spec(&mut self, spec_id: usize) -> Result<(), String> {
+        self.spec_orphaned = false;
         self.sync_spec_objects();
         self.model_mut().tree.active_spec = spec_id as f64;
         let n = self.spec_count() as f64;
@@ -826,7 +911,7 @@ impl Engine {
             Some(d) => Some(pob_calc::power::DisplayStatFmt {
                 fmt: d
                     .fmt
-                    .ok_or("Classes/TreeTab.lua:1092: attempt to concatenate field 'fmt' (a nil value)")?
+                    .ok_or("Classes/TreeTab.lua:1107: attempt to concatenate field 'fmt' (a nil value)")?
                     .to_owned(),
                 pc: d.pc,
                 mod_: d.mod_,

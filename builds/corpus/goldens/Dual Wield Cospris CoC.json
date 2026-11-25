@@ -22,7 +22,7 @@
   "producer": {
     "engine": "ghcr.io/pathofbuildingcommunity/pathofbuilding-tests:latest luajit-dump17.lua sha256:3d6ec9233534",
     "kind": "luajit",
-    "pobSha": "a41fec6c20f822a658ae5df1273e8c69d5969bac"
+    "pobSha": "5606cc64fa9f15694e69001a52b90aa968d01a86"
   },
   "stats": {
     "AbsorptionCharges": 0,
@@ -423,6 +423,7 @@
     "LifeRegenInc": 0,
     "LifeRegenPercent": 0,
     "LifeRegenRecovery": 0,
+    "LifeReservationEfficiency": 0,
     "LifeReserved": 0,
     "LifeReservedPercent": 0,
     "LifeUncancellableReservation": 0,
@@ -512,6 +513,7 @@
     "ManaRegenInc": 108,
     "ManaRegenPercent": 3.6,
     "ManaRegenRecovery": 31.8,
+    "ManaReservationEfficiency": 0,
     "ManaReserved": 874,
     "ManaReservedPercent": 100,
     "ManaUncancellableReservation": 0,
@@ -1176,6 +1178,7 @@
     "LifeRegenInc": 0,
     "LifeRegenPercent": 0,
     "LifeRegenRecovery": 0,
+    "LifeReservationEfficiency": 0,
     "LifeReserved": 0,
     "LifeReservedPercent": 0,
     "LifeUncancellableReservation": 0,
@@ -1265,6 +1268,7 @@
     "ManaRegenInc": 108,
     "ManaRegenPercent": 3.6,
     "ManaRegenRecovery": 31.8,
+    "ManaReservationEfficiency": 0,
     "ManaReserved": 874,
     "ManaReservedPercent": 100,
     "ManaUncancellableReservation": 0,

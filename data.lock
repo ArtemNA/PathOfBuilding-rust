@@ -1,11 +1,11 @@
 {
-  "pobSha": "a41fec6c20f822a658ae5df1273e8c69d5969bac",
+  "pobSha": "5606cc64fa9f15694e69001a52b90aa968d01a86",
   "converterVersion": "0.1.0",
   "latestTreeVersion": "3_30",
-  "manifestSha256": "58aa494499204f5257ddc916eceaab734123d84dbb446badf9c7187a819b9a70",
-  "files": 93,
-  "bytes": 133111581,
-  "source": "tools/data-convert @ dd80cb48 (tools/sync-data.ps1 -Convert, upstream runtime/lua51.dll) on tools/upstream.json pobRoot",
+  "manifestSha256": "6168d1b8b8e9b216a5a2c77a55aa612ac0985b3fa94bb22ae7b0f32e6f189e45",
+  "files": 94,
+  "bytes": 135304530,
+  "source": "tools/data-convert @ bed3a658 (tools/sync-data.ps1 -Convert, upstream runtime/lua51.dll) on tools/upstream.json pobRoot",
   "timelessLuts": {
     "source": "PathOfBuilding/src/Data/TimelessJewelData",
     "bytes": 177487738,

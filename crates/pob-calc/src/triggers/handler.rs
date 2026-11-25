@@ -7,9 +7,9 @@ use pob_mods::{ModType, Value};
 use super::config::Config;
 use super::{
     Found, SimSkill, add_trigger_inc_more_mods, cached_out, cached_sd, calc_multi_spell_rotation_impact, can_support, ceil_b, cfg_of,
-    config_input_is, ensure_cached, find_trigger_skill, flag, from_item, has_type, is_triggered, line_err, main_idx, name_of, package,
-    player_db, process_added_cast_time, q_of, sd, sd_num, sd_truthy, set_flag, set_sd, skill, skill_count, skill_mut, slot_match,
-    triggered_by_cd, with_cached,
+    config_input_is, ensure_cached, find_trigger_skill, flag, has_type, is_triggered, line_err, main_idx, name_of, package, player_db,
+    process_added_cast_time, q_of, sd, sd_num, sd_truthy, set_flag, set_sd, skill, skill_count, skill_mut, slot_match, triggered_by_cd,
+    with_cached,
 };
 use crate::breakdown::BTable;
 use crate::env::Env;
@@ -200,7 +200,8 @@ pub(super) fn cwc_handler(env: &mut Env, st: &mut PerformState) -> Result<(), St
     for i in 0..skill_count(env) {
         let sm = slot_match(env, i);
         if source.is_none() {
-            let can = tb_gem_ge.is_some_and(|g| can_support(env, g, i));
+            // :247 `triggeredBy.gemData.grantedEffect` -- the data table, never CalcSetup's tagged copy
+            let can = tb_gem_ge.is_some_and(|g| can_support(env, g, i, false));
             if sd_truthy(env, i, "triggerTime") && can && i != m && sm && !is_triggered(env, i) {
                 source = Some(i);
             }
@@ -482,7 +483,7 @@ pub(super) fn default_trigger_handler(env: &mut Env, st: &mut PerformState, mut 
     let source_weapon_trigger = config.source_weapon && source.is_some_and(|s| flag(env, s, "bothWeaponAttack"));
     let item_support_trigger = super::triggered_by_ge(env, m).is_some_and(|g| {
         let ge = &env.skills.as_ref().expect("skills on").skills.effects[g];
-        ge.support && from_item(env, ge)
+        ge.support && super::triggered_by_from_item(env, m)
     });
     if let (Some(r), Some(s)) = (trig_rate, source)
         && dual_wield
@@ -545,16 +546,17 @@ pub(super) fn default_trigger_handler(env: &mut Env, st: &mut PerformState, mut 
             }
         }
     }
-    // :479-487 Kitava's Thirst: repeats do not spend mana
-    if sd_truthy(env, m, "triggeredByManaSpent") {
-        let s = req_source(source, 482);
-        let repeats = 1.0 + q_of(env, s).base(None, &["RepeatCount"]);
-        trig_rate = Some(req_rate(trig_rate, 483) / repeats);
-        // :483-485
+    // :493-500 (5606cc64f) repeats are part of the same skill use, so they pay no cost and do not count as a new attack
+    if config.ignore_repeats
+        && let Some(s) = source
+    {
+        let scfg = cfg_of(env, s);
+        let repeats = 1.0 + q_of(env, s).base(Some(&scfg), &["RepeatCount"]);
+        trig_rate = Some(req_rate(trig_rate, 496) / repeats);
         if repeats > 1.0
             && let Some(t) = esr_bd(st)
         {
-            t.push(sf!("/%d ^8(repeated attacks/casts do not count as they don't use mana)", repeats));
+            t.push(sf!("/%d ^8(repeated attacks/casts do not count)", repeats));
         }
     }
     let tick_time = misc("ServerTickTime");
@@ -609,27 +611,27 @@ pub(super) fn default_trigger_handler(env: &mut Env, st: &mut PerformState, mut 
     // :127-162 Manaforged Arrows
     if sd_truthy(env, m, "triggeredByManaforged") && req_rate(trig_rate, 528) > 0.0 {
         let tuuid = cache_skill_uuid(env, m);
-        if !super::session(env, 530)?
+        if !super::session(env, 529)?
             .cache()
             .contains(crate::session::CalcMode::of(env), &tuuid)
         {
-            ensure_cached(env, m, &tuuid, std::slice::from_ref(&tuuid), false, 531)?;
+            ensure_cached(env, m, &tuuid, std::slice::from_ref(&tuuid), false, 530)?;
         }
-        let triggered_mana = with_cached(env, Some(&tuuid), 533, |c| cached_out(c, "ManaCostRaw"))?
-            .unwrap_or_else(|| line_err(533, "attempt to index field '?' (a nil value)"))
+        let triggered_mana = with_cached(env, Some(&tuuid), 532, |c| cached_out(c, "ManaCostRaw"))?
+            .unwrap_or_else(|| line_err(532, "attempt to index field '?' (a nil value)"))
             .unwrap_or(0.0);
         if triggered_mana > 0.0 {
             let threshold = triggered_mana
-                * sd_num(env, m, "ManaForgedArrowsPercentThreshold", 535).unwrap_or_else(|| {
+                * sd_num(env, m, "ManaForgedArrowsPercentThreshold", 534).unwrap_or_else(|| {
                     line_err(
-                        535,
+                        534,
                         "attempt to perform arithmetic on field 'ManaForgedArrowsPercentThreshold' (a nil value)",
                     )
                 });
-            let source_mana = with_cached(env, uuid.as_deref(), 536, |c| cached_out(c, "ManaCostRaw"))?
-                .unwrap_or_else(|| line_err(536, "attempt to index field '?' (a nil value)"))
+            let source_mana = with_cached(env, uuid.as_deref(), 535, |c| cached_out(c, "ManaCostRaw"))?
+                .unwrap_or_else(|| line_err(535, "attempt to index field '?' (a nil value)"))
                 .unwrap_or(0.0);
-            let pct = sd_num(env, m, "ManaForgedArrowsPercentThreshold", 535).expect("checked above");
+            let pct = sd_num(env, m, "ManaForgedArrowsPercentThreshold", 534).expect("checked above");
             if source_mana > 0.0 {
                 // :537-551 (`breakdown.EffectiveSourceRate[1]` may be nil: a hole in the constructor)
                 if let Some(t) = esr_bd(st) {
@@ -678,35 +680,35 @@ pub(super) fn default_trigger_handler(env: &mut Env, st: &mut PerformState, mut 
     let icdr = q.calc_mod(Some(&cfg), &["CooldownRecovery"]);
     let added = q.base(Some(&cfg), &["CooldownRecovery"]);
     let added_cooldown = (added != 0.0).then_some(added);
-    let cooldown_override = q.override_num(Some(&cfg), &["CooldownRecovery"], "Modules/CalcTriggers.lua:567");
+    let cooldown_override = q.override_num(Some(&cfg), &["CooldownRecovery"], "Modules/CalcTriggers.lua:566");
     // :567 `actor.mainSkill.triggeredBy and env.player.mainSkill.triggeredBy.grantedEffect.levels[...].cooldown`
     let mut trigger_cd = if skill(env, m).triggered_by.is_some() {
         if skill(env, pm).triggered_by.is_none() {
-            line_err(567, "attempt to index field 'triggeredBy' (a nil value)");
+            line_err(566, "attempt to index field 'triggeredBy' (a nil value)");
         }
-        triggered_by_cd(env, pm, 568)
+        triggered_by_cd(env, pm, 567)
     } else {
         None
     };
     if trigger_cd.is_none() {
         let s = req_source(source, 569);
-        trigger_cd = triggered_by_cd(env, s, 569);
+        trigger_cd = triggered_by_cd(env, s, 568);
     }
-    let triggered_cd = sd_num(env, m, "cooldown", 570);
+    let triggered_cd = sd_num(env, m, "cooldown", 569);
     let by_brand = sd_truthy(env, m, "triggeredByBrand");
     if by_brand {
         let tb = &config.tb;
         let b = tb
             .main_skill
-            .unwrap_or_else(|| line_err(573, "attempt to index field 'mainSkill' (a nil value)"));
-        let rf = sd_num(env, b, "repeatFrequency", 573)
-            .unwrap_or_else(|| line_err(573, "attempt to perform arithmetic on field 'repeatFrequency' (a nil value)"));
+            .unwrap_or_else(|| line_err(572, "attempt to index field 'mainSkill' (a nil value)"));
+        let rf = sd_num(env, b, "repeatFrequency", 572)
+            .unwrap_or_else(|| line_err(572, "attempt to perform arithmetic on field 'repeatFrequency' (a nil value)"));
         let more = tb
             .activation_freq_more
-            .unwrap_or_else(|| line_err(573, "attempt to perform arithmetic on field 'activationFreqMore' (a nil value)"));
+            .unwrap_or_else(|| line_err(572, "attempt to perform arithmetic on field 'activationFreqMore' (a nil value)"));
         let inc = tb
             .activation_freq_inc
-            .unwrap_or_else(|| line_err(573, "attempt to perform arithmetic on field 'activationFreqInc' (a nil value)"));
+            .unwrap_or_else(|| line_err(572, "attempt to perform arithmetic on field 'activationFreqInc' (a nil value)"));
         trigger_cd = Some(rf / more / inc * icdr);
     }
     // :578 `processAddedCastTime(env.player.mainSkill, breakdown)`
@@ -732,7 +734,7 @@ pub(super) fn default_trigger_handler(env: &mut Env, st: &mut PerformState, mut 
     // :189-192
     let mut rate_cap = f64::INFINITY;
     if source == Some(m)
-        && let Some(o) = sd_num(env, m, "triggerRateCapOverride", 589)
+        && let Some(o) = sd_num(env, m, "triggerRateCapOverride", 588)
     {
         rate_cap = o;
     }
@@ -743,9 +745,9 @@ pub(super) fn default_trigger_handler(env: &mut Env, st: &mut PerformState, mut 
     // :193-220 Doom Blast sources
     let trigger_name = config.trigger_name.clone().unwrap_or_default();
     if trigger_name == "Doom Blast" && config_input_is(env, "doomBlastSource", "expiration") {
-        let d = with_cached(env, uuid.as_deref(), 594, |c| cached_out(c, "Duration"))?
-            .unwrap_or_else(|| line_err(594, "attempt to index field '?' (a nil value)"))
-            .unwrap_or_else(|| line_err(594, "attempt to perform arithmetic on field 'Duration' (a nil value)"));
+        let d = with_cached(env, uuid.as_deref(), 593, |c| cached_out(c, "Duration"))?
+            .unwrap_or_else(|| line_err(593, "attempt to index field '?' (a nil value)"))
+            .unwrap_or_else(|| line_err(593, "attempt to perform arithmetic on field 'Duration' (a nil value)"));
         let expiration_rate = 1.0 / d;
         // :594-596
         if let Some(t) = esr_bd(st) {
@@ -756,7 +758,7 @@ pub(super) fn default_trigger_handler(env: &mut Env, st: &mut PerformState, mut 
             if let Some(t) = esr_bd(st) {
                 let src = name_of(
                     env,
-                    source.unwrap_or_else(|| line_err(601, "attempt to index local 'source' (a nil value)")),
+                    source.unwrap_or_else(|| line_err(600, "attempt to index local 'source' (a nil value)")),
                 );
                 t.insert(
                     2,
@@ -792,7 +794,7 @@ pub(super) fn default_trigger_handler(env: &mut Env, st: &mut PerformState, mut 
             let r = req_rate(trig_rate, 618);
             let hr = hex
                 .rate
-                .unwrap_or_else(|| line_err(618, "attempt to perform arithmetic on local 'rate' (a nil value)"));
+                .unwrap_or_else(|| line_err(617, "attempt to perform arithmetic on local 'rate' (a nil value)"));
             // :614-616
             if let Some(t) = esr_bd(st) {
                 t.set_at(
@@ -971,7 +973,7 @@ pub(super) fn default_trigger_handler(env: &mut Env, st: &mut PerformState, mut 
         if let Some(t) = esr_bd(st) {
             t.push(sf!(
                 "= %.2f ^8(Effective source rate)",
-                esr.unwrap_or_else(|| line_err(727, "bad argument #2 to 'format' (number expected, got nil)"))
+                esr.unwrap_or_else(|| line_err(726, "bad argument #2 to 'format' (number expected, got nil)"))
             ));
         }
     }

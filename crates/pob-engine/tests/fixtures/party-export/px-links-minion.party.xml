@@ -14,15 +14,15 @@ true|Tree:66771|Onslaught|FLAG|-|-|-
 Vulnerability
 144
 false
-15|Skill:Vulnerability|PhysicalDamageTaken|INC|-|-|type=GlobalEffect/effectType=Curse
 25|Skill:Vulnerability|SelfBleedChance|BASE|-|-|type=GlobalEffect/effectType=Curse
+15|Skill:Vulnerability|PhysicalDamageTaken|INC|-|-|type=GlobalEffect/effectType=Curse
 ---
 		</ExportedBuffs>
 		<ExportedBuffs name="Link Skills">
 			Soul Link
 100
--14|Skill:SoulLink|DamageTaken|MORE|-|-|type=GlobalEffect/effectType=Link
 30|Skill:SoulLink|TakenFromParentESBeforeYou|BASE|-|-|type=GlobalEffect/effectType=Link
+-14|Skill:SoulLink|DamageTaken|MORE|-|-|type=GlobalEffect/effectType=Link
 true|Custom:Default|ParentNonUniqueFlasksAppliedToYou|FLAG|-|-|type=GlobalEffect/effectType=Global/unscalable=true
 ---
 		</ExportedBuffs>

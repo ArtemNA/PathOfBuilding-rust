@@ -5,22 +5,22 @@
 		<ExportedBuffs name="Aura">
 			Anger
 100
-109|Skill:Anger|FireMin|BASE|-|Spell|type=GlobalEffect/effectType=Aura
-155|Skill:Anger|FireMax|BASE|-|Spell|type=GlobalEffect/effectType=Aura
 109|Skill:Anger|FireMin|BASE|-|Attack|type=GlobalEffect/effectType=Aura
 155|Skill:Anger|FireMax|BASE|-|Attack|type=GlobalEffect/effectType=Aura
+109|Skill:Anger|FireMin|BASE|-|Spell|type=GlobalEffect/effectType=Aura
+155|Skill:Anger|FireMax|BASE|-|Spell|type=GlobalEffect/effectType=Aura
 ---
 Anger_Debuff
 100
-109|Skill:Anger|FireMin|BASE|-|Spell|type=GlobalEffect/effectType=Aura
-155|Skill:Anger|FireMax|BASE|-|Spell|type=GlobalEffect/effectType=Aura
 109|Skill:Anger|FireMin|BASE|-|Attack|type=GlobalEffect/effectType=Aura
 155|Skill:Anger|FireMax|BASE|-|Attack|type=GlobalEffect/effectType=Aura
+109|Skill:Anger|FireMin|BASE|-|Spell|type=GlobalEffect/effectType=Aura
+155|Skill:Anger|FireMax|BASE|-|Spell|type=GlobalEffect/effectType=Aura
 ---
 Defiance Banner
 100
-8|Skill:DefianceBanner|MovementSpeed|INC|-|-|type=GlobalEffect/effectType=Aura
 8|Skill:DefianceBanner|SpellSuppressionChance|BASE|-|-|type=GlobalEffect/effectType=Aura
+8|Skill:DefianceBanner|MovementSpeed|INC|-|-|type=GlobalEffect/effectType=Aura
 12|Custom:Default|Damage|INC|Attack|-|-
 ---
 Defiance Banner_Debuff
@@ -61,8 +61,8 @@ true|Tree:66771|Onslaught|FLAG|-|-|-
 Vulnerability
 144
 false
-15|Skill:Vulnerability|PhysicalDamageTaken|INC|-|-|type=GlobalEffect/effectType=Curse
 25|Skill:Vulnerability|SelfBleedChance|BASE|-|-|type=GlobalEffect/effectType=Curse
+15|Skill:Vulnerability|PhysicalDamageTaken|INC|-|-|type=GlobalEffect/effectType=Curse
 ---
 		</ExportedBuffs>
 		<ExportedBuffs name="EnemyConditions">

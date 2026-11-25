@@ -34,6 +34,10 @@ pub struct ItemsUndoState {
     pub items_table: pob_tree::lj_table::LjTable,
     /// `state.slotSelItemId` of the socket slots: `spec.jewels` of the active spec.
     pub jewels: NumMap<f64>,
+    /// `state.itemSets = copyTableSafe(self.itemSets)` (:5226): a new table in the `pairs` order of the old one.
+    pub item_sets_table: pob_tree::lj_table::LjTable,
+    /// The sets of `state.itemSets` whose `useSecondWeaponSet` is nil.
+    pub nil_second_weapon: Vec<f64>,
 }
 
 /// What `ItemsTab:Save` writes for one item: the id, the variants, `BuildAndParseRaw`'s text, the `ModRange`s.
@@ -482,13 +486,31 @@ impl Engine {
         self.sync_item_order();
     }
 
-    /// `ItemsTab:NewItemSet()` (:1626-1641) + the order: the set of the Manage popup's `Save`.
+    /// `ItemsTab:CreateItemSet(nil, title)` (ItemsTab.lua:1660-1675: the first free id) + the order at `index` (the `t_insert(self.list,
+    /// self.selDragIndex or #self.list + 1, itemSet.id)` of `ReceiveDrag`, ItemSetListControl.lua:114-124) or at the end (`NewItemSet(nil, name)`,
+    /// :1677-1682, of ItemSetService:NewItemSet).
     pub fn new_item_set(&mut self, title: Option<&str>, index: Option<usize>) -> f64 {
-        let m = self.model_mut();
         let mut id = 1.0;
-        while m.item_sets.iter().any(|s| s.id == id) {
+        while self.model().item_sets.iter().any(|s| s.id == id) {
             id += 1.0;
         }
+        self.create_item_set(id, title, index)
+    }
+
+    /// `NewItemSet(id, name)` with an id (Build.lua:822 `#self.itemsTab.itemSets + 1`): the set at the end of the order.
+    pub fn new_item_set_with_id(&mut self, id: f64, title: Option<&str>) -> f64 {
+        self.create_item_set(id, title, None)
+    }
+
+    /// `#self.itemSets`.
+    pub fn item_sets_len(&self) -> usize {
+        self.set_tables.items.len()
+    }
+
+    /// `CreateItemSet(id, name)` (:1660-1675) + `t_insert(self.itemSetOrderList, ...)`.
+    fn create_item_set(&mut self, id: f64, title: Option<&str>, index: Option<usize>) -> f64 {
+        self.set_tables.items.set(id);
+        let m = self.model_mut();
         let set = ItemSetModel {
             id,
             title: title.map(str::to_owned),
@@ -500,28 +522,31 @@ impl Engine {
             Some(i) => m.item_sets.insert((i - 1).min(m.item_sets.len()), set),
             None => m.item_sets.push(set),
         }
+        // a new set table: `useSecondWeaponSet` nil
+        self.extras_mut().nil_second_weapon.retain(|x| *x != id);
         self.extras_mut().nil_second_weapon.push(id);
         id
     }
 
-    /// `copyTable(itemSets[id])` + `RenameSet(newSet, true)`'s `Save` (ItemSetListControl.lua:17-25, :54-61).
+    /// `ItemsTab:CopyItemSet(sourceItemSetId, newItemSetName)` (:1684-1692): `copyTable` of the set, id `#self.itemSets + 1`, at the end of the order.
     pub fn copy_item_set(&mut self, from: f64, title: &str) -> f64 {
+        let id = crate::sets::next_id(&self.set_tables.items);
         let m = self.model_mut();
-        let mut id = 1.0;
-        while m.item_sets.iter().any(|s| s.id == id) {
-            id += 1.0;
-        }
         let mut set = m.item_sets.iter().find(|s| s.id == from).expect("item set").clone();
         set.id = id;
         set.title = Some(title.to_owned());
         m.item_sets.push(set);
+        self.set_tables.items.set(id);
         // `copyTable`: a nil stays nil
-        if self.extras().nil_second_weapon.contains(&from) {
+        let from_nil = self.extras().nil_second_weapon.contains(&from);
+        self.extras_mut().nil_second_weapon.retain(|x| *x != id);
+        if from_nil {
             self.extras_mut().nil_second_weapon.push(id);
         }
         id
     }
 
+    /// `ItemsTab:RenameItemSet` (:1695-1704): a gone id does nothing.
     pub fn rename_item_set(&mut self, id: f64, title: &str) {
         if let Some(s) = self.model_mut().item_sets.iter_mut().find(|s| s.id == id) {
             s.title = Some(title.to_owned());
@@ -549,9 +574,17 @@ impl Engine {
         }
     }
 
-    /// `t_remove(list, index)`, `itemSets[id] = nil`; the next active set is the caller's (ItemSetListControl.lua:127-133).
-    pub fn delete_item_set(&mut self, id: f64) {
-        self.model_mut().item_sets.retain(|s| s.id != id);
+    /// `ItemsTab:DeleteItemSet(itemSetId, orderListIndex)` (:1707-1711): `t_remove(self.itemSetOrderList, orderListIndex)`, `itemSets[id] = nil`; the next active set is the caller's.
+    pub fn delete_item_set(&mut self, id: f64, order_index: usize) {
+        let m = self.model_mut();
+        let at = order_index - 1;
+        assert!(
+            m.item_sets.get(at).is_some_and(|s| s.id == id),
+            "ItemsTab:DeleteItemSet: set {id} is not at {order_index}"
+        );
+        m.item_sets.remove(at);
+        crate::sets::remove(&mut self.set_tables.items, id);
+        self.extras_mut().nil_second_weapon.retain(|x| *x != id);
     }
 
     /// The list's drag (ItemSetListControl.lua:112-114).
@@ -561,8 +594,12 @@ impl Engine {
             .sort_by_key(|s| order.iter().position(|o| *o == s.id).unwrap_or(usize::MAX));
     }
 
-    /// `ItemsTab:SetActiveItemSet(id)` (:1644-1670) without `PopulateSlots`/`SyncLoadouts`: a gone id is the first of the list. Returns the id.
+    /// `ItemsTab:SetActiveItemSet(id)` (:1714-1745) without `PopulateSlots`/`SyncLoadouts`: a gone id is the first of the list. Returns the id.
     pub fn set_active_item_set(&mut self, id: f64) -> f64 {
+        // :1716-1718 (2.69.0)
+        if self.model().item_sets.is_empty() {
+            self.new_item_set_with_id(1.0, Some("Default"));
+        }
         let m = self.model_mut();
         let id = if m.item_sets.iter().any(|s| s.id == id) {
             id
@@ -602,6 +639,8 @@ impl Engine {
                 copy
             }),
             jewels: pob_build::active_spec(m).jewels.clone(),
+            item_sets_table: crate::sets::copy_table(&self.set_tables.items),
+            nil_second_weapon: self.extras().nil_second_weapon.clone(),
         }
     }
 
@@ -616,6 +655,9 @@ impl Engine {
     pub fn restore_items_undo_state(&mut self, st: &ItemsUndoState) -> Result<(), String> {
         let changed = pob_build::active_spec(self.model()).jewels.0 != st.jewels.0;
         *self.items_table.borrow_mut() = Some(st.items_table.clone());
+        // :5240 `self.itemSets = state.itemSets`
+        self.set_tables.items = st.item_sets_table.clone();
+        self.extras_mut().nil_second_weapon.clone_from(&st.nil_second_weapon);
         let m = self.model_mut();
         m.active_item_set = st.active_item_set;
         m.items.clone_from(&st.items);

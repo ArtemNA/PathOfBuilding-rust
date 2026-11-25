@@ -60,7 +60,18 @@ fn alloc_ids(e: &Engine) -> Vec<u32> {
 fn path_equivalence_of_the_tree_mutators() {
     let (mut checks, mut skipped_cluster) = (0, 0);
     for (name, xml) in inputs() {
-        let mut base = Engine::load_xml(&xml).expect("load");
+        // a build the original cannot open either (2.69.0: CalcPerform.lua:1205, a Lua error of its first BuildOutput; real_builds
+        // reports it as not loaded in LuaJIT) is no input of this check
+        let loaded = std::panic::catch_unwind(|| Engine::load_xml(&xml));
+        let mut base = match loaded {
+            Ok(r) => r.expect("load"),
+            Err(p) => {
+                let msg = p.downcast_ref::<String>().cloned().unwrap_or_default();
+                assert!(msg.starts_with("Modules/CalcPerform.lua:1205:"), "{name}: {msg}");
+                eprintln!("{name}: skipped, the original raises on its load too: {msg}");
+                continue;
+            }
+        };
         settle(&mut base);
         let base_xml = base.save_xml().expect("save");
         let base_stats = keys(&Engine::load_xml(&base_xml).expect("reload"));

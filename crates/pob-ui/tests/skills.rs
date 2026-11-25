@@ -358,6 +358,7 @@ fn run(name: &str) -> Run {
             .expect("json");
     let sandbox = Sandbox::new(name);
     pob_engine::calcs_tab::set_mod_row_order_sample(None);
+    pob_ui::tabs::minion_list::set_order_sample(None);
     let tp = TestPlatform::new();
     let mut gfx = Gfx::with_platform(&scene::fonts_dir(), scene::SCREEN, 1.0, Box::new(tp.clone())).expect("fonts");
     gfx.set_dpi_scale_override_percent(100);
@@ -418,6 +419,20 @@ fn run(name: &str) -> Run {
                 .as_mut()
                 .expect("view")
                 .set_order_sample(ids, conns);
+            continue;
+        }
+        if let Some(o) = st["spectreOrder"].as_str() {
+            // R13: `pairs(data.spectres)` and `pairs(data.worldAreas)` of the oracle's process (the Spectre Library, 5606cc64f)
+            let rec = oracle_record(o).unwrap_or_else(|| panic!("fixtures/skills/{o}.json"));
+            let ids = |k: &str| -> Vec<String> {
+                rec[k]
+                    .as_array()
+                    .unwrap_or_else(|| panic!("{o}.json: {k}"))
+                    .iter()
+                    .map(|v| v.as_str().expect("id").to_string())
+                    .collect()
+            };
+            pob_ui::tabs::minion_list::set_order_sample(Some((ids("spectres"), ids("worldAreas"))));
             continue;
         }
         // U10: `main.defaultGemQuality`, and a new build

@@ -219,7 +219,7 @@ impl ConfigState {
                 None | Some(InputValue::Bool(false)) => Ok(None),
                 Some(InputValue::Num(n)) => Ok((*n > 0.0).then_some(*n)),
                 Some(other) => Err(LuaError(format!(
-                    "Classes/ConfigTab.lua:1121: attempt to compare number with {} ({what}.enemyLevel)",
+                    "Classes/ConfigTab.lua:1123: attempt to compare number with {} ({what}.enemyLevel)",
                     if matches!(other, InputValue::Str(_)) { "string" } else { "boolean" }
                 ))),
             }
@@ -374,7 +374,7 @@ impl ConfigState {
                 BlockText::Bool(false) => {}
                 BlockText::Num(_) | BlockText::Bool(_) => {
                     return Err(LuaError(format!(
-                        "Classes/ConfigTab.lua:1167: attempt to get length of field 'text' (a {} value)",
+                        "Classes/ConfigTab.lua:1169: attempt to get length of field 'text' (a {} value)",
                         if matches!(block.text, BlockText::Num(_)) {
                             "number"
                         } else {
@@ -386,7 +386,7 @@ impl ConfigState {
                 BlockText::Element(e) if e.children.is_empty() => {}
                 BlockText::Element(_) => {
                     return Err(LuaError(
-                        "Classes/ConfigTab.lua:1169: attempt to call method 'gmatch' (a nil value)".into(),
+                        "Classes/ConfigTab.lua:1171: attempt to call method 'gmatch' (a nil value)".into(),
                     ));
                 }
             }
@@ -397,7 +397,7 @@ impl ConfigState {
                 Some(InputValue::Str(legacy)) if !legacy.is_empty() => add_custom_lines(&mut mod_list, legacy, "Custom", self.parse_mode),
                 Some(v @ (InputValue::Num(_) | InputValue::Bool(true))) => {
                     return Err(LuaError(format!(
-                        "Classes/ConfigTab.lua:1187: attempt to get length of field 'customMods' (a {} value)",
+                        "Classes/ConfigTab.lua:1189: attempt to get length of field 'customMods' (a {} value)",
                         if matches!(v, InputValue::Num(_)) { "number" } else { "boolean" }
                     )));
                 }
@@ -478,4 +478,4 @@ fn add_custom_lines(mod_list: &mut ModList, text: &str, source: &str, mode: pob_
 /// `ConfigTab:ImportCalcSettings` (:1205-1240): Build.lua:685 reaches it only when `next(configTab.input) == nil`, and
 /// `NewConfigSet` has seeded defaults by then -- unreachable on any build this port loads.
 pub const IMPORT_CALC_SETTINGS_UNIMPLEMENTED: &str =
-    "Classes/ConfigTab.lua:1205-1240 ImportCalcSettings (unreachable: input is never empty)";
+    "Classes/ConfigTab.lua:1207-1242 ImportCalcSettings (unreachable: input is never empty)";

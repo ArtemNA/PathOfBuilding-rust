@@ -641,7 +641,7 @@ impl Item {
                 if id <= saved_line_count {
                     // `list[id]` -- a non-positive or fractional id indexes nil (L18).
                     if id < 1.0 || id.fract() != 0.0 {
-                        panic!("Classes/ItemsTab.lua:1321: attempt to index a nil value (field '?')");
+                        panic!("Classes/ItemsTab.lua:1342: attempt to index a nil value (field '?')");
                     }
                     // :1306-1309 versions that could not parse "value(min-max)" lines saved them as is with a default ModRange
                     let ml = &mut list[id as usize - 1];
@@ -1330,7 +1330,8 @@ impl Item {
                                     self.affixes = Some(&rlu.affixes);
                                 }
                             }
-                            self.corruptible = base.ty != "Flask";
+                            // Item.lua:1061 (5606cc64f: nor Viscera)
+                            self.corruptible = base.ty != "Flask" && base.ty != "Viscera";
                             self.can_be_influenced = base.influence_tags.is_some();
                             self.cluster_jewel = pob_data::cluster_jewels::cluster_jewels().jewel(&base_name);
                             let (s, d, i) = (

@@ -372,7 +372,7 @@ fn skill_name(skills: &pob_data::skills::Skills, id: &str) -> Result<String, Str
     skills
         .get(id)
         .map(|e| e.name.clone())
-        .ok_or_else(|| format!("Classes/CalcBreakdownControl.lua:456: attempt to index field '?' (data.skills['{id}'] is nil)"))
+        .ok_or_else(|| format!("Classes/CalcBreakdownControl.lua:458: attempt to index field '?' (data.skills['{id}'] is nil)"))
 }
 
 thread_local! {
@@ -620,7 +620,7 @@ impl BdCtx<'_, '_> {
                                         latest = pob_tree::load_passive_tree(&v).map_err(|e| e.0)?;
                                         latest
                                             .node(id)
-                                            .ok_or("Classes/CalcBreakdownControl.lua:441: attempt to index local 'node' (a nil value)")?
+                                            .ok_or("Classes/CalcBreakdownControl.lua:443: attempt to index local 'node' (a nil value)")?
                                     }
                                 };
                                 (n.dn.clone(), n.x.zip(n.y))
@@ -825,7 +825,8 @@ impl BdCtx<'_, '_> {
                     .list
                     .iter()
                     .map(row_t)
-                    .filter(|r| items(r).is_some_and(|i| i.armour_data.is_some()))
+                    // CalcBreakdownControl.lua:254 (5606cc64f) only the gear that gives some of it
+                    .filter(|r| items(r).is_some_and(|i| i.armour_data.is_some()) && base(r) > 0.0)
                     .collect();
                 let mut idx: Vec<usize> = (0..list.len()).collect();
                 lua_sort(&mut idx, &mut |a, b| base(&list[*a]) > base(&list[*b]));
@@ -851,6 +852,14 @@ impl BdCtx<'_, '_> {
                     order.iter().map(|i| all[*i].clone()).collect(),
                 )
             };
+            // :271 (5606cc64f) `if #rowList > 0`: no table for an empty list
+            if list.is_empty() {
+                if let Some(x) = table("modList") {
+                    let x = x.clone();
+                    self.add_mod_section(sd, Some(&x))?;
+                }
+                return Ok(());
+            }
             let mut rows = Vec::with_capacity(list.len());
             for r in &list {
                 let mut row = row_of(r);

@@ -132,12 +132,8 @@ fn set_operations_equal_reload() {
     let mut e = Engine::load_xml(&xml).expect("load");
     let base = bits(&e);
     let first = e.config_active_set();
-    // New: defaults, in the list only on Save
-    let mut new = e.config_new_set();
-    new.title = Some("Second".into());
-    let id = new.id;
-    assert!(!e.config_set_exists(id));
-    e.config_insert_set(new);
+    // New: defaults, at the end of the order
+    let id = e.config_new_set(None, Some("Second"));
     assert_eq!(e.config_set_order(), [first, id]);
     e.config_activate(id);
     e.config_build_mod_list().expect("BuildModList");
@@ -153,10 +149,8 @@ fn set_operations_equal_reload() {
     assert_eq!(base, bits(&e), "back to the first set");
     assert_reload_same(&e, "back");
     // copy, rename, delete
-    let mut copy = e.config_copy_set(id);
-    let copy_id = copy.id;
-    copy.title = Some("Copy".into());
-    e.config_insert_set(copy);
+    let copy_id = e.config_copy_set(id, "Copy");
+    assert_eq!(e.config_set_order(), [first, id, copy_id]);
     e.config_activate(copy_id);
     e.config_build_mod_list().expect("BuildModList");
     e.refresh().expect("refresh");
@@ -164,8 +158,8 @@ fn set_operations_equal_reload() {
     e.config_rename_set(copy_id, "Renamed");
     assert_eq!(e.config_set_title(copy_id).as_deref(), Some("Renamed"));
     assert_reload_same(&e, "the copy");
-    e.config_write_order(&[first, id]);
-    e.config_remove_set(copy_id);
+    e.config_delete_set(copy_id, 3);
+    assert_eq!(e.config_set_order(), [first, id]);
     e.config_activate(first);
     e.config_build_mod_list().expect("BuildModList");
     e.refresh().expect("refresh");

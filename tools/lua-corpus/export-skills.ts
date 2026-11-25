@@ -204,7 +204,7 @@ REF = {
   gemData = function(v) return v.id end, grantedEffect = function(v) return v.id end, skillGem = function(v) return v.id end,
   skillGrantedEffect = function(v) return v.id end, secondaryGrantedEffect = function(v) return v.id end,
   displayEffect = effBrief, supportEffect = effBrief, sourceItem = function(v) return v.name end, sourceNode = function(v) return D(v.id, 0, {}) end,
-  srcInstance = key(gemIdx), socketGroup = key(grpIdx), summonSkill = key(skillIdx), sourceGem = key(gemIdx),
+  srcInstance = key(gemIdx), socketGroup = key(grpIdx), summonSkill = key(skillIdx), sourceGem = key(gemIdx), sourceSkill = key(skillIdx),
   displaySkillList = listOf(skillIdx), displaySkillListCalcs = function(v) return N(#v) end, triggeredBy = effBrief, actor = function() return "<actor>" end, minion = function() return "<minion>" end, displayGemList = listOf(gemIdx),
   isSupporting = function(v) local t = {} for g in pairs(v) do t[#t + 1] = gemIdx[g] or "<none>" end table.sort(t) return t end,
   propertyModList = function(v) local t = {} for i, e in ipairs(v) do t[i] = fmtMod(e.mod) end return t end,

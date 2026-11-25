@@ -19,12 +19,12 @@ use std::rc::Rc;
 use indexmap::IndexMap;
 use pob_build::{BuildModel, active_item_set};
 use pob_data::gems::{GemEntry, gems};
-use pob_data::skills::{GrantedEffect, Skills, skills};
+use pob_data::skills::{Skills, skills};
 use pob_items::Item;
 use pob_lua::number::{max2, min2};
 use pob_mods::{Gem, ModCfg, ModType, StoreRef, TabEntry, Value};
 
-use crate::active_skill::{ActiveSkill, ActorView, EffectRef, FromItem, GemCfg, GroupCfg, SkillEffect, create_active_skill};
+use crate::active_skill::{ActiveSkill, ActorView, EffectRef, GemCfg, GroupCfg, SkillEffect, create_active_skill};
 use crate::calc_tools::{GemLevelTarget, LuaError, WeaponView, validate_gem_level};
 use crate::env::{GrantedSkill, ReqEntry, Slot};
 use crate::setup::ok;
@@ -52,8 +52,6 @@ pub struct SkillsState {
     pub main_skill: Option<usize>,
     /// `build.mainSocketGroup` after :1590.
     pub build_main_socket_group: f64,
-    /// Effect ids CalcSetup.lua:1633-1634 set `grantedEffect.fromItem = true` on.
-    pub from_item_marks: BTreeSet<String>,
     /// ProcessSocketGroup :1186-1190 `grantedEffect.levels[level].cost = {}` as `(effect id, level)`.
     pub cost_wiped: Vec<(String, f64)>,
     /// Hash-order walks whose order could change the result (see the module doc); empty on the goldens.
@@ -156,12 +154,6 @@ impl SkillsState {
     }
 }
 
-impl FromItem for BTreeSet<String> {
-    fn is_from_item(&self, ge: &GrantedEffect) -> bool {
-        ge.from_item || self.contains(&ge.id)
-    }
-}
-
 fn lower(s: &str) -> String {
     s.to_ascii_lowercase()
 }
@@ -217,7 +209,6 @@ impl SkillsState {
             active_skill_list: Vec::new(),
             main_skill: None,
             build_main_socket_group: build.main_socket_group,
-            from_item_marks: BTreeSet::new(),
             cost_wiped: Vec::new(),
             order_notes: Vec::new(),
             aux_skill_list: Vec::new(),
@@ -445,7 +436,8 @@ fn add_best_support(sk: &Skills, se: &EffectRef, list: &mut Vec<EffectRef>) -> R
             (e.granted_effect, e.level, e.quality)
         };
         let oge = &sk.effects[o_idx];
-        if ge_idx == o_idx {
+        // :444 `supportEffect.grantedEffect.id == otherSupport.grantedEffect.id` (5606cc64f: by id -- CalcSetup's tagged copy is another table)
+        if ge.id == oge.id {
             add = false;
             let (l, ol) = (level.ok_or_else(cmp_err)?, o_level.ok_or_else(cmp_err)?);
             let better = l > ol || (l == ol && quality.ok_or_else(cmp_err)? > o_quality.ok_or_else(cmp_err)?);
@@ -703,7 +695,7 @@ pub fn setup_skills(st: &mut SkillsState, inp: &SetupInputs<'_>) -> Result<Setup
         let targets = [target];
 
         // :1627-1650 addExtraSupports(value, grantedEffect, level)
-        let add_extra_supports = |st: &mut SkillsState,
+        let add_extra_supports = |_st: &mut SkillsState,
                                   sl: &mut SupportLists,
                                   value: Option<&Value>,
                                   ge_idx: Option<usize>,
@@ -718,17 +710,15 @@ pub fn setup_skills(st: &mut SkillsState, inp: &SetupInputs<'_>) -> Result<Setup
                     Value::Num(x) => pob_lua::format::tostring_num(x),
                     other => {
                         return Err(format!(
-                            "Modules/CalcSetup.lua:1677: attempt to concatenate a {} value",
+                            "Modules/CalcSetup.lua:1683: attempt to concatenate a {} value",
                             other.type_name()
                         ));
                     }
                 };
                 ge_idx = sk.index.get(&format!("Support{id}")).copied();
             }
-            if let (Some(_), Some(g)) = (value, ge_idx) {
-                // `grantedEffect.fromItem = true` -- a write onto the shared data table
-                st.from_item_marks.insert(sk.effects[g].id.clone());
-            }
+            // :1714-1721 (5606cc64f) an item's extra support is CalcSetup's tagged copy (`fromItem = true`), not the data table
+            let tagged = value.is_some() && ge_idx.is_some();
             let Some(g) = ge_idx else { return Ok(()) };
             let ge = &sk.effects[g];
             let data = gems();
@@ -749,6 +739,7 @@ pub fn setup_skills(st: &mut SkillsState, inp: &SetupInputs<'_>) -> Result<Setup
                     }),
                     quality: Some(0.0),
                     enabled: Some(true),
+                    from_item: tagged,
                     ..SkillEffect::default()
                 });
                 add_best_support(&sk, &e, sl.get_mut(t))?;
@@ -819,7 +810,7 @@ pub fn setup_skills(st: &mut SkillsState, inp: &SetupInputs<'_>) -> Result<Setup
                     socket_index_by_gem[index].get(gem_index).copied().flatten(),
                 );
                 let quality = gi.quality.ok_or_else(|| {
-                    "Modules/CalcSetup.lua:1754: attempt to perform arithmetic on field 'quality' (a nil value)".to_owned()
+                    "Modules/CalcSetup.lua:1765: attempt to perform arithmetic on field 'quality' (a nil value)".to_owned()
                 })? + socket_quality;
                 let se = EffectRef::new(SkillEffect {
                     granted_effect: ge_idx,
@@ -876,8 +867,12 @@ pub fn setup_skills(st: &mut SkillsState, inp: &SetupInputs<'_>) -> Result<Setup
                         e.level,
                     )?);
                 }
-                // CalcSetup.lua:1792-1796 (07fa089bf)
-                if !socketed_supports_disabled {
+                // CalcSetup.lua:1803-1810 (5606cc64f): the support parts of skill gems still apply -- the flag only stops support gems
+                let skill_gem = gi_snapshot
+                    .gem_data
+                    .as_deref()
+                    .is_some_and(|g| sk.get(&gem(g).granted_effect_id).is_some_and(|e| !e.support));
+                if !socketed_supports_disabled || skill_gem {
                     for t in &targets {
                         add_best_support(&sk, &se, support_lists.get_mut(t))?;
                     }
@@ -931,6 +926,8 @@ pub fn setup_skills(st: &mut SkillsState, inp: &SetupInputs<'_>) -> Result<Setup
                         .expect("granted effect"),
                 ],
             };
+            // :1844 `local gemSkill` (5606cc64f): the gem's first active skill, the source of its attribute requirement multiplier
+            let mut gem_skill: Option<usize> = None;
             for (k, &ge_idx) in effect_list.iter().enumerate() {
                 let ge = &sk.effects[ge_idx];
                 let enable_global = match k {
@@ -948,7 +945,7 @@ pub fn setup_skills(st: &mut SkillsState, inp: &SetupInputs<'_>) -> Result<Setup
                     socket_index_by_gem[index].get(gem_index).copied().flatten(),
                 );
                 let quality = gi_snapshot.quality.ok_or_else(|| {
-                    "Modules/CalcSetup.lua:1834: attempt to perform arithmetic on field 'quality' (a nil value)".to_owned()
+                    "Modules/CalcSetup.lua:1849: attempt to perform arithmetic on field 'quality' (a nil value)".to_owned()
                 })? + socket_quality;
                 let ae = EffectRef::new(SkillEffect {
                     granted_effect: ge_idx,
@@ -999,7 +996,7 @@ pub fn setup_skills(st: &mut SkillsState, inp: &SetupInputs<'_>) -> Result<Setup
                             .and_then(|s| support_lists.by_slot.get(s))
                             .and_then(|m| m.get(&index))
                             .cloned()
-                            .ok_or_else(|| "Modules/CalcSetup.lua:1838: attempt to index a nil value".to_owned())?,
+                            .ok_or_else(|| "Modules/CalcSetup.lua:1853: attempt to index a nil value".to_owned())?,
                     };
                     let (own_slot, own_source, n_own) = {
                         let sg = &st.tab.socket_group_list()[index];
@@ -1025,7 +1022,7 @@ pub fn setup_skills(st: &mut SkillsState, inp: &SetupInputs<'_>) -> Result<Setup
                         let non_empty = slot_lists.values().filter(|l| !l.is_empty()).count();
                         if non_empty > 1 {
                             st.order_notes.push(format!(
-                                "CalcSetup.lua:1854 pairs(supportLists[\"{}\"]) over {non_empty} non-empty groups (group {})",
+                                "CalcSetup.lua:1869 pairs(supportLists[\"{}\"]) over {non_empty} non-empty groups (group {})",
                                 slot_name.as_deref().unwrap_or(""),
                                 index + 1
                             ));
@@ -1065,16 +1062,18 @@ pub fn setup_skills(st: &mut SkillsState, inp: &SetupInputs<'_>) -> Result<Setup
                     st.tab.socket_group_list_mut()[index].display_gem_list = Some(display);
                 }
                 let src_from_item = gi_snapshot.from_item == Some(true);
-                let mut skill = create_active_skill(&sk, ae, applied, &actor, Some(index), src_from_item, &st.from_item_marks)?;
+                let mut skill = create_active_skill(&sk, ae, applied, &actor, Some(index), src_from_item)?;
                 if gi_snapshot.gem_data.is_some() {
                     skill.slot_name = group_cfg[index].as_ref().expect("set").slot_name.clone();
                 }
                 let n = st.active_skill_list.len();
+                // :1932 `gemSkill = gemSkill or activeSkill`
+                gem_skill.get_or_insert(n);
                 socket_group_skill_list[index].get_or_insert_with(Vec::new).push(n);
                 st.active_skill_list.push(skill);
             }
             if gi_snapshot.gem_data.is_some() {
-                // :1846-1854
+                // :1937-1946
                 let gi = &st.tab.socket_group_list()[index].gem_list[gem_index];
                 requirements.push(ReqEntry {
                     source: "Gem",
@@ -1084,6 +1083,7 @@ pub fn setup_skills(st: &mut SkillsState, inp: &SetupInputs<'_>) -> Result<Setup
                     str_: gi.req_override.or(gi.req_str),
                     dex: gi.req_override.or(gi.req_dex),
                     int: gi.req_override.or(gi.req_int),
+                    source_skill: gem_skill,
                 });
             }
         }
@@ -1187,7 +1187,7 @@ pub fn setup_skills(st: &mut SkillsState, inp: &SetupInputs<'_>) -> Result<Setup
             enabled: Some(true),
             ..SkillEffect::default()
         });
-        let skill = create_active_skill(&sk, e, Vec::new(), &actor, None, false, &st.from_item_marks)?;
+        let skill = create_active_skill(&sk, e, Vec::new(), &actor, None, false)?;
         st.main_skill = Some(st.active_skill_list.len());
         st.active_skill_list.push(skill);
     }

@@ -1382,13 +1382,13 @@ impl PassiveTreeView {
                     Some((0.0, 1.0, 0.0))
                 } else if !c.alloc && node.alloc {
                     Some((1.0, 0.0, 0.0))
-                } else if ty == NodeType::Mastery
-                    && c.alloc
-                    && node.alloc
-                    && (compare.as_ref().is_some_and(|cs| cs.tree_version != spec.tree_version)
-                        || compare.as_ref().and_then(|cs| cs.mastery_selections.get(&id)) != spec.mastery_selections.get(&id))
-                {
-                    Some((0.0, 0.0, 1.0))
+                } else if ty == NodeType::Mastery && c.alloc && node.alloc {
+                    // :185-191 (5606cc64f) another mastery selection, or another tattoo override (`hashOverrides[id].dn`); the same: no colour
+                    let cs = compare.as_ref();
+                    let p_dn = spec.hash_overrides.get(&id).map(|o| o.dn.as_str());
+                    let c_dn = cs.and_then(|cs| cs.hash_overrides.get(&id)).map(|o| o.dn.as_str());
+                    (cs.and_then(|cs| cs.mastery_selections.get(&id)) != spec.mastery_selections.get(&id) || p_dn != c_dn)
+                        .then_some((0.0, 0.0, 1.0))
                 } else if ty == NodeType::Socket
                     && c.alloc
                     && node.alloc

@@ -90,7 +90,7 @@ pub trait ListHooks<V>: 'static {
     fn re_sort(&self, list: &ListControl<V>, column: usize) {}
     /// `:GetDragValue(index, value)` → `(dragType, dragValue)` (needed when `dragTargetList` is set).
     fn get_drag_value(&self, list: &ListControl<V>, index: usize, value: &V) -> (String, V) {
-        unimplemented!("ListControl.lua:162: GetDragValue of this list")
+        unimplemented!("ListControl.lua:163: GetDragValue of this list")
     }
     fn on_drag_send(&self, list: &ListControl<V>, g: &mut Gfx, index: usize, value: &V) {}
     /// This list as a drag target (`self` in its own `dragTargetList`): `CanReceiveDrag` / `ReceiveDrag`.
@@ -160,6 +160,8 @@ pub struct ListControl<V> {
     pub label: PropCell<Option<String>>,
     pub label_position_offset: Cell<(f64, f64)>,
     pub show_row_separators: Cell<bool>,
+    /// `.reserveIconSpace` (5606cc64f): rows without an icon indent their text as if they had one.
+    pub reserve_icon_space: Cell<bool>,
     pub default_text: RefCell<Option<String>>,
     pub scroll_bar_h: Rc<ScrollBarControl>,
     pub scroll_bar_v: Rc<ScrollBarControl>,
@@ -250,6 +252,7 @@ impl<V: Clone + PartialEq + 'static> ListControl<V> {
                 label: PropCell::new(None),
                 label_position_offset: Cell::new((0.0, 0.0)),
                 show_row_separators: Cell::new(false),
+                reserve_icon_space: Cell::new(false),
                 default_text: RefCell::new(None),
                 scroll_bar_h: sbh,
                 scroll_bar_v: sbv,
@@ -503,9 +506,16 @@ impl<V: Clone + PartialEq + 'static> Control for ListControl<V> {
                 let value = &list[index - 1];
                 let mut text = self.hooks.get_row_value(self, f, col_index, index, value);
                 let icon = self.hooks.get_row_icon(self, col_index, index, value);
+                // ListControl.lua:229-230 (5606cc64f) the text starts after the icon, or where it would be (`reserveIconSpace`)
+                let text_x = if icon.is_some() || self.reserve_icon_space.get() {
+                    18.0
+                } else {
+                    0.0
+                };
                 let mut text_width = sg::draw_string_width(f, text_height, col_font, &text);
-                if text_width > col_width - 2.0 {
-                    let clip_index = sg::draw_string_cursor_index(f, text_height, col_font, &text, col_width - clip_width - 2.0, 0.0);
+                if text_width > col_width - text_x - 2.0 {
+                    let clip_index =
+                        sg::draw_string_cursor_index(f, text_height, col_font, &text, col_width - text_x - clip_width - 2.0, 0.0);
                     text = format!("{}...", crate::lua::sub(&text, 1, clip_index as i64 - 1));
                     text_width = sg::draw_string_width(f, text_height, col_font, &text);
                 }
@@ -523,7 +533,7 @@ impl<V: Clone + PartialEq + 'static> Control for ListControl<V> {
                         value.clone(),
                         x + 2.0 + col_offset,
                         line_y + y + 2.0,
-                        (text_width + 8.0).max(rel_x - col_offset),
+                        (text_x + text_width + 8.0).max(rel_x - col_offset),
                     ));
                 }
                 let is_sel = sel_value.as_ref() == Some(value);
@@ -567,21 +577,19 @@ impl<V: Clone + PartialEq + 'static> Control for ListControl<V> {
                 if !self.hooks.set_highlight_color(self, f, index, value) {
                     sg::set_draw_color(f, 1.0, 1.0, 1.0);
                 }
-                match icon {
-                    None => sg::draw_string(f, col_offset, line_y + text_offset_y, Some("LEFT"), text_height, col_font, &text),
-                    Some(icon) => {
-                        sg::draw_image(f, Some(&icon), col_offset, line_y, 16.0, 16.0, None);
-                        sg::draw_string(
-                            f,
-                            col_offset + 16.0 + 2.0,
-                            line_y + text_offset_y,
-                            Some("LEFT"),
-                            text_height,
-                            col_font,
-                            &text,
-                        );
-                    }
+                // :285-288
+                if let Some(icon) = icon {
+                    sg::draw_image(f, Some(&icon), col_offset, line_y, 16.0, 16.0, None);
                 }
+                sg::draw_string(
+                    f,
+                    col_offset + text_x,
+                    line_y + text_offset_y,
+                    Some("LEFT"),
+                    text_height,
+                    col_font,
+                    &text,
+                );
             }
             if cl {
                 let m_over = rel_x >= col_offset && rel_x <= col_offset + col_width && (0.0..=18.0).contains(&rel_y);

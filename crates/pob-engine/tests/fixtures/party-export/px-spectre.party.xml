@@ -5,10 +5,10 @@
 		<ExportedBuffs name="Aura">
 			Anger
 103
-109|Skill:Anger|FireMin|BASE|-|Spell|type=GlobalEffect/effectType=Aura
-155|Skill:Anger|FireMax|BASE|-|Spell|type=GlobalEffect/effectType=Aura
 109|Skill:Anger|FireMin|BASE|-|Attack|type=GlobalEffect/effectType=Aura
 155|Skill:Anger|FireMax|BASE|-|Attack|type=GlobalEffect/effectType=Aura
+109|Skill:Anger|FireMin|BASE|-|Spell|type=GlobalEffect/effectType=Aura
+155|Skill:Anger|FireMax|BASE|-|Spell|type=GlobalEffect/effectType=Aura
 ---
 Hatred
 100
@@ -17,10 +17,10 @@ Hatred
 ---
 Lightning Golem Wrath
 100
+20|Skill:LightningGolemWrath|LightningMax|BASE|-|Spell|type=GlobalEffect/effectType=Aura
 4|Skill:LightningGolemWrath|LightningMin|BASE|-|Attack|type=GlobalEffect/effectType=Aura
 33|Skill:LightningGolemWrath|LightningMax|BASE|-|Attack|type=GlobalEffect/effectType=Aura
 2|Skill:LightningGolemWrath|LightningMin|BASE|-|Spell|type=GlobalEffect/effectType=Aura
-20|Skill:LightningGolemWrath|LightningMax|BASE|-|Spell|type=GlobalEffect/effectType=Aura
 ---
 Pride
 100

@@ -488,16 +488,16 @@ fn add_display_stat_list(
         }
         let label_color = sd.color.unwrap_or("^7");
         if sd.stat.is_some() {
-            let v = stat_value(sd, o).map_err(|e| lua_err(1925, e))?;
-            if row_shown(sd, &v, o).map_err(|e| lua_err(1927, e))? {
-                let over_cap = over_cap_value(sd, &v, o).map_err(|e| lua_err(1928, e))?;
+            let v = stat_value(sd, o).map_err(|e| lua_err(2397, e))?;
+            if row_shown(sd, &v, o).map_err(|e| lua_err(2399, e))? {
+                let over_cap = over_cap_value(sd, &v, o).map_err(|e| lua_err(2400, e))?;
                 if sd.stat == Some("SkillDPS") {
                     // :1932-1963
                     let label_color = color::CUSTOM;
                     let list = actor
                         .skill_dps
                         .as_mut()
-                        .ok_or_else(|| lua_err(1934, "attempt to sort a non-table output.SkillDPS".into()))?;
+                        .ok_or_else(|| lua_err(2406, "attempt to sort a non-table output.SkillDPS".into()))?;
                     sort_skill_dps(list);
                     for sk in list.iter() {
                         let trigger = match sk.trigger.as_deref() {
@@ -518,7 +518,7 @@ fn add_display_stat_list(
                             chaos_inoc: false,
                         };
                         let value =
-                            format_stat(&spec, &LuaV::Num(sk.dps * sk.count), over_cap.as_ref(), None, st).map_err(|e| lua_err(1947, e))?;
+                            format_stat(&spec, &LuaV::Num(sk.dps * sk.count), over_cap.as_ref(), None, st).map_err(|e| lua_err(2419, e))?;
                         out.stat_box.push(StatBoxEntry {
                             height: 16.0,
                             text: Some(lhs),
@@ -535,9 +535,9 @@ fn add_display_stat_list(
                     }
                 } else if !sd.hide_stat {
                     // :1964-2005
-                    let co = color_override(sd, &v, o).map_err(|e| lua_err(1967, e))?;
-                    let mut formatted = format_stat(&FormatSpec::of(sd), &v, over_cap.as_ref(), co, st).map_err(|e| lua_err(1970, e))?;
-                    if let Some(sfx) = suffix_text(sd, &v, o).map_err(|e| lua_err(1971, e))? {
+                    let co = color_override(sd, &v, o).map_err(|e| lua_err(2439, e))?;
+                    let mut formatted = format_stat(&FormatSpec::of(sd), &v, over_cap.as_ref(), co, st).map_err(|e| lua_err(2442, e))?;
+                    if let Some(sfx) = suffix_text(sd, &v, o).map_err(|e| lua_err(2443, e))? {
                         formatted.push_str(&format!("^x808080 ({sfx})"));
                     }
                     let breakdown = stat_breakdown_key(sd, actor.breakdown);
@@ -575,20 +575,20 @@ fn add_display_stat_list(
                 && v.truthy()
             {
                 let gate = match sd.cond_func {
-                    Some(c) => c(&v, o).map_err(|e| lua_err(2007, e))?.truthy(),
+                    Some(c) => c(&v, o).map_err(|e| lua_err(2479, e))?.truthy(),
                     None => true,
                 };
                 if gate {
-                    match w(&v, o).map_err(|e| lua_err(2008, e))? {
+                    match w(&v, o).map_err(|e| lua_err(2480, e))? {
                         LuaV::Str(s) => insert_if_new(&mut out.warnings, &s),
                         LuaV::Nil | LuaV::Bool(false) => {}
-                        other => return Err(lua_err(2010, format!("display: a warnFunc returned a {} value", other.type_name()))),
+                        other => return Err(lua_err(2482, format!("display: a warnFunc returned a {} value", other.type_name()))),
                     }
                 }
             }
         } else if sd.label.is_some() && sd.cond_func.is_some() {
             // :2013-2016 `statData.condFunc(actor.output)`: a label-only row (`labelStat` / `val`); BuildDisplayStats.lua has none.
-            return Err("Modules/Build.lua:2013 label-only display row (condFunc(actor.output) / labelStat): unimplemented, no such row in BuildDisplayStats.lua".into());
+            return Err("Modules/Build.lua:2485 label-only display row (condFunc(actor.output) / labelStat): unimplemented, no such row in BuildDisplayStats.lua".into());
         } else if out.stat_box.last().is_none_or(|e| e.text.is_some()) {
             // :2017-2018
             out.stat_box.push(StatBoxEntry::sep(6.0));
@@ -650,13 +650,13 @@ fn add_display_stat_list(
             .mod_db
             .borrow()
             .flag(None, &[name])
-            .map_err(|e| lua_err(2052, e.to_string()))?;
+            .map_err(|e| lua_err(2524, e.to_string()))?;
         Ok(r == Some(true))
     };
     let zero = LuaV::Num(0.0);
     let mut aspect = 0;
-    if gt(&o.get("CrabBarriersMax"), &zero).map_err(|e| lua_err(2051, e))?
-        && gt(&o.get("CrabBarriers"), &zero).map_err(|e| lua_err(2051, e))?
+    if gt(&o.get("CrabBarriersMax"), &zero).map_err(|e| lua_err(2523, e))?
+        && gt(&o.get("CrabBarriers"), &zero).map_err(|e| lua_err(2523, e))?
     {
         aspect += 1;
     }

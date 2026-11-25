@@ -167,6 +167,7 @@ struct RawEffect {
     level_mods: Option<Json>,
     hide_from_gem_list: Option<bool>,
     add_minion_list: Option<Vec<String>>,
+    imbued_only: Option<bool>,
 }
 
 /// `skillTypes[SkillType.X] = true` -- a set of SkillType numbers.
@@ -224,6 +225,8 @@ pub struct GrantedEffect {
     pub support_gems_only: bool,
     pub minion_has_item_set: bool,
     pub hide_from_gem_list: bool,
+    /// `grantedEffect.imbuedOnly` (5606cc64f): GemSelectControl.lua:134 leaves the gem out of the list.
+    pub imbued_only: bool,
     /// `grantedEffect.hasGlobalEffect` -- set by `processMod`, also during a lazy statMap copy.
     pub has_global_effect: Cell<bool>,
     /// Index of this effect's statMap TABLE in [`Skills::stat_maps`] (shared tables share it).
@@ -454,6 +457,7 @@ fn build(raw: OrderedMap<RawEffect>, shapes: &HashMap<String, (usize, f64)>) -> 
             support_gems_only: r.support_gems_only.unwrap_or(false),
             minion_has_item_set: r.minion_has_item_set.unwrap_or(false),
             hide_from_gem_list: r.hide_from_gem_list.unwrap_or(false),
+            imbued_only: r.imbued_only.unwrap_or(false),
             has_global_effect: Cell::new(r.has_global_effect.unwrap_or(false)),
             stat_map_table: i,
             id: key.clone(),
